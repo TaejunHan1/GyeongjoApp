@@ -1,4 +1,4 @@
-// src/screens/event/EventDisplayScreen.js - 다양한 템플릿 스타일
+// src/screens/event/EventDisplayScreen.js - 완전한 개선 버전
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -12,6 +12,7 @@ import {
   ImageBackground,
   ScrollView,
   Image,
+  Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
@@ -19,30 +20,41 @@ import { Colors } from '../../styles/constants';
 import { getEventDetail } from '../../lib/supabaseHelper';
 
 const { width, height } = Dimensions.get('window');
-const isLandscape = width > height;
-
-// 실제 배포 시에는 실제 도메인으로 변경해야 함
 const WEB_BASE_URL = 'https://jeongdam.com';
 
 export default function EventDisplayScreen({ navigation, route }) {
-  const { eventId, templateStyle = 'classic' } = route.params;
+  const { eventId, templateStyle = 'modern-minimal', previewData } = route.params;
   
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [qrValue, setQrValue] = useState('');
   const [showExitButton, setShowExitButton] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [userImages, setUserImages] = useState([]);
 
-  // 애니메이션
+  // 애니메이션 refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const qrPulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    loadEventData();
+    if (eventId === 'preview' && previewData) {
+      setIsPreviewMode(true);
+      setEvent(previewData);
+      setQrValue('https://jeongdam.com/preview');
+      setLoading(false);
+      
+      if (previewData.userImages && previewData.userImages.length > 0) {
+        setUserImages(previewData.userImages);
+        console.log('🖼️ 사용자 이미지 설정됨:', previewData.userImages.length);
+      }
+    } else {
+      loadEventData();
+    }
+    
     startAnimations();
     
-    // 이미지 슬라이드쇼 시작
     const imageSlideInterval = startImageSlideshow(getImageCount());
     
     const exitTimer = setTimeout(() => {
@@ -53,7 +65,7 @@ export default function EventDisplayScreen({ navigation, route }) {
       clearTimeout(exitTimer);
       clearInterval(imageSlideInterval);
     };
-  }, [eventId]);
+  }, [eventId, previewData]);
 
   const loadEventData = async () => {
     try {
@@ -62,8 +74,11 @@ export default function EventDisplayScreen({ navigation, route }) {
       
       if (result.success) {
         setEvent(result.data);
-        const webUrl = `${WEB_BASE_URL}/contribute/${result.data.id}`;
-        setQrValue(webUrl);
+        setQrValue(`${WEB_BASE_URL}/contribute/${result.data.id}`);
+        
+        if (result.data.image_urls && result.data.image_urls.length > 0) {
+          setUserImages(result.data.image_urls.map(url => ({ uri: url })));
+        }
       } else {
         console.error('Event loading failed:', result.error);
         navigation.goBack();
@@ -90,10 +105,11 @@ export default function EventDisplayScreen({ navigation, route }) {
       }),
     ]).start();
 
+    // QR 맥박 효과
     Animated.loop(
       Animated.sequence([
         Animated.timing(qrPulseAnim, {
-          toValue: 1.02,
+          toValue: 1.05,
           duration: 2000,
           useNativeDriver: true,
         }),
@@ -107,113 +123,100 @@ export default function EventDisplayScreen({ navigation, route }) {
   };
 
   const startImageSlideshow = (imageCount) => {
+    if (imageCount <= 1) return null;
     return setInterval(() => {
       setCurrentImageIndex((prev) => (prev + 1) % imageCount);
     }, 4000);
   };
 
-  // 이미지 소스 가져오기
   const getImageSource = (index) => {
-    const images = [
-      require('../../../assets/images/aa1.png'),
-      require('../../../assets/images/aa2.png'),
-      require('../../../assets/images/aa3.png'),
-      require('../../../assets/images/aa4.png'),
-    ];
-    return images[index % images.length];
+    // 🔥 사용자 업로드 이미지 우선 사용
+    if (userImages && userImages.length > 0) {
+      console.log('📷 사용자 이미지 사용:', index % userImages.length);
+      return userImages[index % userImages.length];
+    }
+
+    const eventType = event?.event_type || 'wedding';
+    let imageSet;
+    
+    switch (eventType) {
+      case 'wedding':
+        imageSet = [
+          require('../../../assets/images/aa1.png'),
+          require('../../../assets/images/aa2.png'),
+          require('../../../assets/images/aa3.png'),
+          require('../../../assets/images/aa4.png'),
+        ];
+        break;
+      case 'funeral':
+        imageSet = [
+          require('../../../assets/images/bb1.png'),
+          require('../../../assets/images/bb2.png'),
+        ];
+        break;
+      case 'birthday':
+        imageSet = [
+          require('../../../assets/images/aa1.png'),
+          require('../../../assets/images/aa2.png'),
+          require('../../../assets/images/aa3.png'),
+          require('../../../assets/images/aa4.png'),
+        ];
+        break;
+      default:
+        imageSet = [
+          require('../../../assets/images/aa1.png'),
+          require('../../../assets/images/aa2.png'),
+          require('../../../assets/images/aa3.png'),
+          require('../../../assets/images/aa4.png'),
+        ];
+    }
+    
+    return imageSet[index % imageSet.length];
   };
 
-  // 이미지 개수 가져오기
   const getImageCount = () => {
-    return 4; // aa1.png ~ aa4.png 총 4개
-  };
-
-  const getTemplateConfig = () => {
-    const baseConfig = {
-      classic: {
-        backgroundColor: '#F7F3F0',
-        cardBackground: 'rgba(255, 255, 255, 0.95)',
-        primaryColor: '#D4AF8C',
-        textColor: '#5A4A3A',
-        secondaryTextColor: '#8B7355',
-        qrColor: '#5A4A3A',
-        headerTitle: 'WEDDING INVITATION',
-        subtitle: '소중한 분들을 초대합니다',
-        emotionalMessage: '두 사람이 사랑으로 하나 되는\n소중한 순간에 함께해 주세요',
-        qrTitle: '축하의 마음을 전해주세요',
-        qrSubtitle: 'QR 코드를 스캔하여 간편하게 축의금을 전달하세요',
-      },
-      modern: {
-        backgroundColor: '#FFFFFF',
-        cardBackground: 'rgba(248, 250, 252, 0.95)',
-        primaryColor: '#EC4899',
-        textColor: '#1F2937',
-        secondaryTextColor: '#6B7280',
-        qrColor: '#1F2937',
-        headerTitle: 'MODERN WEDDING',
-        subtitle: '깔끔하고 세련된 초대',
-        emotionalMessage: '새로운 시작을 함께\n축하해 주세요',
-        qrTitle: '마음을 전해주세요',
-        qrSubtitle: '간편한 QR 스캔으로 축하를 전하세요',
-      },
-      garden: {
-        backgroundColor: '#F0F9FF',
-        cardBackground: 'rgba(255, 255, 255, 0.9)',
-        primaryColor: '#10B981',
-        textColor: '#064E3B',
-        secondaryTextColor: '#059669',
-        qrColor: '#064E3B',
-        headerTitle: 'GARDEN WEDDING',
-        subtitle: '자연 속에서의 만남',
-        emotionalMessage: '푸른 자연이 축복하는\n아름다운 하루가 되길',
-        qrTitle: '자연의 축복을 함께',
-        qrSubtitle: 'QR 코드로 따뜻한 마음을 나누어 주세요',
-      },
-      luxury: {
-        backgroundColor: '#FEF3C7',
-        cardBackground: 'rgba(255, 255, 255, 0.95)',
-        primaryColor: '#F59E0B',
-        textColor: '#92400E',
-        secondaryTextColor: '#D97706',
-        qrColor: '#92400E',
-        headerTitle: 'LUXURY CELEBRATION',
-        subtitle: '럭셔리한 순간의 초대',
-        emotionalMessage: '특별한 순간을 더욱\n빛나게 해주세요',
-        qrTitle: '귀한 마음을 전해주세요',
-        qrSubtitle: 'QR 스캔으로 품격있는 축하를 전하세요',
-      },
-      solemn: {
-        backgroundColor: '#F8F9FA',
-        cardBackground: 'rgba(255, 255, 255, 0.98)',
-        primaryColor: '#64748B',
-        textColor: '#2D2D2D',
-        secondaryTextColor: '#6B7280',
-        qrColor: '#2D2D2D',
-        headerTitle: 'MEMORIAL SERVICE',
-        subtitle: '고인의 명복을 빕니다',
-        emotionalMessage: '고인을 추모하며\n마지막 인사를 전해 주세요',
-        qrTitle: '위로의 마음을 전해주세요',
-        qrSubtitle: 'QR 코드를 스캔하여 조의를 표하실 수 있습니다',
-      },
-    };
-
-    return baseConfig[templateStyle] || baseConfig.classic;
+    if (userImages && userImages.length > 0) {
+      return userImages.length;
+    }
+    return 4;
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return { year: '2024', month: '12', day: '25', weekday: 'SUNDAY' };
+    if (!dateString) return { 
+      year: '2024', 
+      month: '12', 
+      day: '14', 
+      weekday: 'SATURDAY',
+      koreanDate: '2024년 12월 14일',
+      koreanWeekday: '토요일',
+      shortMonth: 'DEC'
+    };
     const date = new Date(dateString);
     return {
       year: date.getFullYear().toString(),
       month: String(date.getMonth() + 1).padStart(2, '0'),
       day: String(date.getDate()).padStart(2, '0'),
       weekday: date.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase(),
+      koreanDate: `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`,
+      koreanWeekday: date.toLocaleDateString('ko-KR', { weekday: 'long' }),
+      shortMonth: date.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
     };
   };
 
-  const formatTime = (dateString) => {
-    if (!dateString) return '오후 2:00';
-    const date = new Date(dateString);
+  const formatTime = (timeString) => {
+    if (!timeString) return '오후 2:00';
+    
+    // timeString이 "14:00:00" 형태일 때
+    if (typeof timeString === 'string' && timeString.includes(':')) {
+      const [hours, minutes] = timeString.split(':');
+      const hour = parseInt(hours);
+      const isPM = hour >= 12;
+      const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+      return `${isPM ? '오후' : '오전'} ${displayHour}:${minutes}`;
+    }
+    
+    // Date 객체일 때
+    const date = new Date(timeString);
     return date.toLocaleTimeString('ko-KR', {
       hour: '2-digit',
       minute: '2-digit',
@@ -222,6 +225,11 @@ export default function EventDisplayScreen({ navigation, route }) {
   };
 
   const handleContribute = () => {
+    if (isPreviewMode) {
+      alert('미리보기 모드입니다. 실제 부조는 완성된 경조사에서 가능합니다.');
+      return;
+    }
+    
     navigation.navigate('Contribution', {
       eventId: event.id,
       eventName: event.event_name
@@ -232,7 +240,7 @@ export default function EventDisplayScreen({ navigation, route }) {
     return (
       <View style={styles.loadingContainer}>
         <View style={styles.loadingContent}>
-          <Ionicons name="tv" size={48} color="#D4AF8C" />
+          <Ionicons name="tv" size={48} color="#ec4899" />
           <Text style={styles.loadingText}>초대장 준비 중</Text>
         </View>
       </View>
@@ -247,504 +255,584 @@ export default function EventDisplayScreen({ navigation, route }) {
     );
   }
 
-  const theme = getTemplateConfig();
   const dateInfo = formatDate(event.event_date);
 
-  // 템플릿별 렌더링
-  const renderTemplate = () => {
-    switch (templateStyle) {
-      case 'modern':
-        return renderModernTemplate();
-      case 'garden':
-        return renderGardenTemplate();
-      case 'luxury':
-        return renderLuxuryTemplate();
-      case 'solemn':
-        return renderSolemnTemplate();
-      default:
-        return renderClassicTemplate();
-    }
-  };
-
-  // 클래식 템플릿 (기존 디자인)
-  const renderClassicTemplate = () => (
-    <ScrollView 
-      style={styles.scrollView}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <Animated.View 
-        style={[
-          styles.content,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          }
-        ]}
-      >
-        {/* 헤더 섹션 */}
-        <View style={styles.header}>
-          <Text style={[styles.headerDate, { color: theme.primaryColor }]}>
-            {dateInfo.year}.{dateInfo.month}.{dateInfo.day}
-          </Text>
-          <Text style={[styles.headerTitle, { color: theme.textColor }]}>
-            {theme.headerTitle}
-          </Text>
+  // 🌟 모던 미니멀 템플릿
+  const renderModernMinimalTemplate = () => (
+    <View style={styles.modernContainer}>
+      {isPreviewMode && (
+        <View style={styles.previewBanner}>
+          <Ionicons name="eye" size={16} color={Colors.white} />
+          <Text style={styles.previewBannerText}>미리보기 모드</Text>
         </View>
+      )}
+      
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <Animated.View style={[styles.modernContent, { opacity: fadeAnim }]}>
+          
+          {/* Save the Date 헤더 */}
+          <View style={styles.modernSaveHeader}>
+            <Text style={styles.modernSaveText}>SAVE THE DATE</Text>
+            <View style={styles.modernDateBadge}>
+              <Text style={styles.modernDateBadgeText}>
+                {dateInfo.shortMonth} {dateInfo.day}
+              </Text>
+            </View>
+          </View>
 
-        {/* 메인 이미지 섹션 */}
-        <View style={styles.imageSection}>
-          <View style={[styles.imageFrame, { backgroundColor: '#E8DDD4' }]}>
-            <Image
-              source={getImageSource(currentImageIndex)}
-              style={styles.mainImage}
-              resizeMode="cover"
-            />
+          {/* 메인 이미지 섹션 */}
+          <View style={styles.modernMainImageSection}>
+            <View style={styles.modernMainImageCard}>
+              <Image
+                source={getImageSource(currentImageIndex)}
+                style={styles.modernMainImage}
+                resizeMode="cover"
+              />
+              <View style={styles.modernImageGradient} />
+              <View style={styles.modernImageContent}>
+                <Text style={styles.modernImageTitle}>We're Getting</Text>
+                <Text style={styles.modernImageTitle}>Married</Text>
+                <View style={styles.modernImageDivider} />
+                <Text style={styles.modernImageDate}>{dateInfo.koreanDate}</Text>
+              </View>
+            </View>
+            
+            {/* 이미지 인디케이터 */}
             {getImageCount() > 1 && (
-              <View style={styles.imageIndicator}>
+              <View style={styles.modernImageIndicator}>
                 {[...Array(getImageCount())].map((_, index) => (
                   <View
                     key={index}
                     style={[
-                      styles.imageDot,
-                      { 
-                        backgroundColor: currentImageIndex === index 
-                          ? theme.primaryColor 
-                          : 'rgba(255,255,255,0.5)' 
-                      }
+                      styles.modernImageDot,
+                      { backgroundColor: currentImageIndex === index ? '#ec4899' : 'rgba(255,255,255,0.7)' }
                     ]}
                   />
                 ))}
               </View>
             )}
           </View>
-        </View>
 
-        {/* 이벤트 타이틀 */}
-        <View style={styles.titleSection}>
-          <Text style={[styles.eventTitle, { color: theme.textColor }]}>
-            {event.event_name}
-          </Text>
-          <Text style={[styles.eventSubtitle, { color: theme.secondaryTextColor }]}>
-            {theme.subtitle}
-          </Text>
-        </View>
-
-        {/* 감성 메시지 */}
-        <View style={styles.messageSection}>
-          <Text style={[styles.emotionalMessage, { color: theme.textColor }]}>
-            {theme.emotionalMessage}
-          </Text>
-        </View>
-
-        {/* 날짜 및 시간 정보 */}
-        <View style={[styles.dateTimeCard, { backgroundColor: theme.cardBackground }]}>
-          <View style={styles.dateTimeHeader}>
-            <Text style={[styles.dateLabel, { color: theme.primaryColor }]}>
-              THE WEDDING
-            </Text>
-          </View>
-          
-          <View style={styles.dateTimeContent}>
-            <View style={styles.dateRow}>
-              <Text style={[styles.dateNumber, { color: theme.textColor }]}>
-                {dateInfo.month}.{dateInfo.day}
-              </Text>
-              <Text style={[styles.dateYear, { color: theme.secondaryTextColor }]}>
-                {dateInfo.year}
+          {/* 신랑신부 이름 */}
+          <View style={styles.modernNamesSection}>
+            <View style={styles.modernNameCard}>
+              <Text style={styles.modernNameLabel}>GROOM</Text>
+              <Text style={styles.modernNameText}>
+                {event.groom_name || event.main_person_name?.split(',')[0] || '신랑이름'}
               </Text>
             </View>
-            <Text style={[styles.dateWeekday, { color: theme.secondaryTextColor }]}>
-              {dateInfo.weekday}
+            <View style={styles.modernHeartIcon}>
+              <Ionicons name="heart" size={24} color="#ec4899" />
+            </View>
+            <View style={styles.modernNameCard}>
+              <Text style={styles.modernNameLabel}>BRIDE</Text>
+              <Text style={styles.modernNameText}>
+                {event.bride_name || event.main_person_name?.split(',')[1]?.trim() || '신부이름'}
+              </Text>
+            </View>
+          </View>
+
+          {/* 초대 메시지 */}
+          <View style={styles.modernInviteSection}>
+            <View style={styles.modernInviteCard}>
+              <Text style={styles.modernInviteTitle}>초대합니다</Text>
+              <Text style={styles.modernInviteMessage}>
+                {event.custom_message || 
+                 '두 사람이 사랑으로 하나 되는\n소중한 순간을 함께해 주세요'}
+              </Text>
+              
+              <View style={styles.modernEventDetails}>
+                <View style={styles.modernDetailItem}>
+                  <Ionicons name="calendar" size={16} color="#ec4899" />
+                  <Text style={styles.modernDetailText}>
+                    {dateInfo.koreanDate} {formatTime(event.ceremony_time)}
+                  </Text>
+                </View>
+                
+                {event.location && (
+                  <View style={styles.modernDetailItem}>
+                    <Ionicons name="location" size={16} color="#ec4899" />
+                    <Text style={styles.modernDetailText}>{event.location}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+
+          {/* 갤러리 섹션 */}
+          <View style={styles.modernGallerySection}>
+            <Text style={styles.modernSectionTitle}>GALLERY</Text>
+            <View style={styles.modernGalleryGrid}>
+              {[...Array(Math.min(6, getImageCount()))].map((_, index) => (
+                <View key={index} style={styles.modernGalleryItem}>
+                  <Image
+                    source={getImageSource(index)}
+                    style={styles.modernGalleryImage}
+                    resizeMode="cover"
+                  />
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* QR 코드 & 축의금 섹션 */}
+          <View style={styles.modernQRSection}>
+            <View style={styles.modernQRCard}>
+              <Text style={styles.modernQRTitle}>축하의 마음을 전해주세요</Text>
+              
+              <Animated.View 
+                style={[
+                  styles.modernQRContainer,
+                  { transform: [{ scale: qrPulseAnim }] }
+                ]}
+              >
+                <QRCode
+                  value={qrValue}
+                  size={160}
+                  color="#1f2937"
+                  backgroundColor="white"
+                  quietZone={15}
+                />
+              </Animated.View>
+              
+              <Text style={styles.modernQRSubtitle}>
+                QR 코드를 스캔하여 간편하게 축의금을 전달하세요
+              </Text>
+              
+              <TouchableOpacity 
+                style={styles.modernQRButton}
+                onPress={handleContribute}
+              >
+                <Ionicons name="heart" size={18} color="white" />
+                <Text style={styles.modernQRButtonText}>
+                  {isPreviewMode ? 'PREVIEW MODE' : 'SEND CONGRATULATIONS'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+        </Animated.View>
+      </ScrollView>
+    </View>
+  );
+
+  // 🌸 로맨틱 플로럴 템플릿
+  const renderRomanticFloralTemplate = () => (
+    <ScrollView style={styles.romanticContainer}>
+      {isPreviewMode && (
+        <View style={styles.previewBanner}>
+          <Ionicons name="eye" size={16} color={Colors.white} />
+          <Text style={styles.previewBannerText}>미리보기 모드</Text>
+        </View>
+      )}
+      
+      <View style={styles.romanticBackground}>
+        
+        {/* Header */}
+        <Animated.View 
+          style={[
+            styles.romanticHeader,
+            { opacity: fadeAnim }
+          ]}
+        >
+          <View style={styles.romanticDecoTop}>
+            <Text style={styles.romanticDecorIcon}>🌸</Text>
+            <Text style={styles.romanticDecorIcon}>💕</Text>
+            <Text style={styles.romanticDecorIcon}>🌸</Text>
+          </View>
+          
+          <Text style={styles.romanticTitle}>Wedding Invitation</Text>
+          
+          <View style={styles.romanticNames}>
+            <Text style={styles.romanticName}>
+              {event.groom_name || event.main_person_name?.split(',')[0] || 'Groom'}
             </Text>
-            <Text style={[styles.dateTime, { color: theme.textColor }]}>
-              {formatTime(event.event_date)}
+            <Text style={styles.romanticHeart}>💖</Text>
+            <Text style={styles.romanticName}>
+              {event.bride_name || event.main_person_name?.split(',')[1]?.trim() || 'Bride'}
+            </Text>
+          </View>
+        </Animated.View>
+
+        {/* Main Photo */}
+        <View style={styles.romanticPhotoSection}>
+          <View style={styles.romanticPhotoFrame}>
+            <Image 
+              source={getImageSource(currentImageIndex)} 
+              style={styles.romanticPhoto}
+              resizeMode="cover"
+            />
+            <View style={styles.romanticPhotoDecor}>
+              <Text style={styles.romanticFlower}>🌹</Text>
+              <Text style={styles.romanticFlower}>🌹</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Wedding Details */}
+        <View style={styles.romanticDetailsCard}>
+          <Text style={styles.romanticDetailsTitle}>Wedding Details</Text>
+          
+          <View style={styles.romanticDetailItem}>
+            <Text style={styles.romanticDetailIcon}>📅</Text>
+            <Text style={styles.romanticDetailText}>
+              {dateInfo.koreanDate}
+            </Text>
+          </View>
+          
+          <View style={styles.romanticDetailItem}>
+            <Text style={styles.romanticDetailIcon}>🕐</Text>
+            <Text style={styles.romanticDetailText}>
+              {formatTime(event.ceremony_time)}
+            </Text>
+          </View>
+          
+          <View style={styles.romanticDetailItem}>
+            <Text style={styles.romanticDetailIcon}>🏛️</Text>
+            <Text style={styles.romanticDetailText}>
+              {event.location || 'Wedding Hall'}
             </Text>
           </View>
         </View>
 
-        {/* QR 코드 섹션 */}
-        <View style={[styles.qrSection, { backgroundColor: theme.cardBackground }]}>
-          <Text style={[styles.qrTitle, { color: theme.primaryColor }]}>
-            {theme.qrTitle}
-          </Text>
-          <Text style={[styles.qrSubtitle, { color: theme.secondaryTextColor }]}>
-            {theme.qrSubtitle}
-          </Text>
+        {/* Family Section */}
+        <View style={styles.romanticFamilySection}>
+          <Text style={styles.romanticFamilyTitle}>가족 소개</Text>
           
-          <Animated.View 
-            style={[
-              styles.qrContainer,
-              { transform: [{ scale: qrPulseAnim }] }
-            ]}
-          >
-            {qrValue && (
+          <View style={styles.romanticFamilyCards}>
+            <View style={styles.romanticFamilyCard}>
+              <Text style={styles.romanticFamilyLabel}>신랑측</Text>
+              <Text style={styles.romanticFamilyName}>
+                {event.groom_father_name || '○○○'} · {event.groom_mother_name || '○○○'}
+              </Text>
+              <Text style={styles.romanticFamilyRelation}>의 아들</Text>
+              <Text style={styles.romanticCoupleName}>
+                {event.groom_name || event.main_person_name?.split(',')[0] || '신랑'}
+              </Text>
+            </View>
+            
+            <View style={styles.romanticFamilyCard}>
+              <Text style={styles.romanticFamilyLabel}>신부측</Text>
+              <Text style={styles.romanticFamilyName}>
+                {event.bride_father_name || '○○○'} · {event.bride_mother_name || '○○○'}
+              </Text>
+              <Text style={styles.romanticFamilyRelation}>의 딸</Text>
+              <Text style={styles.romanticCoupleName}>
+                {event.bride_name || event.main_person_name?.split(',')[1]?.trim() || '신부'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Love Message */}
+        <View style={styles.romanticMessageSection}>
+          <Text style={styles.romanticMessageTitle}>💌 Love Message</Text>
+          <Text style={styles.romanticMessageText}>
+            {event.custom_message || 
+             '서로를 향한 진실한 마음이\n아름다운 사랑으로 꽃피었습니다.\n\n소중한 분들과 함께\n새로운 시작을 약속합니다.'}
+          </Text>
+        </View>
+
+        {/* QR Section */}
+        <View style={styles.romanticQRSection}>
+          <Text style={styles.romanticQRTitle}>축복의 마음 전하기</Text>
+          <View style={styles.romanticQRCard}>
+            <Animated.View style={{ transform: [{ scale: qrPulseAnim }] }}>
               <QRCode
                 value={qrValue}
-                size={200}
-                color={theme.qrColor}
+                size={150}
+                color="#be185d"
                 backgroundColor="white"
                 quietZone={15}
               />
-            )}
-          </Animated.View>
-
+            </Animated.View>
+          </View>
           <TouchableOpacity 
-            style={[styles.contributeButton, { backgroundColor: theme.primaryColor }]}
+            style={styles.romanticButton}
             onPress={handleContribute}
-            activeOpacity={0.9}
           >
             <Ionicons name="heart" size={18} color="white" />
-            <Text style={styles.contributeButtonText}>마음 전하기</Text>
+            <Text style={styles.romanticButtonText}>
+              {isPreviewMode ? '미리보기 모드' : '축하 인사 전하기'}
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {/* 푸터 */}
-        <View style={styles.footer}>
-          <Text style={[styles.footerText, { color: theme.secondaryTextColor }]}>
-            정담 - 마음을 나누는 가장 쉬운 방법
-          </Text>
-        </View>
-      </Animated.View>
+      </View>
     </ScrollView>
   );
 
-  // 모던 템플릿
-  const renderModernTemplate = () => (
-    <View style={[styles.modernContainer, { backgroundColor: theme.backgroundColor }]}>
-      <Animated.View style={[styles.modernContent, { opacity: fadeAnim }]}>
-        {/* 미니멀 헤더 */}
-        <View style={styles.modernHeader}>
-          <View style={styles.modernDateContainer}>
-            <Text style={[styles.modernDate, { color: theme.primaryColor }]}>
-              {dateInfo.month}.{dateInfo.day}.{dateInfo.year}
-            </Text>
-          </View>
-          <Text style={[styles.modernTitle, { color: theme.textColor }]}>
-            {event.event_name}
-          </Text>
+  // 🎨 아티스틱 모던 템플릿
+  const renderArtisticModernTemplate = () => (
+    <View style={styles.artisticContainer}>
+      {isPreviewMode && (
+        <View style={styles.previewBanner}>
+          <Ionicons name="eye" size={16} color={Colors.white} />
+          <Text style={styles.previewBannerText}>미리보기 모드</Text>
         </View>
-
-        {/* 큰 이미지 */}
-        <View style={styles.modernImageContainer}>
-          <Image
-            source={getImageSource(currentImageIndex)}
-            style={styles.modernImage}
-            resizeMode="cover"
-          />
-          <View style={styles.modernImageOverlay}>
-            <Text style={styles.modernImageText}>
-              {theme.emotionalMessage}
-            </Text>
-          </View>
-        </View>
-
-        {/* 정보 카드들 */}
-        <View style={styles.modernCards}>
-          <View style={[styles.modernCard, { backgroundColor: theme.cardBackground }]}>
-            <Ionicons name="time" size={20} color={theme.primaryColor} />
-            <Text style={[styles.modernCardText, { color: theme.textColor }]}>
-              {formatTime(event.event_date)}
-            </Text>
-          </View>
+      )}
+      
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <Animated.View style={[styles.artisticContent, { opacity: fadeAnim }]}>
           
-          {event.location && (
-            <View style={[styles.modernCard, { backgroundColor: theme.cardBackground }]}>
-              <Ionicons name="location" size={20} color={theme.primaryColor} />
-              <Text style={[styles.modernCardText, { color: theme.textColor }]}>
-                {event.location}
-              </Text>
+          {/* Geometric Header */}
+          <View style={styles.artisticHeader}>
+            <View style={styles.artisticGeometric}>
+              <View style={styles.artisticShape1} />
+              <View style={styles.artisticShape2} />
+              <View style={styles.artisticShape3} />
             </View>
-          )}
-        </View>
-
-        {/* QR 섹션 */}
-        <View style={[styles.modernQRSection, { backgroundColor: theme.cardBackground }]}>
-          <QRCode
-            value={qrValue}
-            size={180}
-            color={theme.qrColor}
-            backgroundColor="white"
-            quietZone={15}
-          />
-          <TouchableOpacity 
-            style={[styles.modernButton, { backgroundColor: theme.primaryColor }]}
-            onPress={handleContribute}
-          >
-            <Text style={styles.modernButtonText}>CONTRIBUTE</Text>
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
-    </View>
-  );
-
-  // 가든 템플릿
-  const renderGardenTemplate = () => (
-    <ImageBackground
-      source={{ uri: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iYSIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVHJhbnNmb3JtPSJyb3RhdGUoNDUpIj48cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIGZpbGw9InJnYmEoMTYsIDE4NSwgMTI5LCAwLjAzKSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNhKSIvPjwvc3ZnPg==' }}
-      style={[styles.gardenContainer, { backgroundColor: theme.backgroundColor }]}
-    >
-      <ScrollView style={styles.gardenScrollView}>
-        <Animated.View style={[styles.gardenContent, { opacity: fadeAnim }]}>
-          {/* 자연스러운 헤더 */}
-          <View style={styles.gardenHeader}>
-            <View style={styles.gardenLeafDecor}>
-              <Ionicons name="leaf" size={24} color={theme.primaryColor} />
-            </View>
-            <Text style={[styles.gardenTitle, { color: theme.textColor }]}>
-              {event.event_name}
-            </Text>
-            <Text style={[styles.gardenSubtitle, { color: theme.secondaryTextColor }]}>
-              {theme.subtitle}
-            </Text>
+            
+            <Text style={styles.artisticTitle}>MODERN WEDDING</Text>
+            <Text style={styles.artisticSubtitle}>Contemporary Celebration</Text>
           </View>
 
-          {/* 원형 이미지 */}
-          <View style={styles.gardenImageSection}>
-            <View style={[styles.gardenImageFrame, { borderColor: theme.primaryColor }]}>
-              <Image
-                source={getImageSource(currentImageIndex)}
-                style={styles.gardenImage}
+          {/* Split Image Layout */}
+          <View style={styles.artisticImageSection}>
+            <View style={styles.artisticMainImage}>
+              <Image 
+                source={getImageSource(currentImageIndex)} 
+                style={styles.artisticImage}
                 resizeMode="cover"
               />
+              <View style={styles.artisticImageOverlay}>
+                <Text style={styles.artisticCoupleNames}>
+                  {(event.groom_name || 'GROOM')} × {(event.bride_name || 'BRIDE')}
+                </Text>
+              </View>
             </View>
-            <View style={styles.gardenLeaves}>
-              <Ionicons name="leaf" size={32} color={theme.primaryColor} style={{ opacity: 0.3 }} />
-              <Ionicons name="flower" size={28} color={theme.primaryColor} style={{ opacity: 0.4 }} />
-            </View>
-          </View>
-
-          {/* 자연스러운 메시지 */}
-          <View style={styles.gardenMessage}>
-            <Text style={[styles.gardenMessageText, { color: theme.textColor }]}>
-              {theme.emotionalMessage}
-            </Text>
-          </View>
-
-          {/* 날짜 정보 */}
-          <View style={[styles.gardenDateCard, { backgroundColor: theme.cardBackground }]}>
-            <View style={styles.gardenDateHeader}>
-              <Ionicons name="calendar" size={24} color={theme.primaryColor} />
-              <Text style={[styles.gardenDateTitle, { color: theme.primaryColor }]}>
-                GARDEN CELEBRATION
-              </Text>
-            </View>
-            <Text style={[styles.gardenDateTime, { color: theme.textColor }]}>
-              {formatDate(event.event_date).year}년 {formatDate(event.event_date).month}월 {formatDate(event.event_date).day}일
-            </Text>
-            <Text style={[styles.gardenTime, { color: theme.secondaryTextColor }]}>
-              {formatTime(event.event_date)}
-            </Text>
-          </View>
-
-          {/* QR 코드 섹션 */}
-          <View style={[styles.gardenQRSection, { backgroundColor: theme.cardBackground }]}>
-            <Text style={[styles.gardenQRTitle, { color: theme.primaryColor }]}>
-              {theme.qrTitle}
-            </Text>
-            <QRCode
-              value={qrValue}
-              size={200}
-              color={theme.qrColor}
-              backgroundColor="white"
-              quietZone={15}
-            />
-            <TouchableOpacity 
-              style={[styles.gardenButton, { backgroundColor: theme.primaryColor }]}
-              onPress={handleContribute}
-            >
-              <Ionicons name="leaf" size={18} color="white" />
-              <Text style={styles.gardenButtonText}>자연의 축복을 함께</Text>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-      </ScrollView>
-    </ImageBackground>
-  );
-
-  // 럭셔리 템플릿
-  const renderLuxuryTemplate = () => (
-    <View style={[styles.luxuryContainer, { backgroundColor: theme.backgroundColor }]}>
-      <ScrollView style={styles.luxuryScrollView}>
-        <Animated.View style={[styles.luxuryContent, { opacity: fadeAnim }]}>
-          {/* 골드 헤더 */}
-          <View style={styles.luxuryHeader}>
-            <View style={[styles.luxuryFrame, { borderColor: theme.primaryColor }]}>
-              <Text style={[styles.luxuryHeaderTitle, { color: theme.primaryColor }]}>
-                {theme.headerTitle}
-              </Text>
-              <View style={[styles.luxuryDivider, { backgroundColor: theme.primaryColor }]} />
-              <Text style={[styles.luxuryEventTitle, { color: theme.textColor }]}>
-                {event.event_name}
-              </Text>
+            
+            <View style={styles.artisticSideImages}>
+              {[...Array(2)].map((_, index) => (
+                <View key={index} style={styles.artisticSideImage}>
+                  <Image source={getImageSource(index + 1)} style={styles.artisticSideImg} />
+                </View>
+              ))}
             </View>
           </View>
 
-          {/* 다이아몬드 이미지 프레임 */}
-          <View style={styles.luxuryImageSection}>
-            <View style={[styles.luxuryDiamondFrame, { borderColor: theme.primaryColor }]}>
-              <Image
-                source={getImageSource(currentImageIndex)}
-                style={styles.luxuryImage}
-                resizeMode="cover"
-              />
-              <View style={styles.luxuryCorners}>
-                {[0, 1, 2, 3].map(i => (
-                  <View key={i} style={[styles.luxuryCorner, { backgroundColor: theme.primaryColor }]} />
-                ))}
+          {/* Info Cards */}
+          <View style={styles.artisticInfoSection}>
+            <View style={styles.artisticInfoCards}>
+              <View style={styles.artisticInfoCard}>
+                <Text style={styles.artisticInfoIcon}>📍</Text>
+                <View>
+                  <Text style={styles.artisticInfoTitle}>VENUE</Text>
+                  <Text style={styles.artisticInfoText}>
+                    {event.location || 'Modern Art Gallery'}
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.artisticInfoCard}>
+                <Text style={styles.artisticInfoIcon}>⏰</Text>
+                <View>
+                  <Text style={styles.artisticInfoTitle}>TIME</Text>
+                  <Text style={styles.artisticInfoText}>
+                    {formatTime(event.ceremony_time)}
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.artisticInfoCard}>
+                <Text style={styles.artisticInfoIcon}>📅</Text>
+                <View>
+                  <Text style={styles.artisticInfoTitle}>DATE</Text>
+                  <Text style={styles.artisticInfoText}>
+                    {dateInfo.koreanDate}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
 
-          {/* 럭셔리 정보 카드 */}
-          <View style={[styles.luxuryInfoCard, { backgroundColor: theme.cardBackground, borderColor: theme.primaryColor }]}>
-            <View style={styles.luxuryInfoHeader}>
-              <Ionicons name="diamond" size={24} color={theme.primaryColor} />
-              <Text style={[styles.luxuryInfoTitle, { color: theme.primaryColor }]}>
-                CELEBRATION DETAILS
+          {/* QR Section */}
+          <View style={styles.artisticQRSection}>
+            <Text style={styles.artisticQRTitle}>CELEBRATION FUND</Text>
+            <View style={styles.artisticQRCard}>
+              <Animated.View style={{ transform: [{ scale: qrPulseAnim }] }}>
+                <QRCode
+                  value={qrValue}
+                  size={160}
+                  color="#06b6d4"
+                  backgroundColor="white"
+                  quietZone={15}
+                />
+              </Animated.View>
+            </View>
+            <TouchableOpacity 
+              style={styles.artisticButton}
+              onPress={handleContribute}
+            >
+              <Ionicons name="diamond" size={18} color="#1a1a2e" />
+              <Text style={styles.artisticButtonText}>
+                {isPreviewMode ? 'PREVIEW MODE' : 'SEND GIFT'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+        </Animated.View>
+      </ScrollView>
+    </View>
+  );
+
+  // 🌿 네이처 가든 템플릿
+  const renderNatureGardenTemplate = () => (
+    <ScrollView style={styles.gardenContainer}>
+      {isPreviewMode && (
+        <View style={styles.previewBanner}>
+          <Ionicons name="eye" size={16} color={Colors.white} />
+          <Text style={styles.previewBannerText}>미리보기 모드</Text>
+        </View>
+      )}
+      
+      <View style={styles.gardenBackground}>
+        
+        {/* Nature Header */}
+        <Animated.View 
+          style={[
+            styles.gardenHeader,
+            { opacity: fadeAnim }
+          ]}
+        >
+          <View style={styles.gardenLeaves}>
+            <Text style={styles.gardenLeaf}>🍃</Text>
+            <Text style={styles.gardenLeaf}>🌿</Text>
+            <Text style={styles.gardenLeaf}>🍃</Text>
+          </View>
+          
+          <Text style={styles.gardenTitle}>Garden Wedding</Text>
+          <Text style={styles.gardenSubtitle}>A Natural Celebration</Text>
+          
+          <View style={styles.gardenBranch}>
+            <View style={styles.gardenBranchLine} />
+            <Text style={styles.gardenFlower}>🌸</Text>
+            <View style={styles.gardenBranchLine} />
+          </View>
+        </Animated.View>
+
+        {/* Main Garden Scene */}
+        <View style={styles.gardenScene}>
+          <View style={styles.gardenMainFrame}>
+            <Image 
+              source={getImageSource(currentImageIndex)} 
+              style={styles.gardenMainImage}
+              resizeMode="cover"
+            />
+            <View style={styles.gardenImageDecor}>
+              <View style={styles.gardenVines}>
+                <Text style={styles.gardenVine}>🌿</Text>
+                <Text style={styles.gardenVine}>🌿</Text>
+              </View>
+            </View>
+          </View>
+          
+          <View style={styles.gardenNameTag}>
+            <Text style={styles.gardenCoupleText}>
+              {(event.groom_name || 'Groom')} & {(event.bride_name || 'Bride')}
+            </Text>
+            <Text style={styles.gardenCoupleSubtext}>Growing Together</Text>
+          </View>
+        </View>
+
+        {/* Garden Details */}
+        <View style={styles.gardenDetailsSection}>
+          <View style={styles.gardenDetailCard}>
+            <View style={styles.gardenDetailHeader}>
+              <Text style={styles.gardenDetailIcon}>🌺</Text>
+              <Text style={styles.gardenDetailTitle}>Wedding Garden</Text>
+            </View>
+            
+            <View style={styles.gardenDetailRow}>
+              <Text style={styles.gardenDetailLabel}>날짜</Text>
+              <Text style={styles.gardenDetailValue}>
+                {dateInfo.koreanDate}
               </Text>
             </View>
             
-            <View style={styles.luxuryInfoContent}>
-              <Text style={[styles.luxuryDate, { color: theme.textColor }]}>
-                {dateInfo.year}년 {dateInfo.month}월 {dateInfo.day}일 {formatTime(event.event_date)}
+            <View style={styles.gardenDetailRow}>
+              <Text style={styles.gardenDetailLabel}>시간</Text>
+              <Text style={styles.gardenDetailValue}>
+                {formatTime(event.ceremony_time)}
               </Text>
-              {event.location && (
-                <Text style={[styles.luxuryLocation, { color: theme.secondaryTextColor }]}>
-                  {event.location}
-                </Text>
-              )}
-              <Text style={[styles.luxuryHost, { color: theme.secondaryTextColor }]}>
-                Host: {event.main_person_name}
+            </View>
+            
+            <View style={styles.gardenDetailRow}>
+              <Text style={styles.gardenDetailLabel}>장소</Text>
+              <Text style={styles.gardenDetailValue}>
+                {event.location || 'Secret Garden'}
               </Text>
             </View>
           </View>
+        </View>
 
-          {/* 럭셔리 QR 섹션 */}
-          <View style={[styles.luxuryQRSection, { backgroundColor: theme.cardBackground, borderColor: theme.primaryColor }]}>
-            <Text style={[styles.luxuryQRTitle, { color: theme.primaryColor }]}>
-              {theme.qrTitle}
+        {/* Message in the Garden */}
+        <View style={styles.gardenMessageSection}>
+          <View style={styles.gardenMessageCard}>
+            <Text style={styles.gardenMessageTitle}>자연의 축복</Text>
+            <Text style={styles.gardenMessageText}>
+              {event.custom_message || 
+               '자연이 주는 따뜻한 축복 아래\n두 마음이 하나로 이어집니다.\n\n함께 성장해 나갈 우리의 사랑에\n여러분의 축복을 나누어 주세요.'}
             </Text>
-            <View style={[styles.luxuryQRFrame, { borderColor: theme.primaryColor }]}>
+            <View style={styles.gardenMessageDecor}>
+              <Text style={styles.gardenMessageFlower}>🌻</Text>
+              <Text style={styles.gardenMessageFlower}>🌺</Text>
+              <Text style={styles.gardenMessageFlower}>🌻</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* QR Section */}
+        <View style={styles.gardenQRSection}>
+          <Text style={styles.gardenQRTitle}>자연의 선물 함께하기</Text>
+          <View style={styles.gardenQRCard}>
+            <Animated.View style={{ transform: [{ scale: qrPulseAnim }] }}>
               <QRCode
                 value={qrValue}
-                size={180}
-                color={theme.qrColor}
+                size={150}
+                color="#064e3b"
                 backgroundColor="white"
                 quietZone={15}
               />
-            </View>
-            <TouchableOpacity 
-              style={[styles.luxuryButton, { backgroundColor: theme.primaryColor }]}
-              onPress={handleContribute}
-            >
-              <Ionicons name="diamond" size={18} color="white" />
-              <Text style={styles.luxuryButtonText}>EXCLUSIVE CONTRIBUTION</Text>
-            </TouchableOpacity>
+            </Animated.View>
           </View>
-        </Animated.View>
-      </ScrollView>
-    </View>
+          <TouchableOpacity 
+            style={styles.gardenButton}
+            onPress={handleContribute}
+          >
+            <Ionicons name="leaf" size={18} color="white" />
+            <Text style={styles.gardenButtonText}>
+              {isPreviewMode ? '미리보기 모드' : '자연의 축복 함께하기'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+      </View>
+    </ScrollView>
   );
 
-  // 추모 템플릿
-  const renderSolemnTemplate = () => (
-    <View style={[styles.solemnContainer, { backgroundColor: theme.backgroundColor }]}>
-      <ScrollView style={styles.solemnScrollView}>
-        <Animated.View style={[styles.solemnContent, { opacity: fadeAnim }]}>
-          {/* 추모 헤더 */}
-          <View style={styles.solemnHeader}>
-            <View style={[styles.solemnCross, { backgroundColor: theme.primaryColor }]} />
-            <Text style={[styles.solemnTitle, { color: theme.textColor }]}>
-              {event.event_name}
-            </Text>
-            <Text style={[styles.solemnSubtitle, { color: theme.secondaryTextColor }]}>
-              {theme.subtitle}
-            </Text>
-          </View>
-
-          {/* 추모 이미지 */}
-          <View style={styles.solemnImageSection}>
-            <View style={[styles.solemnImageFrame, { borderColor: theme.primaryColor }]}>
-              <Image
-                source={getImageSource(currentImageIndex)}
-                style={styles.solemnImage}
-                resizeMode="cover"
-              />
-              <View style={styles.solemnFlowers}>
-                <Ionicons name="flower" size={20} color={theme.primaryColor} style={{ opacity: 0.6 }} />
-                <Ionicons name="flower" size={24} color={theme.primaryColor} style={{ opacity: 0.4 }} />
-                <Ionicons name="flower" size={18} color={theme.primaryColor} style={{ opacity: 0.5 }} />
-              </View>
-            </View>
-          </View>
-
-          {/* 추모 메시지 */}
-          <View style={styles.solemnMessage}>
-            <Text style={[styles.solemnMessageText, { color: theme.textColor }]}>
-              {theme.emotionalMessage}
-            </Text>
-          </View>
-
-          {/* 추모 정보 */}
-          <View style={[styles.solemnInfoCard, { backgroundColor: theme.cardBackground }]}>
-            <View style={styles.solemnInfoHeader}>
-              <Ionicons name="flower" size={20} color={theme.primaryColor} />
-              <Text style={[styles.solemnInfoTitle, { color: theme.primaryColor }]}>
-                MEMORIAL INFORMATION
-              </Text>
-            </View>
-            
-            <Text style={[styles.solemnDate, { color: theme.textColor }]}>
-              {dateInfo.year}년 {dateInfo.month}월 {dateInfo.day}일
-            </Text>
-            <Text style={[styles.solemnTime, { color: theme.secondaryTextColor }]}>
-              {formatTime(event.event_date)}
-            </Text>
-            {event.location && (
-              <Text style={[styles.solemnLocation, { color: theme.secondaryTextColor }]}>
-                {event.location}
-              </Text>
-            )}
-          </View>
-
-          {/* 조의 QR 섹션 */}
-          <View style={[styles.solemnQRSection, { backgroundColor: theme.cardBackground }]}>
-            <Text style={[styles.solemnQRTitle, { color: theme.primaryColor }]}>
-              {theme.qrTitle}
-            </Text>
-            <Text style={[styles.solemnQRSubtitle, { color: theme.secondaryTextColor }]}>
-              {theme.qrSubtitle}
-            </Text>
-            
-            <QRCode
-              value={qrValue}
-              size={200}
-              color={theme.qrColor}
-              backgroundColor="white"
-              quietZone={15}
-            />
-            
-            <TouchableOpacity 
-              style={[styles.solemnButton, { backgroundColor: theme.primaryColor }]}
-              onPress={handleContribute}
-            >
-              <Ionicons name="flower" size={18} color="white" />
-              <Text style={styles.solemnButtonText}>조의 표하기</Text>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-      </ScrollView>
-    </View>
-  );
+  // 템플릿별 렌더링
+  const renderTemplate = () => {
+    switch (templateStyle) {
+      case 'modern-minimal':
+        return renderModernMinimalTemplate();
+      case 'romantic-floral':
+        return renderRomanticFloralTemplate();
+      case 'artistic-modern':
+        return renderArtisticModernTemplate();
+      case 'nature-garden':
+        return renderNatureGardenTemplate();
+      default:
+        return renderModernMinimalTemplate();
+    }
+  };
 
   return (
     <View style={styles.container}>
       <StatusBar hidden />
       {renderTemplate()}
       
-      {/* 종료 버튼 */}
-      {showExitButton && (
+      {(showExitButton || isPreviewMode) && (
         <TouchableOpacity 
           style={styles.exitButton}
           onPress={() => navigation.goBack()}
@@ -761,7 +849,26 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   
-  // 공통 스타일들
+  // 공통 스타일
+  previewBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    gap: 6,
+    zIndex: 1000,
+  },
+  previewBannerText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  
   loadingContainer: {
     flex: 1,
     backgroundColor: '#F7F3F0',
@@ -802,663 +909,820 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  // 클래식 템플릿 (기존 스타일 유지)
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 40,
-  },
-  content: {
-    paddingHorizontal: 24,
-    paddingTop: 60,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  headerDate: {
-    fontSize: 14,
-    fontWeight: '300',
-    letterSpacing: 3,
-    marginBottom: 8,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: 2,
-  },
-  imageSection: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  imageFrame: {
-    width: width * 0.8,
-    height: width * 1.2,
-    borderRadius: 200,
-    padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  mainImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 192,
-  },
-  imageIndicator: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 16,
-    gap: 8,
-  },
-  imageDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  titleSection: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  eventTitle: {
-    fontSize: 28,
-    fontWeight: '300',
-    textAlign: 'center',
-    marginBottom: 8,
-    letterSpacing: -0.5,
-  },
-  eventSubtitle: {
-    fontSize: 14,
-    fontWeight: '400',
-    textAlign: 'center',
-  },
-  messageSection: {
-    alignItems: 'center',
-    marginBottom: 40,
-    paddingHorizontal: 20,
-  },
-  emotionalMessage: {
-    fontSize: 18,
-    fontWeight: '400',
-    textAlign: 'center',
-    lineHeight: 28,
-    letterSpacing: -0.3,
-  },
-  dateTimeCard: {
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  dateTimeHeader: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  dateLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 2,
-  },
-  dateTimeContent: {
-    alignItems: 'center',
-  },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 8,
-  },
-  dateNumber: {
-    fontSize: 36,
-    fontWeight: '200',
-    letterSpacing: -1,
-  },
-  dateYear: {
-    fontSize: 16,
-    fontWeight: '300',
-    marginLeft: 8,
-  },
-  dateWeekday: {
-    fontSize: 14,
-    fontWeight: '400',
-    marginBottom: 8,
-    letterSpacing: 1,
-  },
-  dateTime: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  qrSection: {
-    borderRadius: 16,
-    padding: 32,
-    alignItems: 'center',
-    marginBottom: 32,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  qrTitle: {
-    fontSize: 18,
-    fontWeight: '500',
-    marginBottom: 8,
-    letterSpacing: -0.3,
-  },
-  qrSubtitle: {
-    fontSize: 13,
-    fontWeight: '400',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  qrContainer: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  contributeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 24,
-    gap: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  contributeButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'white',
-  },
-  footer: {
-    alignItems: 'center',
-    paddingTop: 20,
-  },
-  footerText: {
-    fontSize: 12,
-    fontWeight: '400',
-    opacity: 0.7,
-  },
-
-  // 모던 템플릿 스타일
+  // 🌟 Modern Minimal Template
   modernContainer: {
     flex: 1,
-    padding: 20,
+    backgroundColor: '#ffffff',
   },
   modernContent: {
-    flex: 1,
+    paddingTop: 60,
+    paddingBottom: 40,
   },
-  modernHeader: {
+  
+  // Save the Date 헤더
+  modernSaveHeader: {
     alignItems: 'center',
+    paddingHorizontal: 30,
     marginBottom: 30,
-    marginTop: 40,
   },
-  modernDateContainer: {
-    backgroundColor: 'rgba(236, 72, 153, 0.1)',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginBottom: 16,
-  },
-  modernDate: {
+  modernSaveText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#ec4899',
+    letterSpacing: 3,
+    marginBottom: 15,
+  },
+  modernDateBadge: {
+    backgroundColor: '#ec4899',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  modernDateBadgeText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '700',
     letterSpacing: 1,
   },
-  modernTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: -1,
+  
+  // 메인 이미지 섹션
+  modernMainImageSection: {
+    paddingHorizontal: 30,
+    marginBottom: 40,
   },
-  modernImageContainer: {
-    position: 'relative',
-    marginBottom: 30,
+  modernMainImageCard: {
+    height: 400,
     borderRadius: 20,
     overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
   },
-  modernImage: {
+  modernMainImage: {
     width: '100%',
-    height: 400,
+    height: '100%',
   },
-  modernImageOverlay: {
+  modernImageGradient: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    padding: 20,
+    height: '50%',
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
-  modernImageText: {
+  modernImageContent: {
+    position: 'absolute',
+    bottom: 40,
+    left: 30,
+    right: 30,
+  },
+  modernImageTitle: {
+    fontSize: 32,
+    fontWeight: '700',
     color: 'white',
+    textAlign: 'center',
+    lineHeight: 36,
+  },
+  modernImageDivider: {
+    width: 60,
+    height: 3,
+    backgroundColor: '#ec4899',
+    alignSelf: 'center',
+    marginVertical: 15,
+  },
+  modernImageDate: {
     fontSize: 18,
     fontWeight: '500',
-    textAlign: 'center',
-    lineHeight: 26,
-  },
-  modernCards: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 30,
-  },
-  modernCard: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    gap: 8,
-  },
-  modernCardText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  modernQRSection: {
-    alignItems: 'center',
-    padding: 30,
-    borderRadius: 20,
-  },
-  modernButton: {
-    marginTop: 20,
-    paddingHorizontal: 40,
-    paddingVertical: 16,
-    borderRadius: 8,
-  },
-  modernButtonText: {
     color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
+    textAlign: 'center',
     letterSpacing: 1,
   },
-
-  // 가든 템플릿 스타일
-  gardenContainer: {
+  modernImageIndicator: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 15,
+    gap: 8,
+  },
+  modernImageDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  
+  // 신랑신부 이름 섹션
+  modernNamesSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+    marginBottom: 40,
+  },
+  modernNameCard: {
+    alignItems: 'center',
     flex: 1,
   },
-  gardenScrollView: {
-    flex: 1,
+  modernNameLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6b7280',
+    letterSpacing: 2,
+    marginBottom: 8,
   },
-  gardenContent: {
+  modernNameText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  modernHeartIcon: {
+    marginHorizontal: 30,
+  },
+  
+  // 초대 섹션
+  modernInviteSection: {
+    paddingHorizontal: 30,
+    marginBottom: 40,
+  },
+  modernInviteCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 20,
+    padding: 30,
+    alignItems: 'center',
+  },
+  modernInviteTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 15,
+  },
+  modernInviteMessage: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 25,
+  },
+  modernEventDetails: {
+    width: '100%',
+    gap: 12,
+  },
+  modernDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    justifyContent: 'center',
+  },
+  modernDetailText: {
+    fontSize: 16,
+    color: '#1f2937',
+    fontWeight: '500',
+  },
+  
+  // 갤러리 섹션
+  modernGallerySection: {
+    paddingHorizontal: 30,
+    marginBottom: 40,
+  },
+  modernSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+    textAlign: 'center',
+    marginBottom: 25,
+    letterSpacing: 2,
+  },
+  modernGalleryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  modernGalleryItem: {
+    width: (width - 80) / 3,
+    height: (width - 80) / 3,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  modernGalleryImage: {
+    width: '100%',
+    height: '100%',
+  },
+  
+  // QR 섹션
+  modernQRSection: {
+    paddingHorizontal: 30,
+    marginBottom: 40,
+  },
+  modernQRCard: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 30,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modernQRTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modernQRContainer: {
+    backgroundColor: '#f8fafc',
     padding: 20,
+    borderRadius: 16,
+    marginBottom: 20,
+  },
+  modernQRSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 30,
+    lineHeight: 20,
+  },
+  modernQRButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ec4899',
+    paddingHorizontal: 30,
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: '#ec4899',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  modernQRButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
+    letterSpacing: 0.5,
+  },
+
+  // 🌸 Romantic Floral Template
+  romanticContainer: {
+    backgroundColor: '#fdf2f8',
+  },
+  romanticBackground: {
+    flex: 1,
+    paddingVertical: 40,
+  },
+  romanticHeader: {
+    alignItems: 'center',
+    paddingHorizontal: 30,
+    marginBottom: 40,
+  },
+  romanticDecoTop: {
+    flexDirection: 'row',
+    marginBottom: 20,
+    gap: 20,
+  },
+  romanticDecorIcon: {
+    fontSize: 24,
+  },
+  romanticTitle: {
+    fontSize: 28,
+    fontWeight: '300',
+    color: '#be185d',
+    marginBottom: 20,
+    fontStyle: 'italic',
+  },
+  romanticNames: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+  romanticName: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#831843',
+  },
+  romanticHeart: {
+    fontSize: 20,
+  },
+  romanticPhotoSection: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  romanticPhotoFrame: {
+    width: 240,
+    height: 300,
+    borderRadius: 120,
+    overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 4,
+    borderColor: '#fce7f3',
+  },
+  romanticPhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  romanticPhotoDecor: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    gap: 5,
+  },
+  romanticFlower: {
+    fontSize: 16,
+  },
+  romanticDetailsCard: {
+    marginHorizontal: 30,
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 25,
+    marginBottom: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  romanticDetailsTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#be185d',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  romanticDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+    paddingVertical: 10,
+  },
+  romanticDetailIcon: {
+    fontSize: 18,
+    marginRight: 15,
+    width: 30,
+  },
+  romanticDetailText: {
+    fontSize: 16,
+    color: '#374151',
+    flex: 1,
+  },
+  romanticFamilySection: {
+    paddingHorizontal: 30,
+    marginBottom: 30,
+  },
+  romanticFamilyTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#be185d',
+    textAlign: 'center',
+    marginBottom: 25,
+  },
+  romanticFamilyCards: {
+    gap: 20,
+  },
+  romanticFamilyCard: {
+    backgroundColor: 'white',
+    borderRadius: 15,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fce7f3',
+  },
+  romanticFamilyLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#be185d',
+    marginBottom: 10,
+  },
+  romanticFamilyName: {
+    fontSize: 16,
+    color: '#374151',
+    marginBottom: 5,
+  },
+  romanticFamilyRelation: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 10,
+  },
+  romanticCoupleName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#831843',
+  },
+  romanticMessageSection: {
+    paddingHorizontal: 30,
+    marginBottom: 30,
+  },
+  romanticMessageTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#be185d',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  romanticMessageText: {
+    fontSize: 16,
+    color: '#374151',
+    textAlign: 'center',
+    lineHeight: 24,
+    backgroundColor: 'white',
+    padding: 20,
+    borderRadius: 15,
+  },
+  romanticQRSection: {
+    alignItems: 'center',
+    paddingHorizontal: 30,
+  },
+  romanticQRTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#be185d',
+    marginBottom: 20,
+  },
+  romanticQRCard: {
+    backgroundColor: 'white',
+    padding: 20,
+    borderRadius: 15,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  romanticButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#be185d',
+    paddingHorizontal: 25,
+    paddingVertical: 15,
+    borderRadius: 25,
+    gap: 8,
+  },
+  romanticButtonText: {
+    fontSize: 16,
+    color: 'white',
+    fontWeight: '600',
+  },
+
+  // 🎨 Artistic Modern Template
+  artisticContainer: {
+    flex: 1,
+    backgroundColor: '#1a1a2e',
+  },
+  artisticContent: {
     paddingTop: 60,
+    paddingBottom: 40,
+  },
+  artisticHeader: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 30,
+  },
+  artisticGeometric: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 30,
+    gap: 15,
+  },
+  artisticShape1: {
+    width: 20,
+    height: 20,
+    backgroundColor: '#06b6d4',
+    transform: [{ rotate: '45deg' }],
+  },
+  artisticShape2: {
+    width: 16,
+    height: 16,
+    backgroundColor: '#ec4899',
+    borderRadius: 8,
+  },
+  artisticShape3: {
+    width: 20,
+    height: 20,
+    backgroundColor: '#f59e0b',
+    borderRadius: 10,
+  },
+  artisticTitle: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: 'white',
+    letterSpacing: 2,
+    marginBottom: 10,
+  },
+  artisticSubtitle: {
+    fontSize: 14,
+    color: '#94a3b8',
+    letterSpacing: 1,
+  },
+  artisticImageSection: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginBottom: 40,
+    gap: 10,
+  },
+  artisticMainImage: {
+    flex: 2,
+    height: 300,
+    borderRadius: 15,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  artisticImage: {
+    width: '100%',
+    height: '100%',
+  },
+  artisticImageOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 15,
+  },
+  artisticCoupleNames: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  artisticSideImages: {
+    flex: 1,
+    gap: 10,
+  },
+  artisticSideImage: {
+    flex: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  artisticSideImg: {
+    width: '100%',
+    height: '100%',
+  },
+  artisticInfoSection: {
+    paddingHorizontal: 20,
+    marginBottom: 40,
+  },
+  artisticInfoCards: {
+    gap: 15,
+  },
+  artisticInfoCard: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+  artisticInfoIcon: {
+    fontSize: 20,
+  },
+  artisticInfoTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94a3b8',
+    letterSpacing: 1,
+    marginBottom: 5,
+  },
+  artisticInfoText: {
+    fontSize: 16,
+    color: 'white',
+    fontWeight: '500',
+  },
+  artisticQRSection: {
+    alignItems: 'center',
+    paddingHorizontal: 30,
+  },
+  artisticQRTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: 'white',
+    marginBottom: 20,
+    letterSpacing: 1,
+  },
+  artisticQRCard: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    padding: 25,
+    borderRadius: 15,
+    marginBottom: 20,
+  },
+  artisticButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#06b6d4',
+    paddingHorizontal: 25,
+    paddingVertical: 15,
+    borderRadius: 25,
+    gap: 8,
+  },
+  artisticButtonText: {
+    fontSize: 16,
+    color: '#1a1a2e',
+    fontWeight: '700',
+  },
+
+  // 🌿 Nature Garden Template
+  gardenContainer: {
+    backgroundColor: '#f0f9ff',
+  },
+  gardenBackground: {
+    flex: 1,
+    paddingVertical: 40,
   },
   gardenHeader: {
     alignItems: 'center',
+    paddingHorizontal: 30,
     marginBottom: 40,
   },
-  gardenLeafDecor: {
-    marginBottom: 16,
+  gardenLeaves: {
+    flexDirection: 'row',
+    marginBottom: 20,
+    gap: 15,
+  },
+  gardenLeaf: {
+    fontSize: 24,
   },
   gardenTitle: {
-    fontSize: 30,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 8,
+    fontSize: 32,
+    fontWeight: '300',
+    color: '#064e3b',
+    marginBottom: 10,
+    fontStyle: 'italic',
   },
   gardenSubtitle: {
     fontSize: 16,
-    textAlign: 'center',
+    color: '#065f46',
+    marginBottom: 20,
   },
-  gardenImageSection: {
+  gardenBranch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  gardenBranchLine: {
+    width: 40,
+    height: 2,
+    backgroundColor: '#10b981',
+  },
+  gardenFlower: {
+    fontSize: 16,
+  },
+  gardenScene: {
     alignItems: 'center',
     marginBottom: 40,
+  },
+  gardenMainFrame: {
+    width: 260,
+    height: 320,
+    borderRadius: 20,
+    overflow: 'hidden',
     position: 'relative',
+    borderWidth: 3,
+    borderColor: '#a7f3d0',
   },
-  gardenImageFrame: {
-    width: 250,
-    height: 250,
-    borderRadius: 125,
-    borderWidth: 4,
-    padding: 4,
-  },
-  gardenImage: {
+  gardenMainImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 121,
   },
-  gardenLeaves: {
+  gardenImageDecor: {
     position: 'absolute',
-    top: -10,
-    right: -10,
-    flexDirection: 'row',
+    top: 15,
+    left: 15,
+  },
+  gardenVines: {
     gap: 5,
   },
-  gardenMessage: {
-    alignItems: 'center',
-    marginBottom: 30,
-    paddingHorizontal: 20,
-  },
-  gardenMessageText: {
-    fontSize: 18,
-    textAlign: 'center',
-    lineHeight: 26,
-    fontWeight: '500',
-  },
-  gardenDateCard: {
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 30,
-    alignItems: 'center',
-  },
-  gardenDateHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  gardenDateTitle: {
+  gardenVine: {
     fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 1,
   },
-  gardenDateTime: {
+  gardenNameTag: {
+    backgroundColor: 'white',
+    borderRadius: 15,
+    padding: 15,
+    marginTop: 20,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#a7f3d0',
+  },
+  gardenCoupleText: {
     fontSize: 20,
     fontWeight: '600',
-    marginBottom: 4,
+    color: '#064e3b',
+    marginBottom: 5,
   },
-  gardenTime: {
+  gardenCoupleSubtext: {
+    fontSize: 14,
+    color: '#065f46',
+    fontStyle: 'italic',
+  },
+  gardenDetailsSection: {
+    paddingHorizontal: 30,
+    marginBottom: 30,
+  },
+  gardenDetailCard: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 25,
+    borderWidth: 2,
+    borderColor: '#a7f3d0',
+  },
+  gardenDetailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    gap: 10,
+  },
+  gardenDetailIcon: {
+    fontSize: 20,
+  },
+  gardenDetailTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#064e3b',
+  },
+  gardenDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#d1fae5',
+  },
+  gardenDetailLabel: {
+    fontSize: 16,
+    color: '#065f46',
+    fontWeight: '500',
+  },
+  gardenDetailValue: {
+    fontSize: 16,
+    color: '#064e3b',
+    fontWeight: '600',
+  },
+  gardenMessageSection: {
+    paddingHorizontal: 30,
+    marginBottom: 40,
+  },
+  gardenMessageCard: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 25,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#a7f3d0',
+  },
+  gardenMessageTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#064e3b',
+    marginBottom: 15,
+  },
+  gardenMessageText: {
+    fontSize: 16,
+    color: '#065f46',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 20,
+  },
+  gardenMessageDecor: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  gardenMessageFlower: {
     fontSize: 16,
   },
   gardenQRSection: {
     alignItems: 'center',
-    padding: 30,
-    borderRadius: 20,
+    paddingHorizontal: 30,
   },
   gardenQRTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
+    color: '#064e3b',
     marginBottom: 20,
-    textAlign: 'center',
+  },
+  gardenQRCard: {
+    backgroundColor: 'white',
+    padding: 20,
+    borderRadius: 15,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#a7f3d0',
   },
   gardenButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 20,
-    paddingHorizontal: 30,
-    paddingVertical: 16,
+    backgroundColor: '#10b981',
+    paddingHorizontal: 25,
+    paddingVertical: 15,
     borderRadius: 25,
+    gap: 8,
   },
   gardenButtonText: {
+    fontSize: 16,
     color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  // 럭셔리 템플릿 스타일
-  luxuryContainer: {
-    flex: 1,
-  },
-  luxuryScrollView: {
-    flex: 1,
-  },
-  luxuryContent: {
-    padding: 20,
-    paddingTop: 60,
-  },
-  luxuryHeader: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  luxuryFrame: {
-    borderWidth: 3,
-    borderRadius: 20,
-    padding: 30,
-    alignItems: 'center',
-  },
-  luxuryHeaderTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 2,
-    marginBottom: 16,
-  },
-  luxuryDivider: {
-    width: 60,
-    height: 2,
-    marginBottom: 16,
-  },
-  luxuryEventTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  luxuryImageSection: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  luxuryDiamondFrame: {
-    width: 280,
-    height: 280,
-    borderWidth: 4,
-    transform: [{ rotate: '45deg' }],
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  luxuryImage: {
-    width: '100%',
-    height: '100%',
-    transform: [{ rotate: '-45deg' }, { scale: 1.4 }],
-  },
-  luxuryCorners: {
-    position: 'absolute',
-    top: -2,
-    left: -2,
-    right: -2,
-    bottom: -2,
-  },
-  luxuryCorner: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-  },
-  luxuryInfoCard: {
-    borderWidth: 2,
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 30,
-  },
-  luxuryInfoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-    justifyContent: 'center',
-  },
-  luxuryInfoTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  luxuryInfoContent: {
-    alignItems: 'center',
-  },
-  luxuryDate: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  luxuryLocation: {
-    fontSize: 16,
-    marginBottom: 8,
-  },
-  luxuryHost: {
-    fontSize: 14,
-    fontStyle: 'italic',
-  },
-  luxuryQRSection: {
-    borderWidth: 2,
-    borderRadius: 20,
-    padding: 30,
-    alignItems: 'center',
-  },
-  luxuryQRTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  luxuryQRFrame: {
-    borderWidth: 2,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-  },
-  luxuryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 8,
-  },
-  luxuryButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-
-  // 추모 템플릿 스타일
-  solemnContainer: {
-    flex: 1,
-  },
-  solemnScrollView: {
-    flex: 1,
-  },
-  solemnContent: {
-    padding: 20,
-    paddingTop: 60,
-  },
-  solemnHeader: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  solemnCross: {
-    width: 24,
-    height: 4,
-    marginBottom: 16,
-  },
-  solemnTitle: {
-    fontSize: 26,
-    fontWeight: '400',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  solemnSubtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  solemnImageSection: {
-    alignItems: 'center',
-    marginBottom: 40,
-    position: 'relative',
-  },
-  solemnImageFrame: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    borderWidth: 2,
-    padding: 4,
-  },
-  solemnImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 96,
-  },
-  solemnFlowers: {
-    position: 'absolute',
-    bottom: -10,
-    right: -10,
-    flexDirection: 'row',
-    gap: 3,
-  },
-  solemnMessage: {
-    alignItems: 'center',
-    marginBottom: 30,
-    paddingHorizontal: 20,
-  },
-  solemnMessageText: {
-    fontSize: 18,
-    textAlign: 'center',
-    lineHeight: 26,
-    fontWeight: '400',
-  },
-  solemnInfoCard: {
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 30,
-    alignItems: 'center',
-  },
-  solemnInfoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  solemnInfoTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 1,
-  },
-  solemnDate: {
-    fontSize: 18,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  solemnTime: {
-    fontSize: 16,
-    marginBottom: 8,
-  },
-  solemnLocation: {
-    fontSize: 14,
-  },
-  solemnQRSection: {
-    alignItems: 'center',
-    padding: 30,
-    borderRadius: 16,
-  },
-  solemnQRTitle: {
-    fontSize: 18,
-    fontWeight: '500',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  solemnQRSubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  solemnButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 20,
-    paddingHorizontal: 30,
-    paddingVertical: 16,
-    borderRadius: 8,
-  },
-  solemnButtonText: {
-    color: 'white',
-    fontSize: 16,
     fontWeight: '600',
   },
 });

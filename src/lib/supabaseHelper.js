@@ -1,4 +1,4 @@
-// src/lib/supabaseHelper.js - 컬럼명 수정
+// src/lib/supabaseHelper.js - 결혼식 특화 최종 개선 버전 (전체 코드)
 import { supabase } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -73,13 +73,12 @@ export const getCurrentUserInfo = async () => {
 };
 
 /**
- * 사용자 이벤트 목록 가져오기 (통합 인증 지원)
+ * 사용자 이벤트 목록 가져오기 (통합 인증 지원 및 에러 수정)
  */
 export const getUserEvents = async (passedUserInfo = null) => {
   try {
     console.log('🔍 getUserEvents 시작');
     
-    // 전달받은 userInfo 우선 사용
     let currentUser = null;
     
     if (passedUserInfo?.id) {
@@ -89,7 +88,6 @@ export const getUserEvents = async (passedUserInfo = null) => {
       });
       currentUser = passedUserInfo;
     } else {
-      // userInfo가 없으면 직접 확인
       const userResult = await getCurrentUserInfo();
       if (!userResult.success) {
         throw new Error(userResult.error);
@@ -103,7 +101,8 @@ export const getUserEvents = async (passedUserInfo = null) => {
       auth_method: currentUser.auth_method || 'unknown'
     });
     
-    // events 테이블에서 사용자의 이벤트 조회 (user_id 컬럼만 사용)
+    // 🔥 FIX: 'wedding_style' 컬럼이 존재하지 않으므로 SELECT 문에서 제거합니다.
+    // 이 컬럼은 additional_info JSONB 필드 안에 저장됩니다.
     const { data, error } = await supabase
       .from('events')
       .select(`
@@ -111,11 +110,18 @@ export const getUserEvents = async (passedUserInfo = null) => {
         event_name,
         event_type,
         event_date,
+        ceremony_time,
         main_person_name,
+        groom_name,
+        bride_name,
+        location,
+        template_style,
         status,
         created_at,
         updated_at,
-        user_id
+        user_id,
+        custom_message,
+        additional_info
       `)
       .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false });
@@ -142,7 +148,7 @@ export const getUserEvents = async (passedUserInfo = null) => {
 };
 
 /**
- * 새 이벤트 생성 (통합 인증 지원)
+ * 새 이벤트 생성 (결혼식 특화)
  */
 export const createEvent = async (eventData) => {
   try {
@@ -160,19 +166,38 @@ export const createEvent = async (eventData) => {
       auth_method: currentUser.auth_method
     });
 
-    // 이벤트 데이터 구성 (user_id만 사용)
-    const newEvent = {
+    let processedEventData = {
       ...eventData,
       user_id: currentUser.id,
       status: 'active',
+      is_finalized: false,
       created_at: new Date().toISOString()
     };
 
-    console.log('🔍 생성할 이벤트 데이터:', newEvent);
+    if (eventData.event_type === 'wedding') {
+      if (!eventData.groom_name || !eventData.bride_name) {
+        throw new Error('신랑과 신부 이름은 필수입니다.');
+      }
+      if (!eventData.main_person_name) {
+        processedEventData.main_person_name = `${eventData.groom_name}, ${eventData.bride_name}`;
+      }
+      if (!eventData.event_name) {
+        processedEventData.event_name = `${eventData.groom_name} ♥ ${eventData.bride_name} 결혼식`;
+      }
+      processedEventData.additional_info = {
+        ...eventData.additional_info,
+        // wedding_style은 이제 template_style로 관리되므로 여기서는 제거하거나 다른 용도로 사용
+        reception_time: eventData.reception_time,
+        created_via: 'app_v2.2',
+        version: '2.2'
+      };
+    }
+
+    console.log('🔍 생성할 이벤트 데이터:', processedEventData);
 
     const { data, error } = await supabase
       .from('events')
-      .insert([newEvent])
+      .insert([processedEventData])
       .select()
       .single();
 
@@ -198,7 +223,7 @@ export const createEvent = async (eventData) => {
 };
 
 /**
- * 이벤트 수정 (통합 인증 지원)
+ * 이벤트 수정 (결혼식 특화)
  */
 export const updateEvent = async (eventId, updates) => {
   try {
@@ -209,12 +234,23 @@ export const updateEvent = async (eventId, updates) => {
 
     const currentUser = userResult.user;
 
+    let processedUpdates = {
+      ...updates,
+      updated_at: new Date().toISOString()
+    };
+
+    if (updates.event_type === 'wedding' || updates.groom_name || updates.bride_name) {
+      if (updates.groom_name && updates.bride_name) {
+        processedUpdates.main_person_name = `${updates.groom_name}, ${updates.bride_name}`;
+      }
+      if (updates.groom_name && updates.bride_name && !updates.event_name) {
+        processedUpdates.event_name = `${updates.groom_name} ♥ ${updates.bride_name} 결혼식`;
+      }
+    }
+
     const { data, error } = await supabase
       .from('events')
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString()
-      })
+      .update(processedUpdates)
       .eq('user_id', currentUser.id)
       .eq('id', eventId)
       .select()
@@ -253,7 +289,6 @@ export const deleteEvent = async (eventId) => {
 
     const currentUser = userResult.user;
 
-    // 먼저 관련 부조금 삭제 (있다면)
     try {
       await supabase
         .from('contributions')
@@ -263,7 +298,6 @@ export const deleteEvent = async (eventId) => {
       console.log('⚠️ 부조금 삭제 중 오류 (무시):', contribError);
     }
 
-    // 이벤트 삭제
     const { error } = await supabase
       .from('events')
       .delete()
@@ -291,7 +325,7 @@ export const deleteEvent = async (eventId) => {
 };
 
 /**
- * 특정 이벤트 상세 정보 조회 (통합 인증 지원) - 🔧 컬럼명 수정
+ * 특정 이벤트 상세 정보 조회 (결혼식 특화)
  */
 export const getEventDetail = async (eventId) => {
   try {
@@ -302,7 +336,6 @@ export const getEventDetail = async (eventId) => {
 
     const currentUser = userResult.user;
 
-    // 🔧 수정: message → notes로 변경
     const { data, error } = await supabase
       .from('events')
       .select(`
@@ -315,7 +348,8 @@ export const getEventDetail = async (eventId) => {
           notes,
           is_confirmed,
           is_manual_entry,
-          created_at
+          created_at,
+          updated_at
         )
       `)
       .eq('user_id', currentUser.id)
@@ -329,6 +363,15 @@ export const getEventDetail = async (eventId) => {
 
     console.log('✅ 이벤트 상세 조회 완료:', eventId);
     
+    if (data.event_type === 'wedding') {
+      if (data.additional_info?.wedding_style) {
+        data.wedding_style = data.additional_info.wedding_style;
+      }
+      if (data.additional_info?.reception_time) {
+        data.reception_time = data.additional_info.reception_time;
+      }
+    }
+    
     return {
       success: true,
       data
@@ -340,6 +383,42 @@ export const getEventDetail = async (eventId) => {
       success: false,
       error: error.message || '이벤트 정보를 불러올 수 없습니다.'
     };
+  }
+};
+
+/**
+ * 결혼식 전용 이벤트 조회
+ */
+export const getWeddingEvents = async () => {
+  try {
+    const userResult = await getCurrentUserInfo();
+    if (!userResult.success) {
+      throw new Error(userResult.error);
+    }
+
+    const currentUser = userResult.user;
+
+    const { data, error } = await supabase
+      .from('wedding_events_view') // 뷰가 존재한다고 가정
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .order('event_date', { ascending: false });
+
+    if (error) {
+      console.error('❌ 결혼식 이벤트 조회 오류(뷰):', error);
+      return getUserEvents(); // 뷰가 없으면 일반 쿼리로 대체
+    }
+
+    console.log('✅ 결혼식 이벤트 조회 완료:', data?.length || 0);
+    
+    return {
+      success: true,
+      data: data || []
+    };
+
+  } catch (error) {
+    console.error('❌ getWeddingEvents error:', error);
+    return getUserEvents();
   }
 };
 
@@ -424,11 +503,10 @@ export const addContribution = async (contributionData) => {
 };
 
 /**
- * 특정 이벤트의 부조금 목록 조회 - 🔧 컬럼명 수정
+ * 특정 이벤트의 부조금 목록 조회
  */
 export const getEventContributions = async (eventId) => {
   try {
-    // 🔧 수정: message → notes로 변경
     const { data, error } = await supabase
       .from('contributions')
       .select(`
@@ -533,6 +611,59 @@ export const deleteContribution = async (contributionId) => {
 };
 
 /**
+ * 이벤트 통계 조회 (결혼식 특화)
+ */
+export const getEventStatistics = async (eventId) => {
+  try {
+    const { data, error } = await supabase
+      .from('contributions')
+      .select('amount, is_confirmed, relation_to')
+      .eq('event_id', eventId);
+
+    if (error) {
+      console.error('❌ 이벤트 통계 조회 오류:', error);
+      throw error;
+    }
+
+    const totalContributions = data.length;
+    const totalAmount = data.reduce((sum, contrib) => sum + (contrib.amount || 0), 0);
+    const confirmedCount = data.filter(contrib => contrib.is_confirmed).length;
+    const pendingCount = totalContributions - confirmedCount;
+    
+    const relationStats = data.reduce((acc, contrib) => {
+      const relation = contrib.relation_to || '기타';
+      if (!acc[relation]) {
+        acc[relation] = { count: 0, amount: 0 };
+      }
+      acc[relation].count += 1;
+      acc[relation].amount += contrib.amount || 0;
+      return acc;
+    }, {});
+
+    console.log('✅ 이벤트 통계 조회 완료');
+    
+    return {
+      success: true,
+      data: {
+        totalContributions,
+        totalAmount,
+        confirmedCount,
+        pendingCount,
+        averageAmount: totalContributions > 0 ? Math.round(totalAmount / totalContributions) : 0,
+        relationStats
+      }
+    };
+
+  } catch (error) {
+    console.error('❌ getEventStatistics error:', error);
+    return {
+      success: false,
+      error: error.message || '통계 조회에 실패했습니다.'
+    };
+  }
+};
+
+/**
  * 유틸리티: 금액 포맷팅
  */
 export const formatAmount = (amount) => {
@@ -551,6 +682,28 @@ export const formatDate = (dateString) => {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
+  });
+};
+
+/**
+ * 유틸리티: 시간 포맷팅
+ */
+export const formatTime = (timeString) => {
+  if (!timeString) return '시간 미정';
+  
+  if (typeof timeString === 'string' && timeString.includes(':')) {
+    const [hours, minutes] = timeString.split(':');
+    const hour = parseInt(hours);
+    const isPM = hour >= 12;
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+    return `${isPM ? '오후' : '오전'} ${displayHour}:${minutes}`;
+  }
+  
+  const date = new Date(timeString);
+  return date.toLocaleTimeString('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
   });
 };
 
@@ -574,13 +727,32 @@ export const formatRelativeTime = (dateString) => {
 };
 
 /**
+ * 유틸리티: D-Day 계산
+ */
+export const calculateDDay = (eventDateString) => {
+  if (!eventDateString) return null;
+  
+  const eventDate = new Date(eventDateString);
+  const today = new Date();
+  
+  eventDate.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  
+  const diffTime = eventDate - today;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) return 'D-Day';
+  if (diffDays > 0) return `D-${diffDays}`;
+  return `D+${Math.abs(diffDays)}`;
+};
+
+/**
  * 디버깅용: 사용자 정보 확인
  */
 export const debugUserInfo = async () => {
   try {
     console.log('🔍 === 사용자 정보 디버깅 ===');
     
-    // AsyncStorage 확인
     const storedUserInfo = await AsyncStorage.getItem('userInfo');
     const isLoggedIn = await AsyncStorage.getItem('isLoggedIn');
     console.log('📱 AsyncStorage:', {
@@ -588,14 +760,12 @@ export const debugUserInfo = async () => {
       userInfo: storedUserInfo ? JSON.parse(storedUserInfo) : null
     });
     
-    // Supabase Auth 확인
     const { data: { user }, error } = await supabase.auth.getUser();
     console.log('🔐 Supabase Auth:', {
       user: user ? { id: user.id, email: user.email, phone: user.phone } : null,
       error: error?.message
     });
     
-    // 통합 함수 결과
     const userResult = await getCurrentUserInfo();
     console.log('🔧 getCurrentUserInfo 결과:', userResult);
     
