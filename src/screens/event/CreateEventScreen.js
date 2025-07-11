@@ -1,4 +1,4 @@
-// src/screens/event/CreateEventScreen.js - 토스 스타일 디자인 적용 (수정된 버전)
+// src/screens/event/CreateEventScreen.js - 주소 검색 기능 완전 수정된 전체 코드
 import React, { useState } from 'react';
 import {
   View,
@@ -28,6 +28,7 @@ import DaumPostcode from '../../components/DaumPostcode';
 import WeddingTemplatePreview from './templates/WeddingTemplatePreview';
 
 const { width, height } = Dimensions.get('window');
+const isTablet = width >= 768; // 태블릿 구분 기준
 
 // 토스 스타일 컬러 팔레트
 const TossColors = {
@@ -396,12 +397,112 @@ export default function CreateEventScreen({ navigation, route }) {
     }
   };
 
+  // 주소 검색 완료 핸들러 - 완전 개선된 버전
   const handleAddressComplete = (data) => {
-    setEventData({
-      ...eventData,
-      location: data.address,
-    });
+    console.log('🎯🎯🎯 handleAddressComplete 호출됨');
+    console.log('📋 받은 주소 데이터:', JSON.stringify(data, null, 2));
+    
+    // 1. 데이터 존재 여부 확인
+    if (!data) {
+      console.error('❌ 주소 데이터가 없습니다');
+      Alert.alert('오류', '주소 데이터를 받을 수 없습니다. 다시 시도해 주세요.');
+      return;
+    }
+
+    // 2. 사용 가능한 주소 찾기 (우선순위: 도로명 > 지번 > 기본 주소)
+    let selectedAddress = '';
+    
+    if (data.roadAddress && data.roadAddress.trim()) {
+      selectedAddress = data.roadAddress.trim();
+      console.log('✅ 도로명 주소 사용:', selectedAddress);
+    } else if (data.jibunAddress && data.jibunAddress.trim()) {
+      selectedAddress = data.jibunAddress.trim();
+      console.log('✅ 지번 주소 사용:', selectedAddress);
+    } else if (data.address && data.address.trim()) {
+      selectedAddress = data.address.trim();
+      console.log('✅ 기본 주소 사용:', selectedAddress);
+    }
+
+    // 3. 최종 주소 검증
+    if (!selectedAddress) {
+      console.error('❌ 유효한 주소를 찾을 수 없습니다');
+      console.error('❌ 데이터 상세:', {
+        roadAddress: data.roadAddress,
+        jibunAddress: data.jibunAddress,  
+        address: data.address
+      });
+      Alert.alert('오류', '유효한 주소를 찾을 수 없습니다. 다른 주소를 선택해 주세요.');
+      return;
+    }
+
+    // 4. 주소 길이 검증 (너무 짧거나 긴 주소 필터링)
+    if (selectedAddress.length < 5) {
+      console.error('❌ 주소가 너무 짧습니다:', selectedAddress);
+      Alert.alert('오류', '선택한 주소가 올바르지 않습니다. 다시 선택해 주세요.');
+      return;
+    }
+
+    if (selectedAddress.length > 200) {
+      console.error('❌ 주소가 너무 깁니다:', selectedAddress);
+      selectedAddress = selectedAddress.substring(0, 200);
+    }
+
+    // 5. 상태 업데이트
+    console.log('🔄 주소 상태 업데이트 시작...');
+    console.log('🏠 최종 선택된 주소:', selectedAddress);
+    
+    try {
+      setEventData(prevData => {
+        const newData = {
+          ...prevData,
+          location: selectedAddress,
+          // 우편번호도 함께 저장 (선택사항)
+          zonecode: data.zonecode || '',
+          // 건물명도 저장 (선택사항)  
+          buildingName: data.buildingName || ''
+        };
+        
+        console.log('✅ 상태 업데이트 성공');
+        console.log('📍 업데이트된 location:', newData.location);
+        
+        return newData;
+      });
+      
+      // 6. 성공 피드백
+      console.log('🎉 주소 설정 완료!');
+      
+    } catch (error) {
+      console.error('❌ 상태 업데이트 실패:', error);
+      Alert.alert('오류', '주소 설정 중 오류가 발생했습니다. 다시 시도해 주세요.');
+      return;
+    }
+    
+    // 7. 모달 닫기
+    console.log('🚪 주소 검색 모달 닫기...');
     setShowAddressSearch(false);
+    console.log('✅ 모든 과정 완료!');
+  };
+
+  // 주소 검색 열기 - 개선된 로깅
+  const handleOpenAddressSearch = () => {
+    console.log('🔍🔍🔍 주소 검색 모달 열기');
+    console.log('📍 현재 location 상태:', eventData.location);
+    console.log('🔧 showAddressSearch 상태 변경: false -> true');
+    
+    setShowAddressSearch(true);
+    
+    console.log('✅ 주소 검색 모달 오픈 완료');
+  };
+
+  // 주소 검색 닫기 - 개선된 로깅  
+  const handleCloseAddressSearch = () => {
+    console.log('❌❌❌ 주소 검색 모달 닫기 (사용자 취소)');
+    console.log('📍 현재 location 상태 유지:', eventData.location);
+    console.log('🔧 showAddressSearch 상태 변경: true -> false');
+    
+    setShowAddressSearch(false);
+    
+    console.log('✅ 주소 검색 모달 닫기 완료');
   };
 
   const formatDate = (date) => {
@@ -853,6 +954,9 @@ export default function CreateEventScreen({ navigation, route }) {
                 key={type.key}
                 style={[
                   styles.typeCard,
+                  {
+                    width: isTablet ? (width - 88) / 4 : (width - 60) / 2,
+                  },
                   eventData.type === type.key && styles.typeCardSelected,
                 ]}
                 onPress={() => setEventData({ ...eventData, type: type.key })}
@@ -926,36 +1030,84 @@ export default function CreateEventScreen({ navigation, route }) {
           )}
         </Animated.View>
 
-        {/* 장소 */}
+        {/* 장소 - 개선된 주소 검색 UI */}
         <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <Text style={styles.cardTitle}>📍 장소</Text>
           <Text style={styles.cardSubtitle}>행사가 열리는 장소를 입력해 주세요</Text>
           
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>주소</Text>
+            <Text style={styles.inputLabel}>주소 {!eventData.location && <Text style={styles.required}>*</Text>}</Text>
+            
+            {/* 주소 검색 버튼 */}
             <TouchableOpacity
-              style={styles.selectButton}
-              onPress={() => setShowAddressSearch(true)}
+              style={[
+                styles.addressSearchButton,
+                eventData.location && styles.addressSearchButtonSelected
+              ]}
+              onPress={handleOpenAddressSearch}
+              activeOpacity={0.7}
             >
-              <Text style={[
-                styles.selectButtonText,
-                !eventData.location && styles.selectButtonTextPlaceholder
-              ]}>
-                {eventData.location || '주소를 검색해 주세요'}
-              </Text>
-              <Ionicons name="search-outline" size={20} color={TossColors.primary} />
+              <View style={styles.addressSearchContent}>
+                <View style={styles.addressSearchIcon}>
+                  <Ionicons 
+                    name={eventData.location ? "location" : "search-outline"} 
+                    size={20} 
+                    color={eventData.location ? TossColors.success : TossColors.primary} 
+                  />
+                </View>
+                
+                <View style={styles.addressSearchText}>
+                  {eventData.location ? (
+                    <>
+                      <Text style={styles.addressSearchTitle}>선택된 주소</Text>
+                      <Text style={styles.addressSearchAddress} numberOfLines={2}>
+                        {eventData.location}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.addressSearchTitle}>주소 검색</Text>
+                      <Text style={styles.addressSearchPlaceholder}>
+                        터치하여 주소를 검색해주세요
+                      </Text>
+                    </>
+                  )}
+                </View>
+                
+                <View style={styles.addressSearchAction}>
+                  <Ionicons 
+                    name={eventData.location ? "create-outline" : "chevron-forward"} 
+                    size={20} 
+                    color={TossColors.textSecondary} 
+                  />
+                </View>
+              </View>
             </TouchableOpacity>
             
+            {/* 주소가 선택되면 상세 주소 입력란 표시 */}
             {eventData.location && (
-              <View style={styles.inputGroup}>
+              <View style={styles.detailedAddressContainer}>
                 <Text style={styles.inputLabel}>상세 주소</Text>
                 <TextInput
                   style={styles.textInput}
-                  placeholder="예: 3층 그랜드볼룸"
+                  placeholder="예: 3층 그랜드볼룸, B1 연회장"
                   value={eventData.detailedAddress}
                   onChangeText={(text) => setEventData({ ...eventData, detailedAddress: text })}
                   placeholderTextColor={TossColors.textTertiary}
                 />
+                <Text style={styles.detailedAddressHint}>
+                  층수, 호실, 상호명 등 구체적인 위치를 입력해주세요
+                </Text>
+              </View>
+            )}
+            
+            {/* 주소 설정 상태 표시 */}
+            {eventData.location && (
+              <View style={styles.addressStatusContainer}>
+                <View style={styles.addressStatusIndicator}>
+                  <Ionicons name="checkmark-circle" size={16} color={TossColors.success} />
+                  <Text style={styles.addressStatusText}>주소가 설정되었습니다</Text>
+                </View>
               </View>
             )}
           </View>
@@ -1262,11 +1414,11 @@ export default function CreateEventScreen({ navigation, route }) {
           />
         )}
 
-        {/* 주소 검색 모달 */}
+        {/* 주소 검색 모달 - 개선된 이벤트 핸들러 사용 */}
         <DaumPostcode
           visible={showAddressSearch}
           onComplete={handleAddressComplete}
-          onClose={() => setShowAddressSearch(false)}
+          onClose={handleCloseAddressSearch}
         />
 
         {/* 사진 카테고리 선택 모달 */}
@@ -1473,14 +1625,16 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   
-  // 경조사 타입 선택
+  // 경조사 타입 선택 - 반응형 그리드
   typeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    marginHorizontal: -6, // margin을 음수로 설정하여 gap 효과
   },
   typeCard: {
-    width: (width - 64) / 2,
+    // width는 인라인 스타일로 처리
+    marginHorizontal: 6,
+    marginBottom: 12,
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
@@ -1529,6 +1683,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: TossColors.text,
     marginBottom: 8,
+  },
+  required: {
+    color: TossColors.error,
+    fontSize: 14,
   },
   textInput: {
     backgroundColor: TossColors.secondary,
@@ -1593,6 +1751,90 @@ const styles = StyleSheet.create({
   },
   selectButtonTextPlaceholder: {
     color: TossColors.textTertiary,
+  },
+  
+  // 주소 검색 버튼
+  addressSearchButton: {
+    backgroundColor: TossColors.secondary,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    padding: 16,
+    marginBottom: 8,
+  },
+  addressSearchButtonSelected: {
+    backgroundColor: TossColors.background,
+    borderColor: TossColors.success,
+    borderWidth: 1,
+  },
+  addressSearchContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  addressSearchIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: TossColors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  addressSearchText: {
+    flex: 1,
+  },
+  addressSearchTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TossColors.text,
+    marginBottom: 2,
+  },
+  addressSearchAddress: {
+    fontSize: 14,
+    color: TossColors.textSecondary,
+    lineHeight: 20,
+  },
+  addressSearchPlaceholder: {
+    fontSize: 14,
+    color: TossColors.textTertiary,
+  },
+  addressSearchAction: {
+    marginLeft: 8,
+  },
+  
+  // 상세 주소 컨테이너
+  detailedAddressContainer: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: TossColors.secondary,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+  },
+  detailedAddressHint: {
+    fontSize: 12,
+    color: TossColors.textTertiary,
+    marginTop: 8,
+    lineHeight: 16,
+  },
+  
+  // 주소 상태 표시
+  addressStatusContainer: {
+    marginTop: 12,
+  },
+  addressStatusIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TossColors.success + '15',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  addressStatusText: {
+    fontSize: 12,
+    color: TossColors.success,
+    fontWeight: '500',
+    marginLeft: 6,
   },
   
   // 축의금 설정
