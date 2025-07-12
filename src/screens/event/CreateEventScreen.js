@@ -1,5 +1,5 @@
-// src/screens/event/CreateEventScreen.js - 주소 검색 기능 완전 수정된 전체 코드
-import React, { useState } from 'react';
+// src/screens/event/CreateEventScreen.js - 토스 스타일 완전 개선 버전
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Image,
@@ -19,32 +18,258 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Colors } from '../../styles/constants';
 import { createEvent } from '../../lib/supabaseHelper';
 import DaumPostcode from '../../components/DaumPostcode';
 import WeddingTemplatePreview from './templates/WeddingTemplatePreview';
 
 const { width, height } = Dimensions.get('window');
-const isTablet = width >= 768; // 태블릿 구분 기준
 
-// 토스 스타일 컬러 팔레트
+// 토스 컬러 시스템
 const TossColors = {
-  primary: '#0064FF',
-  secondary: '#F5F7FA',
-  background: '#FFFFFF',
-  card: '#FFFFFF',
-  text: '#191F28',
-  textSecondary: '#6B7684',
-  textTertiary: '#8B95A1',
-  border: '#E5E8EB',
-  success: '#00C851',
-  warning: '#FF9500',
-  error: '#FF4747',
-  accent: '#7B61FF',
-  shadow: 'rgba(0, 0, 0, 0.06)',
+  primary: '#4A88FF',      // 토스 블루
+  secondary: '#F8FAFF',    // 아주 연한 블루
+  background: '#FFFFFF',   // 순백
+  surface: '#FFFFFF',      // 카드 배경
+  text: '#191F28',         // 메인 텍스트
+  textSecondary: '#8B95A1', // 서브 텍스트
+  textTertiary: '#C1C8D0',  // 플레이스홀더
+  border: '#F2F4F6',       // 테두리
+  success: '#26C976',      // 성공
+  warning: '#FFB800',      // 경고
+  error: '#FF6B6B',        // 에러
+  disabled: '#F2F4F6',     // 비활성화
+  overlay: 'rgba(0, 0, 0, 0.4)', // 오버레이
+};
+
+// 토스 스타일 모달 컴포넌트
+const TossModal = ({ visible, title, message, onConfirm, onCancel, confirmText = "확인", cancelText = "취소" }) => (
+  <Modal visible={visible} transparent animationType="fade">
+    <View style={styles.tossModalOverlay}>
+      <View style={styles.tossModalContainer}>
+        <View style={styles.tossModalContent}>
+          <Text style={styles.tossModalTitle}>{title}</Text>
+          <Text style={styles.tossModalMessage}>{message}</Text>
+        </View>
+        <View style={styles.tossModalButtons}>
+          {onCancel && (
+            <TouchableOpacity style={styles.tossModalCancelButton} onPress={onCancel}>
+              <Text style={styles.tossModalCancelText}>{cancelText}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.tossModalConfirmButton} onPress={onConfirm}>
+            <Text style={styles.tossModalConfirmText}>{confirmText}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  </Modal>
+);
+
+// 토스 스타일 달력 컴포넌트
+const TossDatePicker = ({ visible, selectedDate, onSelect, onClose }) => {
+  const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
+  
+  const getDaysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startDate = firstDay.getDay();
+    
+    const days = [];
+    
+    // 이전 달의 날짜들
+    for (let i = startDate - 1; i >= 0; i--) {
+      const prevDate = new Date(year, month, -i);
+      days.push({ date: prevDate, isCurrentMonth: false });
+    }
+    
+    // 현재 달의 날짜들
+    for (let i = 1; i <= daysInMonth; i++) {
+      const date = new Date(year, month, i);
+      days.push({ date, isCurrentMonth: true });
+    }
+    
+    // 다음 달의 날짜들
+    const remainingDays = 42 - days.length;
+    for (let i = 1; i <= remainingDays; i++) {
+      const nextDate = new Date(year, month + 1, i);
+      days.push({ date: nextDate, isCurrentMonth: false });
+    }
+    
+    return days;
+  };
+
+  const navigateMonth = (direction) => {
+    const newMonth = new Date(currentMonth);
+    newMonth.setMonth(currentMonth.getMonth() + direction);
+    setCurrentMonth(newMonth);
+  };
+
+  const handleDateSelect = (date) => {
+    onSelect(date);
+    onClose();
+  };
+
+  const days = getDaysInMonth(currentMonth);
+  const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
+  const today = new Date();
+
+  return (
+    <Modal visible={visible} transparent animationType="slide">
+      <View style={styles.tossPickerOverlay}>
+        <View style={styles.tossPickerContainer}>
+          <View style={styles.tossPickerHeader}>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color={TossColors.textSecondary} />
+            </TouchableOpacity>
+            <Text style={styles.tossPickerTitle}>날짜 선택</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          
+          <View style={styles.calendarHeader}>
+            <TouchableOpacity onPress={() => navigateMonth(-1)} style={styles.monthNavButton}>
+              <Ionicons name="chevron-back" size={20} color={TossColors.text} />
+            </TouchableOpacity>
+            <Text style={styles.monthTitle}>
+              {currentMonth.getFullYear()}년 {currentMonth.getMonth() + 1}월
+            </Text>
+            <TouchableOpacity onPress={() => navigateMonth(1)} style={styles.monthNavButton}>
+              <Ionicons name="chevron-forward" size={20} color={TossColors.text} />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.weekDaysContainer}>
+            {weekDays.map((day, index) => (
+              <Text key={index} style={[
+                styles.weekDay,
+                (index === 0 || index === 6) && styles.weekendDay
+              ]}>
+                {day}
+              </Text>
+            ))}
+          </View>
+          
+          <View style={styles.calendarGrid}>
+            {days.map((dayInfo, index) => {
+              const isToday = dayInfo.date.toDateString() === today.toDateString();
+              const isSelected = selectedDate && dayInfo.date.toDateString() === selectedDate.toDateString();
+              const isPast = dayInfo.date < today && !isToday;
+              
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.calendarDay,
+                    !dayInfo.isCurrentMonth && styles.otherMonthDay,
+                    isSelected && styles.selectedDay,
+                    isToday && !isSelected && styles.todayDay,
+                  ]}
+                  onPress={() => dayInfo.isCurrentMonth && !isPast && handleDateSelect(dayInfo.date)}
+                  disabled={!dayInfo.isCurrentMonth || isPast}
+                >
+                  <Text style={[
+                    styles.calendarDayText,
+                    !dayInfo.isCurrentMonth && styles.otherMonthText,
+                    isSelected && styles.selectedDayText,
+                    isToday && !isSelected && styles.todayText,
+                    isPast && styles.pastDayText,
+                    (index % 7 === 0) && styles.sundayText,
+                  ]}>
+                    {dayInfo.date.getDate()}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// 토스 스타일 시간 선택 컴포넌트
+const TossTimePicker = ({ visible, selectedTime, onSelect, onClose }) => {
+  const [selectedHour, setSelectedHour] = useState(selectedTime ? selectedTime.getHours() : 14);
+  const [selectedMinute, setSelectedMinute] = useState(selectedTime ? selectedTime.getMinutes() : 0);
+
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const minutes = Array.from({ length: 12 }, (_, i) => i * 5);
+
+  const handleConfirm = () => {
+    const time = new Date();
+    time.setHours(selectedHour, selectedMinute, 0, 0);
+    onSelect(time);
+    onClose();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide">
+      <View style={styles.tossPickerOverlay}>
+        <View style={styles.tossPickerContainer}>
+          <View style={styles.tossPickerHeader}>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.timePickerCancelText}>취소</Text>
+            </TouchableOpacity>
+            <Text style={styles.tossPickerTitle}>시간 선택</Text>
+            <TouchableOpacity onPress={handleConfirm}>
+              <Text style={styles.timePickerConfirmText}>확인</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.timePickerContent}>
+            <View style={styles.timePickerSection}>
+              <Text style={styles.timePickerLabel}>시</Text>
+              <ScrollView style={styles.timePickerList} showsVerticalScrollIndicator={false}>
+                {hours.map(hour => (
+                  <TouchableOpacity
+                    key={hour}
+                    style={[
+                      styles.timePickerItem,
+                      selectedHour === hour && styles.timePickerItemSelected
+                    ]}
+                    onPress={() => setSelectedHour(hour)}
+                  >
+                    <Text style={[
+                      styles.timePickerItemText,
+                      selectedHour === hour && styles.timePickerItemTextSelected
+                    ]}>
+                      {hour.toString().padStart(2, '0')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+            
+            <View style={styles.timePickerSection}>
+              <Text style={styles.timePickerLabel}>분</Text>
+              <ScrollView style={styles.timePickerList} showsVerticalScrollIndicator={false}>
+                {minutes.map(minute => (
+                  <TouchableOpacity
+                    key={minute}
+                    style={[
+                      styles.timePickerItem,
+                      selectedMinute === minute && styles.timePickerItemSelected
+                    ]}
+                    onPress={() => setSelectedMinute(minute)}
+                  >
+                    <Text style={[
+                      styles.timePickerItemText,
+                      selectedMinute === minute && styles.timePickerItemTextSelected
+                    ]}>
+                      {minute.toString().padStart(2, '0')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 };
 
 export default function CreateEventScreen({ navigation, route }) {
@@ -65,8 +290,12 @@ export default function CreateEventScreen({ navigation, route }) {
     groomMotherName: '',
     brideFatherName: '',
     brideMotherName: '',
-    groomContact: '',
-    brideContact: '',
+    groomContact: '010-',
+    brideContact: '010-',
+    groomFatherContact: '010-',
+    groomMotherContact: '010-',
+    brideFatherContact: '010-',
+    brideMotherContact: '010-',
     ceremonyTime: null,
     receptionTime: null,
     customMessage: '',
@@ -78,34 +307,59 @@ export default function CreateEventScreen({ navigation, route }) {
     images: [],
   });
   
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  // 스크롤 및 입력 필드 참조
+  const scrollViewRef = useRef(null);
+  const sectionPositions = useRef({
+    eventType: 0,
+    names: 0,
+    contact: 0,
+    parents: 0,
+    dateTime: 0,
+    location: 0,
+    photos: 0,
+    message: 0,
+    parking: 0,
+    money: 0,
+  });
+
+  // 토스 스타일 피커 상태
+  const [showTossDatePicker, setShowTossDatePicker] = useState(false);
+  const [showTossTimePicker, setShowTossTimePicker] = useState(false);
   const [showAddressSearch, setShowAddressSearch] = useState(false);
   const [showTemplatePreview, setShowTemplatePreview] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   
+  // 토스 모달 상태
+  const [modalState, setModalState] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+    onCancel: null,
+  });
+  
   // 사진 카테고리 선택 관련 state
   const [showCategorySelector, setShowCategorySelector] = useState(false);
   const [selectedImageForCategory, setSelectedImageForCategory] = useState(null);
 
-  // 애니메이션 값
+  // 애니메이션
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
-  const slideAnim = React.useRef(new Animated.Value(50)).current;
+  const slideAnim = React.useRef(new Animated.Value(20)).current;
 
   React.useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 400,
         useNativeDriver: true,
-        easing: Easing.out(Easing.cubic),
+        easing: Easing.out(Easing.ease),
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 800,
+        duration: 400,
         useNativeDriver: true,
-        easing: Easing.out(Easing.cubic),
+        easing: Easing.out(Easing.ease),
       }),
     ]).start();
   }, [currentStep]);
@@ -114,34 +368,26 @@ export default function CreateEventScreen({ navigation, route }) {
     { 
       key: 'wedding', 
       label: '결혼식', 
-      icon: '💐', 
-      color: TossColors.primary,
-      description: '소중한 결혼식 청첩장',
-      gradient: ['#0064FF', '#4A90E2']
+      emoji: '💒', 
+      description: '평생을 함께할 특별한 날',
     },
     { 
       key: 'funeral', 
       label: '부고', 
-      icon: '🕯️', 
-      color: '#6B7684',
-      description: '정중한 부고 안내',
-      gradient: ['#6B7684', '#8B95A1']
+      emoji: '🕯️', 
+      description: '소중한 분을 보내드리는 날',
     },
     { 
       key: 'birthday', 
       label: '돌잔치', 
-      icon: '🎂', 
-      color: '#FF9500',
-      description: '첫 번째 생일 축하',
-      gradient: ['#FF9500', '#FFB84D']
+      emoji: '🎂', 
+      description: '아이의 첫 번째 생일',
     },
     { 
       key: 'other', 
       label: '기타', 
-      icon: '🎉', 
-      color: '#7B61FF',
-      description: '특별한 행사',
-      gradient: ['#7B61FF', '#9C88FF']
+      emoji: '🎉', 
+      description: '특별한 기념일',
     },
   ];
 
@@ -152,15 +398,14 @@ export default function CreateEventScreen({ navigation, route }) {
         name: '모던 다크',
         description: '세련되고 감각적인 디자인',
         preview: require('../../../assets/images/aa1.png'),
-        colors: ['#0064FF', '#4A90E2', '#ffffff'],
         style: 'modern-dark',
-        features: ['다크 모드', '그라디언트 배경', '애니메이션 효과', '실시간 카운트다운'],
+        features: ['다크 모드', '그라디언트'],
         photoCategories: [
-          { key: 'main', label: '메인 사진', icon: '🖼️', description: '청첩장 대표 사진' },
-          { key: 'groom', label: '신랑 사진', icon: '🤵', description: '신랑 소개 사진' },
-          { key: 'bride', label: '신부 사진', icon: '👰', description: '신부 소개 사진' },
-          { key: 'couple', label: '커플 사진', icon: '💕', description: '함께 찍은 사진' },
-          { key: 'gallery', label: '갤러리', icon: '📷', description: '추억 사진들' },
+          { key: 'main', label: '메인 사진', icon: '🖼️' },
+          { key: 'groom', label: '신랑 사진', icon: '🤵' },
+          { key: 'bride', label: '신부 사진', icon: '👰' },
+          { key: 'couple', label: '커플 사진', icon: '💕' },
+          { key: 'gallery', label: '갤러리', icon: '📷' },
         ]
       },
       {
@@ -168,15 +413,14 @@ export default function CreateEventScreen({ navigation, route }) {
         name: '한국 전통',
         description: '우아한 한국 전통 스타일',
         preview: require('../../../assets/images/aa2.png'),
-        colors: ['#8B4513', '#F7E7CE', '#E8B4A0'],
         style: 'romantic-gold',
-        features: ['전통 색상', '한국적 레이아웃', '감성적 디자인', '실시간 카운트다운'],
+        features: ['전통 색상', '한국적 레이아웃'],
         photoCategories: [
-          { key: 'main', label: '메인 사진', icon: '🖼️', description: '청첩장 대표 사진' },
-          { key: 'hanbok', label: '한복 사진', icon: '👘', description: '한복 입은 사진' },
-          { key: 'ceremony', label: '전통 예식', icon: '🏛️', description: '전통 예식 사진' },
-          { key: 'family', label: '가족 사진', icon: '👨‍👩‍👧‍👦', description: '양가 가족 사진' },
-          { key: 'gallery', label: '갤러리', icon: '📷', description: '추억 사진들' },
+          { key: 'main', label: '메인 사진', icon: '🖼️' },
+          { key: 'hanbok', label: '한복 사진', icon: '👘' },
+          { key: 'ceremony', label: '전통 예식', icon: '🏛️' },
+          { key: 'family', label: '가족 사진', icon: '👨‍👩‍👧‍👦' },
+          { key: 'gallery', label: '갤러리', icon: '📷' },
         ]
       },
       {
@@ -184,16 +428,15 @@ export default function CreateEventScreen({ navigation, route }) {
         name: '빈티지 앱',
         description: '트렌디한 스토리 스타일',
         preview: require('../../../assets/images/aa3.png'),
-        colors: ['#6c5ce7', '#fd79a8', '#00b894'],
         style: 'vintage-app',
-        features: ['스토리 타임라인', '모던 색감', '인터랙티브 요소', '실시간 타이머'],
+        features: ['스토리 타임라인', '모던 색감'],
         photoCategories: [
-          { key: 'first_meet', label: '첫 만남', icon: '👋', description: '처음 만났을 때' },
-          { key: 'dating', label: '연인이 되다', icon: '💕', description: '연인이 된 순간' },
-          { key: 'proposal', label: '프로포즈', icon: '💍', description: '프로포즈 순간' },
-          { key: 'engagement', label: '약혼', icon: '👫', description: '약혼 사진' },
-          { key: 'wedding', label: '결혼식', icon: '💒', description: '결혼식 당일' },
-          { key: 'honeymoon', label: '신혼여행', icon: '✈️', description: '신혼여행 사진' },
+          { key: 'first_meet', label: '첫 만남', icon: '👋' },
+          { key: 'dating', label: '연인이 되다', icon: '💕' },
+          { key: 'proposal', label: '프로포즈', icon: '💍' },
+          { key: 'engagement', label: '약혼', icon: '👫' },
+          { key: 'wedding', label: '결혼식', icon: '💒' },
+          { key: 'honeymoon', label: '신혼여행', icon: '✈️' },
         ]
       },
     ],
@@ -203,12 +446,11 @@ export default function CreateEventScreen({ navigation, route }) {
         name: '차분한 추모',
         description: '정중하고 엄숙한 분위기',
         preview: require('../../../assets/images/bb1.png'),
-        colors: ['#f8f9fa', '#64748b'],
         style: 'solemn',
         photoCategories: [
-          { key: 'portrait', label: '영정 사진', icon: '🖼️', description: '고인의 영정 사진' },
-          { key: 'life', label: '생전 모습', icon: '📸', description: '생전 추억 사진' },
-          { key: 'family', label: '가족 사진', icon: '👨‍👩‍👧‍👦', description: '가족과 함께' },
+          { key: 'portrait', label: '영정 사진', icon: '🖼️' },
+          { key: 'life', label: '생전 모습', icon: '📸' },
+          { key: 'family', label: '가족 사진', icon: '👨‍👩‍👧‍👦' },
         ]
       },
     ],
@@ -218,13 +460,12 @@ export default function CreateEventScreen({ navigation, route }) {
         name: '행복한 돌잔치',
         description: '밝고 즐거운 첫 번째 생일',
         preview: require('../../../assets/images/aa1.png'),
-        colors: ['#fffbf0', '#f59e0b'],
         style: 'garden',
         photoCategories: [
-          { key: 'baby', label: '아기 사진', icon: '👶', description: '돌잔치 주인공' },
-          { key: 'growth', label: '성장 과정', icon: '📈', description: '성장하는 모습' },
-          { key: 'family', label: '가족 사진', icon: '👨‍👩‍👧‍👦', description: '가족과 함께' },
-          { key: 'celebration', label: '축하 순간', icon: '🎉', description: '돌잔치 순간' },
+          { key: 'baby', label: '아기 사진', icon: '👶' },
+          { key: 'growth', label: '성장 과정', icon: '📈' },
+          { key: 'family', label: '가족 사진', icon: '👨‍👩‍👧‍👦' },
+          { key: 'celebration', label: '축하 순간', icon: '🎉' },
         ]
       },
     ],
@@ -234,282 +475,175 @@ export default function CreateEventScreen({ navigation, route }) {
         name: '기념일 축하',
         description: '특별한 순간을 위한 디자인',
         preview: require('../../../assets/images/aa1.png'),
-        colors: ['#ebf8ff', '#3b82f6'],
         style: 'classic',
         photoCategories: [
-          { key: 'main', label: '메인 사진', icon: '🖼️', description: '행사 대표 사진' },
-          { key: 'celebration', label: '축하 사진', icon: '🎉', description: '축하하는 순간' },
-          { key: 'group', label: '단체 사진', icon: '👥', description: '함께한 사람들' },
+          { key: 'main', label: '메인 사진', icon: '🖼️' },
+          { key: 'celebration', label: '축하 사진', icon: '🎉' },
+          { key: 'group', label: '단체 사진', icon: '👥' },
         ]
       },
     ],
   };
 
-  // 경조사 타입에 따른 텍스트 설정
-  const getEventTypeTexts = () => {
+  // 섹션으로 스크롤하는 함수
+  const scrollToSection = (sectionKey) => {
+    const position = sectionPositions.current[sectionKey];
+    if (scrollViewRef.current && position !== undefined) {
+      scrollViewRef.current.scrollTo({ 
+        y: Math.max(0, position - 100), 
+        animated: true 
+      });
+    }
+  };
+
+  // 토스 스타일 모달 표시 함수 (스크롤 포함)
+  const showTossModal = (title, message, onConfirm, onCancel = null, scrollTarget = null) => {
+    setModalState({
+      visible: true,
+      title,
+      message,
+      onConfirm: () => {
+        setModalState({ ...modalState, visible: false });
+        if (scrollTarget) {
+          setTimeout(() => scrollToSection(scrollTarget), 300);
+        }
+        onConfirm && onConfirm();
+      },
+      onCancel: onCancel ? () => {
+        setModalState({ ...modalState, visible: false });
+        onCancel();
+      } : null,
+    });
+  };
+
+  // 경조사 타입에 따른 축의금 설정 (DB 기반)
+  const getMoneyPresets = () => {
     switch (eventData.type) {
       case 'wedding':
-        return {
-          moneyLabel: '축의금',
-          moneyDescription: '하객들이 선택할 수 있는 축의금 금액을 설정해 주세요',
-          relationLabel: '관계',
-          defaultRelations: ['신랑측', '신부측'],
-          presetOptions: [
-            { 
-              label: '소규모', 
-              amounts: [50000, 100000, 150000], 
-              description: '가까운 지인들과 함께',
-              icon: '👥'
-            },
-            { 
-              label: '일반적', 
-              amounts: [100000, 200000, 300000], 
-              description: '일반적인 결혼식 축의금',
-              icon: '💝'
-            },
-            { 
-              label: '정식', 
-              amounts: [200000, 300000, 500000], 
-              description: '정식 결혼식 행사',
-              icon: '🎩'
-            },
-            { 
-              label: '고액', 
-              amounts: [300000, 500000, 1000000], 
-              description: '격식있는 대규모 결혼식',
-              icon: '👑'
-            },
-          ]
-        };
+        return [
+          { 
+            id: 'basic',
+            label: '기본',
+            amounts: [50000, 100000, 200000],
+            description: '가까운 지인들과 함께',
+          },
+          { 
+            id: 'standard',
+            label: '일반',
+            amounts: [100000, 200000, 300000],
+            description: '일반적인 결혼식 축의금',
+          },
+          { 
+            id: 'premium',
+            label: '정식',
+            amounts: [200000, 300000, 500000],
+            description: '정식 결혼식 행사',
+          },
+        ];
       case 'funeral':
-        return {
-          moneyLabel: '조의금',
-          moneyDescription: '조문객들이 선택할 수 있는 조의금 금액을 설정해 주세요',
-          relationLabel: '관계',
-          defaultRelations: ['가족', '친지', '지인', '직장동료'],
-          presetOptions: [
-            { 
-              label: '소규모', 
-              amounts: [30000, 50000, 100000], 
-              description: '가까운 지인들과 함께',
-              icon: '👥'
-            },
-            { 
-              label: '일반적', 
-              amounts: [50000, 100000, 200000], 
-              description: '일반적인 조의금',
-              icon: '🙏'
-            },
-            { 
-              label: '정식', 
-              amounts: [100000, 200000, 300000], 
-              description: '정식 조문',
-              icon: '🕯️'
-            },
-            { 
-              label: '고액', 
-              amounts: [200000, 300000, 500000], 
-              description: '특별한 관계',
-              icon: '🌹'
-            },
-          ]
-        };
+        return [
+          { 
+            id: 'basic',
+            label: '기본',
+            amounts: [30000, 50000, 100000],
+            description: '가까운 지인들과 함께',
+          },
+          { 
+            id: 'standard',
+            label: '일반',
+            amounts: [50000, 100000, 200000],
+            description: '일반적인 조의금',
+          },
+          { 
+            id: 'premium',
+            label: '정식',
+            amounts: [100000, 200000, 300000],
+            description: '정식 조문',
+          },
+        ];
       case 'birthday':
-        return {
-          moneyLabel: '축하금',
-          moneyDescription: '하객들이 선택할 수 있는 축하금 금액을 설정해 주세요',
-          relationLabel: '관계',
-          defaultRelations: ['가족', '친지', '지인'],
-          presetOptions: [
-            { 
-              label: '소규모', 
-              amounts: [50000, 100000, 150000], 
-              description: '가까운 가족과 친지',
-              icon: '👶'
-            },
-            { 
-              label: '일반적', 
-              amounts: [100000, 200000, 300000], 
-              description: '일반적인 돌잔치 축하금',
-              icon: '🎂'
-            },
-            { 
-              label: '정식', 
-              amounts: [200000, 300000, 500000], 
-              description: '정식 돌잔치 행사',
-              icon: '🎉'
-            },
-            { 
-              label: '고액', 
-              amounts: [300000, 500000, 1000000], 
-              description: '격식있는 돌잔치',
-              icon: '👑'
-            },
-          ]
-        };
+        return [
+          { 
+            id: 'basic',
+            label: '기본',
+            amounts: [50000, 100000, 150000],
+            description: '가까운 가족과 친지',
+          },
+          { 
+            id: 'standard',
+            label: '일반',
+            amounts: [100000, 200000, 300000],
+            description: '일반적인 돌잔치 축하금',
+          },
+          { 
+            id: 'premium',
+            label: '정식',
+            amounts: [200000, 300000, 500000],
+            description: '정식 돌잔치 행사',
+          },
+        ];
       default:
-        return {
-          moneyLabel: '축하금',
-          moneyDescription: '참석자들이 선택할 수 있는 축하금 금액을 설정해 주세요',
-          relationLabel: '관계',
-          defaultRelations: ['가족', '친지', '지인'],
-          presetOptions: [
-            { 
-              label: '소규모', 
-              amounts: [30000, 50000, 100000], 
-              description: '가까운 지인들과 함께',
-              icon: '👥'
-            },
-            { 
-              label: '일반적', 
-              amounts: [50000, 100000, 200000], 
-              description: '일반적인 축하금',
-              icon: '🎉'
-            },
-            { 
-              label: '정식', 
-              amounts: [100000, 200000, 300000], 
-              description: '정식 기념행사',
-              icon: '🎊'
-            },
-            { 
-              label: '고액', 
-              amounts: [200000, 300000, 500000], 
-              description: '특별한 기념일',
-              icon: '⭐'
-            },
-          ]
-        };
+        return [
+          { 
+            id: 'basic',
+            label: '기본',
+            amounts: [30000, 50000, 100000],
+            description: '가까운 지인들과 함께',
+          },
+          { 
+            id: 'standard',
+            label: '일반',
+            amounts: [50000, 100000, 200000],
+            description: '일반적인 축하금',
+          },
+          { 
+            id: 'premium',
+            label: '정식',
+            amounts: [100000, 200000, 300000],
+            description: '정식 기념행사',
+          },
+        ];
     }
   };
 
-  const handleDateChange = (event, selectedDate) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      setEventData({ ...eventData, date: selectedDate });
-    }
-  };
-
-  const handleTimeChange = (event, selectedTime) => {
-    setShowTimePicker(false);
-    if (selectedTime) {
-      setEventData({ ...eventData, ceremonyTime: selectedTime });
-    }
-  };
-
-  // 주소 검색 완료 핸들러 - 완전 개선된 버전
   const handleAddressComplete = (data) => {
-    console.log('🎯🎯🎯 handleAddressComplete 호출됨');
-    console.log('📋 받은 주소 데이터:', JSON.stringify(data, null, 2));
+    console.log('주소 검색 완료:', data);
     
-    // 1. 데이터 존재 여부 확인
     if (!data) {
-      console.error('❌ 주소 데이터가 없습니다');
-      Alert.alert('오류', '주소 데이터를 받을 수 없습니다. 다시 시도해 주세요.');
+      showTossModal('알림', '주소를 다시 선택해주세요', () => {});
       return;
     }
 
-    // 2. 사용 가능한 주소 찾기 (우선순위: 도로명 > 지번 > 기본 주소)
     let selectedAddress = '';
     
     if (data.roadAddress && data.roadAddress.trim()) {
       selectedAddress = data.roadAddress.trim();
-      console.log('✅ 도로명 주소 사용:', selectedAddress);
     } else if (data.jibunAddress && data.jibunAddress.trim()) {
       selectedAddress = data.jibunAddress.trim();
-      console.log('✅ 지번 주소 사용:', selectedAddress);
     } else if (data.address && data.address.trim()) {
       selectedAddress = data.address.trim();
-      console.log('✅ 기본 주소 사용:', selectedAddress);
     }
 
-    // 3. 최종 주소 검증
     if (!selectedAddress) {
-      console.error('❌ 유효한 주소를 찾을 수 없습니다');
-      console.error('❌ 데이터 상세:', {
-        roadAddress: data.roadAddress,
-        jibunAddress: data.jibunAddress,  
-        address: data.address
-      });
-      Alert.alert('오류', '유효한 주소를 찾을 수 없습니다. 다른 주소를 선택해 주세요.');
+      showTossModal('알림', '올바른 주소를 선택해주세요', () => {});
       return;
     }
 
-    // 4. 주소 길이 검증 (너무 짧거나 긴 주소 필터링)
-    if (selectedAddress.length < 5) {
-      console.error('❌ 주소가 너무 짧습니다:', selectedAddress);
-      Alert.alert('오류', '선택한 주소가 올바르지 않습니다. 다시 선택해 주세요.');
-      return;
-    }
-
-    if (selectedAddress.length > 200) {
-      console.error('❌ 주소가 너무 깁니다:', selectedAddress);
-      selectedAddress = selectedAddress.substring(0, 200);
-    }
-
-    // 5. 상태 업데이트
-    console.log('🔄 주소 상태 업데이트 시작...');
-    console.log('🏠 최종 선택된 주소:', selectedAddress);
-    
-    try {
-      setEventData(prevData => {
-        const newData = {
-          ...prevData,
-          location: selectedAddress,
-          // 우편번호도 함께 저장 (선택사항)
-          zonecode: data.zonecode || '',
-          // 건물명도 저장 (선택사항)  
-          buildingName: data.buildingName || ''
-        };
-        
-        console.log('✅ 상태 업데이트 성공');
-        console.log('📍 업데이트된 location:', newData.location);
-        
-        return newData;
-      });
-      
-      // 6. 성공 피드백
-      console.log('🎉 주소 설정 완료!');
-      
-    } catch (error) {
-      console.error('❌ 상태 업데이트 실패:', error);
-      Alert.alert('오류', '주소 설정 중 오류가 발생했습니다. 다시 시도해 주세요.');
-      return;
-    }
-    
-    // 7. 모달 닫기
-    console.log('🚪 주소 검색 모달 닫기...');
-    setShowAddressSearch(false);
-    console.log('✅ 모든 과정 완료!');
-  };
-
-  // 주소 검색 열기 - 개선된 로깅
-  const handleOpenAddressSearch = () => {
-    console.log('🔍🔍🔍 주소 검색 모달 열기');
-    console.log('📍 현재 location 상태:', eventData.location);
-    console.log('🔧 showAddressSearch 상태 변경: false -> true');
-    
-    setShowAddressSearch(true);
-    
-    console.log('✅ 주소 검색 모달 오픈 완료');
-  };
-
-  // 주소 검색 닫기 - 개선된 로깅  
-  const handleCloseAddressSearch = () => {
-    console.log('❌❌❌ 주소 검색 모달 닫기 (사용자 취소)');
-    console.log('📍 현재 location 상태 유지:', eventData.location);
-    console.log('🔧 showAddressSearch 상태 변경: true -> false');
+    setEventData(prevData => ({
+      ...prevData,
+      location: selectedAddress,
+      zonecode: data.zonecode || '',
+      buildingName: data.buildingName || ''
+    }));
     
     setShowAddressSearch(false);
-    
-    console.log('✅ 주소 검색 모달 닫기 완료');
   };
 
   const formatDate = (date) => {
-    if (!date) return '날짜를 선택해 주세요';
+    if (!date) return null;
     try {
       const dateObj = new Date(date);
-      if (isNaN(dateObj.getTime())) return '날짜를 선택해 주세요';
+      if (isNaN(dateObj.getTime())) return null;
       
       return dateObj.toLocaleDateString('ko-KR', {
         year: 'numeric',
@@ -518,12 +652,12 @@ export default function CreateEventScreen({ navigation, route }) {
         weekday: 'long',
       });
     } catch (error) {
-      return '날짜를 선택해 주세요';
+      return null;
     }
   };
 
   const formatTime = (time) => {
-    if (!time) return '시간을 선택해 주세요';
+    if (!time) return null;
     
     try {
       if (time instanceof Date && !isNaN(time.getTime())) {
@@ -533,9 +667,9 @@ export default function CreateEventScreen({ navigation, route }) {
           hour12: true,
         });
       }
-      return '시간을 선택해 주세요';
+      return null;
     } catch (error) {
-      return '시간을 선택해 주세요';
+      return null;
     }
   };
 
@@ -547,7 +681,7 @@ export default function CreateEventScreen({ navigation, route }) {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('권한 필요', '사진 선택을 위해 갤러리 접근 권한이 필요해요.');
+        showTossModal('권한 필요', '사진을 선택하려면 갤러리 접근 권한이 필요해요', () => {});
         return;
       }
 
@@ -568,8 +702,35 @@ export default function CreateEventScreen({ navigation, route }) {
         setShowCategorySelector(true);
       }
     } catch (error) {
-      Alert.alert('오류', '사진 선택 중 문제가 발생했어요.');
+      showTossModal('오류', '사진 선택 중 문제가 발생했어요', () => {});
     }
+  };
+
+  const getCurrentPhotoCategories = () => {
+    if (!eventData.selectedTemplate) {
+      return [
+        { key: 'main', label: '메인 사진', icon: '🖼️' },
+        { key: 'gallery', label: '갤러리', icon: '📷' },
+      ];
+    }
+    return eventData.selectedTemplate.photoCategories || [];
+  };
+
+  const getCategoryStats = () => {
+    const categories = getCurrentPhotoCategories();
+    const stats = {};
+    
+    categories.forEach(cat => {
+      stats[cat.key] = 0;
+    });
+    
+    eventData.images.forEach(img => {
+      if (img.category && stats[img.category] !== undefined) {
+        stats[img.category]++;
+      }
+    });
+    
+    return stats;
   };
 
   const handleCategorySelect = (category) => {
@@ -582,7 +743,6 @@ export default function CreateEventScreen({ navigation, route }) {
       id: selectedImageForCategory.tempId
     };
 
-    // 단일 사진 카테고리 처리
     if (category.key !== 'gallery') {
       const newImages = eventData.images.filter(img => img.category !== category.key);
       setEventData({
@@ -590,7 +750,6 @@ export default function CreateEventScreen({ navigation, route }) {
         images: [...newImages, imageWithCategory].slice(0, 20),
       });
     } else {
-      // 갤러리는 여러 개 허용
       setEventData({
         ...eventData,
         images: [...eventData.images, imageWithCategory].slice(0, 20),
@@ -619,23 +778,42 @@ export default function CreateEventScreen({ navigation, route }) {
   const validateStep1 = () => {
     if (eventData.type === 'wedding') {
       if (!eventData.groomName.trim()) {
-        Alert.alert('입력 확인', '신랑 이름을 입력해 주세요.');
+        showTossModal('필수 입력', '신랑 이름을 입력해주세요', () => {}, null, 'names');
         return false;
       }
       if (!eventData.brideName.trim()) {
-        Alert.alert('입력 확인', '신부 이름을 입력해 주세요.');
+        showTossModal('필수 입력', '신부 이름을 입력해주세요', () => {}, null, 'names');
         return false;
       }
       if (!eventData.date) {
-        Alert.alert('입력 확인', '결혼식 날짜를 선택해 주세요.');
+        showTossModal('필수 입력', '결혼식 날짜를 선택해주세요', () => {}, null, 'dateTime');
+        return false;
+      }
+      if (!eventData.ceremonyTime) {
+        showTossModal('필수 입력', '예식 시간을 선택해주세요', () => {}, null, 'dateTime');
         return false;
       }
     } else {
       if (!eventData.title.trim()) {
-        Alert.alert('입력 확인', '행사명을 입력해 주세요.');
+        showTossModal('필수 입력', '행사명을 입력해주세요', () => {}, null, 'names');
+        return false;
+      }
+      if (!eventData.date) {
+        showTossModal('필수 입력', '행사 날짜를 선택해주세요', () => {}, null, 'dateTime');
         return false;
       }
     }
+    
+    if (!eventData.location.trim()) {
+      showTossModal('필수 입력', '행사 장소를 선택해주세요', () => {}, null, 'location');
+      return false;
+    }
+    
+    if (!eventData.detailedAddress.trim()) {
+      showTossModal('필수 입력', '상세 주소를 입력해주세요', () => {}, null, 'location');
+      return false;
+    }
+    
     return true;
   };
 
@@ -646,7 +824,7 @@ export default function CreateEventScreen({ navigation, route }) {
       }
     } else if (currentStep === 2) {
       if (!eventData.selectedTemplate) {
-        Alert.alert('템플릿 선택', '마음에 드는 템플릿을 선택해 주세요.');
+        showTossModal('템플릿 선택', '원하는 템플릿을 선택해주세요', () => {});
         return;
       }
       handleSave();
@@ -664,6 +842,16 @@ export default function CreateEventScreen({ navigation, route }) {
       const eventTitle = eventData.type === 'wedding' 
         ? `${eventData.groomName} ♥ ${eventData.brideName} 결혼식`
         : eventData.title.trim();
+
+      // 부모님 연락처 정보를 additional_info에 저장
+      const parentsContactInfo = {
+        groom_father_contact: eventData.groomFatherContact?.replace('010-', '') ? eventData.groomFatherContact : null,
+        groom_mother_contact: eventData.groomMotherContact?.replace('010-', '') ? eventData.groomMotherContact : null,
+        bride_father_contact: eventData.brideFatherContact?.replace('010-', '') ? eventData.brideFatherContact : null,
+        bride_mother_contact: eventData.brideMotherContact?.replace('010-', '') ? eventData.brideMotherContact : null,
+        reception_time: eventData.receptionTime && eventData.receptionTime instanceof Date && !isNaN(eventData.receptionTime.getTime()) ? 
+          eventData.receptionTime.toTimeString().split(' ')[0] : null,
+      };
 
       const formattedEventData = {
         event_type: eventData.type,
@@ -686,16 +874,13 @@ export default function CreateEventScreen({ navigation, route }) {
           bride_mother_name: eventData.brideMotherName.trim() || null,
           groom_father_name: eventData.groomFatherName.trim() || null,
           groom_mother_name: eventData.groomMotherName.trim() || null,
-          bride_contact: eventData.brideContact.trim() || null,
-          groom_contact: eventData.groomContact.trim() || null,
+          bride_contact: eventData.brideContact?.replace('010-', '') ? eventData.brideContact : null,
+          groom_contact: eventData.groomContact?.replace('010-', '') ? eventData.groomContact : null,
           ceremony_time: eventData.ceremonyTime && eventData.ceremonyTime instanceof Date && !isNaN(eventData.ceremonyTime.getTime()) ? 
             eventData.ceremonyTime.toTimeString().split(' ')[0] : null,
           custom_message: eventData.customMessage.trim() || null,
           parking_info: eventData.parkingInfo.trim() || null,
-          additional_info: {
-            reception_time: eventData.receptionTime && eventData.receptionTime instanceof Date && !isNaN(eventData.receptionTime.getTime()) ? 
-              eventData.receptionTime.toTimeString().split(' ')[0] : null,
-          }
+          additional_info: parentsContactInfo
         }),
         
         status: 'active',
@@ -714,72 +899,234 @@ export default function CreateEventScreen({ navigation, route }) {
           });
         }, 2000);
       } else {
-        Alert.alert('오류', '경조사 등록에 실패했어요. 다시 시도해 주세요.');
+        showTossModal('오류', '경조사 등록에 실패했어요. 다시 시도해주세요', () => {});
       }
     } catch (error) {
-      Alert.alert('오류', '경조사 등록 중 문제가 발생했어요.');
+      showTossModal('오류', '경조사 등록 중 문제가 발생했어요', () => {});
     } finally {
       setIsLoading(false);
     }
   };
 
-  const renderWeddingFields = () => (
-    <Animated.View style={[styles.formContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-      {/* 신랑 신부 이름 */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>신랑 & 신부</Text>
-        <Text style={styles.cardSubtitle}>결혼하실 두 분의 이름을 입력해 주세요</Text>
+  // 연락처 입력 핸들러
+  const handleContactChange = (text, field) => {
+    // 010- 이후의 텍스트만 처리
+    if (text.startsWith('010-')) {
+      setEventData({ ...eventData, [field]: text });
+    } else {
+      // 010-가 지워진 경우 다시 추가
+      setEventData({ ...eventData, [field]: '010-' + text.replace(/^010-?/, '') });
+    }
+  };
+
+  // 메인 렌더링 함수들
+  const renderEventTypeSelector = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.eventType = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>어떤 경조사인가요?</Text>
+        <Text style={styles.sectionSubtitle}>준비하실 경조사 종류를 선택해주세요</Text>
+      </View>
+      
+      <View style={styles.typeGrid}>
+        {eventTypes.map((type) => (
+          <TouchableOpacity
+            key={type.key}
+            style={[
+              styles.typeCard,
+              eventData.type === type.key && styles.typeCardSelected,
+            ]}
+            onPress={() => setEventData({ ...eventData, type: type.key })}
+          >
+            <Text style={styles.typeEmoji}>{type.emoji}</Text>
+            <View style={styles.typeTextContainer}>
+              <Text style={[
+                styles.typeLabel,
+                eventData.type === type.key && styles.typeLabelSelected
+              ]}>
+                {type.label}
+              </Text>
+              <Text style={[
+                styles.typeDescription,
+                eventData.type === type.key && styles.typeDescriptionSelected
+              ]}>
+                {type.description}
+              </Text>
+            </View>
+            {eventData.type === type.key && (
+              <View style={styles.typeCheckContainer}>
+                <Ionicons name="checkmark-circle" size={20} color={TossColors.primary} />
+              </View>
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+    </Animated.View>
+  );
+
+  const renderWeddingForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.names = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>신랑 & 신부</Text>
+        <Text style={styles.sectionSubtitle}>결혼하실 두 분의 이름을 입력해주세요</Text>
+      </View>
+      
+      <View style={styles.formRow}>
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>신랑 이름 *</Text>
+          <TextInput
+            style={[styles.textInput, !eventData.groomName && styles.textInputEmpty]}
+            placeholder="홍길동"
+            value={eventData.groomName}
+            onChangeText={(text) => setEventData({ ...eventData, groomName: text })}
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
         
-        <View style={styles.coupleInputRow}>
-          <View style={styles.coupleInputContainer}>
-            <Text style={styles.inputLabel}>신랑 이름</Text>
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>신부 이름 *</Text>
+          <TextInput
+            style={[styles.textInput, !eventData.brideName && styles.textInputEmpty]}
+            placeholder="김영희"
+            value={eventData.brideName}
+            onChangeText={(text) => setEventData({ ...eventData, brideName: text })}
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+      </View>
+    </Animated.View>
+  );
+
+  const renderBasicForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.names = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>기본 정보</Text>
+        <Text style={styles.sectionSubtitle}>행사의 기본 정보를 입력해주세요</Text>
+      </View>
+      
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>행사명 *</Text>
+        <TextInput
+          style={[styles.textInput, !eventData.title && styles.textInputEmpty]}
+          placeholder={`예: ${eventData.type === 'funeral' ? '故 김영희 장례식' :
+                          eventData.type === 'birthday' ? '김민수 첫 돌잔치' : '특별한 기념일'}`}
+          value={eventData.title}
+          onChangeText={(text) => setEventData({ ...eventData, title: text })}
+          placeholderTextColor={TossColors.textTertiary}
+        />
+      </View>
+    </Animated.View>
+  );
+
+  const renderContactForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.contact = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>연락처</Text>
+        <Text style={styles.sectionSubtitle}>하객들이 연락할 수 있는 번호예요</Text>
+      </View>
+      
+      <View style={styles.formRow}>
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>신랑 연락처</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="010-0000-0000"
+            value={eventData.groomContact}
+            onChangeText={(text) => handleContactChange(text, 'groomContact')}
+            keyboardType="phone-pad"
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+        
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>신부 연락처</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="010-0000-0000"
+            value={eventData.brideContact}
+            onChangeText={(text) => handleContactChange(text, 'brideContact')}
+            keyboardType="phone-pad"
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+      </View>
+    </Animated.View>
+  );
+
+  const renderParentsForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.parents = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>양가 부모님</Text>
+        <Text style={styles.sectionSubtitle}>청첩장에 표시될 부모님 성함과 연락처예요</Text>
+      </View>
+      
+      <View style={styles.parentsSection}>
+        <Text style={styles.parentTitle}>신랑측 부모님</Text>
+        <View style={styles.formRow}>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>아버님</Text>
             <TextInput
-              style={[styles.textInput, !eventData.groomName && styles.textInputRequired]}
-              placeholder="예: 김민수"
-              value={eventData.groomName}
-              onChangeText={(text) => setEventData({ ...eventData, groomName: text })}
+              style={styles.textInput}
+              placeholder="성함"
+              value={eventData.groomFatherName}
+              onChangeText={(text) => setEventData({ ...eventData, groomFatherName: text })}
               placeholderTextColor={TossColors.textTertiary}
             />
           </View>
-          
-          <View style={styles.coupleInputContainer}>
-            <Text style={styles.inputLabel}>신부 이름</Text>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>어머님</Text>
             <TextInput
-              style={[styles.textInput, !eventData.brideName && styles.textInputRequired]}
-              placeholder="예: 이영희"
-              value={eventData.brideName}
-              onChangeText={(text) => setEventData({ ...eventData, brideName: text })}
+              style={styles.textInput}
+              placeholder="성함"
+              value={eventData.groomMotherName}
+              onChangeText={(text) => setEventData({ ...eventData, groomMotherName: text })}
               placeholderTextColor={TossColors.textTertiary}
             />
           </View>
         </View>
-      </View>
-
-      {/* 연락처 */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>연락처</Text>
-        <Text style={styles.cardSubtitle}>하객들이 연락할 수 있는 번호예요</Text>
-        
-        <View style={styles.coupleInputRow}>
-          <View style={styles.coupleInputContainer}>
-            <Text style={styles.inputLabel}>신랑 연락처</Text>
+        <View style={styles.formRow}>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>아버님 연락처</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="010-1234-5678"
-              value={eventData.groomContact}
-              onChangeText={(text) => setEventData({ ...eventData, groomContact: text })}
+              placeholder="010-0000-0000"
+              value={eventData.groomFatherContact}
+              onChangeText={(text) => handleContactChange(text, 'groomFatherContact')}
               keyboardType="phone-pad"
               placeholderTextColor={TossColors.textTertiary}
             />
           </View>
-          
-          <View style={styles.coupleInputContainer}>
-            <Text style={styles.inputLabel}>신부 연락처</Text>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>어머님 연락처</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="010-9876-5432"
-              value={eventData.brideContact}
-              onChangeText={(text) => setEventData({ ...eventData, brideContact: text })}
+              placeholder="010-0000-0000"
+              value={eventData.groomMotherContact}
+              onChangeText={(text) => handleContactChange(text, 'groomMotherContact')}
               keyboardType="phone-pad"
               placeholderTextColor={TossColors.textTertiary}
             />
@@ -787,72 +1134,172 @@ export default function CreateEventScreen({ navigation, route }) {
         </View>
       </View>
 
-      {/* 양가 부모님 */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>양가 부모님</Text>
-        <Text style={styles.cardSubtitle}>청첩장에 표시될 부모님 성함이에요</Text>
-        
-        <View style={styles.parentsSection}>
-          <Text style={styles.parentTitle}>👨‍👩‍👧‍👦 신랑측 부모님</Text>
-          <View style={styles.coupleInputRow}>
-            <View style={styles.coupleInputContainer}>
-              <Text style={styles.inputLabel}>아버님</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="김○○"
-                value={eventData.groomFatherName}
-                onChangeText={(text) => setEventData({ ...eventData, groomFatherName: text })}
-                placeholderTextColor={TossColors.textTertiary}
-              />
-            </View>
-            <View style={styles.coupleInputContainer}>
-              <Text style={styles.inputLabel}>어머님</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="박○○"
-                value={eventData.groomMotherName}
-                onChangeText={(text) => setEventData({ ...eventData, groomMotherName: text })}
-                placeholderTextColor={TossColors.textTertiary}
-              />
-            </View>
+      <View style={styles.parentsSection}>
+        <Text style={styles.parentTitle}>신부측 부모님</Text>
+        <View style={styles.formRow}>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>아버님</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="성함"
+              value={eventData.brideFatherName}
+              onChangeText={(text) => setEventData({ ...eventData, brideFatherName: text })}
+              placeholderTextColor={TossColors.textTertiary}
+            />
+          </View>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>어머님</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="성함"
+              value={eventData.brideMotherName}
+              onChangeText={(text) => setEventData({ ...eventData, brideMotherName: text })}
+              placeholderTextColor={TossColors.textTertiary}
+            />
           </View>
         </View>
-
-        <View style={styles.parentsSection}>
-          <Text style={styles.parentTitle}>👨‍👩‍👧‍👦 신부측 부모님</Text>
-          <View style={styles.coupleInputRow}>
-            <View style={styles.coupleInputContainer}>
-              <Text style={styles.inputLabel}>아버님</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="이○○"
-                value={eventData.brideFatherName}
-                onChangeText={(text) => setEventData({ ...eventData, brideFatherName: text })}
-                placeholderTextColor={TossColors.textTertiary}
-              />
-            </View>
-            <View style={styles.coupleInputContainer}>
-              <Text style={styles.inputLabel}>어머님</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="최○○"
-                value={eventData.brideMotherName}
-                onChangeText={(text) => setEventData({ ...eventData, brideMotherName: text })}
-                placeholderTextColor={TossColors.textTertiary}
-              />
-            </View>
+        <View style={styles.formRow}>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>아버님 연락처</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="010-0000-0000"
+              value={eventData.brideFatherContact}
+              onChangeText={(text) => handleContactChange(text, 'brideFatherContact')}
+              keyboardType="phone-pad"
+              placeholderTextColor={TossColors.textTertiary}
+            />
+          </View>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>어머님 연락처</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="010-0000-0000"
+              value={eventData.brideMotherContact}
+              onChangeText={(text) => handleContactChange(text, 'brideMotherContact')}
+              keyboardType="phone-pad"
+              placeholderTextColor={TossColors.textTertiary}
+            />
           </View>
         </View>
       </View>
+    </Animated.View>
+  );
 
-      {/* 인사말 */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>💌 인사말</Text>
-        <Text style={styles.cardSubtitle}>하객들에게 전할 따뜻한 메시지를 적어보세요</Text>
-        
+  const renderDateTimeForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.dateTime = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>날짜 & 시간</Text>
+        <Text style={styles.sectionSubtitle}>행사가 열리는 날짜와 시간을 선택해주세요</Text>
+      </View>
+      
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>날짜 *</Text>
+        <TouchableOpacity
+          style={[styles.selectButton, !eventData.date && styles.selectButtonEmpty]}
+          onPress={() => setShowTossDatePicker(true)}
+        >
+          <Text style={[
+            styles.selectButtonText,
+            !eventData.date && styles.selectButtonTextEmpty
+          ]}>
+            {formatDate(eventData.date) || '날짜를 선택해주세요'}
+          </Text>
+          <Ionicons name="calendar-outline" size={20} color={TossColors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
+      {eventData.type === 'wedding' && (
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>예식 시간 *</Text>
+          <TouchableOpacity
+            style={[styles.selectButton, !eventData.ceremonyTime && styles.selectButtonEmpty]}
+            onPress={() => setShowTossTimePicker(true)}
+          >
+            <Text style={[
+              styles.selectButtonText,
+              !eventData.ceremonyTime && styles.selectButtonTextEmpty
+            ]}>
+              {formatTime(eventData.ceremonyTime) || '시간을 선택해주세요'}
+            </Text>
+            <Ionicons name="time-outline" size={20} color={TossColors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      )}
+    </Animated.View>
+  );
+
+  const renderLocationForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.location = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>장소</Text>
+        <Text style={styles.sectionSubtitle}>행사가 열리는 장소를 입력해주세요</Text>
+      </View>
+      
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>주소 *</Text>
+        <TouchableOpacity
+          style={[styles.addressButton, eventData.location && styles.addressButtonSelected]}
+          onPress={() => setShowAddressSearch(true)}
+        >
+          <View style={styles.addressButtonContent}>
+            <Ionicons 
+              name={eventData.location ? "location" : "search"} 
+              size={20} 
+              color={eventData.location ? TossColors.primary : TossColors.textSecondary} 
+            />
+            <Text style={[
+              styles.addressButtonText,
+              eventData.location && styles.addressButtonTextSelected
+            ]}>
+              {eventData.location || '주소를 검색해주세요'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={TossColors.textTertiary} />
+        </TouchableOpacity>
+      </View>
+      
+      {eventData.location && (
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>상세 주소 *</Text>
+          <TextInput
+            style={[styles.textInput, !eventData.detailedAddress && styles.textInputEmpty]}
+            placeholder="예: 3층 그랜드볼룸"
+            value={eventData.detailedAddress}
+            onChangeText={(text) => setEventData({ ...eventData, detailedAddress: text })}
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+      )}
+    </Animated.View>
+  );
+
+  const renderMessageForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.message = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>인사말</Text>
+        <Text style={styles.sectionSubtitle}>하객들에게 전할 따뜻한 메시지를 적어보세요</Text>
+      </View>
+      
+      <View style={styles.inputWrapper}>
         <TextInput
           style={[styles.textInput, styles.messageInput]}
-          placeholder="저희의 소중한 첫 걸음에 함께해 주시는 모든 분들께 진심으로 감사드립니다. 앞으로도 많은 사랑과 격려 부탁드립니다."
+          placeholder="저희의 소중한 첫 걸음에 함께해주시는 모든 분들께 진심으로 감사드립니다."
           value={eventData.customMessage}
           onChangeText={(text) => setEventData({ ...eventData, customMessage: text })}
           multiline
@@ -861,12 +1308,22 @@ export default function CreateEventScreen({ navigation, route }) {
           placeholderTextColor={TossColors.textTertiary}
         />
       </View>
+    </Animated.View>
+  );
 
-      {/* 추가 정보 */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>🅿️ 주차 안내</Text>
-        <Text style={styles.cardSubtitle}>주차에 대한 안내사항을 적어주세요</Text>
-        
+  const renderParkingForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.parking = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>주차 안내</Text>
+        <Text style={styles.sectionSubtitle}>주차에 대한 안내사항을 적어주세요</Text>
+      </View>
+      
+      <View style={styles.inputWrapper}>
         <TextInput
           style={styles.textInput}
           placeholder="예: 건물 지하 1층 주차장 이용 (2시간 무료)"
@@ -878,433 +1335,189 @@ export default function CreateEventScreen({ navigation, route }) {
     </Animated.View>
   );
 
-  const renderBasicFields = () => (
-    <Animated.View style={[styles.formContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>기본 정보</Text>
-        <Text style={styles.cardSubtitle}>행사의 기본 정보를 입력해 주세요</Text>
-        
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>행사명</Text>
-          <TextInput
-            style={[styles.textInput, !eventData.title && styles.textInputRequired]}
-            placeholder={`예: ${eventData.type === 'funeral' ? '故 김영희 장례식' :
-                            eventData.type === 'birthday' ? '김민수 첫 돌잔치' : '특별한 기념일'}`}
-            value={eventData.title}
-            onChangeText={(text) => setEventData({ ...eventData, title: text })}
-            placeholderTextColor={TossColors.textTertiary}
-          />
+  const renderPhotoUploadForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.photos = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>사진 업로드</Text>
+        <Text style={styles.sectionSubtitle}>경조사에 사용할 사진들을 업로드해주세요</Text>
+      </View>
+
+      <TouchableOpacity style={styles.uploadButton} onPress={pickImages}>
+        <View style={styles.uploadButtonContent}>
+          <Ionicons name="camera" size={24} color={TossColors.primary} />
+          <Text style={styles.uploadButtonText}>사진 추가하기</Text>
+        </View>
+      </TouchableOpacity>
+
+      {eventData.images.length > 0 && (
+        <View style={styles.uploadedImagesContainer}>
+          <Text style={styles.uploadedImagesTitle}>업로드된 사진 ({eventData.images.length})</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.uploadedImagesScroll}>
+            {eventData.images.map((image, index) => (
+              <View key={image.id || index} style={styles.uploadedImageItem}>
+                <Image source={{ uri: image.uri }} style={styles.uploadedImage} />
+                
+                {image.category && (
+                  <View style={styles.uploadedImageCategory}>
+                    <Text style={styles.uploadedImageCategoryText}>
+                      {getCurrentPhotoCategories().find(cat => cat.key === image.category)?.icon || '📷'}
+                    </Text>
+                  </View>
+                )}
+                
+                <TouchableOpacity
+                  style={styles.uploadedImageRemove}
+                  onPress={() => removeImage(index)}
+                >
+                  <Ionicons name="close-circle" size={20} color={TossColors.error} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </Animated.View>
+  );
+
+  const renderMoneyForm = () => {
+    const moneyPresets = getMoneyPresets();
+    const moneyLabel = eventData.type === 'wedding' ? '축의금' : 
+                      eventData.type === 'funeral' ? '조의금' : '축하금';
+    
+    return (
+      <Animated.View 
+        style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+        onLayout={(event) => {
+          sectionPositions.current.money = event.nativeEvent.layout.y;
+        }}
+      >
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{moneyLabel} 설정</Text>
+          <Text style={styles.sectionSubtitle}>참석자들이 선택할 수 있는 {moneyLabel} 금액을 설정해주세요</Text>
         </View>
         
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>주최자</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="주최자 이름을 입력해 주세요"
-            value={eventData.hostName}
-            onChangeText={(text) => setEventData({ ...eventData, hostName: text })}
-            placeholderTextColor={TossColors.textTertiary}
-          />
+        <View style={styles.moneyPresetContainer}>
+          {moneyPresets.map((preset) => {
+            const isSelected = JSON.stringify(eventData.presetAmounts) === JSON.stringify(preset.amounts);
+            
+            return (
+              <TouchableOpacity
+                key={preset.id}
+                style={[
+                  styles.moneyPresetCard,
+                  isSelected && styles.moneyPresetCardSelected,
+                ]}
+                onPress={() => setEventData({ ...eventData, presetAmounts: preset.amounts })}
+              >
+                <View style={styles.moneyPresetHeader}>
+                  <View style={styles.moneyPresetInfo}>
+                    <Text style={[
+                      styles.moneyPresetLabel,
+                      isSelected && styles.moneyPresetLabelSelected,
+                    ]}>
+                      {preset.label}
+                    </Text>
+                    <Text style={[
+                      styles.moneyPresetDescription,
+                      isSelected && styles.moneyPresetDescriptionSelected,
+                    ]}>
+                      {preset.description}
+                    </Text>
+                  </View>
+                  {isSelected && (
+                    <View style={styles.moneyPresetCheckIcon}>
+                      <Ionicons name="checkmark-circle" size={24} color={TossColors.primary} />
+                    </View>
+                  )}
+                </View>
+                
+                <View style={styles.moneyPresetAmounts}>
+                  {preset.amounts.map((amount, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.moneyAmountChip,
+                        isSelected && styles.moneyAmountChipSelected,
+                      ]}
+                    >
+                      <Text style={[
+                        styles.moneyAmountText,
+                        isSelected && styles.moneyAmountTextSelected,
+                      ]}>
+                        {formatAmount(amount)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </View>
+      </Animated.View>
+    );
+  };
+
+  const renderTemplateSelection = () => (
+    <Animated.View style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>템플릿 선택</Text>
+        <Text style={styles.sectionSubtitle}>마음에 드는 디자인을 선택해주세요</Text>
+      </View>
+
+      <View style={styles.templateGrid}>
+        {templates[eventData.type]?.map((template) => (
+          <TouchableOpacity
+            key={template.id}
+            style={[
+              styles.templateCard,
+              eventData.selectedTemplate?.id === template.id && styles.templateCardSelected,
+            ]}
+            onPress={() => setEventData({ ...eventData, selectedTemplate: template })}
+          >
+            <View style={styles.templateImageContainer}>
+              <Image source={template.preview} style={styles.templateImage} />
+              {eventData.selectedTemplate?.id === template.id && (
+                <View style={styles.templateSelectedOverlay}>
+                  <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
+                </View>
+              )}
+            </View>
+            
+            <View style={styles.templateInfo}>
+              <Text style={styles.templateName}>{template.name}</Text>
+              <Text style={styles.templateDescription}>{template.description}</Text>
+              
+              <View style={styles.templateFeatures}>
+                {template.features.map((feature, index) => (
+                  <View key={index} style={styles.templateFeature}>
+                    <Text style={styles.templateFeatureText}>{feature}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+            
+            <TouchableOpacity
+              style={styles.templatePreviewButton}
+              onPress={() => handleTemplatePreview(template)}
+            >
+              <Text style={styles.templatePreviewButtonText}>미리보기</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        ))}
       </View>
     </Animated.View>
   );
 
-  const getCurrentPhotoCategories = () => {
-    if (!eventData.selectedTemplate) {
-      // 기본 카테고리 제공
-      return [
-        { key: 'main', label: '메인 사진', icon: '🖼️', description: '대표 사진' },
-        { key: 'gallery', label: '갤러리', icon: '📷', description: '추억 사진들' },
-      ];
-    }
-    return eventData.selectedTemplate.photoCategories || [];
-  };
-
-  const getCategoryStats = () => {
-    const categories = getCurrentPhotoCategories();
-    const stats = {};
-    
-    categories.forEach(cat => {
-      stats[cat.key] = 0;
-    });
-    
-    eventData.images.forEach(img => {
-      if (img.category && stats[img.category] !== undefined) {
-        stats[img.category]++;
-      }
-    });
-    
-    return stats;
-  };
-
-  const renderStep1 = () => {
-    const eventTypeTexts = getEventTypeTexts();
-    
-    return (
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* 경조사 타입 선택 */}
-        <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-          <Text style={styles.cardTitle}>어떤 경조사인가요?</Text>
-          <Text style={styles.cardSubtitle}>준비하실 경조사 종류를 선택해 주세요</Text>
-          
-          <View style={styles.typeGrid}>
-            {eventTypes.map((type) => (
-              <TouchableOpacity
-                key={type.key}
-                style={[
-                  styles.typeCard,
-                  {
-                    width: isTablet ? (width - 88) / 4 : (width - 60) / 2,
-                  },
-                  eventData.type === type.key && styles.typeCardSelected,
-                ]}
-                onPress={() => setEventData({ ...eventData, type: type.key })}
-              >
-                <LinearGradient
-                  colors={eventData.type === type.key ? type.gradient : ['transparent', 'transparent']}
-                  style={[
-                    styles.typeCardGradient,
-                    eventData.type === type.key && styles.typeCardGradientSelected
-                  ]}
-                >
-                  <Text style={styles.typeIcon}>{type.icon}</Text>
-                  <Text style={[
-                    styles.typeLabel,
-                    eventData.type === type.key && styles.typeLabelSelected
-                  ]}>
-                    {type.label}
-                  </Text>
-                  <Text style={[
-                    styles.typeDescription,
-                    eventData.type === type.key && styles.typeDescriptionSelected
-                  ]}>
-                    {type.description}
-                  </Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Animated.View>
-
-        {/* 동적 필드 렌더링 */}
-        {eventData.type === 'wedding' ? renderWeddingFields() : renderBasicFields()}
-
-        {/* 날짜 & 시간 */}
-        <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-          <Text style={styles.cardTitle}>📅 날짜 & 시간</Text>
-          <Text style={styles.cardSubtitle}>행사가 열리는 날짜와 시간을 선택해 주세요</Text>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>날짜</Text>
-            <TouchableOpacity
-              style={[styles.selectButton, !eventData.date && styles.selectButtonRequired]}
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Text style={[
-                styles.selectButtonText,
-                !eventData.date && styles.selectButtonTextPlaceholder
-              ]}>
-                {formatDate(eventData.date)}
-              </Text>
-              <Ionicons name="calendar-outline" size={20} color={TossColors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
-          {eventData.type === 'wedding' && (
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>예식 시간</Text>
-              <TouchableOpacity
-                style={styles.selectButton}
-                onPress={() => setShowTimePicker(true)}
-              >
-                <Text style={[
-                  styles.selectButtonText,
-                  !eventData.ceremonyTime && styles.selectButtonTextPlaceholder
-                ]}>
-                  {formatTime(eventData.ceremonyTime)}
-                </Text>
-                <Ionicons name="time-outline" size={20} color={TossColors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-          )}
-        </Animated.View>
-
-        {/* 장소 - 개선된 주소 검색 UI */}
-        <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-          <Text style={styles.cardTitle}>📍 장소</Text>
-          <Text style={styles.cardSubtitle}>행사가 열리는 장소를 입력해 주세요</Text>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>주소 {!eventData.location && <Text style={styles.required}>*</Text>}</Text>
-            
-            {/* 주소 검색 버튼 */}
-            <TouchableOpacity
-              style={[
-                styles.addressSearchButton,
-                eventData.location && styles.addressSearchButtonSelected
-              ]}
-              onPress={handleOpenAddressSearch}
-              activeOpacity={0.7}
-            >
-              <View style={styles.addressSearchContent}>
-                <View style={styles.addressSearchIcon}>
-                  <Ionicons 
-                    name={eventData.location ? "location" : "search-outline"} 
-                    size={20} 
-                    color={eventData.location ? TossColors.success : TossColors.primary} 
-                  />
-                </View>
-                
-                <View style={styles.addressSearchText}>
-                  {eventData.location ? (
-                    <>
-                      <Text style={styles.addressSearchTitle}>선택된 주소</Text>
-                      <Text style={styles.addressSearchAddress} numberOfLines={2}>
-                        {eventData.location}
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text style={styles.addressSearchTitle}>주소 검색</Text>
-                      <Text style={styles.addressSearchPlaceholder}>
-                        터치하여 주소를 검색해주세요
-                      </Text>
-                    </>
-                  )}
-                </View>
-                
-                <View style={styles.addressSearchAction}>
-                  <Ionicons 
-                    name={eventData.location ? "create-outline" : "chevron-forward"} 
-                    size={20} 
-                    color={TossColors.textSecondary} 
-                  />
-                </View>
-              </View>
-            </TouchableOpacity>
-            
-            {/* 주소가 선택되면 상세 주소 입력란 표시 */}
-            {eventData.location && (
-              <View style={styles.detailedAddressContainer}>
-                <Text style={styles.inputLabel}>상세 주소</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="예: 3층 그랜드볼룸, B1 연회장"
-                  value={eventData.detailedAddress}
-                  onChangeText={(text) => setEventData({ ...eventData, detailedAddress: text })}
-                  placeholderTextColor={TossColors.textTertiary}
-                />
-                <Text style={styles.detailedAddressHint}>
-                  층수, 호실, 상호명 등 구체적인 위치를 입력해주세요
-                </Text>
-              </View>
-            )}
-            
-            {/* 주소 설정 상태 표시 */}
-            {eventData.location && (
-              <View style={styles.addressStatusContainer}>
-                <View style={styles.addressStatusIndicator}>
-                  <Ionicons name="checkmark-circle" size={16} color={TossColors.success} />
-                  <Text style={styles.addressStatusText}>주소가 설정되었습니다</Text>
-                </View>
-              </View>
-            )}
-          </View>
-        </Animated.View>
-
-        {/* 사진 업로드 - Step 1에 추가 */}
-        <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-          <Text style={styles.cardTitle}>📷 사진 업로드</Text>
-          <Text style={styles.cardSubtitle}>
-            {eventData.type === 'wedding' 
-              ? '결혼식에 사용할 사진들을 업로드해 주세요 (최대 20장)'
-              : '경조사에 사용할 사진들을 업로드해 주세요 (최대 20장)'
-            }
-          </Text>
-
-          {/* 카테고리별 현황 */}
-          <View style={styles.categoryStatusGrid}>
-            {getCurrentPhotoCategories().map(category => {
-              const count = getCategoryStats()[category.key] || 0;
-              const maxCount = category.key === 'gallery' ? '∞' : '1';
-              return (
-                <View key={category.key} style={styles.categoryStatusCard}>
-                  <Text style={styles.categoryStatusIcon}>{category.icon}</Text>
-                  <Text style={styles.categoryStatusLabel}>{category.label}</Text>
-                  <Text style={[
-                    styles.categoryStatusCount,
-                    { color: count > 0 ? TossColors.primary : TossColors.textTertiary }
-                  ]}>
-                    {count}/{maxCount}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-
-          {/* 사진 업로드 버튼 */}
-          <TouchableOpacity style={styles.uploadButton} onPress={pickImages}>
-            <Ionicons name="camera" size={24} color={TossColors.primary} />
-            <Text style={styles.uploadButtonText}>사진 추가하기</Text>
-            <Text style={styles.uploadButtonSubtext}>갤러리에서 선택</Text>
-          </TouchableOpacity>
-
-          {/* 업로드된 사진들 */}
-          {eventData.images.length > 0 && (
-            <View style={styles.uploadedImagesContainer}>
-              <Text style={styles.uploadedImagesTitle}>업로드된 사진 ({eventData.images.length})</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.uploadedImagesScroll}>
-                {eventData.images.map((image, index) => (
-                  <View key={image.id || index} style={styles.uploadedImageItem}>
-                    <Image source={{ uri: image.uri }} style={styles.uploadedImage} />
-                    
-                    {image.category && (
-                      <View style={styles.uploadedImageCategory}>
-                        <Text style={styles.uploadedImageCategoryText}>
-                          {getCurrentPhotoCategories().find(cat => cat.key === image.category)?.icon || '📷'}
-                        </Text>
-                      </View>
-                    )}
-                    
-                    <TouchableOpacity
-                      style={styles.uploadedImageRemove}
-                      onPress={() => removeImage(index)}
-                    >
-                      <Ionicons name="close-circle" size={20} color={TossColors.error} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
-          )}
-        </Animated.View>
-
-        {/* 축의금/조의금/축하금 설정 */}
-        <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-          <Text style={styles.cardTitle}>💰 {eventTypeTexts.moneyLabel} 설정</Text>
-          <Text style={styles.cardSubtitle}>{eventTypeTexts.moneyDescription}</Text>
-          
-          <View style={styles.presetGrid}>
-            {eventTypeTexts.presetOptions.map((option, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[
-                  styles.presetCard,
-                  JSON.stringify(eventData.presetAmounts) === JSON.stringify(option.amounts) &&
-                    styles.presetCardSelected,
-                ]}
-                onPress={() => setEventData({ ...eventData, presetAmounts: option.amounts })}
-              >
-                <Text style={styles.presetIcon}>{option.icon}</Text>
-                <Text style={[
-                  styles.presetLabel,
-                  JSON.stringify(eventData.presetAmounts) === JSON.stringify(option.amounts) &&
-                    styles.presetLabelSelected,
-                ]}>
-                  {option.label}
-                </Text>
-                <Text style={[
-                  styles.presetDescription,
-                  JSON.stringify(eventData.presetAmounts) === JSON.stringify(option.amounts) &&
-                    styles.presetDescriptionSelected,
-                ]}>
-                  {option.description}
-                </Text>
-                <View style={styles.presetAmounts}>
-                  {option.amounts.map((amount, i) => (
-                    <Text
-                      key={i}
-                      style={[
-                        styles.presetAmount,
-                        JSON.stringify(eventData.presetAmounts) === JSON.stringify(option.amounts) &&
-                          styles.presetAmountSelected,
-                      ]}
-                    >
-                      {formatAmount(amount)}
-                    </Text>
-                  ))}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Animated.View>
-      </ScrollView>
-    );
-  };
-
-  const renderStep2 = () => (
-    <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-      {/* 템플릿 선택 */}
-      <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-        <Text style={styles.cardTitle}>🎨 템플릿 선택</Text>
-        <Text style={styles.cardSubtitle}>
-          {eventData.type === 'wedding' 
-            ? `${eventData.groomName} & ${eventData.brideName}의 결혼식에 어울리는 템플릿을 선택해 주세요`
-            : `${eventData.title}에 어울리는 템플릿을 선택해 주세요`
-          }
-        </Text>
-
-        <View style={styles.templateGrid}>
-          {templates[eventData.type]?.map((template) => (
-            <TouchableOpacity
-              key={template.id}
-              style={[
-                styles.templateCard,
-                eventData.selectedTemplate?.id === template.id && styles.templateCardSelected,
-              ]}
-              onPress={() => setEventData({ ...eventData, selectedTemplate: template })}
-            >
-              <View style={styles.templateImageContainer}>
-                <Image source={template.preview} style={styles.templateImage} />
-                {eventData.selectedTemplate?.id === template.id && (
-                  <View style={styles.templateSelectedOverlay}>
-                    <Ionicons name="checkmark-circle" size={30} color="#FFFFFF" />
-                  </View>
-                )}
-              </View>
-              
-              <View style={styles.templateInfo}>
-                <Text style={styles.templateName}>{template.name}</Text>
-                <Text style={styles.templateDescription}>{template.description}</Text>
-                
-                <View style={styles.templateFeatures}>
-                  {template.features.slice(0, 2).map((feature, index) => (
-                    <View key={index} style={styles.templateFeature}>
-                      <Text style={styles.templateFeatureText}>{feature}</Text>
-                    </View>
-                  ))}
-                </View>
-                
-                <View style={styles.templateColors}>
-                  {template.colors.map((color, index) => (
-                    <View
-                      key={index}
-                      style={[styles.templateColor, { backgroundColor: color }]}
-                    />
-                  ))}
-                </View>
-              </View>
-              
-              <TouchableOpacity
-                style={styles.templatePreviewButton}
-                onPress={() => handleTemplatePreview(template)}
-              >
-                <Ionicons name="eye" size={16} color={TossColors.primary} />
-                <Text style={styles.templatePreviewButtonText}>미리보기</Text>
-              </TouchableOpacity>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </Animated.View>
-    </ScrollView>
-  );
-
-  const renderStep3 = () => (
+  const renderCompletionScreen = () => (
     <View style={styles.completionContainer}>
       <Animated.View style={[styles.completionContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         <View style={styles.completionIconContainer}>
-          <Ionicons name="checkmark-circle" size={80} color={TossColors.success} />
+          <Text style={styles.completionEmoji}>🎉</Text>
         </View>
         <Text style={styles.completionTitle}>
           {eventData.type === 'wedding' 
@@ -1317,36 +1530,49 @@ export default function CreateEventScreen({ navigation, route }) {
           }
         </Text>
         <Text style={styles.completionSubtitle}>
-          잠시 후 청첩장 화면으로 이동해요
+          잠시 후 청첩장 화면으로 이동할게요
         </Text>
-        <View style={styles.completionAnimation}>
-          <Text style={styles.completionEmoji}>🎉</Text>
-        </View>
       </Animated.View>
     </View>
   );
+
+  const renderStep1 = () => (
+    <ScrollView 
+      ref={scrollViewRef}
+      style={styles.scrollView} 
+      showsVerticalScrollIndicator={false}
+      onContentSizeChange={() => {
+        // 컨텐츠 사이즈가 변경될 때마다 위치 재계산
+      }}
+    >
+      {renderEventTypeSelector()}
+      {eventData.type === 'wedding' ? renderWeddingForm() : renderBasicForm()}
+      {eventData.type === 'wedding' && renderContactForm()}
+      {eventData.type === 'wedding' && renderParentsForm()}
+      {renderDateTimeForm()}
+      {renderLocationForm()}
+      {renderPhotoUploadForm()}
+      {renderMessageForm()}
+      {eventData.type === 'wedding' && renderParkingForm()}
+      {renderMoneyForm()}
+    </ScrollView>
+  );
+
+  const renderStep2 = () => (
+    <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      {renderTemplateSelection()}
+    </ScrollView>
+  );
+
+  const renderStep3 = () => renderCompletionScreen();
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.headerBackButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color={TossColors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {currentStep === 1 ? '기본 정보' : currentStep === 2 ? '디자인 선택' : '완료'}
-        </Text>
-        <View style={styles.headerRight} />
-      </View>
-
       {/* 프로그레스 바 */}
       <View style={styles.progressContainer}>
-        <View style={styles.progressBar}>
+        <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${(currentStep / 3) * 100}%` }]} />
         </View>
         <Text style={styles.progressText}>
@@ -1385,7 +1611,7 @@ export default function CreateEventScreen({ navigation, route }) {
             >
               <Text style={styles.nextButtonText}>
                 {isLoading ? '생성 중...' : 
-                 currentStep === 1 ? '다음 단계' : 
+                 currentStep === 1 ? '다음' : 
                  eventData.type === 'wedding' ? '결혼식 청첩장 만들기' :
                  eventData.type === 'funeral' ? '부고 만들기' :
                  eventData.type === 'birthday' ? '돌잔치 초대장 만들기' : '경조사 만들기'}
@@ -1394,31 +1620,33 @@ export default function CreateEventScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* 날짜 선택 모달 */}
-        {showDatePicker && (
-          <DateTimePicker
-            value={eventData.date || new Date()}
-            mode="date"
-            display="default"
-            onChange={handleDateChange}
-            minimumDate={new Date()}
-          />
-        )}
+        {/* 토스 스타일 모달들 */}
+        <TossModal
+          visible={modalState.visible}
+          title={modalState.title}
+          message={modalState.message}
+          onConfirm={modalState.onConfirm}
+          onCancel={modalState.onCancel}
+        />
 
-        {showTimePicker && (
-          <DateTimePicker
-            value={eventData.ceremonyTime || new Date()}
-            mode="time"
-            display="default"
-            onChange={handleTimeChange}
-          />
-        )}
+        <TossDatePicker
+          visible={showTossDatePicker}
+          selectedDate={eventData.date}
+          onSelect={(date) => setEventData({ ...eventData, date })}
+          onClose={() => setShowTossDatePicker(false)}
+        />
 
-        {/* 주소 검색 모달 - 개선된 이벤트 핸들러 사용 */}
+        <TossTimePicker
+          visible={showTossTimePicker}
+          selectedTime={eventData.ceremonyTime}
+          onSelect={(time) => setEventData({ ...eventData, ceremonyTime: time })}
+          onClose={() => setShowTossTimePicker(false)}
+        />
+
         <DaumPostcode
           visible={showAddressSearch}
           onComplete={handleAddressComplete}
-          onClose={handleCloseAddressSearch}
+          onClose={() => setShowAddressSearch(false)}
         />
 
         {/* 사진 카테고리 선택 모달 */}
@@ -1460,9 +1688,7 @@ export default function CreateEventScreen({ navigation, route }) {
                       disabled={isDisabled}
                     >
                       <View style={styles.categoryItemContent}>
-                        <View style={styles.categoryItemIcon}>
-                          <Text style={styles.categoryItemIconText}>{category.icon}</Text>
-                        </View>
+                        <Text style={styles.categoryItemIcon}>{category.icon}</Text>
                         <View style={styles.categoryItemText}>
                           <Text style={[
                             styles.categoryItemLabel,
@@ -1470,15 +1696,9 @@ export default function CreateEventScreen({ navigation, route }) {
                           ]}>
                             {category.label}
                           </Text>
-                          <Text style={[
-                            styles.categoryItemDescription,
-                            isDisabled && styles.categoryItemDescriptionDisabled
-                          ]}>
-                            {category.description}
-                          </Text>
                           {isDisabled && (
                             <Text style={styles.categoryItemDisabledText}>
-                              이미 {category.label}이 설정되어 있어요
+                              이미 설정되어 있어요
                             </Text>
                           )}
                         </View>
@@ -1532,50 +1752,25 @@ export default function CreateEventScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: TossColors.secondary,
-  },
-  
-  // 헤더
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     backgroundColor: TossColors.background,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: TossColors.border,
-  },
-  headerBackButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: TossColors.text,
-  },
-  headerRight: {
-    width: 40,
   },
   
   // 프로그레스 바
   progressContainer: {
     backgroundColor: TossColors.background,
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  progressBar: {
+  progressTrack: {
     flex: 1,
     height: 4,
     backgroundColor: TossColors.border,
     borderRadius: 2,
-    marginRight: 12,
+    marginRight: 16,
+    overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
@@ -1594,102 +1789,98 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-    paddingHorizontal: 20,
-  },
-  formContainer: {
-    gap: 16,
+    backgroundColor: TossColors.secondary,
   },
   
-  // 카드 스타일
-  card: {
+  // 섹션
+  section: {
     backgroundColor: TossColors.background,
+    marginHorizontal: 20,
+    marginVertical: 8,
     borderRadius: 16,
     padding: 24,
-    marginBottom: 16,
-    shadowColor: TossColors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
   },
-  cardTitle: {
+  sectionHeader: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: TossColors.text,
     marginBottom: 8,
   },
-  cardSubtitle: {
+  sectionSubtitle: {
     fontSize: 14,
     color: TossColors.textSecondary,
-    marginBottom: 24,
     lineHeight: 20,
   },
   
-  // 경조사 타입 선택 - 반응형 그리드
+  // 경조사 타입 선택
   typeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -6, // margin을 음수로 설정하여 gap 효과
+    gap: 12,
   },
   typeCard: {
-    // width는 인라인 스타일로 처리
-    marginHorizontal: 6,
-    marginBottom: 12,
+    backgroundColor: TossColors.surface,
     borderRadius: 12,
-    overflow: 'hidden',
+    padding: 20,
     borderWidth: 1,
     borderColor: TossColors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   typeCardSelected: {
     borderColor: TossColors.primary,
-    borderWidth: 2,
+    backgroundColor: TossColors.secondary,
   },
-  typeCardGradient: {
-    padding: 20,
-    alignItems: 'center',
-    backgroundColor: TossColors.background,
+  typeEmoji: {
+    fontSize: 24,
+    marginRight: 16,
   },
-  typeCardGradientSelected: {
-    // 그라디언트는 이미 적용됨
-  },
-  typeIcon: {
-    fontSize: 32,
-    marginBottom: 12,
+  typeTextContainer: {
+    flex: 1,
   },
   typeLabel: {
     fontSize: 16,
     fontWeight: '600',
     color: TossColors.text,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   typeLabelSelected: {
-    color: TossColors.background,
+    color: TossColors.primary,
   },
   typeDescription: {
-    fontSize: 12,
+    fontSize: 13,
     color: TossColors.textSecondary,
-    textAlign: 'center',
   },
   typeDescriptionSelected: {
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: TossColors.primary,
+  },
+  typeCheckContainer: {
+    marginLeft: 8,
   },
   
-  // 입력 필드
-  inputGroup: {
+  // 폼 요소
+  formRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  inputWrapper: {
+    flex: 1,
     marginBottom: 20,
   },
   inputLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: TossColors.text,
     marginBottom: 8,
   },
-  required: {
-    color: TossColors.error,
-    fontSize: 14,
-  },
   textInput: {
-    backgroundColor: TossColors.secondary,
+    backgroundColor: TossColors.surface,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 16,
@@ -1698,23 +1889,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: TossColors.border,
   },
-  textInputRequired: {
+  textInputEmpty: {
     borderColor: TossColors.primary,
-    borderWidth: 2,
+    backgroundColor: TossColors.secondary,
   },
   messageInput: {
     height: 100,
     paddingTop: 16,
     textAlignVertical: 'top',
-  },
-  
-  // 커플 입력
-  coupleInputRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  coupleInputContainer: {
-    flex: 1,
   },
   
   // 부모님 섹션
@@ -1730,7 +1912,7 @@ const styles = StyleSheet.create({
   
   // 선택 버튼
   selectButton: {
-    backgroundColor: TossColors.secondary,
+    backgroundColor: TossColors.surface,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 16,
@@ -1740,156 +1922,179 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  selectButtonRequired: {
+  selectButtonEmpty: {
     borderColor: TossColors.primary,
-    borderWidth: 2,
+    backgroundColor: TossColors.secondary,
   },
   selectButtonText: {
     fontSize: 16,
     color: TossColors.text,
     flex: 1,
   },
-  selectButtonTextPlaceholder: {
+  selectButtonTextEmpty: {
     color: TossColors.textTertiary,
   },
   
-  // 주소 검색 버튼
-  addressSearchButton: {
-    backgroundColor: TossColors.secondary,
+  // 주소 선택 버튼
+  addressButton: {
+    backgroundColor: TossColors.surface,
     borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     borderWidth: 1,
     borderColor: TossColors.border,
-    padding: 16,
-    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  addressSearchButtonSelected: {
-    backgroundColor: TossColors.background,
-    borderColor: TossColors.success,
-    borderWidth: 1,
+  addressButtonSelected: {
+    borderColor: TossColors.primary,
+    backgroundColor: TossColors.secondary,
   },
-  addressSearchContent: {
+  addressButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  addressSearchIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: TossColors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  addressSearchText: {
     flex: 1,
   },
-  addressSearchTitle: {
-    fontSize: 14,
+  addressButtonText: {
+    fontSize: 16,
+    color: TossColors.textTertiary,
+    marginLeft: 12,
+    flex: 1,
+  },
+  addressButtonTextSelected: {
+    color: TossColors.text,
+  },
+  
+  // 사진 업로드
+  uploadButton: {
+    backgroundColor: TossColors.surface,
+    borderRadius: 12,
+    paddingVertical: 20,
+    borderWidth: 2,
+    borderColor: TossColors.border,
+    borderStyle: 'dashed',
+  },
+  uploadButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: TossColors.primary,
+    marginLeft: 8,
+  },
+  
+  // 업로드된 사진
+  uploadedImagesContainer: {
+    marginTop: 20,
+  },
+  uploadedImagesTitle: {
+    fontSize: 16,
     fontWeight: '600',
     color: TossColors.text,
-    marginBottom: 2,
+    marginBottom: 12,
   },
-  addressSearchAddress: {
+  uploadedImagesScroll: {
+    marginHorizontal: -4,
+  },
+  uploadedImageItem: {
+    position: 'relative',
+    marginHorizontal: 4,
+  },
+  uploadedImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    backgroundColor: TossColors.border,
+  },
+  uploadedImageCategory: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    backgroundColor: TossColors.primary,
+    borderRadius: 8,
+    padding: 4,
+  },
+  uploadedImageCategoryText: {
+    fontSize: 10,
+  },
+  uploadedImageRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: TossColors.background,
+    borderRadius: 10,
+  },
+  
+  // 축의금 설정 - 토스 스타일
+  moneyPresetContainer: {
+    gap: 16,
+  },
+  moneyPresetCard: {
+    backgroundColor: TossColors.surface,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+  },
+  moneyPresetCardSelected: {
+    backgroundColor: TossColors.secondary,
+    borderColor: TossColors.primary,
+    borderWidth: 2,
+  },
+  moneyPresetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  moneyPresetInfo: {
+    flex: 1,
+  },
+  moneyPresetLabel: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: TossColors.text,
+    marginBottom: 4,
+  },
+  moneyPresetLabelSelected: {
+    color: TossColors.primary,
+  },
+  moneyPresetDescription: {
     fontSize: 14,
     color: TossColors.textSecondary,
     lineHeight: 20,
   },
-  addressSearchPlaceholder: {
-    fontSize: 14,
-    color: TossColors.textTertiary,
-  },
-  addressSearchAction: {
-    marginLeft: 8,
-  },
-  
-  // 상세 주소 컨테이너
-  detailedAddressContainer: {
-    marginTop: 16,
-    padding: 16,
-    backgroundColor: TossColors.secondary,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: TossColors.border,
-  },
-  detailedAddressHint: {
-    fontSize: 12,
-    color: TossColors.textTertiary,
-    marginTop: 8,
-    lineHeight: 16,
-  },
-  
-  // 주소 상태 표시
-  addressStatusContainer: {
-    marginTop: 12,
-  },
-  addressStatusIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: TossColors.success + '15',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  addressStatusText: {
-    fontSize: 12,
-    color: TossColors.success,
-    fontWeight: '500',
-    marginLeft: 6,
-  },
-  
-  // 축의금 설정
-  presetGrid: {
-    gap: 12,
-  },
-  presetCard: {
-    backgroundColor: TossColors.secondary,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: TossColors.border,
-  },
-  presetCardSelected: {
-    backgroundColor: TossColors.primary + '10',
-    borderColor: TossColors.primary,
-    borderWidth: 2,
-  },
-  presetIcon: {
-    fontSize: 24,
-    marginBottom: 8,
-  },
-  presetLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: TossColors.text,
-    marginBottom: 4,
-  },
-  presetLabelSelected: {
+  moneyPresetDescriptionSelected: {
     color: TossColors.primary,
   },
-  presetDescription: {
-    fontSize: 13,
-    color: TossColors.textSecondary,
-    marginBottom: 12,
+  moneyPresetCheckIcon: {
+    marginLeft: 12,
   },
-  presetDescriptionSelected: {
-    color: TossColors.primary,
-  },
-  presetAmounts: {
+  moneyPresetAmounts: {
     flexDirection: 'row',
     gap: 8,
+    flexWrap: 'wrap',
   },
-  presetAmount: {
-    fontSize: 12,
-    fontWeight: '500',
+  moneyAmountChip: {
+    backgroundColor: TossColors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  moneyAmountChipSelected: {
+    backgroundColor: TossColors.primary + '20',
+  },
+  moneyAmountText: {
+    fontSize: 13,
+    fontWeight: '600',
     color: TossColors.textSecondary,
-    backgroundColor: TossColors.background,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
   },
-  presetAmountSelected: {
+  moneyAmountTextSelected: {
     color: TossColors.primary,
-    backgroundColor: TossColors.background,
   },
   
   // 템플릿 선택
@@ -1897,7 +2102,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   templateCard: {
-    backgroundColor: TossColors.background,
+    backgroundColor: TossColors.surface,
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
@@ -1913,7 +2118,7 @@ const styles = StyleSheet.create({
   templateImage: {
     width: '100%',
     height: 200,
-    backgroundColor: TossColors.secondary,
+    backgroundColor: TossColors.border,
   },
   templateSelectedOverlay: {
     position: 'absolute',
@@ -1940,10 +2145,10 @@ const styles = StyleSheet.create({
   templateFeatures: {
     flexDirection: 'row',
     gap: 6,
-    marginBottom: 12,
+    flexWrap: 'wrap',
   },
   templateFeature: {
-    backgroundColor: TossColors.secondary,
+    backgroundColor: TossColors.border,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -1952,19 +2157,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: TossColors.textSecondary,
   },
-  templateColors: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  templateColor: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: TossColors.border,
-  },
   templatePreviewButton: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: TossColors.secondary,
@@ -1972,7 +2165,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingVertical: 12,
     borderRadius: 8,
-    gap: 6,
   },
   templatePreviewButtonText: {
     fontSize: 14,
@@ -1980,113 +2172,305 @@ const styles = StyleSheet.create({
     color: TossColors.primary,
   },
   
-  // 사진 카테고리 상태
-  categoryStatusGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 20,
-  },
-  categoryStatusCard: {
-    backgroundColor: TossColors.secondary,
-    borderRadius: 8,
-    padding: 12,
+  // 완성 화면
+  completionContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    minWidth: (width - 80) / 3,
+    backgroundColor: TossColors.background,
+    paddingHorizontal: 40,
   },
-  categoryStatusIcon: {
-    fontSize: 18,
-    marginBottom: 4,
+  completionContent: {
+    alignItems: 'center',
   },
-  categoryStatusLabel: {
-    fontSize: 11,
+  completionIconContainer: {
+    marginBottom: 24,
+  },
+  completionEmoji: {
+    fontSize: 80,
+  },
+  completionTitle: {
+    fontSize: 24,
+    fontWeight: '700',
     color: TossColors.text,
-    fontWeight: '500',
-    marginBottom: 2,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  completionSubtitle: {
+    fontSize: 16,
+    color: TossColors.textSecondary,
     textAlign: 'center',
   },
-  categoryStatusCount: {
-    fontSize: 10,
+  
+  // 하단 버튼
+  bottomButtonContainer: {
+    flexDirection: 'row',
+    padding: 20,
+    backgroundColor: TossColors.background,
+    borderTopWidth: 1,
+    borderTopColor: TossColors.border,
+    gap: 12,
+  },
+  backButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: TossColors.surface,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+  },
+  backButtonText: {
+    fontSize: 16,
     fontWeight: '600',
+    color: TossColors.textSecondary,
+  },
+  nextButton: {
+    flex: 2,
+    backgroundColor: TossColors.primary,
+    height: 56,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  nextButtonDisabled: {
+    backgroundColor: TossColors.disabled,
+  },
+  nextButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: TossColors.background,
   },
   
-  // 사진 업로드
-  uploadButton: {
-    backgroundColor: TossColors.secondary,
-    borderRadius: 12,
-    paddingVertical: 24,
+  // 토스 스타일 모달
+  tossModalOverlay: {
+    flex: 1,
+    backgroundColor: TossColors.overlay,
+    justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: TossColors.border,
-    borderStyle: 'dashed',
-    marginBottom: 20,
+    paddingHorizontal: 40,
   },
-  uploadButtonText: {
+  tossModalContainer: {
+    backgroundColor: TossColors.background,
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 320,
+    overflow: 'hidden',
+  },
+  tossModalContent: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  tossModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: TossColors.text,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  tossModalMessage: {
+    fontSize: 15,
+    color: TossColors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  tossModalButtons: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: TossColors.border,
+  },
+  tossModalCancelButton: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderRightWidth: 1,
+    borderRightColor: TossColors.border,
+  },
+  tossModalCancelText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: TossColors.textSecondary,
+  },
+  tossModalConfirmButton: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  tossModalConfirmText: {
     fontSize: 16,
     fontWeight: '600',
     color: TossColors.primary,
-    marginTop: 8,
-  },
-  uploadButtonSubtext: {
-    fontSize: 12,
-    color: TossColors.textSecondary,
-    marginTop: 4,
   },
   
-  // 업로드된 사진들
-  uploadedImagesContainer: {
-    marginTop: 20,
+  // 토스 스타일 피커
+  tossPickerOverlay: {
+    flex: 1,
+    backgroundColor: TossColors.overlay,
+    justifyContent: 'flex-end',
   },
-  uploadedImagesTitle: {
+  tossPickerContainer: {
+    backgroundColor: TossColors.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: height * 0.7,
+  },
+  tossPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: TossColors.border,
+  },
+  tossPickerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: TossColors.text,
+  },
+  
+  // 달력 스타일
+  calendarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  monthNavButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: TossColors.secondary,
+  },
+  monthTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: TossColors.text,
+  },
+  weekDaysContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  weekDay: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '600',
+    color: TossColors.textSecondary,
+  },
+  weekendDay: {
+    color: TossColors.primary,
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  calendarDay: {
+    width: '14.28%',
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    marginVertical: 2,
+  },
+  selectedDay: {
+    backgroundColor: TossColors.primary,
+  },
+  todayDay: {
+    backgroundColor: TossColors.secondary,
+    borderWidth: 1,
+    borderColor: TossColors.primary,
+  },
+  otherMonthDay: {
+    opacity: 0.3,
+  },
+  calendarDayText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: TossColors.text,
+  },
+  selectedDayText: {
+    color: TossColors.background,
+    fontWeight: '700',
+  },
+  todayText: {
+    color: TossColors.primary,
+    fontWeight: '600',
+  },
+  otherMonthText: {
+    color: TossColors.textTertiary,
+  },
+  pastDayText: {
+    color: TossColors.textTertiary,
+  },
+  sundayText: {
+    color: TossColors.error,
+  },
+  
+  // 시간 선택기 스타일
+  timePickerCancelText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: TossColors.textSecondary,
+  },
+  timePickerConfirmText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: TossColors.primary,
+  },
+  timePickerContent: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  timePickerSection: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  timePickerLabel: {
     fontSize: 16,
     fontWeight: '600',
     color: TossColors.text,
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  uploadedImagesScroll: {
-    marginHorizontal: -4,
-  },
-  uploadedImageItem: {
-    position: 'relative',
-    marginHorizontal: 4,
-  },
-  uploadedImage: {
+  timePickerList: {
+    height: 200,
     width: 80,
-    height: 80,
-    borderRadius: 12,
+  },
+  timePickerItem: {
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  timePickerItemSelected: {
     backgroundColor: TossColors.secondary,
   },
-  uploadedImageCategory: {
-    position: 'absolute',
-    bottom: 4,
-    left: 4,
-    backgroundColor: TossColors.primary,
-    borderRadius: 8,
-    padding: 2,
+  timePickerItemText: {
+    fontSize: 18,
+    color: TossColors.textSecondary,
   },
-  uploadedImageCategoryText: {
-    fontSize: 12,
-    color: TossColors.background,
-  },
-  uploadedImageRemove: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    backgroundColor: TossColors.background,
-    borderRadius: 10,
+  timePickerItemTextSelected: {
+    color: TossColors.primary,
+    fontWeight: '600',
   },
   
   // 모달
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: TossColors.overlay,
+    justifyContent: 'flex-end',
   },
   categoryModal: {
     backgroundColor: TossColors.background,
-    borderRadius: 20,
-    width: width * 0.9,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     maxHeight: height * 0.7,
     overflow: 'hidden',
   },
@@ -2119,6 +2503,9 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: TossColors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   categoryItemDisabled: {
     opacity: 0.5,
@@ -2129,16 +2516,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   categoryItemIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: TossColors.secondary,
-    justifyContent: 'center',
-    alignItems: 'center',
+    fontSize: 24,
     marginRight: 12,
-  },
-  categoryItemIconText: {
-    fontSize: 18,
   },
   categoryItemText: {
     flex: 1,
@@ -2147,97 +2526,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: TossColors.text,
-    marginBottom: 4,
   },
   categoryItemLabelDisabled: {
     color: TossColors.textSecondary,
-  },
-  categoryItemDescription: {
-    fontSize: 13,
-    color: TossColors.textSecondary,
-    lineHeight: 18,
-  },
-  categoryItemDescriptionDisabled: {
-    color: TossColors.textTertiary,
   },
   categoryItemDisabledText: {
     fontSize: 12,
     color: TossColors.error,
     marginTop: 4,
-  },
-  
-  // 완성 화면
-  completionContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  completionContent: {
-    alignItems: 'center',
-  },
-  completionIconContainer: {
-    marginBottom: 24,
-  },
-  completionTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: TossColors.text,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  completionSubtitle: {
-    fontSize: 16,
-    color: TossColors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  completionAnimation: {
-    marginTop: 20,
-  },
-  completionEmoji: {
-    fontSize: 48,
-  },
-  
-  // 하단 버튼
-  bottomButtonContainer: {
-    flexDirection: 'row',
-    padding: 20,
-    backgroundColor: TossColors.background,
-    borderTopWidth: 1,
-    borderTopColor: TossColors.border,
-    gap: 12,
-  },
-  backButton: {
-    flex: 1,
-    height: 54,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: TossColors.secondary,
-    borderWidth: 1,
-    borderColor: TossColors.border,
-  },
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: TossColors.textSecondary,
-  },
-  nextButton: {
-    flex: 2,
-    backgroundColor: TossColors.primary,
-    height: 54,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  nextButtonDisabled: {
-    backgroundColor: TossColors.textTertiary,
-  },
-  nextButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: TossColors.background,
   },
   
   // 미리보기 모달
