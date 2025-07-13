@@ -1,4 +1,4 @@
-// src/screens/event/CreateEventScreen.js - 토스 스타일 완전 개선 버전
+// src/screens/event/CreateEventScreen.js - 카테고리별 사진 업로드 개선 버전
 import React, { useState, useRef } from 'react';
 import {
   View,
@@ -15,6 +15,7 @@ import {
   Modal,
   Animated,
   Easing,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,19 +28,55 @@ const { width, height } = Dimensions.get('window');
 
 // 토스 컬러 시스템
 const TossColors = {
-  primary: '#4A88FF',      // 토스 블루
-  secondary: '#F8FAFF',    // 아주 연한 블루
-  background: '#FFFFFF',   // 순백
-  surface: '#FFFFFF',      // 카드 배경
-  text: '#191F28',         // 메인 텍스트
-  textSecondary: '#8B95A1', // 서브 텍스트
-  textTertiary: '#C1C8D0',  // 플레이스홀더
-  border: '#F2F4F6',       // 테두리
-  success: '#26C976',      // 성공
-  warning: '#FFB800',      // 경고
-  error: '#FF6B6B',        // 에러
-  disabled: '#F2F4F6',     // 비활성화
-  overlay: 'rgba(0, 0, 0, 0.4)', // 오버레이
+  primary: '#4A88FF',
+  secondary: '#F8FAFF',
+  background: '#FFFFFF',
+  surface: '#FFFFFF',
+  text: '#191F28',
+  textSecondary: '#8B95A1',
+  textTertiary: '#C1C8D0',
+  border: '#F2F4F6',
+  success: '#26C976',
+  warning: '#FFB800',
+  error: '#FF6B6B',
+  disabled: '#F2F4F6',
+  overlay: 'rgba(0, 0, 0, 0.4)',
+};
+
+// 사진 카테고리 설정
+const PHOTO_CATEGORIES = {
+  main: {
+    key: 'main',
+    label: '메인 사진',
+    icon: '🖼️',
+    description: '청첩장 첫 화면에 표시될 대표 사진',
+    maxCount: 5,
+    required: true,
+  },
+  gallery: {
+    key: 'gallery',
+    label: '갤러리 사진',
+    icon: '📷',
+    description: '갤러리 섹션에 표시될 추억 사진들',
+    maxCount: 10,
+    required: false,
+  },
+  groom: {
+    key: 'groom',
+    label: '신랑 사진',
+    icon: '🤵',
+    description: '신랑 소개 섹션에 사용될 사진',
+    maxCount: 1,
+    required: false,
+  },
+  bride: {
+    key: 'bride',
+    label: '신부 사진',
+    icon: '👰',
+    description: '신부 소개 섹션에 사용될 사진',
+    maxCount: 1,
+    required: false,
+  },
 };
 
 // 토스 스타일 모달 컴포넌트
@@ -338,10 +375,6 @@ export default function CreateEventScreen({ navigation, route }) {
     onConfirm: null,
     onCancel: null,
   });
-  
-  // 사진 카테고리 선택 관련 state
-  const [showCategorySelector, setShowCategorySelector] = useState(false);
-  const [selectedImageForCategory, setSelectedImageForCategory] = useState(null);
 
   // 애니메이션
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
@@ -400,13 +433,6 @@ export default function CreateEventScreen({ navigation, route }) {
         preview: require('../../../assets/images/aa1.png'),
         style: 'modern-dark',
         features: ['다크 모드', '그라디언트'],
-        photoCategories: [
-          { key: 'main', label: '메인 사진', icon: '🖼️' },
-          { key: 'groom', label: '신랑 사진', icon: '🤵' },
-          { key: 'bride', label: '신부 사진', icon: '👰' },
-          { key: 'couple', label: '커플 사진', icon: '💕' },
-          { key: 'gallery', label: '갤러리', icon: '📷' },
-        ]
       },
       {
         id: 'romantic-gold', 
@@ -415,13 +441,6 @@ export default function CreateEventScreen({ navigation, route }) {
         preview: require('../../../assets/images/aa2.png'),
         style: 'romantic-gold',
         features: ['전통 색상', '한국적 레이아웃'],
-        photoCategories: [
-          { key: 'main', label: '메인 사진', icon: '🖼️' },
-          { key: 'hanbok', label: '한복 사진', icon: '👘' },
-          { key: 'ceremony', label: '전통 예식', icon: '🏛️' },
-          { key: 'family', label: '가족 사진', icon: '👨‍👩‍👧‍👦' },
-          { key: 'gallery', label: '갤러리', icon: '📷' },
-        ]
       },
       {
         id: 'vintage-app',
@@ -430,14 +449,6 @@ export default function CreateEventScreen({ navigation, route }) {
         preview: require('../../../assets/images/aa3.png'),
         style: 'vintage-app',
         features: ['스토리 타임라인', '모던 색감'],
-        photoCategories: [
-          { key: 'first_meet', label: '첫 만남', icon: '👋' },
-          { key: 'dating', label: '연인이 되다', icon: '💕' },
-          { key: 'proposal', label: '프로포즈', icon: '💍' },
-          { key: 'engagement', label: '약혼', icon: '👫' },
-          { key: 'wedding', label: '결혼식', icon: '💒' },
-          { key: 'honeymoon', label: '신혼여행', icon: '✈️' },
-        ]
       },
     ],
     funeral: [
@@ -447,11 +458,6 @@ export default function CreateEventScreen({ navigation, route }) {
         description: '정중하고 엄숙한 분위기',
         preview: require('../../../assets/images/bb1.png'),
         style: 'solemn',
-        photoCategories: [
-          { key: 'portrait', label: '영정 사진', icon: '🖼️' },
-          { key: 'life', label: '생전 모습', icon: '📸' },
-          { key: 'family', label: '가족 사진', icon: '👨‍👩‍👧‍👦' },
-        ]
       },
     ],
     birthday: [
@@ -461,12 +467,6 @@ export default function CreateEventScreen({ navigation, route }) {
         description: '밝고 즐거운 첫 번째 생일',
         preview: require('../../../assets/images/aa1.png'),
         style: 'garden',
-        photoCategories: [
-          { key: 'baby', label: '아기 사진', icon: '👶' },
-          { key: 'growth', label: '성장 과정', icon: '📈' },
-          { key: 'family', label: '가족 사진', icon: '👨‍👩‍👧‍👦' },
-          { key: 'celebration', label: '축하 순간', icon: '🎉' },
-        ]
       },
     ],
     other: [
@@ -476,11 +476,6 @@ export default function CreateEventScreen({ navigation, route }) {
         description: '특별한 순간을 위한 디자인',
         preview: require('../../../assets/images/aa1.png'),
         style: 'classic',
-        photoCategories: [
-          { key: 'main', label: '메인 사진', icon: '🖼️' },
-          { key: 'celebration', label: '축하 사진', icon: '🎉' },
-          { key: 'group', label: '단체 사진', icon: '👥' },
-        ]
       },
     ],
   };
@@ -677,100 +672,161 @@ export default function CreateEventScreen({ navigation, route }) {
     return new Intl.NumberFormat('ko-KR').format(amount) + '원';
   };
 
-  const pickImages = async () => {
+  // 카테고리별 이미지 개수 가져오기
+  const getCategoryImageCount = (category) => {
+    const count = eventData.images.filter(img => img.category === category).length;
+    console.log(`🔍 [DEBUG] ${category} 카테고리 이미지 개수:`, count);
+    return count;
+  };
+
+  // 특정 카테고리 이미지들 가져오기
+  const getCategoryImages = (category) => {
+    const images = eventData.images.filter(img => img.category === category);
+    console.log(`🔍 [DEBUG] ${category} 카테고리 이미지들:`, images.map(img => ({ id: img.id, category: img.category })));
+    return images;
+  };
+
+  // 이미지 제거 함수 - 단일 버전만 유지
+  const removeImage = (imageId) => {
+    console.log('🔍 [DEBUG] 이미지 제거 요청 ID:', imageId);
+    
+    setEventData(prevData => {
+      const imageToRemove = prevData.images.find(img => img.id === imageId);
+      console.log('🔍 [DEBUG] 제거할 이미지:', imageToRemove);
+      
+      const newImages = prevData.images.filter(img => img.id !== imageId);
+      console.log('🔍 [DEBUG] 제거 후 남은 이미지들:', newImages.map(img => ({ id: img.id, category: img.category })));
+      
+      return { 
+        ...prevData, 
+        images: newImages 
+      };
+    });
+  };
+
+  // 카테고리별 이미지 객체 생성 - 템플릿에서 직접 사용할 수 있도록
+  const getCategorizedImages = () => {
+    const categorized = {
+      main: eventData.images.filter(img => img.category === 'main'),
+      gallery: eventData.images.filter(img => img.category === 'gallery'), 
+      groom: eventData.images.filter(img => img.category === 'groom'),
+      bride: eventData.images.filter(img => img.category === 'bride'),
+      all: eventData.images
+    };
+
+    console.log('🔍 [DEBUG] 카테고리별 이미지 객체:', {
+      main: categorized.main.length,
+      gallery: categorized.gallery.length,
+      groom: categorized.groom.length,
+      bride: categorized.bride.length,
+      total: categorized.all.length
+    });
+
+    return categorized;
+  };
+
+
+
+  // 이미지 선택 함수 - 디버깅 및 개선된 버전
+  const pickImagesForCategory = async (category) => {
     try {
+      console.log('🔍 [DEBUG] 카테고리 선택:', category.key, category.label);
+      
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         showTossModal('권한 필요', '사진을 선택하려면 갤러리 접근 권한이 필요해요', () => {});
         return;
       }
 
+      const currentCount = getCategoryImageCount(category.key);
+      const remainingCount = category.maxCount - currentCount;
+
+      console.log('🔍 [DEBUG] 현재 카운트:', currentCount, '남은 카운트:', remainingCount);
+
+      if (remainingCount <= 0) {
+        showTossModal('알림', `${category.label}은 최대 ${category.maxCount}장까지 업로드 가능해요`, () => {});
+        return;
+      }
+
+      const allowsMultiple = remainingCount > 1 && category.maxCount > 1;
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        allowsEditing: !allowsMultiple,
         aspect: [4, 3],
         quality: 0.8,
-        allowsMultipleSelection: false,
+        allowsMultipleSelection: allowsMultiple,
       });
 
-      if (!result.canceled) {
-        const newImage = result.assets[0];
-        setSelectedImageForCategory({
-          ...newImage,
-          tempId: Date.now()
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        console.log('🔍 [DEBUG] 선택된 이미지 개수:', result.assets.length);
+        
+        let newImages = [];
+        
+        if (allowsMultiple && result.assets.length > 1) {
+          // 여러 이미지 선택 (갤러리, 메인 사진 등)
+          const selectedImages = result.assets.slice(0, remainingCount);
+          newImages = selectedImages.map((asset, index) => ({
+            ...asset,
+            category: category.key,
+            categoryLabel: category.label,
+            id: `${category.key}_${Date.now()}_${index}`, // 더 고유한 ID
+          }));
+        } else {
+          // 단일 이미지 선택
+          newImages = [{
+            ...result.assets[0],
+            category: category.key,
+            categoryLabel: category.label,
+            id: `${category.key}_${Date.now()}`, // 카테고리 포함 고유 ID
+          }];
+        }
+
+        console.log('🔍 [DEBUG] 생성된 새 이미지들:', newImages.map(img => ({ id: img.id, category: img.category })));
+
+        // 이미지 배열 업데이트 로직 개선
+        setEventData(prevData => {
+          let updatedImages;
+          
+          if (category.maxCount === 1) {
+            // 1장 제한 카테고리 (신랑, 신부): 기존 같은 카테고리 이미지 제거 후 새 이미지 추가
+            const otherCategoryImages = prevData.images.filter(img => img.category !== category.key);
+            updatedImages = [...otherCategoryImages, ...newImages];
+            console.log('🔍 [DEBUG] 1장 제한 - 기존 제거 후 추가');
+          } else {
+            // 다중 이미지 허용 카테고리 (메인, 갤러리): 기존 배열에 추가
+            updatedImages = [...prevData.images, ...newImages];
+            console.log('🔍 [DEBUG] 다중 허용 - 기존에 추가');
+          }
+
+          console.log('🔍 [DEBUG] 최종 이미지 배열:', updatedImages.map(img => ({ id: img.id, category: img.category })));
+          
+          return {
+            ...prevData,
+            images: updatedImages,
+          };
         });
-        setShowCategorySelector(true);
       }
     } catch (error) {
+      console.error('🔍 [DEBUG] 이미지 선택 오류:', error);
       showTossModal('오류', '사진 선택 중 문제가 발생했어요', () => {});
     }
   };
 
-  const getCurrentPhotoCategories = () => {
-    if (!eventData.selectedTemplate) {
-      return [
-        { key: 'main', label: '메인 사진', icon: '🖼️' },
-        { key: 'gallery', label: '갤러리', icon: '📷' },
-      ];
-    }
-    return eventData.selectedTemplate.photoCategories || [];
-  };
-
-  const getCategoryStats = () => {
-    const categories = getCurrentPhotoCategories();
-    const stats = {};
-    
-    categories.forEach(cat => {
-      stats[cat.key] = 0;
-    });
-    
-    eventData.images.forEach(img => {
-      if (img.category && stats[img.category] !== undefined) {
-        stats[img.category]++;
-      }
-    });
-    
-    return stats;
-  };
-
-  const handleCategorySelect = (category) => {
-    if (!selectedImageForCategory) return;
-
-    const imageWithCategory = {
-      ...selectedImageForCategory,
-      category: category.key,
-      categoryLabel: category.label,
-      id: selectedImageForCategory.tempId
-    };
-
-    if (category.key !== 'gallery') {
-      const newImages = eventData.images.filter(img => img.category !== category.key);
-      setEventData({
-        ...eventData,
-        images: [...newImages, imageWithCategory].slice(0, 20),
-      });
-    } else {
-      setEventData({
-        ...eventData,
-        images: [...eventData.images, imageWithCategory].slice(0, 20),
-      });
-    }
-
-    setShowCategorySelector(false);
-    setSelectedImageForCategory(null);
-  };
-
-  const removeImage = (index) => {
-    const newImages = eventData.images.filter((_, i) => i !== index);
-    setEventData({ ...eventData, images: newImages });
-  };
+  // 이미지 제거 함수
+  // const removeImage = (imageId) => {
+  //   const newImages = eventData.images.filter(img => img.id !== imageId);
+  //   setEventData({ ...eventData, images: newImages });
+  // };
 
   const handleTemplatePreview = (template) => {
+    console.log('🔍 [DEBUG] 템플릿 미리보기 시작:', template.name);
     setPreviewTemplate(template);
     setShowTemplatePreview(true);
   };
 
   const handleTemplateSelect = (template) => {
+    console.log('🔍 [DEBUG] 템플릿 선택:', template.name);
     setEventData({ ...eventData, selectedTemplate: template });
     setShowTemplatePreview(false);
   };
@@ -813,6 +869,13 @@ export default function CreateEventScreen({ navigation, route }) {
       showTossModal('필수 입력', '상세 주소를 입력해주세요', () => {}, null, 'location');
       return false;
     }
+
+    // 메인 사진 필수 체크
+    const mainImageCount = getCategoryImageCount('main');
+    if (mainImageCount === 0) {
+      showTossModal('필수 입력', '메인 사진을 최소 1장 이상 업로드해주세요', () => {}, null, 'photos');
+      return false;
+    }
     
     return true;
   };
@@ -853,6 +916,10 @@ export default function CreateEventScreen({ navigation, route }) {
           eventData.receptionTime.toTimeString().split(' ')[0] : null,
       };
 
+      // 카테고리별 이미지 정보
+      const categorizedImages = getCategorizedImages();
+      console.log('🔍 [DEBUG] 저장할 카테고리별 이미지:', categorizedImages);
+
       const formattedEventData = {
         event_type: eventData.type,
         event_name: eventTitle,
@@ -880,13 +947,23 @@ export default function CreateEventScreen({ navigation, route }) {
             eventData.ceremonyTime.toTimeString().split(' ')[0] : null,
           custom_message: eventData.customMessage.trim() || null,
           parking_info: eventData.parkingInfo.trim() || null,
-          additional_info: parentsContactInfo
+          additional_info: {
+            ...parentsContactInfo,
+            categorized_images: categorizedImages // 카테고리별 이미지 저장
+          }
         }),
         
         status: 'active',
         is_finalized: false,
-        image_urls: [],
+        image_urls: eventData.images.map(img => ({
+          uri: img.uri,
+          category: img.category,
+          categoryLabel: img.categoryLabel,
+          id: img.id
+        })),
       };
+
+      console.log('🔍 [DEBUG] 최종 저장 데이터 - 이미지 개수:', formattedEventData.image_urls.length);
 
       const result = await createEvent(formattedEventData);
 
@@ -895,13 +972,15 @@ export default function CreateEventScreen({ navigation, route }) {
         setTimeout(() => {
           navigation.navigate('EventDisplay', { 
             eventId: result.data.id,
-            templateStyle: eventData.selectedTemplate?.style || 'modern-dark'
+            templateStyle: eventData.selectedTemplate?.style || 'modern-dark',
+            categorizedImages: categorizedImages
           });
         }, 2000);
       } else {
         showTossModal('오류', '경조사 등록에 실패했어요. 다시 시도해주세요', () => {});
       }
     } catch (error) {
+      console.error('🔍 [DEBUG] 저장 오류:', error);
       showTossModal('오류', '경조사 등록 중 문제가 발생했어요', () => {});
     } finally {
       setIsLoading(false);
@@ -1335,6 +1414,63 @@ export default function CreateEventScreen({ navigation, route }) {
     </Animated.View>
   );
 
+  // 디버깅용 이미지 상태 모니터링 컴포넌트
+  const renderImageDebugInfo = () => {
+    if (__DEV__) { // 개발 모드에서만 표시
+      const categorizedImages = getCategorizedImages();
+      
+      return (
+        <View style={styles.debugContainer}>
+          <Text style={styles.debugTitle}>🔍 이미지 상태 디버깅 (실시간)</Text>
+          
+          <Text style={styles.debugSummary}>
+            업로드된 이미지: {eventData.images.length}장
+          </Text>
+          
+          <Text style={styles.debugSummary}>
+            메인: {categorizedImages.main.length}/5 | 
+            갤러리: {categorizedImages.gallery.length}/10 | 
+            신랑: {categorizedImages.groom.length}/1 | 
+            신부: {categorizedImages.bride.length}/1
+          </Text>
+          
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
+            {eventData.images.map((image, index) => (
+              <View key={image.id} style={styles.debugImageItem}>
+                <Text style={styles.debugImageText}>#{index}</Text>
+                <Text style={styles.debugImageText}>ID: ...{String(image.id).slice(-4)}</Text>
+                <Text style={[styles.debugImageText, { fontWeight: 'bold', color: 
+                  image.category === 'main' ? '#4A88FF' :
+                  image.category === 'gallery' ? '#26C976' :
+                  image.category === 'groom' ? '#FFB800' :
+                  image.category === 'bride' ? '#FF6B6B' : '#666'
+                }]}>
+                  {image.category || 'NO_CAT'}
+                </Text>
+                <Image source={{ uri: image.uri }} style={styles.debugImage} />
+              </View>
+            ))}
+          </ScrollView>
+          
+          <TouchableOpacity 
+            style={{ backgroundColor: '#4A88FF', padding: 8, borderRadius: 4, marginTop: 8 }}
+            onPress={() => {
+              console.log('🔍 [DEBUG] === 카테고리별 이미지 상세 정보 ===');
+              console.log('🔍 [DEBUG] 메인 사진들:', categorizedImages.main.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
+              console.log('🔍 [DEBUG] 갤러리 사진들:', categorizedImages.gallery.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
+              console.log('🔍 [DEBUG] 신랑 사진:', categorizedImages.groom.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
+              console.log('🔍 [DEBUG] 신부 사진:', categorizedImages.bride.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
+            }}
+          >
+            <Text style={{ color: 'white', textAlign: 'center', fontSize: 12 }}>콘솔에 카테고리별 정보 출력</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return null;
+  };
+
+  // 카테고리별 사진 업로드 폼 - 디버깅 정보 추가
   const renderPhotoUploadForm = () => (
     <Animated.View 
       style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
@@ -1344,43 +1480,209 @@ export default function CreateEventScreen({ navigation, route }) {
     >
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>사진 업로드</Text>
-        <Text style={styles.sectionSubtitle}>경조사에 사용할 사진들을 업로드해주세요</Text>
+        <Text style={styles.sectionSubtitle}>카테고리별로 사진을 업로드해주세요</Text>
       </View>
 
-      <TouchableOpacity style={styles.uploadButton} onPress={pickImages}>
-        <View style={styles.uploadButtonContent}>
-          <Ionicons name="camera" size={24} color={TossColors.primary} />
-          <Text style={styles.uploadButtonText}>사진 추가하기</Text>
-        </View>
-      </TouchableOpacity>
+      {/* 디버깅 정보 */}
+      {renderImageDebugInfo()}
 
-      {eventData.images.length > 0 && (
-        <View style={styles.uploadedImagesContainer}>
-          <Text style={styles.uploadedImagesTitle}>업로드된 사진 ({eventData.images.length})</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.uploadedImagesScroll}>
-            {eventData.images.map((image, index) => (
-              <View key={image.id || index} style={styles.uploadedImageItem}>
-                <Image source={{ uri: image.uri }} style={styles.uploadedImage} />
-                
-                {image.category && (
-                  <View style={styles.uploadedImageCategory}>
-                    <Text style={styles.uploadedImageCategoryText}>
-                      {getCurrentPhotoCategories().find(cat => cat.key === image.category)?.icon || '📷'}
+      {/* 결혼식인 경우 모든 카테고리 표시 */}
+      {eventData.type === 'wedding' ? (
+        <View style={styles.photoCategoriesContainer}>
+          {Object.values(PHOTO_CATEGORIES).map((category) => {
+            const currentCount = getCategoryImageCount(category.key);
+            const categoryImages = getCategoryImages(category.key);
+            const isComplete = currentCount >= category.maxCount;
+            const isRequired = category.required && currentCount === 0;
+
+            return (
+              <View key={category.key} style={styles.photoCategorySection}>
+                <View style={styles.photoCategoryHeader}>
+                  <View style={styles.photoCategoryInfo}>
+                    <Text style={styles.photoCategoryIcon}>{category.icon}</Text>
+                    <View style={styles.photoCategoryTextContainer}>
+                      <Text style={[
+                        styles.photoCategoryTitle,
+                        isRequired && styles.photoCategoryTitleRequired
+                      ]}>
+                        {category.label}
+                        {category.required && <Text style={styles.requiredAsterisk}> *</Text>}
+                      </Text>
+                      <Text style={styles.photoCategoryDescription}>{category.description}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.photoCategoryCount}>
+                    <Text style={[
+                      styles.photoCategoryCountText,
+                      isComplete && styles.photoCategoryCountComplete,
+                      isRequired && styles.photoCategoryCountRequired
+                    ]}>
+                      {currentCount}/{category.maxCount}
                     </Text>
                   </View>
-                )}
-                
+                </View>
+
+                {/* 업로드 버튼 */}
                 <TouchableOpacity
-                  style={styles.uploadedImageRemove}
-                  onPress={() => removeImage(index)}
+                  style={[
+                    styles.categoryUploadButton,
+                    isComplete && styles.categoryUploadButtonDisabled,
+                    isRequired && styles.categoryUploadButtonRequired
+                  ]}
+                  onPress={() => {
+                    console.log('🔍 [DEBUG] 업로드 버튼 클릭:', category.key);
+                    pickImagesForCategory(category);
+                  }}
+                  disabled={isComplete}
                 >
-                  <Ionicons name="close-circle" size={20} color={TossColors.error} />
+                  <Ionicons 
+                    name={isComplete ? "checkmark-circle" : "camera"} 
+                    size={20} 
+                    color={isComplete ? TossColors.success : 
+                           isRequired ? TossColors.error : TossColors.primary} 
+                  />
+                  <Text style={[
+                    styles.categoryUploadButtonText,
+                    isComplete && styles.categoryUploadButtonTextDisabled,
+                    isRequired && styles.categoryUploadButtonTextRequired
+                  ]}>
+                    {isComplete ? '업로드 완료' : 
+                     currentCount === 0 ? `${category.label} 추가` : 
+                     `${category.label} 추가 (${category.maxCount - currentCount}장 더)`}
+                  </Text>
                 </TouchableOpacity>
+
+                {/* 업로드된 이미지들 */}
+                {categoryImages.length > 0 && (
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.categoryImagesScroll}
+                  >
+                    {categoryImages.map((image) => (
+                      <View key={image.id} style={styles.categoryImageItem}>
+                        <Image source={{ uri: image.uri }} style={styles.categoryImage} />
+                        <TouchableOpacity
+                          style={styles.categoryImageRemove}
+                          onPress={() => {
+                            console.log('🔍 [DEBUG] 이미지 제거 버튼 클릭:', image.id, image.category);
+                            removeImage(image.id);
+                          }}
+                        >
+                          <Ionicons name="close-circle" size={20} color={TossColors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
               </View>
-            ))}
-          </ScrollView>
+            );
+          })}
+        </View>
+      ) : (
+        // 결혼식이 아닌 경우 기본 메인/갤러리만 표시
+        <View style={styles.photoCategoriesContainer}>
+          {[PHOTO_CATEGORIES.main, PHOTO_CATEGORIES.gallery].map((category) => {
+            const currentCount = getCategoryImageCount(category.key);
+            const categoryImages = getCategoryImages(category.key);
+            const isComplete = currentCount >= category.maxCount;
+            const isRequired = category.required && currentCount === 0;
+
+            return (
+              <View key={category.key} style={styles.photoCategorySection}>
+                <View style={styles.photoCategoryHeader}>
+                  <View style={styles.photoCategoryInfo}>
+                    <Text style={styles.photoCategoryIcon}>{category.icon}</Text>
+                    <View style={styles.photoCategoryTextContainer}>
+                      <Text style={[
+                        styles.photoCategoryTitle,
+                        isRequired && styles.photoCategoryTitleRequired
+                      ]}>
+                        {category.label}
+                        {category.required && <Text style={styles.requiredAsterisk}> *</Text>}
+                      </Text>
+                      <Text style={styles.photoCategoryDescription}>{category.description}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.photoCategoryCount}>
+                    <Text style={[
+                      styles.photoCategoryCountText,
+                      isComplete && styles.photoCategoryCountComplete,
+                      isRequired && styles.photoCategoryCountRequired
+                    ]}>
+                      {currentCount}/{category.maxCount}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.categoryUploadButton,
+                    isComplete && styles.categoryUploadButtonDisabled,
+                    isRequired && styles.categoryUploadButtonRequired
+                  ]}
+                  onPress={() => pickImagesForCategory(category)}
+                  disabled={isComplete}
+                >
+                  <Ionicons 
+                    name={isComplete ? "checkmark-circle" : "camera"} 
+                    size={20} 
+                    color={isComplete ? TossColors.success : 
+                           isRequired ? TossColors.error : TossColors.primary} 
+                  />
+                  <Text style={[
+                    styles.categoryUploadButtonText,
+                    isComplete && styles.categoryUploadButtonTextDisabled,
+                    isRequired && styles.categoryUploadButtonTextRequired
+                  ]}>
+                    {isComplete ? '업로드 완료' : 
+                     currentCount === 0 ? `${category.label} 추가` : 
+                     `${category.label} 추가 (${category.maxCount - currentCount}장 더)`}
+                  </Text>
+                </TouchableOpacity>
+
+                {categoryImages.length > 0 && (
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.categoryImagesScroll}
+                  >
+                    {categoryImages.map((image) => (
+                      <View key={image.id} style={styles.categoryImageItem}>
+                        <Image source={{ uri: image.uri }} style={styles.categoryImage} />
+                        <TouchableOpacity
+                          style={styles.categoryImageRemove}
+                          onPress={() => removeImage(image.id)}
+                        >
+                          <Ionicons name="close-circle" size={20} color={TossColors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
+              </View>
+            );
+          })}
         </View>
       )}
+
+      {/* 전체 업로드 현황 요약 */}
+      <View style={styles.photoSummaryContainer}>
+        <Text style={styles.photoSummaryTitle}>업로드 현황</Text>
+        <View style={styles.photoSummaryStats}>
+          <Text style={styles.photoSummaryText}>
+            총 {eventData.images.length}장 업로드됨
+          </Text>
+          {eventData.type === 'wedding' && (
+            <Text style={styles.photoSummaryDetail}>
+              메인 {getCategoryImageCount('main')}/5, 
+              갤러리 {getCategoryImageCount('gallery')}/10, 
+              신랑 {getCategoryImageCount('groom')}/1, 
+              신부 {getCategoryImageCount('bride')}/1
+            </Text>
+          )}
+        </View>
+      </View>
     </Animated.View>
   );
 
@@ -1492,13 +1794,15 @@ export default function CreateEventScreen({ navigation, route }) {
               <Text style={styles.templateName}>{template.name}</Text>
               <Text style={styles.templateDescription}>{template.description}</Text>
               
-              <View style={styles.templateFeatures}>
-                {template.features.map((feature, index) => (
-                  <View key={index} style={styles.templateFeature}>
-                    <Text style={styles.templateFeatureText}>{feature}</Text>
-                  </View>
-                ))}
-              </View>
+              {template.features && (
+                <View style={styles.templateFeatures}>
+                  {template.features.map((feature, index) => (
+                    <View key={index} style={styles.templateFeature}>
+                      <Text style={styles.templateFeatureText}>{feature}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
             
             <TouchableOpacity
@@ -1649,71 +1953,6 @@ export default function CreateEventScreen({ navigation, route }) {
           onClose={() => setShowAddressSearch(false)}
         />
 
-        {/* 사진 카테고리 선택 모달 */}
-        <Modal
-          visible={showCategorySelector}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setShowCategorySelector(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.categoryModal}>
-              <View style={styles.categoryModalHeader}>
-                <Text style={styles.categoryModalTitle}>사진 용도 선택</Text>
-                <TouchableOpacity
-                  style={styles.categoryModalClose}
-                  onPress={() => setShowCategorySelector(false)}
-                >
-                  <Ionicons name="close" size={24} color={TossColors.textSecondary} />
-                </TouchableOpacity>
-              </View>
-              
-              <Text style={styles.categoryModalSubtitle}>
-                이 사진을 어떤 용도로 사용하시겠어요?
-              </Text>
-              
-              <ScrollView style={styles.categoryList}>
-                {getCurrentPhotoCategories().map((category) => {
-                  const currentCount = getCategoryStats()[category.key] || 0;
-                  const isDisabled = category.key !== 'gallery' && currentCount >= 1;
-                  
-                  return (
-                    <TouchableOpacity
-                      key={category.key}
-                      style={[
-                        styles.categoryItem,
-                        isDisabled && styles.categoryItemDisabled
-                      ]}
-                      onPress={() => !isDisabled && handleCategorySelect(category)}
-                      disabled={isDisabled}
-                    >
-                      <View style={styles.categoryItemContent}>
-                        <Text style={styles.categoryItemIcon}>{category.icon}</Text>
-                        <View style={styles.categoryItemText}>
-                          <Text style={[
-                            styles.categoryItemLabel,
-                            isDisabled && styles.categoryItemLabelDisabled
-                          ]}>
-                            {category.label}
-                          </Text>
-                          {isDisabled && (
-                            <Text style={styles.categoryItemDisabledText}>
-                              이미 설정되어 있어요
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                      {!isDisabled && (
-                        <Ionicons name="chevron-forward" size={20} color={TossColors.textSecondary} />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
-
         {/* 템플릿 미리보기 모달 */}
         <Modal
           visible={showTemplatePreview}
@@ -1740,6 +1979,7 @@ export default function CreateEventScreen({ navigation, route }) {
                 template={previewTemplate}
                 eventData={eventData}
                 userImages={eventData.images}
+                categorizedImages={getCategorizedImages()}
               />
             )}
           </View>
@@ -1966,67 +2206,146 @@ const styles = StyleSheet.create({
     color: TossColors.text,
   },
   
-  // 사진 업로드
-  uploadButton: {
+  // 카테고리별 사진 업로드 스타일
+  photoCategoriesContainer: {
+    gap: 20,
+  },
+  photoCategorySection: {
     backgroundColor: TossColors.surface,
     borderRadius: 12,
-    paddingVertical: 20,
-    borderWidth: 2,
+    padding: 16,
+    borderWidth: 1,
     borderColor: TossColors.border,
-    borderStyle: 'dashed',
   },
-  uploadButtonContent: {
+  photoCategoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  photoCategoryInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  photoCategoryIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  photoCategoryTextContainer: {
+    flex: 1,
+  },
+  photoCategoryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: TossColors.text,
+    marginBottom: 2,
+  },
+  photoCategoryTitleRequired: {
+    color: TossColors.error,
+  },
+  requiredAsterisk: {
+    color: TossColors.error,
+  },
+  photoCategoryDescription: {
+    fontSize: 13,
+    color: TossColors.textSecondary,
+    lineHeight: 18,
+  },
+  photoCategoryCount: {
+    backgroundColor: TossColors.border,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  photoCategoryCountText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: TossColors.textSecondary,
+  },
+  photoCategoryCountComplete: {
+    backgroundColor: TossColors.success + '20',
+    color: TossColors.success,
+  },
+  photoCategoryCountRequired: {
+    backgroundColor: TossColors.error + '20',
+    color: TossColors.error,
+  },
+  categoryUploadButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: TossColors.surface,
+    borderRadius: 8,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: TossColors.primary,
+    marginBottom: 12,
   },
-  uploadButtonText: {
-    fontSize: 16,
+  categoryUploadButtonRequired: {
+    borderColor: TossColors.error,
+    backgroundColor: TossColors.error + '10',
+  },
+  categoryUploadButtonDisabled: {
+    borderColor: TossColors.success,
+    backgroundColor: TossColors.success + '10',
+  },
+  categoryUploadButtonText: {
+    fontSize: 14,
     fontWeight: '600',
     color: TossColors.primary,
     marginLeft: 8,
   },
-  
-  // 업로드된 사진
-  uploadedImagesContainer: {
-    marginTop: 20,
+  categoryUploadButtonTextRequired: {
+    color: TossColors.error,
   },
-  uploadedImagesTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: TossColors.text,
-    marginBottom: 12,
+  categoryUploadButtonTextDisabled: {
+    color: TossColors.success,
   },
-  uploadedImagesScroll: {
+  categoryImagesScroll: {
     marginHorizontal: -4,
   },
-  uploadedImageItem: {
+  categoryImageItem: {
     position: 'relative',
     marginHorizontal: 4,
   },
-  uploadedImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
+  categoryImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
     backgroundColor: TossColors.border,
   },
-  uploadedImageCategory: {
-    position: 'absolute',
-    bottom: 4,
-    left: 4,
-    backgroundColor: TossColors.primary,
-    borderRadius: 8,
-    padding: 4,
-  },
-  uploadedImageCategoryText: {
-    fontSize: 10,
-  },
-  uploadedImageRemove: {
+  categoryImageRemove: {
     position: 'absolute',
     top: -6,
     right: -6,
     backgroundColor: TossColors.background,
     borderRadius: 10,
+  },
+  
+  // 사진 업로드 요약
+  photoSummaryContainer: {
+    backgroundColor: TossColors.secondary,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+  },
+  photoSummaryTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TossColors.text,
+    marginBottom: 8,
+  },
+  photoSummaryStats: {
+    gap: 4,
+  },
+  photoSummaryText: {
+    fontSize: 14,
+    color: TossColors.textSecondary,
+  },
+  photoSummaryDetail: {
+    fontSize: 12,
+    color: TossColors.textTertiary,
   },
   
   // 축의금 설정 - 토스 스타일
@@ -2461,81 +2780,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   
-  // 모달
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: TossColors.overlay,
-    justifyContent: 'flex-end',
-  },
-  categoryModal: {
-    backgroundColor: TossColors.background,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: height * 0.7,
-    overflow: 'hidden',
-  },
-  categoryModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: TossColors.border,
-  },
-  categoryModalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: TossColors.text,
-  },
-  categoryModalClose: {
-    padding: 4,
-  },
-  categoryModalSubtitle: {
-    fontSize: 14,
-    color: TossColors.textSecondary,
-    padding: 20,
-    paddingBottom: 0,
-  },
-  categoryList: {
-    maxHeight: 400,
-  },
-  categoryItem: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: TossColors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  categoryItemDisabled: {
-    opacity: 0.5,
-  },
-  categoryItemContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  categoryItemIcon: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  categoryItemText: {
-    flex: 1,
-  },
-  categoryItemLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: TossColors.text,
-  },
-  categoryItemLabelDisabled: {
-    color: TossColors.textSecondary,
-  },
-  categoryItemDisabledText: {
-    fontSize: 12,
-    color: TossColors.error,
-    marginTop: 4,
-  },
-  
   // 미리보기 모달
   previewModalContainer: {
     flex: 1,
@@ -2565,6 +2809,48 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 1000,
   },
+  
+  // 디버깅 스타일
+  debugContainer: {
+    backgroundColor: '#FFE4E1',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FFB4B4',
+  },
+  debugTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#D32F2F',
+    marginBottom: 8,
+  },
+  debugImageItem: {
+    marginRight: 12,
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    padding: 8,
+    width: 100,
+  },
+  debugImageText: {
+    fontSize: 10,
+    color: '#666',
+    marginBottom: 2,
+  },
+  debugImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 6,
+    backgroundColor: '#F0F0F0',
+  },
+  debugSummary: {
+    fontSize: 12,
+    color: '#D32F2F',
+    marginTop: 8,
+    fontWeight: '600',
+  },
+  
   previewModalSelectText: {
     fontSize: 16,
     fontWeight: '600',

@@ -1,4 +1,4 @@
-// src/screens/event/templates/WeddingTemplatePreview.js - 실시간 카운트다운 & 달력 기능 포함
+// src/screens/event/templates/WeddingTemplatePreview.js - 카테고리별 이미지 올바른 사용 버전
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -35,6 +35,17 @@ const defaultImages = [
   require('../../../../assets/images/aa1.png'),
   require('../../../../assets/images/aa2.png'), 
   require('../../../../assets/images/aa3.png'), 
+  require('../../../../assets/images/aa1.png'),
+  require('../../../../assets/images/aa2.png'), 
+  require('../../../../assets/images/aa3.png'), 
+  require('../../../../assets/images/aa1.png'), 
+  require('../../../../assets/images/aa2.png'), 
+  require('../../../../assets/images/aa3.png'), 
+  require('../../../../assets/images/aa1.png'),
+  require('../../../../assets/images/aa2.png'), 
+  require('../../../../assets/images/aa3.png'), 
+  require('../../../../assets/images/aa1.png'), 
+  require('../../../../assets/images/aa2.png'), 
 ];
 
 // 한국 전통 색상 팔레트
@@ -237,6 +248,76 @@ const getCalendarDataForDate = (date) => {
     days: [...prevDays, ...currentDays, ...nextDays],
     targetDate: date,
     today: today
+  };
+};
+
+// 이미지 처리 유틸리티 함수들
+const processImageArray = (images, defaultFallback = []) => {
+  if (!images || !Array.isArray(images) || images.length === 0) {
+    return defaultFallback;
+  }
+  
+  return images.map(img => {
+    if (typeof img === 'string') {
+      return { uri: img };
+    } else if (img && img.uri) {
+      return img;
+    } else if (typeof img === 'object' && !img.uri) {
+      return img; // 이미 require()된 이미지
+    }
+    return defaultFallback[0] || require('../../../../assets/images/aa1.png');
+  });
+};
+
+// 카테고리별 이미지 안전하게 가져오기
+const getCategorizedImagesSafe = (categorizedImages, userImages = []) => {
+
+  // categorizedImages가 이미 객체 형태로 전달된 경우
+  if (categorizedImages && typeof categorizedImages === 'object') {
+    const safe = {
+      main: processImageArray(categorizedImages.main, defaultImages.slice(0, 5)),
+      gallery: processImageArray(categorizedImages.gallery, defaultImages.slice(5, 15)),
+      groom: processImageArray(categorizedImages.groom, [defaultImages[0]]),
+      bride: processImageArray(categorizedImages.bride, [defaultImages[1]]),
+      all: processImageArray(categorizedImages.all || userImages, defaultImages)
+    };
+    
+    return safe;
+  }
+
+  // categorizedImages가 없으면 userImages로부터 추출 시도
+  if (userImages && Array.isArray(userImages) && userImages.length > 0) {
+    console.log('🔍 [TEMPLATE DEBUG] userImages에서 카테고리별로 분류 시도');
+    
+    const mainImages = userImages.filter(img => img.category === 'main');
+    const galleryImages = userImages.filter(img => img.category === 'gallery');
+    const groomImages = userImages.filter(img => img.category === 'groom');
+    const brideImages = userImages.filter(img => img.category === 'bride');
+    
+    console.log('🔍 [TEMPLATE DEBUG] 분류 결과:', {
+      main: mainImages.length,
+      gallery: galleryImages.length,
+      groom: groomImages.length,
+      bride: brideImages.length
+    });
+    
+    return {
+      main: processImageArray(mainImages, defaultImages.slice(0, 5)),
+      gallery: processImageArray(galleryImages, defaultImages.slice(5, 15)),
+      groom: processImageArray(groomImages, [defaultImages[0]]),
+      bride: processImageArray(brideImages, [defaultImages[1]]),
+      all: processImageArray(userImages, defaultImages)
+    };
+  }
+
+  // 기본값 반환
+  console.log('🔍 [TEMPLATE DEBUG] 기본값 사용');
+  return {
+    main: defaultImages.slice(0, 5),
+    gallery: defaultImages.slice(5, 15),
+    groom: [defaultImages[0]],
+    bride: [defaultImages[1]],
+    all: defaultImages
   };
 };
 
@@ -1003,6 +1084,95 @@ const ImageViewer = ({ visible, images = [], currentIndex, onClose, onIndexChang
   );
 };
 
+// 메인 슬라이드쇼 컴포넌트 (5장까지)
+const MainPhotoSlideshow = ({ images = [], style, onImagePress, template = 'modern' }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const intervalRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const isChangingRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // 메인사진은 최대 5장까지만 사용
+  const mainImages = images && images.length > 0 ? images.slice(0, 5) : defaultImages.slice(0, 5);
+
+  useEffect(() => {
+    if (mainImages.length > 1) {
+      intervalRef.current = setInterval(() => {
+        if (!isMountedRef.current || isChangingRef.current) return;
+        
+        isChangingRef.current = true;
+        
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start((finished) => {
+          if (finished && isMountedRef.current) {
+            requestAnimationFrame(() => {
+              if (isMountedRef.current) {
+                setCurrentIndex((prev) => (prev + 1) % mainImages.length);
+                // 이미지 변경 후 바로 다시 페이드인
+                setTimeout(() => {
+                  if (isMountedRef.current) {
+                    Animated.timing(fadeAnim, {
+                      toValue: 1,
+                      duration: 300,
+                      useNativeDriver: true,
+                    }).start(() => {
+                      isChangingRef.current = false;
+                    });
+                  }
+                }, 50);
+              }
+            });
+          }
+        });
+      }, 3000);
+
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+        }
+      };
+    }
+  }, [mainImages.length, fadeAnim]);
+
+  return (
+    <TouchableOpacity 
+      style={[styles.mainPhotoSlideshow, style]}
+      onPress={() => onImagePress && onImagePress(currentIndex)}
+    >
+      <Animated.View style={{ opacity: fadeAnim }}>
+        <Image 
+          source={mainImages[currentIndex] || mainImages[0] || defaultImages[0]}
+          style={styles.mainPhotoImage}
+          resizeMode="cover"
+        />
+      </Animated.View>
+      
+      {/* 인디케이터 */}
+      <View style={styles.mainPhotoIndicators}>
+        {mainImages.map((_, index) => (
+          <View 
+            key={index}
+            style={[
+              styles.mainPhotoIndicator,
+              { opacity: index === currentIndex ? 1 : 0.3 }
+            ]}
+          />
+        ))}
+      </View>
+    </TouchableOpacity>
+  );
+};
+
 // 사진 갤러리 컴포넌트
 const PhotoGallery = ({ images = [], style, onImagePress, autoSlide = false, template = 'modern' }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -1084,38 +1254,13 @@ const PhotoGallery = ({ images = [], style, onImagePress, autoSlide = false, tem
     );
   }
 
-  const getSlideStyle = () => {
-    switch (template) {
-      case 'romantic':
-        return {
-          transform: [{
-            scale: fadeAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [1.1, 1]
-            })
-          }]
-        };
-      case 'vintage':
-        return {
-          transform: [{
-            rotateY: fadeAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: ['15deg', '0deg']
-            })
-          }]
-        };
-      default:
-        return {};
-    }
-  };
-
   if (autoSlide) {
     return (
       <TouchableOpacity 
         style={[styles.galleryAutoSlide, style]}
         onPress={() => onImagePress && onImagePress(currentIndex)}
       >
-        <Animated.View style={[{ opacity: fadeAnim }, getSlideStyle()]}>
+        <Animated.View style={{ opacity: fadeAnim }}>
           <Image 
             source={images[currentIndex] || images[0] || defaultImages[0]}
             style={styles.galleryAutoSlideImage}
@@ -1166,9 +1311,9 @@ const PhotoGallery = ({ images = [], style, onImagePress, autoSlide = false, tem
 };
 
 // =================================================================
-// 템플릿 1: 모던 다크 디자인 - 실시간 카운트다운 & 달력 포함 (한국어 버전)
+// 템플릿 1: 모던 다크 디자인 - 카테고리별 이미지 올바른 사용
 // =================================================================
-const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
+const ModernDarkTemplate = ({ eventData = {}, categorizedImages = {} }) => {
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
@@ -1186,8 +1331,8 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
     eventData.ceremonyTime || eventData.ceremony_time
   );
 
-  // 이미지 배열 안전성 확보
-  const safeImages = images && Array.isArray(images) && images.length > 0 ? images : defaultImages;
+  // 카테고리별 이미지 안전하게 가져오기
+  const safeImages = getCategorizedImagesSafe(categorizedImages);
 
   useEffect(() => {
     // Hero entrance animation
@@ -1300,11 +1445,21 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
       <FloatingHearts />
       
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Hero Section */}
-        <LinearGradient 
-          colors={['#0a0a0a', '#1a1a2e', '#16213e', '#0f3460']} 
-          style={styles.modern_heroSection}
-        >
+        {/* Hero Section with Main Photo */}
+        <View style={styles.modern_heroSection}>
+          {/* 메인 사진 슬라이드쇼 */}
+          <MainPhotoSlideshow 
+            images={safeImages.main}
+            style={styles.modern_mainPhotoContainer}
+            onImagePress={handleImagePress}
+            template="modern"
+          />
+          
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.9)']}
+            style={styles.modern_heroOverlay}
+          />
+
           {/* Animated background elements */}
           <Animated.View 
             style={[
@@ -1414,7 +1569,7 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
               {formatTime(eventData.ceremonyTime || eventData.ceremony_time, { defaultTime: '오후 2시' })}
             </Text>
           </Animated.View>
-        </LinearGradient>
+        </View>
 
         {/* 실시간 카운트다운 & 달력 섹션 */}
         <LinearGradient 
@@ -1465,7 +1620,7 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
           </Animated.View>
         </LinearGradient>
 
-        {/* 전체 사진 갤러리 */}
+        {/* 갤러리 사진 섹션 (신랑/신부 사진 제외) */}
         <View style={styles.modern_gallerySection}>
           <Animated.View 
             style={[
@@ -1492,7 +1647,7 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
                 }
               ]}
             >
-              우리의 이야기
+              갤러리
             </Animated.Text>
             <Animated.Text 
               style={[
@@ -1505,20 +1660,20 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
                 }
               ]}
             >
-              함께 걸어온 소중한 시간들
+              소중한 추억들을 모아두었습니다
             </Animated.Text>
             
             <PhotoGallery 
-              images={images}
+              images={safeImages.gallery}
               style={styles.modern_photoGallery}
-              onImagePress={handleImagePress}
+              onImagePress={(index) => handleImagePress(safeImages.main.length + index)}
               autoSlide={true}
               template="modern"
             />
             
-            {/* 추가 사진들 그리드 */}
+            {/* 갤러리 사진들 그리드 */}
             <View style={styles.modern_photoGrid}>
-              {safeImages && safeImages.length > 0 && safeImages.slice(0, 6).map((image, index) => (
+              {safeImages.gallery && safeImages.gallery.length > 0 && safeImages.gallery.map((image, index) => (
                 <Animated.View
                   key={index}
                   style={[
@@ -1534,7 +1689,7 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
                     }
                   ]}
                 >
-                  <TouchableOpacity onPress={() => handleImagePress(index)}>
+                  <TouchableOpacity onPress={() => handleImagePress(safeImages.main.length + index)}>
                     <Image 
                       source={image}
                       style={styles.modern_photoGridImage}
@@ -1633,10 +1788,10 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
                   sub: eventData.detailedAddress || eventData.detailed_address || '그랜드볼룸 (5층)'
                 },
                 {
-                  icon: '📍',
-                  title: '주소',
-                  main: '서울특별시 중구',
-                  sub: '소공로 119'
+                  icon: '🚗',
+                  title: '주차 안내',
+                  main: eventData.parkingInfo || eventData.parking_info || '주차 가능',
+                  sub: '자세한 사항은 연락처로 문의해주세요'
                 }
               ].map((detail, index) => (
                 <Animated.View 
@@ -1669,7 +1824,7 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
           </Animated.View>
         </LinearGradient>
 
-        {/* 커플 소개 */}
+        {/* 커플 소개 - 신랑/신부 전용 사진 사용 */}
         <View style={styles.modern_coupleSection}>
           <Animated.View 
             style={[
@@ -1702,18 +1857,16 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
             <View style={styles.modern_coupleGrid}>
               {[
                 {
-                  image: (safeImages && safeImages[1]) || (safeImages && safeImages[0]) || defaultImages[0],
+                  image: safeImages.groom[0], // 신랑 전용 사진
                   name: eventData.groomName || eventData.groom_name || '재현',
                   role: '신랑',
                   parents: `${eventData.groomFatherName || eventData.groom_father_name || '김○○'} · ${eventData.groomMotherName || eventData.groom_mother_name || '이○○'}의 장남`,
-                  message: `"${eventData.brideName || eventData.bride_name || '민지'}와 함께 만들어갈 우리의 미래가 기대됩니다."`
                 },
                 {
-                  image: (safeImages && safeImages[2]) || (safeImages && safeImages[0]) || defaultImages[0],
+                  image: safeImages.bride[0], // 신부 전용 사진
                   name: eventData.brideName || eventData.bride_name || '민지',
                   role: '신부',
                   parents: `${eventData.brideFatherName || eventData.bride_father_name || '박○○'} · ${eventData.brideMotherName || eventData.bride_mother_name || '최○○'}의 차녀`,
-                  message: `"${eventData.groomName || eventData.groom_name || '재현'}과 함께 사랑이 가득한 가정을 만들어가겠습니다."`
                 }
               ].map((person, index) => (
                 <Animated.View 
@@ -1747,7 +1900,6 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
                   <Text style={styles.modern_coupleName}>{person.name}</Text>
                   <Text style={styles.modern_coupleRole}>{person.role}</Text>
                   <Text style={styles.modern_coupleParents}>{person.parents}</Text>
-                  <Text style={styles.modern_coupleMessage}>{person.message}</Text>
                 </Animated.View>
               ))}
             </View>
@@ -1932,7 +2084,7 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
 
       <ImageViewer 
         visible={showImageViewer}
-        images={images}
+        images={[...safeImages.main, ...safeImages.gallery]}
         currentIndex={currentImageIndex}
         onClose={() => setShowImageViewer(false)}
         onIndexChange={setCurrentImageIndex}
@@ -1942,9 +2094,9 @@ const ModernDarkTemplate = ({ eventData = {}, images = [] }) => {
 };
 
 // =================================================================
-// 템플릿 2: 한국 전통 웨딩 디자인 - 카운트다운 & 달력 포함
+// 템플릿 2: 한국 전통 웨딩 디자인 - 카테고리별 이미지 올바른 사용
 // =================================================================
-const KoreanElegantTemplate = ({ eventData = {}, images = [] }) => {
+const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
@@ -1958,8 +2110,15 @@ const KoreanElegantTemplate = ({ eventData = {}, images = [] }) => {
     eventData.ceremonyTime || eventData.ceremony_time
   );
   
-  // 이미지 배열 안전성 확보
-  const safeImages = images && Array.isArray(images) && images.length > 0 ? images : defaultImages;
+  // 카테고리별 이미지 안전하게 가져오기
+  const safeImages = getCategorizedImagesSafe(categorizedImages);
+  
+  console.log('🔍 [KOREAN TEMPLATE] 사용할 이미지들:', {
+    main: safeImages.main.length,
+    gallery: safeImages.gallery.length,
+    groom: safeImages.groom.length,
+    bride: safeImages.bride.length
+  });
   
   useEffect(() => {
     // 순차적 페이드인 애니메이션
@@ -2030,7 +2189,7 @@ const KoreanElegantTemplate = ({ eventData = {}, images = [] }) => {
         )}
         scrollEventThrottle={16}
       >
-        {/* 메인 헤더 섹션 */}
+        {/* 메인 헤더 섹션 with Main Photo */}
         <Animated.View style={[
           styles.korean_heroSection,
           {
@@ -2044,17 +2203,12 @@ const KoreanElegantTemplate = ({ eventData = {}, images = [] }) => {
           />
           
           <View style={styles.korean_heroContent}>
-            <View style={styles.korean_mainPhotoContainer}>
-              <Image
-                source={safeImages[0]}
-                style={styles.korean_mainPhoto}
-                resizeMode="cover"
-              />
-              <LinearGradient
-                colors={['transparent', 'rgba(0,0,0,0.3)']}
-                style={styles.korean_photoGradient}
-              />
-            </View>
+            <MainPhotoSlideshow 
+              images={safeImages.main}
+              style={styles.korean_mainPhotoContainer}
+              onImagePress={handleImagePress}
+              template="romantic"
+            />
 
             <View style={styles.korean_namesContainer}>
               <Text style={styles.korean_groomName}>{eventData.groomName || eventData.groom_name || '신랑'}</Text>
@@ -2125,7 +2279,7 @@ const KoreanElegantTemplate = ({ eventData = {}, images = [] }) => {
           </Text>
         </Animated.View>
 
-        {/* 신랑신부 소개 */}
+        {/* 신랑신부 소개 - 신랑/신부 전용 사진 사용 */}
         <Animated.View style={[
           styles.korean_coupleSection,
           {
@@ -2144,7 +2298,7 @@ const KoreanElegantTemplate = ({ eventData = {}, images = [] }) => {
             <View style={styles.korean_personCard}>
               <View style={styles.korean_personPhotoContainer}>
                 <Image
-                  source={safeImages[1] || safeImages[0]}
+                  source={safeImages.groom[0]} // 신랑 전용 사진
                   style={styles.korean_personPhoto}
                 />
               </View>
@@ -2166,7 +2320,7 @@ const KoreanElegantTemplate = ({ eventData = {}, images = [] }) => {
             <View style={styles.korean_personCard}>
               <View style={styles.korean_personPhotoContainer}>
                 <Image
-                  source={safeImages[2] || safeImages[0]}
+                  source={safeImages.bride[0]} // 신부 전용 사진
                   style={styles.korean_personPhoto}
                 />
               </View>
@@ -2242,7 +2396,7 @@ const KoreanElegantTemplate = ({ eventData = {}, images = [] }) => {
           </View>
         </Animated.View>
 
-        {/* 갤러리 섹션 */}
+        {/* 갤러리 섹션 - 갤러리 전용 사진 사용 */}
         <Animated.View style={[
           styles.korean_gallerySection,
           {
@@ -2261,8 +2415,8 @@ const KoreanElegantTemplate = ({ eventData = {}, images = [] }) => {
             showsHorizontalScrollIndicator={false}
             style={styles.korean_galleryScroll}
           >
-            {safeImages.map((image, index) => (
-              <TouchableOpacity key={index} style={styles.korean_galleryItem} onPress={() => handleImagePress(index)}>
+            {safeImages.gallery.map((image, index) => (
+              <TouchableOpacity key={index} style={styles.korean_galleryItem} onPress={() => handleImagePress(safeImages.main.length + index)}>
                 <Image source={image} style={styles.korean_galleryImage} />
               </TouchableOpacity>
             ))}
@@ -2379,7 +2533,7 @@ const KoreanElegantTemplate = ({ eventData = {}, images = [] }) => {
 
       <ImageViewer 
         visible={showImageViewer}
-        images={images}
+        images={[...safeImages.main, ...safeImages.gallery]}
         currentIndex={currentImageIndex}
         onClose={() => setShowImageViewer(false)}
         onIndexChange={setCurrentImageIndex}
@@ -2389,9 +2543,9 @@ const KoreanElegantTemplate = ({ eventData = {}, images = [] }) => {
 };
 
 // =================================================================
-// 템플릿 3: 빈티지 앱 디자인 - 카운트다운 & 달력 포함
+// 템플릿 3: 빈티지 앱 디자인 - 카테고리별 이미지 올바른 사용
 // =================================================================
-const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
+const VintageAppTemplate = ({ eventData = {}, categorizedImages = {} }) => {
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
@@ -2408,8 +2562,15 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
     eventData.ceremonyTime || eventData.ceremony_time
   );
 
-  // 이미지 배열 안전성 확보
-  const safeImages = images && Array.isArray(images) && images.length > 0 ? images : defaultImages;
+  // 카테고리별 이미지 안전하게 가져오기
+  const safeImages = getCategorizedImagesSafe(categorizedImages);
+  
+  console.log('🔍 [VINTAGE TEMPLATE] 사용할 이미지들:', {
+    main: safeImages.main.length,
+    gallery: safeImages.gallery.length,
+    groom: safeImages.groom.length,
+    bride: safeImages.bride.length
+  });
 
   useEffect(() => {
     // App loading animation
@@ -2508,12 +2669,15 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
       </View>
 
       <ScrollView style={styles.app_scrollContainer} showsVerticalScrollIndicator={false}>
-        {/* Hero Section */}
-        <ImageBackground 
-          source={(safeImages && safeImages[0]) || defaultImages[0]}
-          style={styles.app_heroSection}
-          resizeMode="cover"
-        >
+        {/* Hero Section with Main Photo */}
+        <View style={styles.app_heroSection}>
+          <MainPhotoSlideshow 
+            images={safeImages.main}
+            style={styles.app_mainPhotoContainer}
+            onImagePress={handleImagePress}
+            template="vintage"
+          />
+          
           <LinearGradient
             colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.6)']}
             style={StyleSheet.absoluteFill}
@@ -2609,7 +2773,7 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
           >
             ↓ 아래로 스크롤해주세요
           </Animated.Text>
-        </ImageBackground>
+        </View>
 
         {/* 카운트다운 & 달력 섹션 추가 */}
         <LinearGradient 
@@ -2649,71 +2813,7 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
           </Animated.View>
         </LinearGradient>
 
-        {/* 타임라인 스타일 스토리 섹션 */}
-        <LinearGradient 
-          colors={['#ffffff', '#f8f9fa']} 
-          style={styles.app_timelineSection}
-        >
-          <Animated.View 
-            style={[
-              styles.app_sectionContent,
-              {
-                opacity: cardAnims[1],
-                transform: [{
-                  translateY: cardAnims[1].interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0]
-                  })
-                }]
-              }
-            ]}
-          >
-            <Text style={styles.app_sectionTitle}>우리의 이야기</Text>
-            <Text style={styles.app_sectionSubtitle}>함께 걸어온 사랑의 이야기</Text>
-            
-            <View style={styles.app_timeline}>
-              {[
-                { year: '2020', title: '첫 만남', description: '운명처럼 마주친 그 순간', image: images && images[0] },
-                { year: '2022', title: '연인이 되다', description: '서로에게 빠져든 특별한 시간', image: images && images[1] || images && images[0] },
-                { year: '2023', title: '프로포즈', description: '영원을 약속한 그 날', image: images && images[2] || images && images[0] },
-                { year: '2024', title: '결혼식', description: '새로운 시작을 함께하는 날', image: images && images[3] || images && images[0] },
-              ].map((item, index) => (
-                <Animated.View 
-                  key={index}
-                  style={[
-                    styles.app_timelineItem,
-                    {
-                      opacity: getSafeAnimValue(cardAnims, 2 + index),
-                      transform: [{
-                        translateX: getSafeAnimValue(cardAnims, 2 + index).interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [index % 2 === 0 ? -50 : 50, 0]
-                        })
-                      }]
-                    }
-                  ]}
-                >
-                  <View style={styles.app_timelineContent}>
-                    <Text style={styles.app_timelineYear}>{item.year}</Text>
-                    <Text style={styles.app_timelineTitle}>{item.title}</Text>
-                    <Text style={styles.app_timelineDescription}>{item.description}</Text>
-                  </View>
-                  {item.image && (
-                    <TouchableOpacity onPress={() => handleImagePress(index)}>
-                      <Image 
-                        source={item.image}
-                        style={styles.app_timelineImage}
-                        resizeMode="cover"
-                      />
-                    </TouchableOpacity>
-                  )}
-                </Animated.View>
-              ))}
-            </View>
-          </Animated.View>
-        </LinearGradient>
-
-        {/* 전체 갤러리 섹션 */}
+        {/* 갤러리 섹션 - 갤러리 전용 사진 사용 */}
         <View style={styles.app_gallerySection}>
           <Animated.View 
             style={[
@@ -2733,9 +2833,9 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
             <Text style={styles.app_sectionSubtitle}>소중한 추억들을 모아두었습니다</Text>
             
             <PhotoGallery 
-              images={images}
+              images={safeImages.gallery.slice(0, 6)}
               style={styles.app_photoGallery}
-              onImagePress={handleImagePress}
+              onImagePress={(index) => handleImagePress(safeImages.main.length + index)}
               autoSlide={false}
               template="vintage"
             />
@@ -2743,7 +2843,7 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
             {/* 사진 마사지 레이아웃 */}
             <View style={styles.app_photoMasonry}>
               <View style={styles.app_photoColumn}>
-                {safeImages && safeImages.length > 0 && safeImages.slice(0, Math.ceil(safeImages.length / 2)).map((image, index) => (
+                {safeImages.gallery && safeImages.gallery.length > 0 && safeImages.gallery.slice(0, Math.ceil(safeImages.gallery.length / 2)).map((image, index) => (
                   <Animated.View
                     key={index}
                     style={[
@@ -2758,7 +2858,7 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
                       }
                     ]}
                   >
-                    <TouchableOpacity onPress={() => handleImagePress(index)}>
+                    <TouchableOpacity onPress={() => handleImagePress(safeImages.main.length + index)}>
                       <Image 
                         source={image}
                         style={[
@@ -2772,14 +2872,14 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
                 ))}
               </View>
               <View style={styles.app_photoColumn}>
-                {safeImages && safeImages.length > 0 && safeImages.slice(Math.ceil(safeImages.length / 2)).map((image, index) => (
+                {safeImages.gallery && safeImages.gallery.length > 0 && safeImages.gallery.slice(Math.ceil(safeImages.gallery.length / 2)).map((image, index) => (
                   <Animated.View
                     key={index}
                     style={[
                       {
-                        opacity: getSafeAnimValue(cardAnims, 7 + Math.ceil(safeImages.length / 2) + index),
+                        opacity: getSafeAnimValue(cardAnims, 7 + Math.ceil(safeImages.gallery.length / 2) + index),
                         transform: [{
-                          scale: getSafeAnimValue(cardAnims, 7 + Math.ceil(safeImages.length / 2) + index).interpolate({
+                          scale: getSafeAnimValue(cardAnims, 7 + Math.ceil(safeImages.gallery.length / 2) + index).interpolate({
                             inputRange: [0, 1],
                             outputRange: [0.8, 1]
                           })
@@ -2787,7 +2887,7 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
                       }
                     ]}
                   >
-                    <TouchableOpacity onPress={() => handleImagePress(Math.ceil(safeImages.length / 2) + index)}>
+                    <TouchableOpacity onPress={() => handleImagePress(safeImages.main.length + Math.ceil(safeImages.gallery.length / 2) + index)}>
                       <Image 
                         source={image}
                         style={[
@@ -2882,7 +2982,7 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
           </Animated.View>
         </LinearGradient>
 
-        {/* 커플 소개 섹션 */}
+        {/* 커플 소개 섹션 - 신랑/신부 전용 사진 사용 */}
         <View style={styles.app_coupleSection}>
           <Animated.View 
             style={[
@@ -2904,22 +3004,16 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
             <View style={styles.app_coupleCards}>
               {[
                 {
-                  image: (safeImages && safeImages[1]) || (safeImages && safeImages[0]) || defaultImages[0],
+                  image: safeImages.groom[0], // 신랑 전용 사진
                   name: eventData.groomName || eventData.groom_name || '김민수',
                   role: '신랑',
                   parents: `${eventData.groomFatherName || eventData.groom_father_name || '김○○'} · ${eventData.groomMotherName || eventData.groom_mother_name || '이○○'}의 장남`,
-                  message: `"${eventData.brideName || eventData.bride_name || '예은'}이와 함께하는 앞으로의 모든 날들이 기대됩니다. 평생 서로를 아끼고 사랑하며 살겠습니다."`,
-                  hobby: '사진 촬영, 여행',
-                  job: '소프트웨어 엔지니어'
                 },
                 {
-                  image: (safeImages && safeImages[2]) || (safeImages && safeImages[0]) || defaultImages[0],
+                  image: safeImages.bride[0], // 신부 전용 사진
                   name: eventData.brideName || eventData.bride_name || '박예은',
                   role: '신부',
                   parents: `${eventData.brideFatherName || eventData.bride_father_name || '박○○'} · ${eventData.brideMotherName || eventData.bride_mother_name || '최○○'}의 장녀`,
-                  message: `"${eventData.groomName || eventData.groom_name || '민수'}와 함께 따뜻하고 행복한 가정을 만들어나가겠습니다. 많은 축복 부탁드립니다."`,
-                  hobby: '요리, 독서',
-                  job: '그래픽 디자이너'
                 }
               ].map((person, index) => (
                 <Animated.View 
@@ -2951,10 +3045,7 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
                   </View>
                   <Text style={styles.app_coupleName}>{person.name}</Text>
                   <Text style={styles.app_coupleRole}>{person.role}</Text>
-                  <Text style={styles.app_coupleJob}>{person.job}</Text>
-                  <Text style={styles.app_coupleHobby}>취미: {person.hobby}</Text>
                   <Text style={styles.app_coupleParents}>{person.parents}</Text>
-                  <Text style={styles.app_coupleMessage}>{person.message}</Text>
                 </Animated.View>
               ))}
             </View>
@@ -3157,7 +3248,7 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
 
       <ImageViewer 
         visible={showImageViewer}
-        images={images}
+        images={[...safeImages.main, ...safeImages.gallery]}
         currentIndex={currentImageIndex}
         onClose={() => setShowImageViewer(false)}
         onIndexChange={setCurrentImageIndex}
@@ -3167,10 +3258,13 @@ const VintageAppTemplate = ({ eventData = {}, images = [] }) => {
 };
 
 // 메인 렌더링 컴포넌트
-export default function WeddingTemplatePreview({ template, eventData, userImages }) {
-  const images = (userImages && userImages.length > 0)
-    ? userImages.map(img => ({ uri: img.uri }))
-    : defaultImages;
+export default function WeddingTemplatePreview({ template, eventData, userImages, categorizedImages }) {
+  console.log('🔍 [MAIN COMPONENT] 입력 파라미터:', {
+    template: template?.style || 'undefined',
+    eventData: !!eventData,
+    userImages: userImages?.length || 0,
+    categorizedImages: !!categorizedImages
+  });
 
   // template이 undefined인 경우 대비
   if (!template || !template.style) {
@@ -3183,11 +3277,11 @@ export default function WeddingTemplatePreview({ template, eventData, userImages
 
   switch (template.style) {
     case 'modern-dark': 
-      return <ModernDarkTemplate eventData={eventData || {}} images={images} />;
+      return <ModernDarkTemplate eventData={eventData || {}} categorizedImages={categorizedImages} />;
     case 'romantic-gold': 
-      return <KoreanElegantTemplate eventData={eventData || {}} images={images} />;
+      return <KoreanElegantTemplate eventData={eventData || {}} categorizedImages={categorizedImages} />;
     case 'vintage-app': 
-      return <VintageAppTemplate eventData={eventData || {}} images={images} />;
+      return <VintageAppTemplate eventData={eventData || {}} categorizedImages={categorizedImages} />;
     default: 
       return (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -3242,7 +3336,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 20,
+    gap: 15,
   },
   countdownItem: {
     alignItems: 'center',
@@ -3276,6 +3370,108 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   
+  // 이미지 뷰어
+  imageViewerContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerClose: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    padding: 10,
+  },
+  imageViewerContent: {
+    width: '100%',
+    height: '70%',
+  },
+  imageViewerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  imageViewerIndicator: {
+    position: 'absolute',
+    bottom: 50,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  imageViewerCounter: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+
+  // 메인 포토 슬라이드쇼
+  mainPhotoSlideshow: {
+    width: '100%',
+    height: height * 0.6,
+    position: 'relative',
+  },
+  mainPhotoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  mainPhotoIndicators: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  mainPhotoIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ffffff',
+  },
+
+  // 갤러리
+  galleryAutoSlide: {
+    width: '100%',
+    height: 300,
+    borderRadius: 20,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  galleryAutoSlideImage: {
+    width: '100%',
+    height: '100%',
+  },
+  galleryAutoSlideIndicators: {
+    position: 'absolute',
+    bottom: 15,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  galleryIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ffffff',
+  },
+  galleryScroll: {
+    width: '100%',
+    height: 300,
+  },
+  galleryItem: {
+    width: width - 60,
+    height: 300,
+    marginHorizontal: 15,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  galleryItemImage: {
+    width: '100%',
+    height: '100%',
+  },
+
   // =================================================================
   // 달력 스타일
   // =================================================================
@@ -3588,81 +3784,6 @@ const styles = StyleSheet.create({
     fontSize: 8,
     marginTop: 2,
   },
-  
-  imageViewerContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imageViewerClose: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    zIndex: 10,
-    padding: 10,
-  },
-  imageViewerContent: {
-    width: '100%',
-    height: '70%',
-  },
-  imageViewerImage: {
-    width: '100%',
-    height: '100%',
-  },
-  imageViewerIndicator: {
-    position: 'absolute',
-    bottom: 50,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  imageViewerCounter: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  galleryAutoSlide: {
-    width: '100%',
-    height: 300,
-    borderRadius: 20,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  galleryAutoSlideImage: {
-    width: '100%',
-    height: '100%',
-  },
-  galleryAutoSlideIndicators: {
-    position: 'absolute',
-    bottom: 15,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  galleryIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ffffff',
-  },
-  galleryScroll: {
-    width: '100%',
-    height: 300,
-  },
-  galleryItem: {
-    width: width - 60,
-    height: 300,
-    marginHorizontal: 15,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  galleryItemImage: {
-    width: '100%',
-    height: '100%',
-  },
 
   // =================================================================
   // Modern Dark Template Styles
@@ -3673,10 +3794,22 @@ const styles = StyleSheet.create({
   },
   modern_heroSection: {
     height: height,
-    justifyContent: 'center',
-    alignItems: 'center',
     position: 'relative',
     overflow: 'hidden',
+  },
+  modern_mainPhotoContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  modern_heroOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '60%',
   },
   modern_bgCircle1: {
     position: 'absolute',
@@ -3695,6 +3828,10 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   modern_heroContent: {
+    position: 'absolute',
+    bottom: 100,
+    left: 0,
+    right: 0,
     alignItems: 'center',
     zIndex: 10,
     paddingHorizontal: 40,
@@ -3764,7 +3901,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 20,
+    gap: 15,
   },
   modern_countdownNumber: {
     fontSize: 32,
@@ -3938,13 +4075,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 15,
   },
-  modern_coupleMessage: {
-    fontSize: 14,
-    color: '#667eea',
-    textAlign: 'center',
-    fontStyle: 'italic',
-    lineHeight: 22,
-  },
   modern_contactSection: {
     paddingVertical: 80,
     paddingHorizontal: 30,
@@ -4068,7 +4198,7 @@ const styles = StyleSheet.create({
   
   // 헤로 섹션
   korean_heroSection: {
-    minHeight: height * 0.9,
+    minHeight: height,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
@@ -4078,17 +4208,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 2,
   },
-  korean_invitationLabel: {
-    fontSize: 14,
-    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-    color: KoreanColors.elegant.primary,
-    marginBottom: 30,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-  },
   korean_mainPhotoContainer: {
-    width: width * 0.8,
-    height: width * 0.8,
+    width: width * 0.9,
+    height: width * 0.9,
     borderRadius: 20,
     overflow: 'hidden',
     marginBottom: 40,
@@ -4097,17 +4219,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 20,
     elevation: 15,
-  },
-  korean_mainPhoto: {
-    width: '100%',
-    height: '100%',
-  },
-  korean_photoGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '50%',
   },
   
   // 이름 섹션
@@ -4157,6 +4268,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: KoreanColors.elegant.text,
     fontWeight: '500',
+    textAlign: 'center',
   },
   
   // 카운트다운 섹션 추가
@@ -4555,38 +4667,28 @@ const styles = StyleSheet.create({
   },
   app_heroSection: {
     height: height * 0.85,
-    justifyContent: 'center',
-    alignItems: 'center',
     position: 'relative',
     overflow: 'hidden',
+  },
+  app_mainPhotoContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   app_sparkle: {
     position: 'absolute',
     fontSize: 18,
   },
   app_heroContent: {
+    position: 'absolute',
+    bottom: 100,
+    left: 0,
+    right: 0,
     alignItems: 'center',
     zIndex: 10,
     paddingHorizontal: 40,
-  },
-  app_heroBadge: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 25,
-    marginBottom: 30,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 5,
-  },
-  app_heroBadgeText: {
-    fontSize: 12,
-    color: '#6c5ce7',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
   app_heroTitle: {
     fontFamily: Platform.OS === 'ios' ? 'Great Vibes' : 'serif',
@@ -4619,22 +4721,6 @@ const styles = StyleSheet.create({
     marginBottom: 40,
     lineHeight: 18,
   },
-  app_ctaButton: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    paddingHorizontal: 30,
-    paddingVertical: 15,
-    borderRadius: 25,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 15,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-  },
-  app_ctaButtonText: {
-    fontSize: 14,
-    color: '#6c5ce7',
-    fontWeight: '600',
-  },
   app_scrollHint: {
     position: 'absolute',
     bottom: 30,
@@ -4644,7 +4730,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   
-  // 카운트다운 섹션 추가
+  // 카운트다운 섹션
   app_countdownSection: {
     paddingVertical: 60,
     paddingHorizontal: 25,
@@ -4682,10 +4768,6 @@ const styles = StyleSheet.create({
     marginTop: 30,
   },
   
-  app_timelineSection: {
-    paddingVertical: 80,
-    paddingHorizontal: 25,
-  },
   app_sectionContent: {
     alignItems: 'center',
   },
@@ -4701,48 +4783,6 @@ const styles = StyleSheet.create({
     color: '#636e72',
     textAlign: 'center',
     marginBottom: 40,
-  },
-  app_timeline: {
-    width: '100%',
-    gap: 30,
-  },
-  app_timelineItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 20,
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 5,
-  },
-  app_timelineContent: {
-    flex: 1,
-  },
-  app_timelineYear: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#6c5ce7',
-    marginBottom: 5,
-  },
-  app_timelineTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2d3436',
-    marginBottom: 5,
-  },
-  app_timelineDescription: {
-    fontSize: 14,
-    color: '#636e72',
-    lineHeight: 20,
-  },
-  app_timelineImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 15,
   },
   app_gallerySection: {
     backgroundColor: '#ffffff',
@@ -4856,32 +4896,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: 10,
-  },
-  app_coupleJob: {
-    fontSize: 14,
-    color: '#00b894',
-    fontWeight: '500',
-    marginBottom: 5,
-  },
-  app_coupleHobby: {
-    fontSize: 13,
-    color: '#636e72',
     marginBottom: 15,
-    textAlign: 'center',
   },
   app_coupleParents: {
     fontSize: 14,
     color: '#636e72',
     textAlign: 'center',
     marginBottom: 15,
-    lineHeight: 20,
-  },
-  app_coupleMessage: {
-    fontSize: 13,
-    color: '#636e72',
-    textAlign: 'center',
-    fontStyle: 'italic',
     lineHeight: 20,
   },
   app_contactSection: {

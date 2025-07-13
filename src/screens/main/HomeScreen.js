@@ -183,24 +183,61 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     }
   };
 
-  const loadActiveEvents = async () => {
-    try {
-      console.log('📅 활성 이벤트 로드 시작');
+  // HomeScreen.js의 loadActiveEvents 함수에 디버깅 로그 추가
+
+const loadActiveEvents = async () => {
+  try {
+    console.log('📅 활성 이벤트 로드 시작');
+    
+    const result = await getActiveEvents();
+    
+    if (result.success) {
+      console.log(`✅ 활성 이벤트 로드 완료: ${result.data?.length || 0}개`);
       
-      const result = await getActiveEvents();
+      // 🔍 디버깅: 각 이벤트의 상세 정보 로그
+      result.data?.forEach((event, index) => {
+        console.log(`🎭 이벤트 ${index + 1}:`, {
+          id: event.id,
+          name: event.event_name,
+          type: event.event_type,
+          templateStyle: event.template_style,
+          imageUrls: event.image_urls?.length || 0,
+          additionalInfo: event.additional_info ? 'exists' : 'null',
+          categorizedImages: event.additional_info?.categorized_images ? 'exists' : 'null'
+        });
+        
+        // 이미지 정보 상세 로그
+        if (event.image_urls && event.image_urls.length > 0) {
+          console.log(`📸 이벤트 ${index + 1} 이미지 상세:`, 
+            event.image_urls.map(img => ({
+              category: img.category,
+              hasUri: !!img.uri
+            }))
+          );
+        }
+        
+        // additional_info 상세 로그
+        if (event.additional_info?.categorized_images) {
+          const catImages = event.additional_info.categorized_images;
+          console.log(`📁 이벤트 ${index + 1} 카테고리별 이미지:`, {
+            main: catImages.main?.length || 0,
+            gallery: catImages.gallery?.length || 0,
+            groom: catImages.groom?.length || 0,
+            bride: catImages.bride?.length || 0
+          });
+        }
+      });
       
-      if (result.success) {
-        console.log(`✅ 활성 이벤트 로드 완료: ${result.data?.length || 0}개`);
-        setActiveEvents(result.data || []);
-      } else {
-        console.error('❌ 활성 이벤트 로드 실패:', result.error);
-        setActiveEvents([]);
-      }
-    } catch (error) {
-      console.error('❌ 활성 이벤트 로드 예외:', error);
+      setActiveEvents(result.data || []);
+    } else {
+      console.error('❌ 활성 이벤트 로드 실패:', result.error);
       setActiveEvents([]);
     }
-  };
+  } catch (error) {
+    console.error('❌ 활성 이벤트 로드 예외:', error);
+    setActiveEvents([]);
+  }
+};
 
   const handleLogout = () => {
     Alert.alert(
@@ -240,11 +277,78 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     navigation.navigate('CreateEvent', { eventType });
   };
 
-  // 활성 이벤트 카드 클릭 시 전시모드로 이동
-  const handleActiveEventPress = (event) => {
-    console.log('🎭 전시모드로 이동:', event.event_name);
-    navigation.navigate('EventDisplay', { eventId: event.id });
+  // src/screens/main/HomeScreen.js - 전시모드 데이터 전달 수정
+
+// 기존 handleActiveEventPress 함수를 수정
+const handleActiveEventPress = (event) => {
+  console.log('🎭 전시모드로 이동:', event.event_name);
+  
+  // DB에서 저장된 이미지와 템플릿 정보 파싱
+  const templateStyle = event.template_style || 'modern-dark';
+  
+  // additional_info에서 카테고리별 이미지 정보 추출
+  const additionalInfo = event.additional_info || {};
+  const categorizedImages = additionalInfo.categorized_images || {};
+  
+  // image_urls에서 카테고리별로 이미지 분류 (백업 로직)
+  const imageUrls = event.image_urls || [];
+  const fallbackCategorizedImages = {
+    main: imageUrls.filter(img => img.category === 'main'),
+    gallery: imageUrls.filter(img => img.category === 'gallery'),
+    groom: imageUrls.filter(img => img.category === 'groom'),
+    bride: imageUrls.filter(img => img.category === 'bride'),
+    all: imageUrls
   };
+  
+  // 카테고리별 이미지가 없으면 fallback 사용
+  const finalCategorizedImages = Object.keys(categorizedImages).length > 0 
+    ? categorizedImages 
+    : fallbackCategorizedImages;
+  
+  console.log('🎭 전달할 데이터:', {
+    eventId: event.id,
+    templateStyle,
+    categorizedImages: {
+      main: finalCategorizedImages.main?.length || 0,
+      gallery: finalCategorizedImages.gallery?.length || 0,
+      groom: finalCategorizedImages.groom?.length || 0,
+      bride: finalCategorizedImages.bride?.length || 0
+    }
+  });
+  
+  navigation.navigate('EventDisplay', { 
+    eventId: event.id,
+    templateStyle: templateStyle,
+    categorizedImages: finalCategorizedImages,
+    eventData: {
+      // 기본 정보 전달
+      type: event.event_type,
+      groomName: event.groom_name,
+      brideName: event.bride_name,
+      date: event.event_date,
+      ceremonyTime: event.ceremony_time,
+      location: event.location,
+      detailedAddress: event.detailed_address,
+      customMessage: event.custom_message,
+      parkingInfo: event.parking_info,
+      
+      // 부모님 정보
+      groomFatherName: event.groom_father_name,
+      groomMotherName: event.groom_mother_name,
+      brideFatherName: event.bride_father_name,
+      brideMotherName: event.bride_mother_name,
+      groomContact: event.groom_contact,
+      brideContact: event.bride_contact,
+      
+      // additional_info에서 추가 정보
+      groomFatherContact: additionalInfo.groom_father_contact,
+      groomMotherContact: additionalInfo.groom_mother_contact,
+      brideFatherContact: additionalInfo.bride_father_contact,
+      brideMotherContact: additionalInfo.bride_mother_contact,
+      receptionTime: additionalInfo.reception_time,
+    }
+  });
+};
 
   // 부조하기 버튼 클릭
   const handleContributePress = (event, e) => {
@@ -353,7 +457,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                   </Text>
                   
                   {/* 액션 버튼들 - QR 버튼 제거, 부조 버튼만 유지 */}
-                  <View style={styles.activeEventActions}>
+                  {/* <View style={styles.activeEventActions}>
                     <TouchableOpacity 
                       style={styles.contributeButton}
                       onPress={(e) => handleContributePress(event, e)}
@@ -361,7 +465,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                       <Ionicons name="heart" size={16} color={Colors.white} />
                       <Text style={styles.contributeButtonText}>부조하기</Text>
                     </TouchableOpacity>
-                  </View>
+                  </View> */}
                   
                   {/* 전시모드 안내 - 더 눈에 띄게 */}
                   <View style={styles.displayModeHint}>
