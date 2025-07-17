@@ -2112,13 +2112,7 @@ const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
   
   // 카테고리별 이미지 안전하게 가져오기
   const safeImages = getCategorizedImagesSafe(categorizedImages);
-  
-  console.log('🔍 [KOREAN TEMPLATE] 사용할 이미지들:', {
-    main: safeImages.main.length,
-    gallery: safeImages.gallery.length,
-    groom: safeImages.groom.length,
-    bride: safeImages.bride.length
-  });
+
   
   useEffect(() => {
     // 순차적 페이드인 애니메이션

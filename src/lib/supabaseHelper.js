@@ -1,4 +1,4 @@
-// src/lib/supabaseHelper.js - 결혼식 특화 최종 개선 버전 (전체 코드)
+// src/lib/supabaseHelper.js - 메시지 기능 포함 완전 업데이트 버전
 import { supabase } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -101,8 +101,6 @@ export const getUserEvents = async (passedUserInfo = null) => {
       auth_method: currentUser.auth_method || 'unknown'
     });
     
-    // 🔥 FIX: 'wedding_style' 컬럼이 존재하지 않으므로 SELECT 문에서 제거합니다.
-    // 이 컬럼은 additional_info JSONB 필드 안에 저장됩니다.
     const { data, error } = await supabase
       .from('events')
       .select(`
@@ -121,6 +119,8 @@ export const getUserEvents = async (passedUserInfo = null) => {
         updated_at,
         user_id,
         custom_message,
+        allow_messages,
+        message_placeholder,
         additional_info
       `)
       .eq('user_id', currentUser.id)
@@ -148,11 +148,12 @@ export const getUserEvents = async (passedUserInfo = null) => {
 };
 
 /**
- * 새 이벤트 생성 (결혼식 특화)
+ * 새 이벤트 생성 (메시지 기능 포함) - 화이트리스트 방식
  */
 export const createEvent = async (eventData) => {
   try {
     console.log('🔍 createEvent 시작');
+    console.log('🔍 받은 eventData 키들:', Object.keys(eventData));
     
     const userResult = await getCurrentUserInfo();
     if (!userResult.success) {
@@ -166,13 +167,42 @@ export const createEvent = async (eventData) => {
       auth_method: currentUser.auth_method
     });
 
-    let processedEventData = {
-      ...eventData,
-      user_id: currentUser.id,
-      status: 'active',
-      is_finalized: false,
-      created_at: new Date().toISOString()
-    };
+    // ✅ 허용된 컬럼들만 화이트리스트로 추출 (실제 DB 컬럼들만)
+    const allowedColumns = [
+      // 기본 컬럼들
+      'event_type', 'event_name', 'main_person_name', 'family_relations', 
+      'preset_amounts', 'status', 'event_date', 'is_finalized',
+      'image_urls', 'location', 'detailed_address', 'template_style',
+      
+      // 결혼식 관련 컬럼들
+      'bride_name', 'groom_name', 'bride_father_name', 'bride_mother_name', 
+      'groom_father_name', 'groom_mother_name', 'bride_contact', 'groom_contact', 
+      'ceremony_time', 'reception_time', 'custom_message', 'dress_code', 'parking_info',
+      
+      // 부고 관련 컬럼들 (실제 DB 컬럼들만)
+      'deceased_age', 'death_date', 'deceased_gender', 'casket_date', 'casket_time',
+      'burial_date', 'burial_time', 'burial_location', 'secondary_burial_location',
+      'primary_contact', 'secondary_contact', 'funeral_director', 'funeral_home',
+      
+      // 메시지 관련 컬럼들
+      'allow_messages', 'message_placeholder', 'additional_info'
+    ];
+
+    // 허용된 컬럼들만 추출
+    let processedEventData = {};
+    allowedColumns.forEach(column => {
+      if (eventData[column] !== undefined) {
+        processedEventData[column] = eventData[column];
+      }
+    });
+
+    // 시스템 필드 추가
+    processedEventData.user_id = currentUser.id;
+    processedEventData.status = 'active';
+    processedEventData.is_finalized = false;
+    processedEventData.created_at = new Date().toISOString();
+    processedEventData.allow_messages = eventData.allow_messages !== undefined ? eventData.allow_messages : true;
+    processedEventData.message_placeholder = eventData.message_placeholder || getDefaultMessagePlaceholder(eventData.event_type);
 
     if (eventData.event_type === 'wedding') {
       if (!eventData.groom_name || !eventData.bride_name) {
@@ -186,14 +216,132 @@ export const createEvent = async (eventData) => {
       }
       processedEventData.additional_info = {
         ...eventData.additional_info,
-        // wedding_style은 이제 template_style로 관리되므로 여기서는 제거하거나 다른 용도로 사용
         reception_time: eventData.reception_time,
-        created_via: 'app_v2.2',
-        version: '2.2'
+        created_via: 'app_v2.3',
+        version: '2.3'
+      };
+    } else if (eventData.event_type === 'funeral') {
+      // 🔥 고인명 체크 - camelCase와 snake_case 모두 지원
+      const deceasedName = eventData.deceasedName || eventData.deceased_name;
+      if (!deceasedName || !deceasedName.trim()) {
+        console.error('❌ 고인명 누락:', { 
+          deceasedName: eventData.deceasedName, 
+          deceased_name: eventData.deceased_name,
+          eventDataKeys: Object.keys(eventData)
+        });
+        throw new Error('고인명은 필수입니다.');
+      }
+      
+      // 🔥 상주 정보 처리 - familyMembers에서 family_members로 변환
+      const familyMembers = eventData.familyMembers || eventData.family_members || [];
+      const validFamilyMembers = Array.isArray(familyMembers) 
+        ? familyMembers.filter(member => member.names && member.names.trim())
+        : [];
+      
+      console.log('🔍 부고 데이터 처리:', {
+        deceasedName: deceasedName,
+        originalFamilyMembers: familyMembers.length,
+        validFamilyMembers: validFamilyMembers.length,
+        familyMemberDetails: validFamilyMembers.map(fm => ({ 
+          relation: fm.relation, 
+          names: fm.names 
+        }))
+      });
+      
+      // 🔥 고인명을 main_person_name으로 매핑 (deceased_name 컬럼은 DB에 없음)
+      processedEventData.main_person_name = deceasedName.trim();
+      if (!eventData.event_name) {
+        processedEventData.event_name = `故 ${deceasedName.trim()} 부고`;
+      }
+
+      // 🔥 camelCase 필드들을 DB 컬럼으로 변환
+      if (eventData.deceasedAge || eventData.deceased_age) {
+        processedEventData.deceased_age = parseInt(eventData.deceasedAge || eventData.deceased_age);
+      }
+      
+      if (eventData.deathDate || eventData.death_date) {
+        const deathDate = eventData.deathDate || eventData.death_date;
+        if (deathDate instanceof Date && !isNaN(deathDate.getTime())) {
+          processedEventData.death_date = deathDate.toISOString().split('T')[0];
+        } else if (typeof deathDate === 'string') {
+          processedEventData.death_date = deathDate;
+        }
+      }
+      
+      processedEventData.deceased_gender = eventData.deceasedGender || eventData.deceased_gender || '남';
+      
+      // 장례 일정 변환
+      if (eventData.casketDate || eventData.casket_date) {
+        const casketDate = eventData.casketDate || eventData.casket_date;
+        if (casketDate instanceof Date && !isNaN(casketDate.getTime())) {
+          processedEventData.casket_date = casketDate.toISOString().split('T')[0];
+        } else if (typeof casketDate === 'string') {
+          processedEventData.casket_date = casketDate;
+        }
+      }
+      
+      if (eventData.casketTime || eventData.casket_time) {
+        const casketTime = eventData.casketTime || eventData.casket_time;
+        if (casketTime instanceof Date && !isNaN(casketTime.getTime())) {
+          processedEventData.casket_time = casketTime.toTimeString().split(' ')[0];
+        } else if (typeof casketTime === 'string') {
+          processedEventData.casket_time = casketTime;
+        }
+      }
+      
+      if (eventData.burialDate || eventData.burial_date) {
+        const burialDate = eventData.burialDate || eventData.burial_date;
+        if (burialDate instanceof Date && !isNaN(burialDate.getTime())) {
+          processedEventData.burial_date = burialDate.toISOString().split('T')[0];
+        } else if (typeof burialDate === 'string') {
+          processedEventData.burial_date = burialDate;
+        }
+      }
+      
+      if (eventData.burialTime || eventData.burial_time) {
+        const burialTime = eventData.burialTime || eventData.burial_time;
+        if (burialTime instanceof Date && !isNaN(burialTime.getTime())) {
+          processedEventData.burial_time = burialTime.toTimeString().split(' ')[0];
+        } else if (typeof burialTime === 'string') {
+          processedEventData.burial_time = burialTime;
+        }
+      }
+      
+      // 나머지 부고 필드들
+      processedEventData.burial_location = eventData.burialLocation || eventData.burial_location || null;
+      processedEventData.secondary_burial_location = eventData.secondaryBurialLocation || eventData.secondary_burial_location || null;
+      processedEventData.primary_contact = eventData.primaryContact || eventData.primary_contact || null;
+      processedEventData.secondary_contact = eventData.secondaryContact || eventData.secondary_contact || null;
+      processedEventData.funeral_director = eventData.funeralDirector || eventData.funeral_director || null;
+      processedEventData.funeral_home = eventData.funeralHome || eventData.funeral_home || null;
+
+      // 테이블에 없는 필드들과 family_members는 additional_info에 저장
+      processedEventData.additional_info = {
+        ...eventData.additional_info,
+        family_members: validFamilyMembers, // 🔥 상주 정보를 family_members로 저장
+        funeral_start_date: eventData.funeral_start_date,
+        funeral_end_date: eventData.funeral_end_date,
+        created_via: 'app_v2.3',
+        version: '2.3'
       };
     }
 
-    console.log('🔍 생성할 이벤트 데이터:', processedEventData);
+    console.log('🔍 최종 전송할 데이터 키들:', Object.keys(processedEventData));
+    console.log('🔍 생성할 이벤트 데이터 (요약):', {
+      event_type: processedEventData.event_type,
+      event_name: processedEventData.event_name,
+      main_person_name: processedEventData.main_person_name,
+      deceased_age: processedEventData.deceased_age,
+      death_date: processedEventData.death_date,
+      burial_date: processedEventData.burial_date,
+      family_members_count: processedEventData.additional_info?.family_members?.length || 0,
+      // camelCase 필드들이 제거되었는지 확인
+      has_camelCase_fields: {
+        deceasedName: !!processedEventData.deceasedName,
+        familyMembers: !!processedEventData.familyMembers,
+        burialDate: !!processedEventData.burialDate
+      }
+    });
 
     const { data, error } = await supabase
       .from('events')
@@ -221,9 +369,8 @@ export const createEvent = async (eventData) => {
     };
   }
 };
-
 /**
- * 이벤트 수정 (결혼식 특화)
+ * 이벤트 수정 (메시지 기능 포함)
  */
 export const updateEvent = async (eventId, updates) => {
   try {
@@ -278,7 +425,7 @@ export const updateEvent = async (eventId, updates) => {
 };
 
 /**
- * 이벤트 삭제 (통합 인증 지원)
+ * 이벤트 삭제 (메시지도 함께 삭제)
  */
 export const deleteEvent = async (eventId) => {
   try {
@@ -288,6 +435,16 @@ export const deleteEvent = async (eventId) => {
     }
 
     const currentUser = userResult.user;
+
+    // 관련 데이터 삭제
+    try {
+      await supabase
+        .from('event_messages')
+        .delete()
+        .eq('event_id', eventId);
+    } catch (messageError) {
+      console.log('⚠️ 메시지 삭제 중 오류 (무시):', messageError);
+    }
 
     try {
       await supabase
@@ -325,17 +482,10 @@ export const deleteEvent = async (eventId) => {
 };
 
 /**
- * 특정 이벤트 상세 정보 조회 (결혼식 특화)
+ * 특정 이벤트 상세 정보 조회 (메시지 포함)
  */
 export const getEventDetail = async (eventId) => {
   try {
-    const userResult = await getCurrentUserInfo();
-    if (!userResult.success) {
-      throw new Error(userResult.error);
-    }
-
-    const currentUser = userResult.user;
-
     const { data, error } = await supabase
       .from('events')
       .select(`
@@ -352,7 +502,6 @@ export const getEventDetail = async (eventId) => {
           updated_at
         )
       `)
-      .eq('user_id', currentUser.id)
       .eq('id', eventId)
       .single();
 
@@ -363,12 +512,24 @@ export const getEventDetail = async (eventId) => {
 
     console.log('✅ 이벤트 상세 조회 완료:', eventId);
     
+    // 추가 정보 처리
     if (data.event_type === 'wedding') {
-      if (data.additional_info?.wedding_style) {
-        data.wedding_style = data.additional_info.wedding_style;
-      }
       if (data.additional_info?.reception_time) {
         data.reception_time = data.additional_info.reception_time;
+      }
+    } else if (data.event_type === 'funeral') {
+      if (data.additional_info) {
+        data.deceased_age = data.additional_info.deceased_age;
+        data.deceased_gender = data.additional_info.deceased_gender;
+        data.death_date = data.additional_info.death_date;
+        data.burial_date = data.additional_info.burial_date;
+        data.burial_time = data.additional_info.burial_time;
+        data.burial_location = data.additional_info.burial_location;
+        data.family_members = data.additional_info.family_members;
+        data.funeral_home = data.additional_info.funeral_home;
+        data.funeral_director = data.additional_info.funeral_director;
+        data.primary_contact = data.additional_info.primary_contact;
+        data.secondary_contact = data.additional_info.secondary_contact;
       }
     }
     
@@ -386,81 +547,224 @@ export const getEventDetail = async (eventId) => {
   }
 };
 
-/**
- * 결혼식 전용 이벤트 조회
- */
-export const getWeddingEvents = async () => {
-  try {
-    const userResult = await getCurrentUserInfo();
-    if (!userResult.success) {
-      throw new Error(userResult.error);
-    }
-
-    const currentUser = userResult.user;
-
-    const { data, error } = await supabase
-      .from('wedding_events_view') // 뷰가 존재한다고 가정
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .order('event_date', { ascending: false });
-
-    if (error) {
-      console.error('❌ 결혼식 이벤트 조회 오류(뷰):', error);
-      return getUserEvents(); // 뷰가 없으면 일반 쿼리로 대체
-    }
-
-    console.log('✅ 결혼식 이벤트 조회 완료:', data?.length || 0);
-    
-    return {
-      success: true,
-      data: data || []
-    };
-
-  } catch (error) {
-    console.error('❌ getWeddingEvents error:', error);
-    return getUserEvents();
-  }
-};
+// ===== 메시지 관련 함수들 =====
 
 /**
- * 활성 이벤트만 조회
+ * 이벤트 메시지 생성
  */
-export const getActiveEvents = async () => {
+export const createEventMessage = async (eventId, messageData) => {
   try {
-    const userResult = await getCurrentUserInfo();
-    if (!userResult.success) {
-      throw new Error(userResult.error);
-    }
-
-    const currentUser = userResult.user;
+    console.log('🔍 메시지 생성 시도:', { eventId, messageData });
 
     const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false });
+      .from('event_messages')
+      .insert([
+        {
+          event_id: eventId,
+          sender_name: messageData.sender_name,
+          sender_phone: messageData.sender_phone,
+          message: messageData.message,
+          message_type: messageData.message_type,
+          is_anonymous: messageData.is_anonymous || false,
+        }
+      ])
+      .select()
+      .single();
 
     if (error) {
-      console.error('❌ 활성 이벤트 조회 오류:', error);
+      console.error('❌ 메시지 생성 에러:', error);
       throw error;
     }
 
-    console.log('✅ 활성 이벤트 조회 완료:', data?.length || 0);
-    
-    return {
-      success: true,
-      data: data || []
-    };
-
+    console.log('✅ 메시지 생성 성공:', data.id);
+    return { success: true, data };
   } catch (error) {
-    console.error('❌ getActiveEvents error:', error);
-    return {
-      success: false,
-      error: error.message || '활성 이벤트를 불러올 수 없습니다.'
-    };
+    console.error('❌ createEventMessage error:', error);
+    return { success: false, error: error.message };
   }
 };
+
+/**
+ * 이벤트 메시지 목록 조회
+ */
+export const getEventMessages = async (eventId, limit = 50) => {
+  try {
+    console.log('🔍 메시지 목록 조회 시도:', { eventId, limit });
+
+    const { data, error } = await supabase
+      .from('event_messages')
+      .select('*')
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error('❌ 메시지 목록 조회 에러:', error);
+      throw error;
+    }
+
+    console.log('✅ 메시지 목록 조회 성공:', data?.length || 0, '개');
+    return { success: true, data: data || [] };
+  } catch (error) {
+    console.error('❌ getEventMessages error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * 메시지 수정
+ */
+export const updateEventMessage = async (messageId, updateData) => {
+  try {
+    console.log('🔍 메시지 수정 시도:', { messageId, updateData });
+
+    const { data, error } = await supabase
+      .from('event_messages')
+      .update({
+        message: updateData.message,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', messageId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ 메시지 수정 에러:', error);
+      throw error;
+    }
+
+    console.log('✅ 메시지 수정 성공:', data.id);
+    return { success: true, data };
+  } catch (error) {
+    console.error('❌ updateEventMessage error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * 메시지 삭제
+ */
+export const deleteEventMessage = async (messageId) => {
+  try {
+    console.log('🔍 메시지 삭제 시도:', messageId);
+
+    const { error } = await supabase
+      .from('event_messages')
+      .delete()
+      .eq('id', messageId);
+
+    if (error) {
+      console.error('❌ 메시지 삭제 에러:', error);
+      throw error;
+    }
+
+    console.log('✅ 메시지 삭제 성공');
+    return { success: true };
+  } catch (error) {
+    console.error('❌ deleteEventMessage error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * 메시지 통계 조회
+ */
+export const getEventMessageStats = async (eventId) => {
+  try {
+    console.log('🔍 메시지 통계 조회 시도:', eventId);
+
+    const { data, error } = await supabase
+      .from('event_messages')
+      .select('message_type, is_anonymous')
+      .eq('event_id', eventId);
+
+    if (error) {
+      console.error('❌ 메시지 통계 조회 에러:', error);
+      throw error;
+    }
+
+    const stats = {
+      total: data.length,
+      anonymous: data.filter(msg => msg.is_anonymous).length,
+      named: data.filter(msg => !msg.is_anonymous).length,
+      byType: data.reduce((acc, msg) => {
+        acc[msg.message_type] = (acc[msg.message_type] || 0) + 1;
+        return acc;
+      }, {})
+    };
+
+    console.log('✅ 메시지 통계 조회 성공:', stats);
+    return { success: true, data: stats };
+  } catch (error) {
+    console.error('❌ getEventMessageStats error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * 실시간 메시지 구독
+ */
+export const subscribeToEventMessages = (eventId, onMessage) => {
+  console.log('🔍 메시지 실시간 구독 시작:', eventId);
+
+  const subscription = supabase
+    .channel(`event_messages:${eventId}`)
+    .on('postgres_changes', 
+      { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'event_messages',
+        filter: `event_id=eq.${eventId}`
+      }, 
+      (payload) => {
+        console.log('✅ 새 메시지 수신:', payload);
+        if (onMessage) {
+          onMessage(payload.new);
+        }
+      }
+    )
+    .subscribe();
+
+  return {
+    unsubscribe: () => {
+      console.log('🔍 메시지 구독 해제');
+      supabase.removeChannel(subscription);
+    }
+  };
+};
+
+/**
+ * 이벤트 메시지 허용 설정 업데이트
+ */
+export const updateEventMessageSettings = async (eventId, allowMessages, placeholder) => {
+  try {
+    console.log('🔍 이벤트 메시지 설정 업데이트 시도:', { eventId, allowMessages, placeholder });
+
+    const { data, error } = await supabase
+      .from('events')
+      .update({ 
+        allow_messages: allowMessages,
+        message_placeholder: placeholder,
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', eventId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ 이벤트 메시지 설정 업데이트 에러:', error);
+      throw error;
+    }
+
+    console.log('✅ 이벤트 메시지 설정 업데이트 성공:', data.id);
+    return { success: true, data };
+  } catch (error) {
+    console.error('❌ updateEventMessageSettings error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// ===== 부조금 관련 함수들 =====
 
 /**
  * 부조금 추가
@@ -611,7 +915,7 @@ export const deleteContribution = async (contributionId) => {
 };
 
 /**
- * 이벤트 통계 조회 (결혼식 특화)
+ * 이벤트 통계 조회
  */
 export const getEventStatistics = async (eventId) => {
   try {
@@ -660,6 +964,155 @@ export const getEventStatistics = async (eventId) => {
       success: false,
       error: error.message || '통계 조회에 실패했습니다.'
     };
+  }
+};
+
+// ===== 기타 유틸리티 함수들 =====
+
+/**
+ * 이벤트 타입별 기본 메시지 플레이스홀더
+ */
+export const getDefaultMessagePlaceholder = (eventType) => {
+  switch (eventType) {
+    case 'wedding':
+      return '결혼을 축하합니다.';
+    case 'funeral':
+      return '삼가 고인의 명복을 빕니다.';
+    case 'birthday':
+      return '첫 돌을 축하합니다.';
+    default:
+      return '축하합니다.';
+  }
+};
+
+/**
+ * 활성 이벤트만 조회 - 상주 정보 포함
+ */
+export const getActiveEvents = async () => {
+  try {
+    const userResult = await getCurrentUserInfo();
+    if (!userResult.success) {
+      throw new Error(userResult.error);
+    }
+
+    const currentUser = userResult.user;
+
+    const { data, error } = await supabase
+      .from('events')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ 활성 이벤트 조회 오류:', error);
+      throw error;
+    }
+
+    // 🔥 부고 데이터 후처리 - additional_info에서 정보 추출
+    const processedData = data?.map(event => {
+      const processedEvent = { ...event };
+      
+      if (event.event_type === 'funeral' && event.additional_info) {
+        // additional_info에서 부고 관련 정보 추출
+        const additionalInfo = event.additional_info;
+        
+        // 가족 구성원 정보 추출
+        if (additionalInfo.family_members) {
+          processedEvent.family_members = additionalInfo.family_members;
+        }
+        
+        // 기타 부고 정보들도 추출
+        if (additionalInfo.funeral_start_date) {
+          processedEvent.funeral_start_date = additionalInfo.funeral_start_date;
+        }
+        if (additionalInfo.funeral_end_date) {
+          processedEvent.funeral_end_date = additionalInfo.funeral_end_date;
+        }
+        
+        console.log(`🎭 부고 ${event.event_name} 가족 정보 추출:`, {
+          familyMembersCount: processedEvent.family_members?.length || 0,
+          familyMembers: processedEvent.family_members?.map(fm => ({ relation: fm.relation, names: fm.names })) || []
+        });
+      }
+      
+      return processedEvent;
+    }) || [];
+
+    console.log('✅ 활성 이벤트 조회 완료:', processedData.length);
+    
+    return {
+      success: true,
+      data: processedData
+    };
+
+  } catch (error) {
+    console.error('❌ getActiveEvents error:', error);
+    return {
+      success: false,
+      error: error.message || '활성 이벤트를 불러올 수 없습니다.'
+    };
+  }
+};
+
+/**
+ * 이벤트 상태 업데이트
+ */
+export const updateEventStatus = async (eventId, status) => {
+  try {
+    console.log('🔍 이벤트 상태 업데이트 시도:', { eventId, status });
+
+    const { data, error } = await supabase
+      .from('events')
+      .update({ 
+        status, 
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', eventId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ 이벤트 상태 업데이트 에러:', error);
+      throw error;
+    }
+
+    console.log('✅ 이벤트 상태 업데이트 성공:', data.id);
+    return { success: true, data };
+  } catch (error) {
+    console.error('❌ updateEventStatus error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * 이벤트 완료 처리
+ */
+export const finalizeEvent = async (eventId) => {
+  try {
+    console.log('🔍 이벤트 완료 처리 시도:', eventId);
+
+    const { data, error } = await supabase
+      .from('events')
+      .update({ 
+        is_finalized: true,
+        status: 'completed',
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', eventId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ 이벤트 완료 처리 에러:', error);
+      throw error;
+    }
+
+    console.log('✅ 이벤트 완료 처리 성공:', data.id);
+    return { success: true, data };
+  } catch (error) {
+    console.error('❌ finalizeEvent error:', error);
+    return { success: false, error: error.message };
   }
 };
 

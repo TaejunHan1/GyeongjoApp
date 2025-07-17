@@ -1,4 +1,4 @@
-// src/screens/event/EventDisplayScreen.js - WeddingTemplatePreview 사용하도록 완전 수정
+// src/screens/event/EventDisplayScreen.js - 부고 지원 추가
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../styles/constants';
 import { getEventDetail } from '../../lib/supabaseHelper';
 import WeddingTemplatePreview from './templates/WeddingTemplatePreview';
+import FuneralTemplatePreview from './templates/FuneralTemplatePreview';
 
 const { width, height } = Dimensions.get('window');
 
@@ -79,6 +80,7 @@ export default function EventDisplayScreen({ navigation, route }) {
       if (result.success) {
         console.log('✅ DB 데이터 로드 성공:', {
           eventName: result.data.event_name,
+          eventType: result.data.event_type,
           templateStyle: result.data.template_style,
           imageUrls: result.data.image_urls?.length || 0,
           additionalInfo: !!result.data.additional_info
@@ -87,12 +89,12 @@ export default function EventDisplayScreen({ navigation, route }) {
         setEvent(result.data);
       } else {
         console.error('❌ 이벤트 로딩 실패:', result.error);
-        Alert.alert('오류', '청첩장을 불러올 수 없습니다.');
+        Alert.alert('오류', '경조사를 불러올 수 없습니다.');
         navigation.goBack();
       }
     } catch (error) {
       console.error('❌ 이벤트 로딩 예외:', error);
-      Alert.alert('오류', '청첩장을 불러오는 중 문제가 발생했습니다.');
+      Alert.alert('오류', '경조사를 불러오는 중 문제가 발생했습니다.');
       navigation.goBack();
     } finally {
       setLoading(false);
@@ -121,48 +123,125 @@ export default function EventDisplayScreen({ navigation, route }) {
       return event.template_style;
     }
     
-    // 3. 기본값
-    console.log('⚠️ 기본 템플릿 스타일 사용: modern-dark');
-    return 'modern-dark';
+    // 3. 기본값 - 이벤트 타입에 따라 다르게
+    const defaultStyle = getEventType() === 'funeral' ? 'traditional-dark' : 'modern-dark';
+    console.log('⚠️ 기본 템플릿 스타일 사용:', defaultStyle);
+    return defaultStyle;
   };
 
-  // 🔥 최종 이벤트 데이터 준비
+  // 🔥 이벤트 타입 결정
+  const getEventType = () => {
+    // 1. passedEventData에서 타입 확인
+    if (passedEventData?.type) {
+      return passedEventData.type;
+    }
+    
+    // 2. DB 데이터에서 타입 확인
+    if (event?.event_type) {
+      return event.event_type;
+    }
+    
+    // 3. 기본값
+    return 'wedding';
+  };
+
+  // 🔥 최종 이벤트 데이터 준비 - 결혼식과 부고 분기 처리
   const getFinalEventData = () => {
     // HomeScreen에서 전달받은 데이터가 있으면 우선 사용
     if (passedEventData) {
-      console.log('✅ HomeScreen 이벤트 데이터 사용');
+      console.log('✅ HomeScreen 이벤트 데이터 사용:', passedEventData);
       return passedEventData;
     }
 
-    // DB 데이터를 WeddingTemplatePreview 형식으로 변환
+    // DB 데이터를 템플릿 형식으로 변환
     if (event) {
-      console.log('✅ DB 데이터를 템플릿 형식으로 변환');
-      return {
-        type: event.event_type,
-        groomName: event.groom_name,
-        brideName: event.bride_name,
-        date: event.event_date,
-        ceremonyTime: event.ceremony_time,
-        receptionTime: event.additional_info?.reception_time,
-        location: event.location,
-        detailedAddress: event.detailed_address,
-        customMessage: event.custom_message,
-        parkingInfo: event.parking_info,
-        
-        // 부모님 정보
-        groomFatherName: event.groom_father_name,
-        groomMotherName: event.groom_mother_name,
-        brideFatherName: event.bride_father_name,
-        brideMotherName: event.bride_mother_name,
-        groomContact: event.groom_contact,
-        brideContact: event.bride_contact,
-        
-        // additional_info에서 추가 정보
-        groomFatherContact: event.additional_info?.groom_father_contact,
-        groomMotherContact: event.additional_info?.groom_mother_contact,
-        brideFatherContact: event.additional_info?.bride_father_contact,
-        brideMotherContact: event.additional_info?.bride_mother_contact,
-      };
+      const eventType = event.event_type;
+      console.log('✅ DB 데이터를 템플릿 형식으로 변환 - 타입:', eventType);
+      console.log('🔍 전체 DB 이벤트 데이터:', event);
+      
+      if (eventType === 'funeral') {
+        // 부고 데이터 변환 - 더 상세하게
+        const funeralData = {
+          type: 'funeral',
+          
+          // 고인 정보
+          deceasedName: event.deceased_name || event.main_person_name,
+          deceasedAge: event.deceased_age,
+          deathDate: event.death_date,
+          deceasedGender: event.deceased_gender || '남',
+          
+          // 장례 일정
+          casketDate: event.casket_date || event.funeral_start_date,
+          casketTime: event.casket_time,
+          burialDate: event.burial_date || event.funeral_end_date,
+          burialTime: event.burial_time,
+          burialLocation: event.burial_location,
+          secondaryBurialLocation: event.secondary_burial_location,
+          
+          // 장례식장 정보
+          funeralHome: event.funeral_home,
+          location: event.location, // 장례식장 주소
+          detailedAddress: event.detailed_address, // 빈소 위치
+          
+          // 가족 정보 (상주)
+          familyMembers: Array.isArray(event.family_members) ? event.family_members : [],
+          
+          // 연락처
+          primaryContact: event.primary_contact,
+          secondaryContact: event.secondary_contact,
+          funeralDirector: event.funeral_director,
+          
+          // 메시지
+          customMessage: event.custom_message,
+        };
+
+        // additional_info가 있으면 추가 정보 병합
+        if (event.additional_info) {
+          console.log('🔍 additional_info 발견:', event.additional_info);
+          Object.assign(funeralData, event.additional_info);
+        }
+
+        console.log('🎭 변환된 부고 데이터:', {
+          deceasedName: funeralData.deceasedName,
+          familyMembersCount: funeralData.familyMembers?.length || 0,
+          familyMembers: funeralData.familyMembers,
+          primaryContact: funeralData.primaryContact,
+          funeralHome: funeralData.funeralHome,
+          burialDate: funeralData.burialDate,
+          burialTime: funeralData.burialTime,
+          burialLocation: funeralData.burialLocation
+        });
+
+        return funeralData;
+      } else {
+        // 결혼식 데이터 변환 (기존 로직 유지)
+        return {
+          type: event.event_type,
+          groomName: event.groom_name,
+          brideName: event.bride_name,
+          date: event.event_date,
+          ceremonyTime: event.ceremony_time,
+          receptionTime: event.additional_info?.reception_time,
+          location: event.location,
+          detailedAddress: event.detailed_address,
+          customMessage: event.custom_message,
+          parkingInfo: event.parking_info,
+          
+          // 부모님 정보
+          groomFatherName: event.groom_father_name,
+          groomMotherName: event.groom_mother_name,
+          brideFatherName: event.bride_father_name,
+          brideMotherName: event.bride_mother_name,
+          groomContact: event.groom_contact,
+          brideContact: event.bride_contact,
+          
+          // additional_info에서 추가 정보
+          groomFatherContact: event.additional_info?.groom_father_contact,
+          groomMotherContact: event.additional_info?.groom_mother_contact,
+          brideFatherContact: event.additional_info?.bride_father_contact,
+          brideMotherContact: event.additional_info?.bride_mother_contact,
+        };
+      }
     }
 
     return {};
@@ -218,6 +297,41 @@ export default function EventDisplayScreen({ navigation, route }) {
     return {};
   };
 
+  // 🔥 방명록 설정 가져오기
+  const getMessageSettings = () => {
+    // 1. passedEventData에서 확인
+    if (passedEventData?.allowMessages !== undefined) {
+      return {
+        allowMessages: passedEventData.allowMessages,
+        messageSettings: passedEventData.messageSettings || {
+          placeholder: getEventType() === 'funeral' ? '삼가 고인의 명복을 빕니다.' : '축하합니다!',
+          requireLogin: true,
+        }
+      };
+    }
+
+    // 2. DB 데이터에서 확인
+    if (event) {
+      return {
+        allowMessages: event.allow_messages || false,
+        messageSettings: {
+          placeholder: event.message_placeholder || 
+                      (event.event_type === 'funeral' ? '삼가 고인의 명복을 빕니다.' : '축하합니다!'),
+          requireLogin: true,
+        }
+      };
+    }
+
+    // 3. 기본값
+    return {
+      allowMessages: false,
+      messageSettings: {
+        placeholder: getEventType() === 'funeral' ? '삼가 고인의 명복을 빕니다.' : '축하합니다!',
+        requireLogin: true,
+      }
+    };
+  };
+
   const handleContribute = () => {
     if (isPreviewMode) {
       Alert.alert('알림', '미리보기 모드입니다. 실제 부조는 완성된 경조사에서 가능합니다.');
@@ -230,13 +344,21 @@ export default function EventDisplayScreen({ navigation, route }) {
     });
   };
 
+  const handleMessageSubmit = async (messageData) => {
+    console.log('📝 메시지 제출:', messageData);
+    // 실제 구현에서는 여기서 API 호출하여 메시지 저장
+    Alert.alert('감사합니다', '메시지가 전달되었습니다.');
+  };
+
   // 로딩 화면
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <View style={styles.loadingContent}>
           <Ionicons name="tv" size={48} color={Colors.primary} />
-          <Text style={styles.loadingText}>청첩장 준비 중...</Text>
+          <Text style={styles.loadingText}>
+            {getEventType() === 'funeral' ? '추모 화면 준비 중...' : '청첩장 준비 중...'}
+          </Text>
         </View>
       </View>
     );
@@ -247,7 +369,9 @@ export default function EventDisplayScreen({ navigation, route }) {
     return (
       <View style={styles.errorContainer}>
         <Ionicons name="alert-circle" size={48} color={Colors.error} />
-        <Text style={styles.errorText}>청첩장을 불러올 수 없습니다</Text>
+        <Text style={styles.errorText}>
+          {getEventType() === 'funeral' ? '부고를 불러올 수 없습니다' : '청첩장을 불러올 수 없습니다'}
+        </Text>
         <TouchableOpacity 
           style={styles.errorButton}
           onPress={() => navigation.goBack()}
@@ -259,12 +383,15 @@ export default function EventDisplayScreen({ navigation, route }) {
   }
 
   // 🔥 최종 데이터 준비
+  const finalEventType = getEventType();
   const finalTemplateStyle = getFinalTemplateStyle();
   const finalEventData = getFinalEventData();
   const finalCategorizedImages = getFinalCategorizedImages();
   const finalTemplate = { style: finalTemplateStyle };
+  const messageSettings = getMessageSettings();
 
-  console.log('🎭 WeddingTemplatePreview에 전달할 최종 데이터:', {
+  console.log('🎭 템플릿에 전달할 최종 데이터:', {
+    eventType: finalEventType,
     templateStyle: finalTemplateStyle,
     eventDataKeys: Object.keys(finalEventData),
     categorizedImagesCounts: {
@@ -272,7 +399,8 @@ export default function EventDisplayScreen({ navigation, route }) {
       gallery: finalCategorizedImages.gallery?.length || 0,
       groom: finalCategorizedImages.groom?.length || 0,
       bride: finalCategorizedImages.bride?.length || 0
-    }
+    },
+    allowMessages: messageSettings.allowMessages
   });
 
   return (
@@ -287,14 +415,29 @@ export default function EventDisplayScreen({ navigation, route }) {
         </View>
       )}
       
-      {/* 🔥 WeddingTemplatePreview 컴포넌트 사용 - CreateEventScreen과 동일 */}
+      {/* 🔥 이벤트 타입에 따른 템플릿 렌더링 */}
       <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
-        <WeddingTemplatePreview
-          template={finalTemplate}
-          eventData={finalEventData}
-          categorizedImages={finalCategorizedImages}
-          userImages={event?.image_urls || []} // 백업용
-        />
+        {finalEventType === 'funeral' ? (
+          <FuneralTemplatePreview
+            template={finalTemplate}
+            eventData={finalEventData}
+            categorizedImages={finalCategorizedImages}
+            userImages={event?.image_urls || []} // 백업용
+            allowMessages={messageSettings.allowMessages}
+            messageSettings={messageSettings.messageSettings}
+            onMessageSubmit={handleMessageSubmit}
+          />
+        ) : (
+          <WeddingTemplatePreview
+            template={finalTemplate}
+            eventData={finalEventData}
+            categorizedImages={finalCategorizedImages}
+            userImages={event?.image_urls || []} // 백업용
+            allowMessages={messageSettings.allowMessages}
+            messageSettings={messageSettings.messageSettings}
+            onMessageSubmit={handleMessageSubmit}
+          />
+        )}
       </Animated.View>
       
       {/* 닫기 버튼 */}
@@ -313,8 +456,14 @@ export default function EventDisplayScreen({ navigation, route }) {
           style={styles.contributeFloatingButton}
           onPress={handleContribute}
         >
-          <Ionicons name="heart" size={20} color="white" />
-          <Text style={styles.contributeFloatingText}>부조하기</Text>
+          <Ionicons 
+            name={finalEventType === 'funeral' ? "flower" : "heart"} 
+            size={20} 
+            color="white" 
+          />
+          <Text style={styles.contributeFloatingText}>
+            {finalEventType === 'funeral' ? '조의하기' : '부조하기'}
+          </Text>
         </TouchableOpacity>
       )}
     </View>

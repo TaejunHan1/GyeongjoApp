@@ -1,4 +1,4 @@
-// src/screens/event/CreateEventScreen.js - 카테고리별 사진 업로드 개선 버전
+// src/screens/event/CreateEventScreen.js - 부고 전용 개선 버전 (방명록 설정 추가)
 import React, { useState, useRef } from 'react';
 import {
   View,
@@ -23,6 +23,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { createEvent } from '../../lib/supabaseHelper';
 import DaumPostcode from '../../components/DaumPostcode';
 import WeddingTemplatePreview from './templates/WeddingTemplatePreview';
+import FuneralTemplatePreview from './templates/FuneralTemplatePreview';
 
 const { width, height } = Dimensions.get('window');
 
@@ -43,8 +44,8 @@ const TossColors = {
   overlay: 'rgba(0, 0, 0, 0.4)',
 };
 
-// 사진 카테고리 설정
-const PHOTO_CATEGORIES = {
+// 사진 카테고리 설정 - 결혼식용
+const WEDDING_PHOTO_CATEGORIES = {
   main: {
     key: 'main',
     label: '메인 사진',
@@ -79,6 +80,18 @@ const PHOTO_CATEGORIES = {
   },
 };
 
+// 사진 카테고리 설정 - 부고용 (고인 사진만)
+const FUNERAL_PHOTO_CATEGORIES = {
+  main: {
+    key: 'main',
+    label: '고인 사진',
+    icon: '🖼️',
+    description: '부고에 표시될 고인의 사진',
+    maxCount: 3,
+    required: true,
+  },
+};
+
 // 토스 스타일 모달 컴포넌트
 const TossModal = ({ visible, title, message, onConfirm, onCancel, confirmText = "확인", cancelText = "취소" }) => (
   <Modal visible={visible} transparent animationType="fade">
@@ -104,7 +117,7 @@ const TossModal = ({ visible, title, message, onConfirm, onCancel, confirmText =
 );
 
 // 토스 스타일 달력 컴포넌트
-const TossDatePicker = ({ visible, selectedDate, onSelect, onClose }) => {
+const TossDatePicker = ({ visible, selectedDate, onSelect, onClose, allowPastDates = false }) => {
   const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
   
   const getDaysInMonth = (date) => {
@@ -204,15 +217,15 @@ const TossDatePicker = ({ visible, selectedDate, onSelect, onClose }) => {
                     isSelected && styles.selectedDay,
                     isToday && !isSelected && styles.todayDay,
                   ]}
-                  onPress={() => dayInfo.isCurrentMonth && !isPast && handleDateSelect(dayInfo.date)}
-                  disabled={!dayInfo.isCurrentMonth || isPast}
+                  onPress={() => dayInfo.isCurrentMonth && (allowPastDates || !isPast) && handleDateSelect(dayInfo.date)}
+                  disabled={!dayInfo.isCurrentMonth || (!allowPastDates && isPast)}
                 >
                   <Text style={[
                     styles.calendarDayText,
                     !dayInfo.isCurrentMonth && styles.otherMonthText,
                     isSelected && styles.selectedDayText,
                     isToday && !isSelected && styles.todayText,
-                    isPast && styles.pastDayText,
+                    (!allowPastDates && isPast) && styles.pastDayText,
                     (index % 7 === 0) && styles.sundayText,
                   ]}>
                     {dayInfo.date.getDate()}
@@ -321,23 +334,57 @@ export default function CreateEventScreen({ navigation, route }) {
     location: '',
     detailedAddress: '',
     
+    // 결혼식 관련 필드
     groomName: '',
     brideName: '',
     groomFatherName: '',
     groomMotherName: '',
     brideFatherName: '',
     brideMotherName: '',
-    groomContact: '010-',
-    brideContact: '010-',
-    groomFatherContact: '010-',
-    groomMotherContact: '010-',
-    brideFatherContact: '010-',
-    brideMotherContact: '010-',
+    groomContact: '',
+    brideContact: '',
+    groomFatherContact: '',
+    groomMotherContact: '',
+    brideFatherContact: '',
+    brideMotherContact: '',
     ceremonyTime: null,
     receptionTime: null,
     customMessage: '',
     parkingInfo: '',
     
+    // 부고 관련 필드
+    deceasedName: '',
+    deceasedAge: '',
+    deathDate: null,
+    deceasedGender: '남',
+    funeralStartDate: null,
+    funeralEndDate: null,
+    burialDate: null,
+    burialTime: null,
+    burialLocation: '',
+    secondaryBurialLocation: '',
+    casketDate: null,
+    casketTime: null,
+    familyMembers: [
+      { relation: '장남', names: '' },
+      { relation: '차남', names: '' },
+      { relation: '장녀', names: '' },
+      { relation: '차녀', names: '' },
+    ],
+    primaryContact: '',
+    secondaryContact: '',
+    funeralDirector: '',
+    funeralHome: '',
+    funeralAddress: '', // 새로 추가: 장례식장 주소
+    
+    // 방명록/메시지 설정 (새로 추가)
+    allowMessages: false,
+    messageSettings: {
+      placeholder: '삼가 고인의 명복을 빕니다.',
+      requireLogin: true,
+    },
+    
+    // 공통 필드
     familyRelations: ['신랑측', '신부측'],
     presetAmounts: [100000, 200000, 300000],
     selectedTemplate: null,
@@ -357,15 +404,29 @@ export default function CreateEventScreen({ navigation, route }) {
     message: 0,
     parking: 0,
     money: 0,
+    deceasedInfo: 0,
+    familyMembers: 0,
+    funeralSchedule: 0,
+    funeralLocation: 0, // 새로 추가
+    funeralContact: 0,
+    messageSettings: 0,
   });
 
   // 토스 스타일 피커 상태
   const [showTossDatePicker, setShowTossDatePicker] = useState(false);
   const [showTossTimePicker, setShowTossTimePicker] = useState(false);
   const [showAddressSearch, setShowAddressSearch] = useState(false);
+  const [showFuneralAddressSearch, setShowFuneralAddressSearch] = useState(false); // 새로 추가
   const [showTemplatePreview, setShowTemplatePreview] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // 부고용 추가 피커 상태
+  const [showCasketDatePicker, setShowCasketDatePicker] = useState(false);
+  const [showCasketTimePicker, setShowCasketTimePicker] = useState(false);
+  const [showBurialDatePicker, setShowBurialDatePicker] = useState(false);
+  const [showBurialTimePicker, setShowBurialTimePicker] = useState(false);
+  const [showDeathDatePicker, setShowDeathDatePicker] = useState(false);
   
   // 토스 모달 상태
   const [modalState, setModalState] = useState({
@@ -453,11 +514,28 @@ export default function CreateEventScreen({ navigation, route }) {
     ],
     funeral: [
       {
-        id: 'funeral-solemn',
-        name: '차분한 추모',
-        description: '정중하고 엄숙한 분위기',
+        id: 'traditional-dark',
+        name: '전통 엄숙',
+        description: '정중하고 엄숙한 전통 부고',
         preview: require('../../../assets/images/bb1.png'),
-        style: 'solemn',
+        style: 'traditional-dark',
+        features: ['정중함', '엄숙함', '전통적'],
+      },
+      {
+        id: 'modern-beige', 
+        name: '모던 따뜻',
+        description: '현대적이고 따뜻한 느낌의 부고',
+        preview: require('../../../assets/images/bb2.png'),
+        style: 'modern-beige',
+        features: ['현대적', '따뜻함', '상세정보'],
+      },
+      {
+        id: 'simple-white',
+        name: '심플 깔끔',
+        description: '깔끔하고 단정한 부고',
+        preview: require('../../../assets/images/bb1.png'),
+        style: 'simple-white',
+        features: ['심플함', '깔끔함', '가독성'],
       },
     ],
     birthday: [
@@ -509,6 +587,30 @@ export default function CreateEventScreen({ navigation, route }) {
         onCancel();
       } : null,
     });
+  };
+
+  // 핸드폰 번호 포맷팅 함수
+  const formatPhoneNumber = (value) => {
+    // 숫자만 추출
+    const numbers = value.replace(/[^\d]/g, '');
+    
+    // 010으로 시작하지 않으면 010 추가
+    let formattedNumbers = numbers;
+    if (!numbers.startsWith('010')) {
+      formattedNumbers = '010' + numbers;
+    }
+    
+    // 최대 11자리까지만
+    formattedNumbers = formattedNumbers.slice(0, 11);
+    
+    // 포맷팅 적용
+    if (formattedNumbers.length <= 3) {
+      return formattedNumbers;
+    } else if (formattedNumbers.length <= 7) {
+      return `${formattedNumbers.slice(0, 3)}-${formattedNumbers.slice(3)}`;
+    } else {
+      return `${formattedNumbers.slice(0, 3)}-${formattedNumbers.slice(3, 7)}-${formattedNumbers.slice(7)}`;
+    }
   };
 
   // 경조사 타입에 따른 축의금 설정 (DB 기반)
@@ -634,6 +736,38 @@ export default function CreateEventScreen({ navigation, route }) {
     setShowAddressSearch(false);
   };
 
+  // 장례식장 주소 검색 완료 핸들러
+  const handleFuneralAddressComplete = (data) => {
+    console.log('장례식장 주소 검색 완료:', data);
+    
+    if (!data) {
+      showTossModal('알림', '주소를 다시 선택해주세요', () => {});
+      return;
+    }
+
+    let selectedAddress = '';
+    
+    if (data.roadAddress && data.roadAddress.trim()) {
+      selectedAddress = data.roadAddress.trim();
+    } else if (data.jibunAddress && data.jibunAddress.trim()) {
+      selectedAddress = data.jibunAddress.trim();
+    } else if (data.address && data.address.trim()) {
+      selectedAddress = data.address.trim();
+    }
+
+    if (!selectedAddress) {
+      showTossModal('알림', '올바른 주소를 선택해주세요', () => {});
+      return;
+    }
+
+    setEventData(prevData => ({
+      ...prevData,
+      funeralAddress: selectedAddress,
+    }));
+    
+    setShowFuneralAddressSearch(false);
+  };
+
   const formatDate = (date) => {
     if (!date) return null;
     try {
@@ -670,6 +804,11 @@ export default function CreateEventScreen({ navigation, route }) {
 
   const formatAmount = (amount) => {
     return new Intl.NumberFormat('ko-KR').format(amount) + '원';
+  };
+
+  // 타입별 사진 카테고리 가져오기
+  const getPhotoCategories = () => {
+    return eventData.type === 'funeral' ? FUNERAL_PHOTO_CATEGORIES : WEDDING_PHOTO_CATEGORIES;
   };
 
   // 카테고리별 이미지 개수 가져오기
@@ -724,8 +863,6 @@ export default function CreateEventScreen({ navigation, route }) {
 
     return categorized;
   };
-
-
 
   // 이미지 선택 함수 - 디버깅 및 개선된 버전
   const pickImagesForCategory = async (category) => {
@@ -813,12 +950,6 @@ export default function CreateEventScreen({ navigation, route }) {
     }
   };
 
-  // 이미지 제거 함수
-  // const removeImage = (imageId) => {
-  //   const newImages = eventData.images.filter(img => img.id !== imageId);
-  //   setEventData({ ...eventData, images: newImages });
-  // };
-
   const handleTemplatePreview = (template) => {
     console.log('🔍 [DEBUG] 템플릿 미리보기 시작:', template.name);
     setPreviewTemplate(template);
@@ -849,6 +980,47 @@ export default function CreateEventScreen({ navigation, route }) {
         showTossModal('필수 입력', '예식 시간을 선택해주세요', () => {}, null, 'dateTime');
         return false;
       }
+    } else if (eventData.type === 'funeral') {
+      if (!eventData.deceasedName.trim()) {
+        showTossModal('필수 입력', '고인명을 입력해주세요', () => {}, null, 'deceasedInfo');
+        return false;
+      }
+      if (!eventData.deceasedAge.trim()) {
+        showTossModal('필수 입력', '향년을 입력해주세요', () => {}, null, 'deceasedInfo');
+        return false;
+      }
+      if (!eventData.deathDate) {
+        showTossModal('필수 입력', '별세일을 선택해주세요', () => {}, null, 'deceasedInfo');
+        return false;
+      }
+      if (!eventData.burialDate) {
+        showTossModal('필수 입력', '발인일을 선택해주세요', () => {}, null, 'funeralSchedule');
+        return false;
+      }
+      if (!eventData.burialTime) {
+        showTossModal('필수 입력', '발인 시간을 선택해주세요', () => {}, null, 'funeralSchedule');
+        return false;
+      }
+      if (!eventData.burialLocation.trim()) {
+        showTossModal('필수 입력', '장지를 입력해주세요', () => {}, null, 'funeralSchedule');
+        return false;
+      }
+      if (!eventData.primaryContact.trim()) {
+        showTossModal('필수 입력', '주 연락처를 입력해주세요', () => {}, null, 'funeralContact');
+        return false;
+      }
+      if (!eventData.funeralHome.trim()) {
+        showTossModal('필수 입력', '장례식장명을 입력해주세요', () => {}, null, 'funeralLocation');
+        return false;
+      }
+      if (!eventData.funeralAddress.trim()) {
+        showTossModal('필수 입력', '장례식장 주소를 선택해주세요', () => {}, null, 'funeralLocation');
+        return false;
+      }
+      if (!eventData.detailedAddress.trim()) {
+        showTossModal('필수 입력', '빈소 위치를 입력해주세요', () => {}, null, 'funeralLocation');
+        return false;
+      }
     } else {
       if (!eventData.title.trim()) {
         showTossModal('필수 입력', '행사명을 입력해주세요', () => {}, null, 'names');
@@ -858,22 +1030,21 @@ export default function CreateEventScreen({ navigation, route }) {
         showTossModal('필수 입력', '행사 날짜를 선택해주세요', () => {}, null, 'dateTime');
         return false;
       }
+      if (!eventData.location.trim()) {
+        showTossModal('필수 입력', '행사 장소를 선택해주세요', () => {}, null, 'location');
+        return false;
+      }
+      if (!eventData.detailedAddress.trim()) {
+        showTossModal('필수 입력', '상세 주소를 입력해주세요', () => {}, null, 'location');
+        return false;
+      }
     }
     
-    if (!eventData.location.trim()) {
-      showTossModal('필수 입력', '행사 장소를 선택해주세요', () => {}, null, 'location');
-      return false;
-    }
-    
-    if (!eventData.detailedAddress.trim()) {
-      showTossModal('필수 입력', '상세 주소를 입력해주세요', () => {}, null, 'location');
-      return false;
-    }
-
     // 메인 사진 필수 체크
     const mainImageCount = getCategoryImageCount('main');
+    const photoLabel = eventData.type === 'funeral' ? '고인 사진' : '메인 사진';
     if (mainImageCount === 0) {
-      showTossModal('필수 입력', '메인 사진을 최소 1장 이상 업로드해주세요', () => {}, null, 'photos');
+      showTossModal('필수 입력', `${photoLabel}을 최소 1장 이상 업로드해주세요`, () => {}, null, 'photos');
       return false;
     }
     
@@ -898,61 +1069,21 @@ export default function CreateEventScreen({ navigation, route }) {
     setIsLoading(true);
 
     try {
-      const fullLocation = eventData.detailedAddress 
-        ? `${eventData.location} ${eventData.detailedAddress}`.trim()
-        : eventData.location.trim();
-
       const eventTitle = eventData.type === 'wedding' 
         ? `${eventData.groomName} ♥ ${eventData.brideName} 결혼식`
+        : eventData.type === 'funeral'
+        ? `故 ${eventData.deceasedName} 부고`
         : eventData.title.trim();
 
-      // 부모님 연락처 정보를 additional_info에 저장
-      const parentsContactInfo = {
-        groom_father_contact: eventData.groomFatherContact?.replace('010-', '') ? eventData.groomFatherContact : null,
-        groom_mother_contact: eventData.groomMotherContact?.replace('010-', '') ? eventData.groomMotherContact : null,
-        bride_father_contact: eventData.brideFatherContact?.replace('010-', '') ? eventData.brideFatherContact : null,
-        bride_mother_contact: eventData.brideMotherContact?.replace('010-', '') ? eventData.brideMotherContact : null,
-        reception_time: eventData.receptionTime && eventData.receptionTime instanceof Date && !isNaN(eventData.receptionTime.getTime()) ? 
-          eventData.receptionTime.toTimeString().split(' ')[0] : null,
-      };
-
-      // 카테고리별 이미지 정보
       const categorizedImages = getCategorizedImages();
       console.log('🔍 [DEBUG] 저장할 카테고리별 이미지:', categorizedImages);
 
-      const formattedEventData = {
+      let formattedEventData = {
         event_type: eventData.type,
         event_name: eventTitle,
-        main_person_name: eventData.type === 'wedding' 
-          ? `${eventData.groomName}, ${eventData.brideName}`
-          : eventData.hostName?.trim(),
-        event_date: eventData.date && eventData.date instanceof Date && !isNaN(eventData.date.getTime()) ? 
-          eventData.date.toISOString().split('T')[0] : null,
-        location: fullLocation || null,
-        detailed_address: eventData.detailedAddress.trim() || null,
         template_style: eventData.selectedTemplate?.style || 'modern-dark',
         family_relations: eventData.familyRelations,
         preset_amounts: eventData.presetAmounts,
-        
-        ...(eventData.type === 'wedding' && {
-          bride_name: eventData.brideName.trim(),
-          groom_name: eventData.groomName.trim(),
-          bride_father_name: eventData.brideFatherName.trim() || null,
-          bride_mother_name: eventData.brideMotherName.trim() || null,
-          groom_father_name: eventData.groomFatherName.trim() || null,
-          groom_mother_name: eventData.groomMotherName.trim() || null,
-          bride_contact: eventData.brideContact?.replace('010-', '') ? eventData.brideContact : null,
-          groom_contact: eventData.groomContact?.replace('010-', '') ? eventData.groomContact : null,
-          ceremony_time: eventData.ceremonyTime && eventData.ceremonyTime instanceof Date && !isNaN(eventData.ceremonyTime.getTime()) ? 
-            eventData.ceremonyTime.toTimeString().split(' ')[0] : null,
-          custom_message: eventData.customMessage.trim() || null,
-          parking_info: eventData.parkingInfo.trim() || null,
-          additional_info: {
-            ...parentsContactInfo,
-            categorized_images: categorizedImages // 카테고리별 이미지 저장
-          }
-        }),
-        
         status: 'active',
         is_finalized: false,
         image_urls: eventData.images.map(img => ({
@@ -961,9 +1092,146 @@ export default function CreateEventScreen({ navigation, route }) {
           categoryLabel: img.categoryLabel,
           id: img.id
         })),
+        
+        // 방명록 설정 추가
+        allow_messages: eventData.allowMessages,
+        message_placeholder: eventData.messageSettings.placeholder,
       };
 
+      if (eventData.type === 'wedding') {
+        const fullLocation = eventData.detailedAddress 
+          ? `${eventData.location} ${eventData.detailedAddress}`.trim()
+          : eventData.location.trim();
+
+        // 부모님 연락처 정보를 additional_info에 저장
+        const parentsContactInfo = {
+          groom_father_contact: eventData.groomFatherContact || null,
+          groom_mother_contact: eventData.groomMotherContact || null,
+          bride_father_contact: eventData.brideFatherContact || null,
+          bride_mother_contact: eventData.brideMotherContact || null,
+          reception_time: eventData.receptionTime && eventData.receptionTime instanceof Date && !isNaN(eventData.receptionTime.getTime()) ? 
+            eventData.receptionTime.toTimeString().split(' ')[0] : null,
+        };
+
+        formattedEventData = {
+          ...formattedEventData,
+          event_date: eventData.date && eventData.date instanceof Date && !isNaN(eventData.date.getTime()) ? 
+            eventData.date.toISOString().split('T')[0] : null,
+          location: fullLocation || null,
+          detailed_address: eventData.detailedAddress.trim() || null,
+          main_person_name: `${eventData.groomName}, ${eventData.brideName}`,
+          bride_name: eventData.brideName.trim(),
+          groom_name: eventData.groomName.trim(),
+          bride_father_name: eventData.brideFatherName.trim() || null,
+          bride_mother_name: eventData.brideMotherName.trim() || null,
+          groom_father_name: eventData.groomFatherName.trim() || null,
+          groom_mother_name: eventData.groomMotherName.trim() || null,
+          bride_contact: eventData.brideContact || null,
+          groom_contact: eventData.groomContact || null,
+          ceremony_time: eventData.ceremonyTime && eventData.ceremonyTime instanceof Date && !isNaN(eventData.ceremonyTime.getTime()) ? 
+            eventData.ceremonyTime.toTimeString().split(' ')[0] : null,
+          custom_message: eventData.customMessage.trim() || null,
+          parking_info: eventData.parkingInfo.trim() || null,
+          additional_info: {
+            ...parentsContactInfo,
+            categorized_images: categorizedImages,
+            message_settings: eventData.messageSettings,
+          }
+        };
+      } else if (eventData.type === 'funeral') {
+        // 부고 데이터 처리 - 상주 정보 포함
+        
+        // 🔥 상주 정보 필터링 및 정리
+        const validFamilyMembers = eventData.familyMembers
+          .filter(member => member.names && member.names.trim())
+          .map(member => ({
+            relation: member.relation,
+            names: member.names.trim()
+          }));
+        
+        console.log('🔍 저장할 부고 데이터:', {
+          deceasedName: eventData.deceasedName,
+          familyMembersCount: validFamilyMembers.length,
+          primaryContact: eventData.primaryContact,
+          funeralHome: eventData.funeralHome,
+          burialLocation: eventData.burialLocation,
+          eventDataKeys: Object.keys(eventData)
+        });
+        
+        formattedEventData = {
+          ...formattedEventData,
+          
+          // 🔥 CreateEventScreen의 camelCase 필드들을 DB 형식으로 매핑
+          event_type: 'funeral',
+          main_person_name: eventData.deceasedName.trim(),
+          event_name: eventTitle,
+          
+          // 장례식장 정보
+          location: eventData.funeralAddress?.trim() || null,
+          detailed_address: eventData.detailedAddress?.trim() || null,
+          
+          // 고인 정보 - camelCase에서 snake_case로 변환
+          deceased_age: parseInt(eventData.deceasedAge) || null,
+          death_date: eventData.deathDate && eventData.deathDate instanceof Date && !isNaN(eventData.deathDate.getTime()) ? 
+            eventData.deathDate.toISOString().split('T')[0] : null,
+          deceased_gender: eventData.deceasedGender || '남',
+          
+          // 장례 일정
+          casket_date: eventData.casketDate && eventData.casketDate instanceof Date && !isNaN(eventData.casketDate.getTime()) ? 
+            eventData.casketDate.toISOString().split('T')[0] : null,
+          casket_time: eventData.casketTime && eventData.casketTime instanceof Date && !isNaN(eventData.casketTime.getTime()) ? 
+            eventData.casketTime.toTimeString().split(' ')[0] : null,
+          burial_date: eventData.burialDate && eventData.burialDate instanceof Date && !isNaN(eventData.burialDate.getTime()) ? 
+            eventData.burialDate.toISOString().split('T')[0] : null,
+          burial_time: eventData.burialTime && eventData.burialTime instanceof Date && !isNaN(eventData.burialTime.getTime()) ? 
+            eventData.burialTime.toTimeString().split(' ')[0] : null,
+          burial_location: eventData.burialLocation?.trim() || null,
+          secondary_burial_location: eventData.secondaryBurialLocation?.trim() || null,
+          
+          // 연락처 및 기타 정보
+          primary_contact: eventData.primaryContact || null,
+          secondary_contact: eventData.secondaryContact || null,
+          funeral_director: eventData.funeralDirector?.trim() || null,
+          funeral_home: eventData.funeralHome?.trim() || null,
+          custom_message: eventData.customMessage?.trim() || null,
+          
+          // 🔥 supabaseHelper.js에서 사용할 수 있도록 camelCase 버전도 함께 전달
+          deceasedName: eventData.deceasedName.trim(), // camelCase 버전
+          familyMembers: validFamilyMembers, // camelCase 버전
+          
+          // 🔥 additional_info에 저장할 정보들
+          additional_info: {
+            // 🔥 상주 정보를 family_members로 저장
+            family_members: validFamilyMembers,
+            categorized_images: categorizedImages,
+            message_settings: eventData.messageSettings,
+            // 기타 메타데이터
+            created_via: 'app_v2.3',
+            version: '2.3',
+          }
+        };
+      } else {
+        // 기타 타입 처리
+        const fullLocation = eventData.detailedAddress 
+          ? `${eventData.location} ${eventData.detailedAddress}`.trim()
+          : eventData.location.trim();
+
+        formattedEventData = {
+          ...formattedEventData,
+          event_date: eventData.date && eventData.date instanceof Date && !isNaN(eventData.date.getTime()) ? 
+            eventData.date.toISOString().split('T')[0] : null,
+          location: fullLocation || null,
+          detailed_address: eventData.detailedAddress.trim() || null,
+          main_person_name: eventData.hostName?.trim(),
+          custom_message: eventData.customMessage.trim() || null,
+          additional_info: {
+            message_settings: eventData.messageSettings,
+          }
+        };
+      }
+
       console.log('🔍 [DEBUG] 최종 저장 데이터 - 이미지 개수:', formattedEventData.image_urls.length);
+      console.log('🔍 [DEBUG] 방명록 설정:', formattedEventData.allow_messages, formattedEventData.message_placeholder);
 
       const result = await createEvent(formattedEventData);
 
@@ -973,7 +1241,9 @@ export default function CreateEventScreen({ navigation, route }) {
           navigation.navigate('EventDisplay', { 
             eventId: result.data.id,
             templateStyle: eventData.selectedTemplate?.style || 'modern-dark',
-            categorizedImages: categorizedImages
+            categorizedImages: categorizedImages,
+            allowMessages: eventData.allowMessages,
+            messageSettings: eventData.messageSettings,
           });
         }, 2000);
       } else {
@@ -989,13 +1259,14 @@ export default function CreateEventScreen({ navigation, route }) {
 
   // 연락처 입력 핸들러
   const handleContactChange = (text, field) => {
-    // 010- 이후의 텍스트만 처리
-    if (text.startsWith('010-')) {
-      setEventData({ ...eventData, [field]: text });
-    } else {
-      // 010-가 지워진 경우 다시 추가
-      setEventData({ ...eventData, [field]: '010-' + text.replace(/^010-?/, '') });
-    }
+    const formattedNumber = formatPhoneNumber(text);
+    setEventData({ ...eventData, [field]: formattedNumber });
+  };
+
+  // 가족 구성원 삭제 함수
+  const removeFamilyMember = (index) => {
+    const updatedMembers = eventData.familyMembers.filter((_, i) => i !== index);
+    setEventData({ ...eventData, familyMembers: updatedMembers });
   };
 
   // 메인 렌더링 함수들
@@ -1108,6 +1379,494 @@ export default function CreateEventScreen({ navigation, route }) {
           placeholderTextColor={TossColors.textTertiary}
         />
       </View>
+    </Animated.View>
+  );
+
+  // 부고 관련 폼 렌더링 함수들
+  const renderDeceasedInfoForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.deceasedInfo = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>고인 정보</Text>
+        <Text style={styles.sectionSubtitle}>고인의 기본 정보를 입력해주세요</Text>
+      </View>
+      
+      <View style={styles.formRow}>
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>고인명 *</Text>
+          <TextInput
+            style={[styles.textInput, !eventData.deceasedName && styles.textInputEmpty]}
+            placeholder="홍길동"
+            value={eventData.deceasedName}
+            onChangeText={(text) => setEventData({ ...eventData, deceasedName: text })}
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+        
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>향년 *</Text>
+          <TextInput
+            style={[styles.textInput, !eventData.deceasedAge && styles.textInputEmpty]}
+            placeholder="83"
+            value={eventData.deceasedAge}
+            onChangeText={(text) => setEventData({ ...eventData, deceasedAge: text })}
+            keyboardType="number-pad"
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+      </View>
+
+      <View style={styles.formRow}>
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>성별</Text>
+          <View style={styles.genderSelector}>
+            <TouchableOpacity
+              style={[
+                styles.genderButton,
+                eventData.deceasedGender === '남' && styles.genderButtonSelected,
+              ]}
+              onPress={() => setEventData({ ...eventData, deceasedGender: '남' })}
+            >
+              <Text style={[
+                styles.genderButtonText,
+                eventData.deceasedGender === '남' && styles.genderButtonTextSelected,
+              ]}>남</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.genderButton,
+                eventData.deceasedGender === '여' && styles.genderButtonSelected,
+              ]}
+              onPress={() => setEventData({ ...eventData, deceasedGender: '여' })}
+            >
+              <Text style={[
+                styles.genderButtonText,
+                eventData.deceasedGender === '여' && styles.genderButtonTextSelected,
+              ]}>여</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>별세일 *</Text>
+          <TouchableOpacity
+            style={[styles.selectButton, !eventData.deathDate && styles.selectButtonEmpty]}
+            onPress={() => setShowDeathDatePicker(true)}
+          >
+            <Text style={[
+              styles.selectButtonText,
+              !eventData.deathDate && styles.selectButtonTextEmpty
+            ]}>
+              {formatDate(eventData.deathDate) || '별세일을 선택해주세요'}
+            </Text>
+            <Ionicons name="calendar-outline" size={20} color={TossColors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Animated.View>
+  );
+
+  const renderFamilyMembersForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.familyMembers = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>상주 정보</Text>
+        <Text style={styles.sectionSubtitle}>가족 관계별로 상주 성함을 입력해주세요</Text>
+      </View>
+      
+      {eventData.familyMembers.map((member, index) => (
+        <View key={index} style={styles.familyMemberRow}>
+          <View style={styles.familyMemberInput}>
+            <Text style={styles.inputLabel}>{member.relation}</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder={`예: 홍길동, 홍길순 (여러 명인 경우 쉼표로 구분)`}
+              value={member.names}
+              onChangeText={(text) => {
+                const updatedMembers = [...eventData.familyMembers];
+                updatedMembers[index].names = text;
+                setEventData({ ...eventData, familyMembers: updatedMembers });
+              }}
+              placeholderTextColor={TossColors.textTertiary}
+            />
+          </View>
+          
+          {/* 삭제 버튼 - 기본 가족 관계 외에만 표시 */}
+          {index >= 4 && (
+            <TouchableOpacity
+              style={styles.removeFamilyButton}
+              onPress={() => removeFamilyMember(index)}
+            >
+              <Ionicons name="remove-circle" size={24} color={TossColors.error} />
+            </TouchableOpacity>
+          )}
+        </View>
+      ))}
+
+      <TouchableOpacity
+        style={styles.addFamilyButton}
+        onPress={() => {
+          setEventData({
+            ...eventData,
+            familyMembers: [
+              ...eventData.familyMembers,
+              { relation: '기타', names: '' }
+            ]
+          });
+        }}
+      >
+        <Ionicons name="add-circle-outline" size={20} color={TossColors.primary} />
+        <Text style={styles.addFamilyButtonText}>가족 관계 추가</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+
+  const renderFuneralScheduleForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.funeralSchedule = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>장례 일정</Text>
+        <Text style={styles.sectionSubtitle}>장례식 일정을 입력해주세요</Text>
+      </View>
+      
+      <View style={styles.formRow}>
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>입관일</Text>
+          <TouchableOpacity
+            style={styles.selectButton}
+            onPress={() => setShowCasketDatePicker(true)}
+          >
+            <Text style={[
+              styles.selectButtonText,
+              !eventData.casketDate && styles.selectButtonTextEmpty
+            ]}>
+              {formatDate(eventData.casketDate) || '입관일 선택'}
+            </Text>
+            <Ionicons name="calendar-outline" size={20} color={TossColors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>입관 시간</Text>
+          <TouchableOpacity
+            style={styles.selectButton}
+            onPress={() => setShowCasketTimePicker(true)}
+          >
+            <Text style={[
+              styles.selectButtonText,
+              !eventData.casketTime && styles.selectButtonTextEmpty
+            ]}>
+              {formatTime(eventData.casketTime) || '시간 선택'}
+            </Text>
+            <Ionicons name="time-outline" size={20} color={TossColors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.formRow}>
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>발인일 *</Text>
+          <TouchableOpacity
+            style={[styles.selectButton, !eventData.burialDate && styles.selectButtonEmpty]}
+            onPress={() => setShowBurialDatePicker(true)}
+          >
+            <Text style={[
+              styles.selectButtonText,
+              !eventData.burialDate && styles.selectButtonTextEmpty
+            ]}>
+              {formatDate(eventData.burialDate) || '발인일 선택'}
+            </Text>
+            <Ionicons name="calendar-outline" size={20} color={TossColors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>발인 시간 *</Text>
+          <TouchableOpacity
+            style={[styles.selectButton, !eventData.burialTime && styles.selectButtonEmpty]}
+            onPress={() => setShowBurialTimePicker(true)}
+          >
+            <Text style={[
+              styles.selectButtonText,
+              !eventData.burialTime && styles.selectButtonTextEmpty
+            ]}>
+              {formatTime(eventData.burialTime) || '시간 선택'}
+            </Text>
+            <Ionicons name="time-outline" size={20} color={TossColors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>장지 *</Text>
+        <TextInput
+          style={[styles.textInput, !eventData.burialLocation && styles.textInputEmpty]}
+          placeholder="예: 서울추모공원, 양평 추모원"
+          value={eventData.burialLocation}
+          onChangeText={(text) => setEventData({ ...eventData, burialLocation: text })}
+          placeholderTextColor={TossColors.textTertiary}
+        />
+      </View>
+
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>2차 장지 (선택)</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="예: 화장 후 납골당, 산골"
+          value={eventData.secondaryBurialLocation}
+          onChangeText={(text) => setEventData({ ...eventData, secondaryBurialLocation: text })}
+          placeholderTextColor={TossColors.textTertiary}
+        />
+      </View>
+    </Animated.View>
+  );
+
+  // 🆕 장례식장 정보 폼 (장례식장명, 주소, 빈소위치 통합)
+  const renderFuneralLocationForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.funeralLocation = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>장례식장 정보</Text>
+        <Text style={styles.sectionSubtitle}>장례식장 정보를 입력해주세요</Text>
+      </View>
+      
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>장례식장명 *</Text>
+        <TextInput
+          style={[styles.textInput, !eventData.funeralHome && styles.textInputEmpty]}
+          placeholder="예: 서울아산병원 장례식장"
+          value={eventData.funeralHome}
+          onChangeText={(text) => setEventData({ ...eventData, funeralHome: text })}
+          placeholderTextColor={TossColors.textTertiary}
+        />
+      </View>
+
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>장례식장 주소 *</Text>
+        <TouchableOpacity
+          style={[styles.addressButton, eventData.funeralAddress && styles.addressButtonSelected]}
+          onPress={() => setShowFuneralAddressSearch(true)}
+        >
+          <View style={styles.addressButtonContent}>
+            <Ionicons 
+              name={eventData.funeralAddress ? "location" : "search"} 
+              size={20} 
+              color={eventData.funeralAddress ? TossColors.primary : TossColors.textSecondary} 
+            />
+            <Text style={[
+              styles.addressButtonText,
+              eventData.funeralAddress && styles.addressButtonTextSelected
+            ]}>
+              {eventData.funeralAddress || '장례식장 주소를 검색해주세요'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={TossColors.textTertiary} />
+        </TouchableOpacity>
+      </View>
+      
+      {eventData.funeralAddress && (
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>빈소 위치 *</Text>
+          <TextInput
+            style={[styles.textInput, !eventData.detailedAddress && styles.textInputEmpty]}
+            placeholder="예: 지하 1층 3호실"
+            value={eventData.detailedAddress}
+            onChangeText={(text) => setEventData({ ...eventData, detailedAddress: text })}
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+      )}
+    </Animated.View>
+  );
+
+  const renderFuneralContactForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.funeralContact = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>연락처</Text>
+        <Text style={styles.sectionSubtitle}>조문객들이 연락할 수 있는 상주 연락처</Text>
+      </View>
+      
+      <View style={styles.formRow}>
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>주 연락처 *</Text>
+          <TextInput
+            style={[styles.textInput, !eventData.primaryContact && styles.textInputEmpty]}
+            placeholder="010-0000-0000"
+            value={eventData.primaryContact}
+            onChangeText={(text) => handleContactChange(text, 'primaryContact')}
+            keyboardType="phone-pad"
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+        
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>보조 연락처</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="010-0000-0000"
+            value={eventData.secondaryContact}
+            onChangeText={(text) => handleContactChange(text, 'secondaryContact')}
+            keyboardType="phone-pad"
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+      </View>
+
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>장례지도사</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="장례지도사 성함"
+          value={eventData.funeralDirector}
+          onChangeText={(text) => setEventData({ ...eventData, funeralDirector: text })}
+          placeholderTextColor={TossColors.textTertiary}
+        />
+      </View>
+    </Animated.View>
+  );
+
+  // 🆕 방명록 설정 폼 (부고용)
+  const renderMessageSettingsForm = () => (
+    <Animated.View 
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.messageSettings = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>조문 메시지</Text>
+        <Text style={styles.sectionSubtitle}>조문객들이 메시지를 남길 수 있게 할지 설정해주세요</Text>
+      </View>
+      
+      {/* 방명록 허용 여부 토글 */}
+      <View style={styles.messageToggleContainer}>
+        <TouchableOpacity
+          style={styles.messageToggle}
+          onPress={() => setEventData({ 
+            ...eventData, 
+            allowMessages: !eventData.allowMessages 
+          })}
+        >
+          <View style={styles.messageToggleLeft}>
+            <View style={styles.messageToggleIcon}>
+              <Ionicons 
+                name="chatbubble-outline" 
+                size={20} 
+                color={eventData.allowMessages ? TossColors.primary : TossColors.textSecondary} 
+              />
+            </View>
+            <View style={styles.messageToggleTextContainer}>
+              <Text style={[
+                styles.messageToggleTitle,
+                eventData.allowMessages && styles.messageToggleTitleActive
+              ]}>
+                조문 메시지 허용
+              </Text>
+              <Text style={styles.messageToggleDescription}>
+                조문객들이 온라인으로 조문 메시지를 남길 수 있어요
+              </Text>
+            </View>
+          </View>
+          <View style={[
+            styles.toggleSwitch,
+            eventData.allowMessages && styles.toggleSwitchActive
+          ]}>
+            <View style={[
+              styles.toggleSwitchKnob,
+              eventData.allowMessages && styles.toggleSwitchKnobActive
+            ]} />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* 방명록이 활성화된 경우 추가 설정 */}
+      {eventData.allowMessages && (
+        <View style={styles.messageSettingsDetails}>
+          <View style={styles.messageSettingCard}>
+            <View style={styles.messageSettingHeader}>
+              <Ionicons name="shield-checkmark" size={20} color={TossColors.success} />
+              <Text style={styles.messageSettingTitle}>회원 인증 필요</Text>
+            </View>
+            <Text style={styles.messageSettingDescription}>
+              조문 메시지 작성 시 회원가입이 필요합니다.{'\n'}
+              정중한 메시지 환경을 위해 본인 인증을 진행해요.
+            </Text>
+          </View>
+
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>메시지 안내문</Text>
+            <TextInput
+              style={[styles.textInput, styles.messageInput]}
+              placeholder="조문 메시지를 남겨주세요"
+              value={eventData.messageSettings.placeholder}
+              onChangeText={(text) => setEventData({ 
+                ...eventData, 
+                messageSettings: { 
+                  ...eventData.messageSettings, 
+                  placeholder: text 
+                }
+              })}
+              multiline
+              numberOfLines={2}
+              textAlignVertical="top"
+              placeholderTextColor={TossColors.textTertiary}
+            />
+            <Text style={styles.inputHint}>
+              조문객들에게 표시될 메시지 입력 안내문이에요
+            </Text>
+          </View>
+
+          <View style={styles.messagePreviewContainer}>
+            <Text style={styles.messagePreviewTitle}>미리보기</Text>
+            <View style={styles.messagePreviewBox}>
+              <View style={styles.messagePreviewHeader}>
+                <Ionicons name="chatbubble" size={16} color={TossColors.primary} />
+                <Text style={styles.messagePreviewHeaderText}>조문 메시지 작성</Text>
+              </View>
+              <Text style={styles.messagePreviewPlaceholder}>
+                {eventData.messageSettings.placeholder || "조문 메시지를 남겨주세요"}
+              </Text>
+              <View style={styles.messagePreviewButton}>
+                <Text style={styles.messagePreviewButtonText}>메시지 남기기</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* 방명록이 비활성화된 경우 안내 */}
+      {!eventData.allowMessages && (
+        <View style={styles.messageDisabledContainer}>
+          <Ionicons name="chatbubble-ellipses-outline" size={32} color={TossColors.textTertiary} />
+          <Text style={styles.messageDisabledText}>
+            조문 메시지 기능을 사용하지 않습니다
+          </Text>
+          <Text style={styles.messageDisabledSubtext}>
+            언제든지 위의 토글로 기능을 활성화할 수 있어요
+          </Text>
+        </View>
+      )}
     </Animated.View>
   );
 
@@ -1371,14 +2130,23 @@ export default function CreateEventScreen({ navigation, route }) {
       }}
     >
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>인사말</Text>
-        <Text style={styles.sectionSubtitle}>하객들에게 전할 따뜻한 메시지를 적어보세요</Text>
+        <Text style={styles.sectionTitle}>
+          {eventData.type === 'funeral' ? '상주의 말' : '인사말'}
+        </Text>
+        <Text style={styles.sectionSubtitle}>
+          {eventData.type === 'funeral' 
+            ? '상주의 말씀을 적어보세요' 
+            : '하객들에게 전할 따뜻한 메시지를 적어보세요'
+          }
+        </Text>
       </View>
       
       <View style={styles.inputWrapper}>
         <TextInput
           style={[styles.textInput, styles.messageInput]}
-          placeholder="저희의 소중한 첫 걸음에 함께해주시는 모든 분들께 진심으로 감사드립니다."
+          placeholder={eventData.type === 'funeral' 
+            ? "고인을 위해 찾아주시는 모든 분들께 깊이 감사드립니다."
+            : "저희의 소중한 첫 걸음에 함께해주시는 모든 분들께 진심으로 감사드립니다."}
           value={eventData.customMessage}
           onChangeText={(text) => setEventData({ ...eventData, customMessage: text })}
           multiline
@@ -1427,12 +2195,18 @@ export default function CreateEventScreen({ navigation, route }) {
             업로드된 이미지: {eventData.images.length}장
           </Text>
           
-          <Text style={styles.debugSummary}>
-            메인: {categorizedImages.main.length}/5 | 
-            갤러리: {categorizedImages.gallery.length}/10 | 
-            신랑: {categorizedImages.groom.length}/1 | 
-            신부: {categorizedImages.bride.length}/1
-          </Text>
+          {eventData.type === 'funeral' ? (
+            <Text style={styles.debugSummary}>
+              고인 사진: {categorizedImages.main.length}/3
+            </Text>
+          ) : (
+            <Text style={styles.debugSummary}>
+              메인: {categorizedImages.main.length}/5 | 
+              갤러리: {categorizedImages.gallery.length}/10 | 
+              신랑: {categorizedImages.groom.length}/1 | 
+              신부: {categorizedImages.bride.length}/1
+            </Text>
+          )}
           
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
             {eventData.images.map((image, index) => (
@@ -1457,9 +2231,11 @@ export default function CreateEventScreen({ navigation, route }) {
             onPress={() => {
               console.log('🔍 [DEBUG] === 카테고리별 이미지 상세 정보 ===');
               console.log('🔍 [DEBUG] 메인 사진들:', categorizedImages.main.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
-              console.log('🔍 [DEBUG] 갤러리 사진들:', categorizedImages.gallery.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
-              console.log('🔍 [DEBUG] 신랑 사진:', categorizedImages.groom.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
-              console.log('🔍 [DEBUG] 신부 사진:', categorizedImages.bride.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
+              if (eventData.type !== 'funeral') {
+                console.log('🔍 [DEBUG] 갤러리 사진들:', categorizedImages.gallery.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
+                console.log('🔍 [DEBUG] 신랑 사진:', categorizedImages.groom.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
+                console.log('🔍 [DEBUG] 신부 사진:', categorizedImages.bride.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
+              }
             }}
           >
             <Text style={{ color: 'white', textAlign: 'center', fontSize: 12 }}>콘솔에 카테고리별 정보 출력</Text>
@@ -1470,26 +2246,32 @@ export default function CreateEventScreen({ navigation, route }) {
     return null;
   };
 
-  // 카테고리별 사진 업로드 폼 - 디버깅 정보 추가
-  const renderPhotoUploadForm = () => (
-    <Animated.View 
-      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
-      onLayout={(event) => {
-        sectionPositions.current.photos = event.nativeEvent.layout.y;
-      }}
-    >
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>사진 업로드</Text>
-        <Text style={styles.sectionSubtitle}>카테고리별로 사진을 업로드해주세요</Text>
-      </View>
+  // 카테고리별 사진 업로드 폼 - 부고/결혼식 분기 처리
+  const renderPhotoUploadForm = () => {
+    const photoCategories = getPhotoCategories();
+    
+    return (
+      <Animated.View 
+        style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+        onLayout={(event) => {
+          sectionPositions.current.photos = event.nativeEvent.layout.y;
+        }}
+      >
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>사진 업로드</Text>
+          <Text style={styles.sectionSubtitle}>
+            {eventData.type === 'funeral' 
+              ? '고인의 사진을 업로드해주세요' 
+              : '카테고리별로 사진을 업로드해주세요'
+            }
+          </Text>
+        </View>
 
-      {/* 디버깅 정보 */}
-      {renderImageDebugInfo()}
+        {/* 디버깅 정보 */}
+        {renderImageDebugInfo()}
 
-      {/* 결혼식인 경우 모든 카테고리 표시 */}
-      {eventData.type === 'wedding' ? (
         <View style={styles.photoCategoriesContainer}>
-          {Object.values(PHOTO_CATEGORIES).map((category) => {
+          {Object.values(photoCategories).map((category) => {
             const currentCount = getCategoryImageCount(category.key);
             const categoryImages = getCategoryImages(category.key);
             const isComplete = currentCount >= category.maxCount;
@@ -1579,112 +2361,31 @@ export default function CreateEventScreen({ navigation, route }) {
             );
           })}
         </View>
-      ) : (
-        // 결혼식이 아닌 경우 기본 메인/갤러리만 표시
-        <View style={styles.photoCategoriesContainer}>
-          {[PHOTO_CATEGORIES.main, PHOTO_CATEGORIES.gallery].map((category) => {
-            const currentCount = getCategoryImageCount(category.key);
-            const categoryImages = getCategoryImages(category.key);
-            const isComplete = currentCount >= category.maxCount;
-            const isRequired = category.required && currentCount === 0;
 
-            return (
-              <View key={category.key} style={styles.photoCategorySection}>
-                <View style={styles.photoCategoryHeader}>
-                  <View style={styles.photoCategoryInfo}>
-                    <Text style={styles.photoCategoryIcon}>{category.icon}</Text>
-                    <View style={styles.photoCategoryTextContainer}>
-                      <Text style={[
-                        styles.photoCategoryTitle,
-                        isRequired && styles.photoCategoryTitleRequired
-                      ]}>
-                        {category.label}
-                        {category.required && <Text style={styles.requiredAsterisk}> *</Text>}
-                      </Text>
-                      <Text style={styles.photoCategoryDescription}>{category.description}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.photoCategoryCount}>
-                    <Text style={[
-                      styles.photoCategoryCountText,
-                      isComplete && styles.photoCategoryCountComplete,
-                      isRequired && styles.photoCategoryCountRequired
-                    ]}>
-                      {currentCount}/{category.maxCount}
-                    </Text>
-                  </View>
-                </View>
-
-                <TouchableOpacity
-                  style={[
-                    styles.categoryUploadButton,
-                    isComplete && styles.categoryUploadButtonDisabled,
-                    isRequired && styles.categoryUploadButtonRequired
-                  ]}
-                  onPress={() => pickImagesForCategory(category)}
-                  disabled={isComplete}
-                >
-                  <Ionicons 
-                    name={isComplete ? "checkmark-circle" : "camera"} 
-                    size={20} 
-                    color={isComplete ? TossColors.success : 
-                           isRequired ? TossColors.error : TossColors.primary} 
-                  />
-                  <Text style={[
-                    styles.categoryUploadButtonText,
-                    isComplete && styles.categoryUploadButtonTextDisabled,
-                    isRequired && styles.categoryUploadButtonTextRequired
-                  ]}>
-                    {isComplete ? '업로드 완료' : 
-                     currentCount === 0 ? `${category.label} 추가` : 
-                     `${category.label} 추가 (${category.maxCount - currentCount}장 더)`}
-                  </Text>
-                </TouchableOpacity>
-
-                {categoryImages.length > 0 && (
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.categoryImagesScroll}
-                  >
-                    {categoryImages.map((image) => (
-                      <View key={image.id} style={styles.categoryImageItem}>
-                        <Image source={{ uri: image.uri }} style={styles.categoryImage} />
-                        <TouchableOpacity
-                          style={styles.categoryImageRemove}
-                          onPress={() => removeImage(image.id)}
-                        >
-                          <Ionicons name="close-circle" size={20} color={TossColors.error} />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </ScrollView>
-                )}
-              </View>
-            );
-          })}
-        </View>
-      )}
-
-      {/* 전체 업로드 현황 요약 */}
-      <View style={styles.photoSummaryContainer}>
-        <Text style={styles.photoSummaryTitle}>업로드 현황</Text>
-        <View style={styles.photoSummaryStats}>
-          <Text style={styles.photoSummaryText}>
-            총 {eventData.images.length}장 업로드됨
-          </Text>
-          {eventData.type === 'wedding' && (
-            <Text style={styles.photoSummaryDetail}>
-              메인 {getCategoryImageCount('main')}/5, 
-              갤러리 {getCategoryImageCount('gallery')}/10, 
-              신랑 {getCategoryImageCount('groom')}/1, 
-              신부 {getCategoryImageCount('bride')}/1
+        {/* 전체 업로드 현황 요약 */}
+        <View style={styles.photoSummaryContainer}>
+          <Text style={styles.photoSummaryTitle}>업로드 현황</Text>
+          <View style={styles.photoSummaryStats}>
+            <Text style={styles.photoSummaryText}>
+              총 {eventData.images.length}장 업로드됨
             </Text>
-          )}
+            {eventData.type === 'funeral' ? (
+              <Text style={styles.photoSummaryDetail}>
+                고인 사진 {getCategoryImageCount('main')}/3
+              </Text>
+            ) : (
+              <Text style={styles.photoSummaryDetail}>
+                메인 {getCategoryImageCount('main')}/5, 
+                갤러리 {getCategoryImageCount('gallery')}/10, 
+                신랑 {getCategoryImageCount('groom')}/1, 
+                신부 {getCategoryImageCount('bride')}/1
+              </Text>
+            )}
+          </View>
         </View>
-      </View>
-    </Animated.View>
-  );
+      </Animated.View>
+    );
+  };
 
   const renderMoneyForm = () => {
     const moneyPresets = getMoneyPresets();
@@ -1850,14 +2551,46 @@ export default function CreateEventScreen({ navigation, route }) {
       }}
     >
       {renderEventTypeSelector()}
-      {eventData.type === 'wedding' ? renderWeddingForm() : renderBasicForm()}
-      {eventData.type === 'wedding' && renderContactForm()}
-      {eventData.type === 'wedding' && renderParentsForm()}
-      {renderDateTimeForm()}
-      {renderLocationForm()}
+      
+      {/* 결혼식 폼들 */}
+      {eventData.type === 'wedding' && (
+        <>
+          {renderWeddingForm()}
+          {renderContactForm()}
+          {renderParentsForm()}
+          {renderDateTimeForm()}
+          {renderLocationForm()}
+        </>
+      )}
+      
+      {/* 부고 폼들 */}
+      {eventData.type === 'funeral' && (
+        <>
+          {renderDeceasedInfoForm()}
+          {renderFamilyMembersForm()}
+          {renderFuneralScheduleForm()}
+          {renderFuneralLocationForm()}
+          {renderFuneralContactForm()}
+        </>
+      )}
+      
+      {/* 기타 타입 폼 */}
+      {eventData.type !== 'wedding' && eventData.type !== 'funeral' && (
+        <>
+          {renderBasicForm()}
+          {renderDateTimeForm()}
+          {renderLocationForm()}
+        </>
+      )}
+      
+      {/* 공통 폼들 */}
       {renderPhotoUploadForm()}
       {renderMessageForm()}
       {eventData.type === 'wedding' && renderParkingForm()}
+      
+      {/* 🆕 부고용 방명록 설정 */}
+      {eventData.type === 'funeral' && renderMessageSettingsForm()}
+      
       {renderMoneyForm()}
     </ScrollView>
   );
@@ -1938,6 +2671,7 @@ export default function CreateEventScreen({ navigation, route }) {
           selectedDate={eventData.date}
           onSelect={(date) => setEventData({ ...eventData, date })}
           onClose={() => setShowTossDatePicker(false)}
+          allowPastDates={false}
         />
 
         <TossTimePicker
@@ -1947,10 +2681,56 @@ export default function CreateEventScreen({ navigation, route }) {
           onClose={() => setShowTossTimePicker(false)}
         />
 
+        {/* 부고용 추가 날짜/시간 피커들 - allowPastDates={true} */}
+        <TossDatePicker
+          visible={showDeathDatePicker}
+          selectedDate={eventData.deathDate}
+          onSelect={(date) => setEventData({ ...eventData, deathDate: date })}
+          onClose={() => setShowDeathDatePicker(false)}
+          allowPastDates={true}
+        />
+
+        <TossDatePicker
+          visible={showCasketDatePicker}
+          selectedDate={eventData.casketDate}
+          onSelect={(date) => setEventData({ ...eventData, casketDate: date })}
+          onClose={() => setShowCasketDatePicker(false)}
+          allowPastDates={true}
+        />
+
+        <TossTimePicker
+          visible={showCasketTimePicker}
+          selectedTime={eventData.casketTime}
+          onSelect={(time) => setEventData({ ...eventData, casketTime: time })}
+          onClose={() => setShowCasketTimePicker(false)}
+        />
+
+        <TossDatePicker
+          visible={showBurialDatePicker}
+          selectedDate={eventData.burialDate}
+          onSelect={(date) => setEventData({ ...eventData, burialDate: date })}
+          onClose={() => setShowBurialDatePicker(false)}
+          allowPastDates={true}
+        />
+
+        <TossTimePicker
+          visible={showBurialTimePicker}
+          selectedTime={eventData.burialTime}
+          onSelect={(time) => setEventData({ ...eventData, burialTime: time })}
+          onClose={() => setShowBurialTimePicker(false)}
+        />
+
         <DaumPostcode
           visible={showAddressSearch}
           onComplete={handleAddressComplete}
           onClose={() => setShowAddressSearch(false)}
+        />
+
+        {/* 장례식장 주소 검색 */}
+        <DaumPostcode
+          visible={showFuneralAddressSearch}
+          onComplete={handleFuneralAddressComplete}
+          onClose={() => setShowFuneralAddressSearch(false)}
         />
 
         {/* 템플릿 미리보기 모달 */}
@@ -1975,12 +2755,38 @@ export default function CreateEventScreen({ navigation, route }) {
             </TouchableOpacity>
             
             {previewTemplate && (
-              <WeddingTemplatePreview
-                template={previewTemplate}
-                eventData={eventData}
-                userImages={eventData.images}
-                categorizedImages={getCategorizedImages()}
-              />
+              <>
+                {eventData.type === 'wedding' && (
+                  <WeddingTemplatePreview
+                    template={previewTemplate}
+                    eventData={eventData}
+                    userImages={eventData.images}
+                    categorizedImages={getCategorizedImages()}
+                    allowMessages={eventData.allowMessages}
+                    messageSettings={eventData.messageSettings}
+                  />
+                )}
+                {eventData.type === 'funeral' && (
+                  <FuneralTemplatePreview
+                    template={previewTemplate}
+                    eventData={eventData}
+                    userImages={eventData.images}
+                    categorizedImages={getCategorizedImages()}
+                    allowMessages={eventData.allowMessages}
+                    messageSettings={eventData.messageSettings}
+                  />
+                )}
+                {eventData.type !== 'wedding' && eventData.type !== 'funeral' && (
+                  <WeddingTemplatePreview
+                    template={previewTemplate}
+                    eventData={eventData}
+                    userImages={eventData.images}
+                    categorizedImages={getCategorizedImages()}
+                    allowMessages={eventData.allowMessages}
+                    messageSettings={eventData.messageSettings}
+                  />
+                )}
+              </>
             )}
           </View>
         </Modal>
@@ -2119,6 +2925,12 @@ const styles = StyleSheet.create({
     color: TossColors.text,
     marginBottom: 8,
   },
+  inputHint: {
+    fontSize: 12,
+    color: TossColors.textTertiary,
+    marginTop: 6,
+    lineHeight: 16,
+  },
   textInput: {
     backgroundColor: TossColors.surface,
     borderRadius: 12,
@@ -2148,6 +2960,232 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: TossColors.text,
     marginBottom: 16,
+  },
+  
+  // 성별 선택 스타일
+  genderSelector: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  genderButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  genderButtonSelected: {
+    borderColor: TossColors.primary,
+    backgroundColor: TossColors.secondary,
+  },
+  genderButtonText: {
+    fontSize: 16,
+    color: TossColors.textSecondary,
+    fontWeight: '500',
+  },
+  genderButtonTextSelected: {
+    color: TossColors.primary,
+    fontWeight: '600',
+  },
+  
+  // 가족 구성원 행 - 삭제 버튼 포함
+  familyMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 20,
+  },
+  familyMemberInput: {
+    flex: 1,
+    marginRight: 12,
+    marginBottom: 0,
+  },
+  removeFamilyButton: {
+    paddingBottom: 8,
+  },
+  
+  // 가족 추가 버튼
+  addFamilyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginTop: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: TossColors.primary,
+    borderStyle: 'dashed',
+  },
+  addFamilyButtonText: {
+    fontSize: 14,
+    color: TossColors.primary,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  
+  // 🆕 방명록 설정 스타일
+  messageToggleContainer: {
+    marginBottom: 24,
+  },
+  messageToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: TossColors.surface,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+  },
+  messageToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  messageToggleIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: TossColors.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  messageToggleTextContainer: {
+    flex: 1,
+  },
+  messageToggleTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: TossColors.text,
+    marginBottom: 4,
+  },
+  messageToggleTitleActive: {
+    color: TossColors.primary,
+  },
+  messageToggleDescription: {
+    fontSize: 13,
+    color: TossColors.textSecondary,
+    lineHeight: 18,
+  },
+  toggleSwitch: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: TossColors.border,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleSwitchActive: {
+    backgroundColor: TossColors.primary,
+  },
+  toggleSwitchKnob: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: TossColors.background,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  toggleSwitchKnobActive: {
+    marginLeft: 20,
+  },
+  
+  messageSettingsDetails: {
+    gap: 20,
+  },
+  messageSettingCard: {
+    backgroundColor: TossColors.surface,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+  },
+  messageSettingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  messageSettingTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: TossColors.text,
+    marginLeft: 8,
+  },
+  messageSettingDescription: {
+    fontSize: 13,
+    color: TossColors.textSecondary,
+    lineHeight: 18,
+  },
+  
+  messagePreviewContainer: {
+    marginTop: 8,
+  },
+  messagePreviewTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TossColors.text,
+    marginBottom: 12,
+  },
+  messagePreviewBox: {
+    backgroundColor: TossColors.surface,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+  },
+  messagePreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  messagePreviewHeaderText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TossColors.primary,
+    marginLeft: 8,
+  },
+  messagePreviewPlaceholder: {
+    fontSize: 14,
+    color: TossColors.textTertiary,
+    fontStyle: 'italic',
+    marginBottom: 16,
+  },
+  messagePreviewButton: {
+    backgroundColor: TossColors.primary,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  messagePreviewButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TossColors.background,
+  },
+  
+  messageDisabledContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    backgroundColor: TossColors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+  },
+  messageDisabledText: {
+    fontSize: 16,
+    color: TossColors.textSecondary,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  messageDisabledSubtext: {
+    fontSize: 13,
+    color: TossColors.textTertiary,
+    textAlign: 'center',
   },
   
   // 선택 버튼
@@ -2809,6 +3847,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 1000,
   },
+  previewModalSelectText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: TossColors.background,
+  },
   
   // 디버깅 스타일
   debugContainer: {
@@ -2844,16 +3887,10 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#F0F0F0',
   },
-  debugSummary: {
+  debugSummary: { 
     fontSize: 12,
     color: '#D32F2F',
     marginTop: 8,
     fontWeight: '600',
-  },
-  
-  previewModalSelectText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: TossColors.background,
   },
 });

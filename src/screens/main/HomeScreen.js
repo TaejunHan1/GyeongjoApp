@@ -1,4 +1,4 @@
-// src/screens/main/HomeScreen.js - QR 버튼 제거 및 개선
+// src/screens/main/HomeScreen.js - QR 버튼 제거 및 부고 정보 전달 개선
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -184,60 +184,59 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   };
 
   // HomeScreen.js의 loadActiveEvents 함수에 디버깅 로그 추가
-
-const loadActiveEvents = async () => {
-  try {
-    console.log('📅 활성 이벤트 로드 시작');
-    
-    const result = await getActiveEvents();
-    
-    if (result.success) {
-      console.log(`✅ 활성 이벤트 로드 완료: ${result.data?.length || 0}개`);
+  const loadActiveEvents = async () => {
+    try {
+      console.log('📅 활성 이벤트 로드 시작');
       
-      // 🔍 디버깅: 각 이벤트의 상세 정보 로그
-      result.data?.forEach((event, index) => {
-        console.log(`🎭 이벤트 ${index + 1}:`, {
-          id: event.id,
-          name: event.event_name,
-          type: event.event_type,
-          templateStyle: event.template_style,
-          imageUrls: event.image_urls?.length || 0,
-          additionalInfo: event.additional_info ? 'exists' : 'null',
-          categorizedImages: event.additional_info?.categorized_images ? 'exists' : 'null'
+      const result = await getActiveEvents();
+      
+      if (result.success) {
+        console.log(`✅ 활성 이벤트 로드 완료: ${result.data?.length || 0}개`);
+        
+        // 🔍 디버깅: 각 이벤트의 상세 정보 로그
+        result.data?.forEach((event, index) => {
+          console.log(`🎭 이벤트 ${index + 1}:`, {
+            id: event.id,
+            name: event.event_name,
+            type: event.event_type,
+            templateStyle: event.template_style,
+            imageUrls: event.image_urls?.length || 0,
+            additionalInfo: event.additional_info ? 'exists' : 'null',
+            categorizedImages: event.additional_info?.categorized_images ? 'exists' : 'null'
+          });
+          
+          // 이미지 정보 상세 로그
+          if (event.image_urls && event.image_urls.length > 0) {
+            console.log(`📸 이벤트 ${index + 1} 이미지 상세:`, 
+              event.image_urls.map(img => ({
+                category: img.category,
+                hasUri: !!img.uri
+              }))
+            );
+          }
+          
+          // additional_info 상세 로그
+          if (event.additional_info?.categorized_images) {
+            const catImages = event.additional_info.categorized_images;
+            console.log(`📁 이벤트 ${index + 1} 카테고리별 이미지:`, {
+              main: catImages.main?.length || 0,
+              gallery: catImages.gallery?.length || 0,
+              groom: catImages.groom?.length || 0,
+              bride: catImages.bride?.length || 0
+            });
+          }
         });
         
-        // 이미지 정보 상세 로그
-        if (event.image_urls && event.image_urls.length > 0) {
-          console.log(`📸 이벤트 ${index + 1} 이미지 상세:`, 
-            event.image_urls.map(img => ({
-              category: img.category,
-              hasUri: !!img.uri
-            }))
-          );
-        }
-        
-        // additional_info 상세 로그
-        if (event.additional_info?.categorized_images) {
-          const catImages = event.additional_info.categorized_images;
-          console.log(`📁 이벤트 ${index + 1} 카테고리별 이미지:`, {
-            main: catImages.main?.length || 0,
-            gallery: catImages.gallery?.length || 0,
-            groom: catImages.groom?.length || 0,
-            bride: catImages.bride?.length || 0
-          });
-        }
-      });
-      
-      setActiveEvents(result.data || []);
-    } else {
-      console.error('❌ 활성 이벤트 로드 실패:', result.error);
+        setActiveEvents(result.data || []);
+      } else {
+        console.error('❌ 활성 이벤트 로드 실패:', result.error);
+        setActiveEvents([]);
+      }
+    } catch (error) {
+      console.error('❌ 활성 이벤트 로드 예외:', error);
       setActiveEvents([]);
     }
-  } catch (error) {
-    console.error('❌ 활성 이벤트 로드 예외:', error);
-    setActiveEvents([]);
-  }
-};
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -277,78 +276,152 @@ const loadActiveEvents = async () => {
     navigation.navigate('CreateEvent', { eventType });
   };
 
-  // src/screens/main/HomeScreen.js - 전시모드 데이터 전달 수정
-
-// 기존 handleActiveEventPress 함수를 수정
-const handleActiveEventPress = (event) => {
-  console.log('🎭 전시모드로 이동:', event.event_name);
-  
-  // DB에서 저장된 이미지와 템플릿 정보 파싱
-  const templateStyle = event.template_style || 'modern-dark';
-  
-  // additional_info에서 카테고리별 이미지 정보 추출
-  const additionalInfo = event.additional_info || {};
-  const categorizedImages = additionalInfo.categorized_images || {};
-  
-  // image_urls에서 카테고리별로 이미지 분류 (백업 로직)
-  const imageUrls = event.image_urls || [];
-  const fallbackCategorizedImages = {
-    main: imageUrls.filter(img => img.category === 'main'),
-    gallery: imageUrls.filter(img => img.category === 'gallery'),
-    groom: imageUrls.filter(img => img.category === 'groom'),
-    bride: imageUrls.filter(img => img.category === 'bride'),
-    all: imageUrls
-  };
-  
-  // 카테고리별 이미지가 없으면 fallback 사용
-  const finalCategorizedImages = Object.keys(categorizedImages).length > 0 
-    ? categorizedImages 
-    : fallbackCategorizedImages;
-  
-  console.log('🎭 전달할 데이터:', {
-    eventId: event.id,
-    templateStyle,
-    categorizedImages: {
-      main: finalCategorizedImages.main?.length || 0,
-      gallery: finalCategorizedImages.gallery?.length || 0,
-      groom: finalCategorizedImages.groom?.length || 0,
-      bride: finalCategorizedImages.bride?.length || 0
-    }
-  });
-  
-  navigation.navigate('EventDisplay', { 
-    eventId: event.id,
-    templateStyle: templateStyle,
-    categorizedImages: finalCategorizedImages,
-    eventData: {
-      // 기본 정보 전달
+  // 🔥 수정된 handleActiveEventPress 함수 - 부고 정보 포함
+  const handleActiveEventPress = (event) => {
+    console.log('🎭 전시모드로 이동:', event.event_name, '타입:', event.event_type);
+    
+    // DB에서 저장된 이미지와 템플릿 정보 파싱
+    const templateStyle = event.template_style || (event.event_type === 'funeral' ? 'traditional-dark' : 'modern-dark');
+    
+    // additional_info에서 카테고리별 이미지 정보 추출
+    const additionalInfo = event.additional_info || {};
+    const categorizedImages = additionalInfo.categorized_images || {};
+    
+    // image_urls에서 카테고리별로 이미지 분류 (백업 로직)
+    const imageUrls = event.image_urls || [];
+    const fallbackCategorizedImages = {
+      main: imageUrls.filter(img => img.category === 'main'),
+      gallery: imageUrls.filter(img => img.category === 'gallery'),
+      groom: imageUrls.filter(img => img.category === 'groom'),
+      bride: imageUrls.filter(img => img.category === 'bride'),
+      all: imageUrls
+    };
+    
+    // 카테고리별 이미지가 없으면 fallback 사용
+    const finalCategorizedImages = Object.keys(categorizedImages).length > 0 
+      ? categorizedImages 
+      : fallbackCategorizedImages;
+    
+    // 🔥 이벤트 타입에 따른 데이터 준비
+    let eventData = {
       type: event.event_type,
-      groomName: event.groom_name,
-      brideName: event.bride_name,
-      date: event.event_date,
-      ceremonyTime: event.ceremony_time,
-      location: event.location,
-      detailedAddress: event.detailed_address,
-      customMessage: event.custom_message,
-      parkingInfo: event.parking_info,
+    };
+
+    if (event.event_type === 'funeral') {
+      // 🔥 부고 데이터 준비 - additional_info에서 상주 정보 추출
+      const familyMembers = event.family_members || 
+                           additionalInfo.family_members || 
+                           [];
       
-      // 부모님 정보
-      groomFatherName: event.groom_father_name,
-      groomMotherName: event.groom_mother_name,
-      brideFatherName: event.bride_father_name,
-      brideMotherName: event.bride_mother_name,
-      groomContact: event.groom_contact,
-      brideContact: event.bride_contact,
+      eventData = {
+        ...eventData,
+        // 고인 정보
+        deceasedName: event.deceased_name || event.main_person_name,
+        deceasedAge: event.deceased_age,
+        deathDate: event.death_date,
+        deceasedGender: event.deceased_gender || '남',
+        
+        // 장례 일정
+        casketDate: event.casket_date || event.funeral_start_date || additionalInfo.funeral_start_date,
+        casketTime: event.casket_time,
+        burialDate: event.burial_date || event.funeral_end_date || additionalInfo.funeral_end_date,
+        burialTime: event.burial_time,
+        burialLocation: event.burial_location,
+        secondaryBurialLocation: event.secondary_burial_location,
+        
+        // 장례식장 정보
+        funeralHome: event.funeral_home,
+        location: event.location, // 장례식장 주소
+        detailedAddress: event.detailed_address, // 빈소 위치
+        
+        // 🔥 가족 정보 (상주) - 여러 소스에서 확인
+        familyMembers: Array.isArray(familyMembers) ? familyMembers : [],
+        
+        // 연락처
+        primaryContact: event.primary_contact,
+        secondaryContact: event.secondary_contact,
+        funeralDirector: event.funeral_director,
+        
+        // 메시지
+        customMessage: event.custom_message,
+        
+        // additional_info에서 추가 정보 병합
+        ...additionalInfo,
+      };
       
-      // additional_info에서 추가 정보
-      groomFatherContact: additionalInfo.groom_father_contact,
-      groomMotherContact: additionalInfo.groom_mother_contact,
-      brideFatherContact: additionalInfo.bride_father_contact,
-      brideMotherContact: additionalInfo.bride_mother_contact,
-      receptionTime: additionalInfo.reception_time,
+      // 🔍 상주 정보 디버깅 로그
+      console.log('🎭 상주 정보 확인:', {
+        eventName: event.event_name,
+        familyMembersFromEvent: event.family_members?.length || 0,
+        familyMembersFromAdditional: additionalInfo.family_members?.length || 0,
+        finalFamilyMembers: eventData.familyMembers?.length || 0,
+        familyMemberDetails: eventData.familyMembers?.map(fm => ({ 
+          relation: fm.relation, 
+          names: fm.names,
+          hasNames: !!fm.names 
+        })) || []
+      });
+    } else {
+      // 🔥 결혼식 데이터 준비 (기존 로직)
+      eventData = {
+        ...eventData,
+        // 기본 정보
+        groomName: event.groom_name,
+        brideName: event.bride_name,
+        date: event.event_date,
+        ceremonyTime: event.ceremony_time,
+        location: event.location,
+        detailedAddress: event.detailed_address,
+        customMessage: event.custom_message,
+        parkingInfo: event.parking_info,
+        
+        // 부모님 정보
+        groomFatherName: event.groom_father_name,
+        groomMotherName: event.groom_mother_name,
+        brideFatherName: event.bride_father_name,
+        brideMotherName: event.bride_mother_name,
+        groomContact: event.groom_contact,
+        brideContact: event.bride_contact,
+        
+        // additional_info에서 추가 정보
+        groomFatherContact: additionalInfo.groom_father_contact,
+        groomMotherContact: additionalInfo.groom_mother_contact,
+        brideFatherContact: additionalInfo.bride_father_contact,
+        brideMotherContact: additionalInfo.bride_mother_contact,
+        receptionTime: additionalInfo.reception_time,
+      };
     }
-  });
-};
+    
+    console.log('🎭 전달할 데이터:', {
+      eventId: event.id,
+      eventType: event.event_type,
+      templateStyle,
+      categorizedImages: {
+        main: finalCategorizedImages.main?.length || 0,
+        gallery: finalCategorizedImages.gallery?.length || 0,
+        groom: finalCategorizedImages.groom?.length || 0,
+        bride: finalCategorizedImages.bride?.length || 0
+      },
+      eventDataKeys: Object.keys(eventData),
+      // 부고 전용 디버깅
+      ...(event.event_type === 'funeral' && {
+        funeralDebug: {
+          deceasedName: eventData.deceasedName,
+          familyMembersCount: eventData.familyMembers?.length || 0,
+          primaryContact: eventData.primaryContact,
+          funeralHome: eventData.funeralHome,
+          burialLocation: eventData.burialLocation
+        }
+      })
+    });
+    
+    navigation.navigate('EventDisplay', { 
+      eventId: event.id,
+      templateStyle: templateStyle,
+      categorizedImages: finalCategorizedImages,
+      eventData: eventData
+    });
+  };
 
   // 부조하기 버튼 클릭
   const handleContributePress = (event, e) => {
@@ -455,17 +528,6 @@ const handleActiveEventPress = (event) => {
                   <Text style={styles.activeEventDate}>
                     {event.event_date ? formatDate(event.event_date) : '날짜 미정'}
                   </Text>
-                  
-                  {/* 액션 버튼들 - QR 버튼 제거, 부조 버튼만 유지 */}
-                  {/* <View style={styles.activeEventActions}>
-                    <TouchableOpacity 
-                      style={styles.contributeButton}
-                      onPress={(e) => handleContributePress(event, e)}
-                    >
-                      <Ionicons name="heart" size={16} color={Colors.white} />
-                      <Text style={styles.contributeButtonText}>부조하기</Text>
-                    </TouchableOpacity>
-                  </View> */}
                   
                   {/* 전시모드 안내 - 더 눈에 띄게 */}
                   <View style={styles.displayModeHint}>
@@ -810,30 +872,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
     marginBottom: 16,
-  },
-  
-  // 액션 버튼들 - 부조 버튼만 남김
-  activeEventActions: {
-    marginBottom: 12,
-  },
-  contributeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
-    gap: 6,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  contributeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.white,
   },
   
   // 전시모드 힌트 - 더 강조
