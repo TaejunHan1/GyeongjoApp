@@ -1,4 +1,4 @@
-// src/screens/event/CreateEventScreen.js - 부고 전용 개선 버전 (방명록 설정 추가)
+// src/screens/event/CreateEventScreen.js - 부고 전용 개선 버전 (이미지 Storage 업로드 추가)
 import React, { useState, useRef } from 'react';
 import {
   View,
@@ -20,7 +20,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { createEvent } from '../../lib/supabaseHelper';
+import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUserInfo } from '../../lib/supabaseHelper';
 import DaumPostcode from '../../components/DaumPostcode';
 import WeddingTemplatePreview from './templates/WeddingTemplatePreview';
 import FuneralTemplatePreview from './templates/FuneralTemplatePreview';
@@ -322,6 +322,39 @@ const TossTimePicker = ({ visible, selectedTime, onSelect, onClose }) => {
   );
 };
 
+// 이미지 업로드 진행 상황 모달
+const ImageUploadModal = ({ visible, currentIndex, totalCount, onCancel }) => (
+  <Modal visible={visible} transparent animationType="fade">
+    <View style={styles.uploadModalOverlay}>
+      <View style={styles.uploadModalContainer}>
+        <View style={styles.uploadModalContent}>
+          <View style={styles.uploadIconContainer}>
+            <Ionicons name="cloud-upload-outline" size={48} color={TossColors.primary} />
+          </View>
+          <Text style={styles.uploadModalTitle}>이미지 업로드 중</Text>
+          <Text style={styles.uploadModalMessage}>
+            {currentIndex}/{totalCount} 이미지 업로드 중...
+          </Text>
+          <View style={styles.uploadProgressContainer}>
+            <View style={styles.uploadProgressTrack}>
+              <View style={[
+                styles.uploadProgressFill,
+                { width: `${(currentIndex / totalCount) * 100}%` }
+              ]} />
+            </View>
+            <Text style={styles.uploadProgressText}>
+              {Math.round((currentIndex / totalCount) * 100)}%
+            </Text>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.uploadModalCancelButton} onPress={onCancel}>
+          <Text style={styles.uploadModalCancelText}>취소</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </Modal>
+);
+
 export default function CreateEventScreen({ navigation, route }) {
   const { eventType = 'wedding' } = route.params || {};
   
@@ -389,6 +422,14 @@ export default function CreateEventScreen({ navigation, route }) {
     presetAmounts: [100000, 200000, 300000],
     selectedTemplate: null,
     images: [],
+  });
+  
+  // 이미지 업로드 관련 상태
+  const [imageUploadState, setImageUploadState] = useState({
+    isUploading: false,
+    currentIndex: 0,
+    totalCount: 0,
+    uploadingCategory: null,
   });
   
   // 스크롤 및 입력 필드 참조
@@ -825,13 +866,28 @@ export default function CreateEventScreen({ navigation, route }) {
     return images;
   };
 
-  // 이미지 제거 함수 - 단일 버전만 유지
-  const removeImage = (imageId) => {
+  // 이미지 제거 함수 - Storage에서도 삭제
+  const removeImage = async (imageId) => {
     console.log('🔍 [DEBUG] 이미지 제거 요청 ID:', imageId);
     
     setEventData(prevData => {
       const imageToRemove = prevData.images.find(img => img.id === imageId);
       console.log('🔍 [DEBUG] 제거할 이미지:', imageToRemove);
+      
+      // Storage에서 이미지 삭제 (백그라운드에서 실행)
+      if (imageToRemove?.storagePath) {
+        deleteImageFromStorage(imageToRemove.storagePath)
+          .then(result => {
+            if (result.success) {
+              console.log('✅ Storage에서 이미지 삭제 완료:', imageToRemove.storagePath);
+            } else {
+              console.log('⚠️ Storage 이미지 삭제 실패:', result.error);
+            }
+          })
+          .catch(error => {
+            console.log('⚠️ Storage 이미지 삭제 중 오류:', error);
+          });
+      }
       
       const newImages = prevData.images.filter(img => img.id !== imageId);
       console.log('🔍 [DEBUG] 제거 후 남은 이미지들:', newImages.map(img => ({ id: img.id, category: img.category })));
@@ -864,7 +920,7 @@ export default function CreateEventScreen({ navigation, route }) {
     return categorized;
   };
 
-  // 이미지 선택 함수 - 디버깅 및 개선된 버전
+  // 🔥 이미지 선택 및 업로드 함수 - 전면 개선
   const pickImagesForCategory = async (category) => {
     try {
       console.log('🔍 [DEBUG] 카테고리 선택:', category.key, category.label);
@@ -898,54 +954,143 @@ export default function CreateEventScreen({ navigation, route }) {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         console.log('🔍 [DEBUG] 선택된 이미지 개수:', result.assets.length);
         
-        let newImages = [];
-        
-        if (allowsMultiple && result.assets.length > 1) {
-          // 여러 이미지 선택 (갤러리, 메인 사진 등)
-          const selectedImages = result.assets.slice(0, remainingCount);
-          newImages = selectedImages.map((asset, index) => ({
-            ...asset,
-            category: category.key,
-            categoryLabel: category.label,
-            id: `${category.key}_${Date.now()}_${index}`, // 더 고유한 ID
-          }));
-        } else {
-          // 단일 이미지 선택
-          newImages = [{
-            ...result.assets[0],
-            category: category.key,
-            categoryLabel: category.label,
-            id: `${category.key}_${Date.now()}`, // 카테고리 포함 고유 ID
-          }];
+        // 🔥 현재 사용자 정보 가져오기
+        const userResult = await getCurrentUserInfo();
+        if (!userResult.success) {
+          showTossModal('오류', '사용자 정보를 확인할 수 없어요. 다시 로그인해주세요.', () => {});
+          return;
         }
 
-        console.log('🔍 [DEBUG] 생성된 새 이미지들:', newImages.map(img => ({ id: img.id, category: img.category })));
-
-        // 이미지 배열 업데이트 로직 개선
-        setEventData(prevData => {
-          let updatedImages;
-          
-          if (category.maxCount === 1) {
-            // 1장 제한 카테고리 (신랑, 신부): 기존 같은 카테고리 이미지 제거 후 새 이미지 추가
-            const otherCategoryImages = prevData.images.filter(img => img.category !== category.key);
-            updatedImages = [...otherCategoryImages, ...newImages];
-            console.log('🔍 [DEBUG] 1장 제한 - 기존 제거 후 추가');
-          } else {
-            // 다중 이미지 허용 카테고리 (메인, 갤러리): 기존 배열에 추가
-            updatedImages = [...prevData.images, ...newImages];
-            console.log('🔍 [DEBUG] 다중 허용 - 기존에 추가');
-          }
-
-          console.log('🔍 [DEBUG] 최종 이미지 배열:', updatedImages.map(img => ({ id: img.id, category: img.category })));
-          
-          return {
-            ...prevData,
-            images: updatedImages,
-          };
+        const currentUser = userResult.user;
+        const selectedImages = result.assets.slice(0, remainingCount);
+        
+        // 🔥 업로드 상태 시작
+        setImageUploadState({
+          isUploading: true,
+          currentIndex: 0,
+          totalCount: selectedImages.length,
+          uploadingCategory: category.label,
         });
+
+        console.log('🔍 [DEBUG] 이미지 업로드 시작:', selectedImages.length, '개');
+
+        const uploadPromises = selectedImages.map(async (asset, index) => {
+          try {
+            // 파일 이름 생성 (카테고리와 타임스탬프 포함)
+            const timestamp = new Date().getTime();
+            const fileName = `${category.key}_${timestamp}_${index}.jpg`;
+            
+            console.log('🔍 [DEBUG] 개별 이미지 업로드 시작:', fileName);
+
+            const uploadResult = await uploadImageToStorage(asset.uri, fileName, currentUser.id);
+            
+            // 진행 상황 업데이트
+            setImageUploadState(prev => ({
+              ...prev,
+              currentIndex: prev.currentIndex + 1,
+            }));
+            
+            if (uploadResult.success) {
+              console.log('✅ 개별 이미지 업로드 성공:', uploadResult.data.publicUrl);
+              return {
+                ...asset,
+                category: category.key,
+                categoryLabel: category.label,
+                id: `${category.key}_${timestamp}_${index}`,
+                publicUrl: uploadResult.data.publicUrl,
+                storagePath: uploadResult.data.path,
+                uploadSuccess: true,
+              };
+            } else {
+              console.error('❌ 개별 이미지 업로드 실패:', uploadResult.error);
+              return {
+                ...asset,
+                category: category.key,
+                categoryLabel: category.label,
+                id: `${category.key}_${timestamp}_${index}`,
+                uploadSuccess: false,
+                error: uploadResult.error,
+              };
+            }
+          } catch (error) {
+            console.error('❌ 개별 이미지 처리 오류:', error);
+            return {
+              ...asset,
+              category: category.key,
+              categoryLabel: category.label,
+              id: `${category.key}_${Date.now()}_${index}`,
+              uploadSuccess: false,
+              error: error.message,
+            };
+          }
+        });
+
+        const results = await Promise.all(uploadPromises);
+        
+        // 🔥 업로드 상태 종료
+        setImageUploadState({
+          isUploading: false,
+          currentIndex: 0,
+          totalCount: 0,
+          uploadingCategory: null,
+        });
+
+        const successfulUploads = results.filter(result => result.uploadSuccess);
+        const failedUploads = results.filter(result => !result.uploadSuccess);
+        
+        console.log('🔍 [DEBUG] 업로드 결과:', {
+          total: results.length,
+          success: successfulUploads.length,
+          failed: failedUploads.length
+        });
+
+        if (successfulUploads.length > 0) {
+          // 성공적으로 업로드된 이미지들을 상태에 추가
+          setEventData(prevData => {
+            let updatedImages;
+            
+            if (category.maxCount === 1) {
+              // 1장 제한 카테고리: 기존 같은 카테고리 이미지 제거 후 새 이미지 추가
+              const otherCategoryImages = prevData.images.filter(img => img.category !== category.key);
+              updatedImages = [...otherCategoryImages, ...successfulUploads];
+            } else {
+              // 다중 이미지 허용 카테고리: 기존 배열에 추가
+              updatedImages = [...prevData.images, ...successfulUploads];
+            }
+
+            console.log('🔍 [DEBUG] 최종 이미지 배열 업데이트:', updatedImages.length, '개');
+            
+            return {
+              ...prevData,
+              images: updatedImages,
+            };
+          });
+
+          if (failedUploads.length > 0) {
+            showTossModal(
+              '일부 업로드 실패', 
+              `${successfulUploads.length}장은 성공했지만 ${failedUploads.length}장 업로드에 실패했어요. 다시 시도해주세요.`, 
+              () => {}
+            );
+          } else {
+            showTossModal(
+              '업로드 완료', 
+              `${successfulUploads.length}장의 이미지가 성공적으로 업로드되었어요!`, 
+              () => {}
+            );
+          }
+        } else {
+          showTossModal('업로드 실패', '이미지 업로드에 실패했어요. 네트워크 상태를 확인하고 다시 시도해주세요.', () => {});
+        }
       }
     } catch (error) {
       console.error('🔍 [DEBUG] 이미지 선택 오류:', error);
+      setImageUploadState({
+        isUploading: false,
+        currentIndex: 0,
+        totalCount: 0,
+        uploadingCategory: null,
+      });
       showTossModal('오류', '사진 선택 중 문제가 발생했어요', () => {});
     }
   };
@@ -1086,11 +1231,14 @@ export default function CreateEventScreen({ navigation, route }) {
         preset_amounts: eventData.presetAmounts,
         status: 'active',
         is_finalized: false,
+        // 🔥 이제 publicUrl을 포함한 이미지 정보 저장
         image_urls: eventData.images.map(img => ({
-          uri: img.uri,
+          uri: img.publicUrl || img.uri, // publicUrl 우선 사용
           category: img.category,
           categoryLabel: img.categoryLabel,
-          id: img.id
+          id: img.id,
+          publicUrl: img.publicUrl,
+          storagePath: img.storagePath,
         })),
         
         // 방명록 설정 추가
@@ -1155,7 +1303,8 @@ export default function CreateEventScreen({ navigation, route }) {
           primaryContact: eventData.primaryContact,
           funeralHome: eventData.funeralHome,
           burialLocation: eventData.burialLocation,
-          eventDataKeys: Object.keys(eventData)
+          imageCount: eventData.images.length,
+          imagesWithPublicUrl: eventData.images.filter(img => img.publicUrl).length,
         });
         
         formattedEventData = {
@@ -1230,8 +1379,11 @@ export default function CreateEventScreen({ navigation, route }) {
         };
       }
 
-      console.log('🔍 [DEBUG] 최종 저장 데이터 - 이미지 개수:', formattedEventData.image_urls.length);
-      console.log('🔍 [DEBUG] 방명록 설정:', formattedEventData.allow_messages, formattedEventData.message_placeholder);
+      console.log('🔍 [DEBUG] 최종 저장 데이터 - 이미지 정보:', {
+        totalImages: formattedEventData.image_urls.length,
+        imagesWithPublicUrl: formattedEventData.image_urls.filter(img => img.publicUrl).length,
+        imagesWithStoragePath: formattedEventData.image_urls.filter(img => img.storagePath).length,
+      });
 
       const result = await createEvent(formattedEventData);
 
@@ -1267,6 +1419,17 @@ export default function CreateEventScreen({ navigation, route }) {
   const removeFamilyMember = (index) => {
     const updatedMembers = eventData.familyMembers.filter((_, i) => i !== index);
     setEventData({ ...eventData, familyMembers: updatedMembers });
+  };
+
+  // 업로드 취소 핸들러
+  const handleUploadCancel = () => {
+    setImageUploadState({
+      isUploading: false,
+      currentIndex: 0,
+      totalCount: 0,
+      uploadingCategory: null,
+    });
+    showTossModal('업로드 취소', '이미지 업로드가 취소되었습니다.', () => {});
   };
 
   // 메인 렌더링 함수들
@@ -2195,6 +2358,11 @@ export default function CreateEventScreen({ navigation, route }) {
             업로드된 이미지: {eventData.images.length}장
           </Text>
           
+          <Text style={styles.debugSummary}>
+            Storage 업로드: {eventData.images.filter(img => img.publicUrl).length}장 / 
+            로컬 캐시: {eventData.images.filter(img => !img.publicUrl).length}장
+          </Text>
+          
           {eventData.type === 'funeral' ? (
             <Text style={styles.debugSummary}>
               고인 사진: {categorizedImages.main.length}/3
@@ -2221,7 +2389,10 @@ export default function CreateEventScreen({ navigation, route }) {
                 }]}>
                   {image.category || 'NO_CAT'}
                 </Text>
-                <Image source={{ uri: image.uri }} style={styles.debugImage} />
+                <Text style={[styles.debugImageText, { fontSize: 9, color: image.publicUrl ? '#26C976' : '#FF6B6B' }]}>
+                  {image.publicUrl ? 'STORAGE' : 'LOCAL'}
+                </Text>
+                <Image source={{ uri: image.publicUrl || image.uri }} style={styles.debugImage} />
               </View>
             ))}
           </ScrollView>
@@ -2229,16 +2400,16 @@ export default function CreateEventScreen({ navigation, route }) {
           <TouchableOpacity 
             style={{ backgroundColor: '#4A88FF', padding: 8, borderRadius: 4, marginTop: 8 }}
             onPress={() => {
-              console.log('🔍 [DEBUG] === 카테고리별 이미지 상세 정보 ===');
-              console.log('🔍 [DEBUG] 메인 사진들:', categorizedImages.main.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
-              if (eventData.type !== 'funeral') {
-                console.log('🔍 [DEBUG] 갤러리 사진들:', categorizedImages.gallery.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
-                console.log('🔍 [DEBUG] 신랑 사진:', categorizedImages.groom.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
-                console.log('🔍 [DEBUG] 신부 사진:', categorizedImages.bride.map(img => ({ id: img.id, uri: img.uri.slice(-20) })));
-              }
+              console.log('🔍 [DEBUG] === 이미지 업로드 상태 상세 정보 ===');
+              console.log('🔍 [DEBUG] 전체 이미지:', eventData.images.length, '개');
+              console.log('🔍 [DEBUG] Storage 업로드 완료:', eventData.images.filter(img => img.publicUrl).length, '개');
+              console.log('🔍 [DEBUG] 로컬 캐시만:', eventData.images.filter(img => !img.publicUrl).length, '개');
+              eventData.images.forEach((img, index) => {
+                console.log(`🔍 [DEBUG] [${index}] ${img.category}: ${img.publicUrl ? 'STORAGE' : 'LOCAL'} - ${img.uri?.slice(-20) || 'NO_URI'}`);
+              });
             }}
           >
-            <Text style={{ color: 'white', textAlign: 'center', fontSize: 12 }}>콘솔에 카테고리별 정보 출력</Text>
+            <Text style={{ color: 'white', textAlign: 'center', fontSize: 12 }}>콘솔에 업로드 상태 정보 출력</Text>
           </TouchableOpacity>
         </View>
       );
@@ -2261,8 +2432,8 @@ export default function CreateEventScreen({ navigation, route }) {
           <Text style={styles.sectionTitle}>사진 업로드</Text>
           <Text style={styles.sectionSubtitle}>
             {eventData.type === 'funeral' 
-              ? '고인의 사진을 업로드해주세요' 
-              : '카테고리별로 사진을 업로드해주세요'
+              ? '고인의 사진을 업로드해주세요 (자동으로 클라우드에 저장됩니다)' 
+              : '카테고리별로 사진을 업로드해주세요 (자동으로 클라우드에 저장됩니다)'
             }
           </Text>
         </View>
@@ -2309,26 +2480,31 @@ export default function CreateEventScreen({ navigation, route }) {
                   style={[
                     styles.categoryUploadButton,
                     isComplete && styles.categoryUploadButtonDisabled,
-                    isRequired && styles.categoryUploadButtonRequired
+                    isRequired && styles.categoryUploadButtonRequired,
+                    imageUploadState.isUploading && styles.categoryUploadButtonUploading
                   ]}
                   onPress={() => {
                     console.log('🔍 [DEBUG] 업로드 버튼 클릭:', category.key);
                     pickImagesForCategory(category);
                   }}
-                  disabled={isComplete}
+                  disabled={isComplete || imageUploadState.isUploading}
                 >
                   <Ionicons 
-                    name={isComplete ? "checkmark-circle" : "camera"} 
+                    name={isComplete ? "checkmark-circle" : 
+                         imageUploadState.isUploading ? "cloud-upload" : "camera"} 
                     size={20} 
                     color={isComplete ? TossColors.success : 
+                           imageUploadState.isUploading ? TossColors.warning :
                            isRequired ? TossColors.error : TossColors.primary} 
                   />
                   <Text style={[
                     styles.categoryUploadButtonText,
                     isComplete && styles.categoryUploadButtonTextDisabled,
-                    isRequired && styles.categoryUploadButtonTextRequired
+                    isRequired && styles.categoryUploadButtonTextRequired,
+                    imageUploadState.isUploading && styles.categoryUploadButtonTextUploading
                   ]}>
-                    {isComplete ? '업로드 완료' : 
+                    {imageUploadState.isUploading ? '업로드 중...' :
+                     isComplete ? '업로드 완료' : 
                      currentCount === 0 ? `${category.label} 추가` : 
                      `${category.label} 추가 (${category.maxCount - currentCount}장 더)`}
                   </Text>
@@ -2343,13 +2519,24 @@ export default function CreateEventScreen({ navigation, route }) {
                   >
                     {categoryImages.map((image) => (
                       <View key={image.id} style={styles.categoryImageItem}>
-                        <Image source={{ uri: image.uri }} style={styles.categoryImage} />
+                        <Image source={{ uri: image.publicUrl || image.uri }} style={styles.categoryImage} />
+                        
+                        {/* 업로드 상태 표시 */}
+                        <View style={styles.categoryImageStatus}>
+                          <Ionicons 
+                            name={image.publicUrl ? "cloud-done" : "cloud-upload-outline"} 
+                            size={12} 
+                            color={image.publicUrl ? TossColors.success : TossColors.warning} 
+                          />
+                        </View>
+                        
                         <TouchableOpacity
                           style={styles.categoryImageRemove}
                           onPress={() => {
                             console.log('🔍 [DEBUG] 이미지 제거 버튼 클릭:', image.id, image.category);
                             removeImage(image.id);
                           }}
+                          disabled={imageUploadState.isUploading}
                         >
                           <Ionicons name="close-circle" size={20} color={TossColors.error} />
                         </TouchableOpacity>
@@ -2367,7 +2554,11 @@ export default function CreateEventScreen({ navigation, route }) {
           <Text style={styles.photoSummaryTitle}>업로드 현황</Text>
           <View style={styles.photoSummaryStats}>
             <Text style={styles.photoSummaryText}>
-              총 {eventData.images.length}장 업로드됨
+              총 {eventData.images.length}장 선택됨
+            </Text>
+            <Text style={styles.photoSummaryDetail}>
+              클라우드 저장: {eventData.images.filter(img => img.publicUrl).length}장 / 
+              대기 중: {eventData.images.filter(img => !img.publicUrl).length}장
             </Text>
             {eventData.type === 'funeral' ? (
               <Text style={styles.photoSummaryDetail}>
@@ -2640,14 +2831,15 @@ export default function CreateEventScreen({ navigation, route }) {
             <TouchableOpacity
               style={[
                 styles.nextButton,
-                isLoading && styles.nextButtonDisabled,
+                (isLoading || imageUploadState.isUploading) && styles.nextButtonDisabled,
                 currentStep === 1 && { flex: 1 }
               ]}
               onPress={handleNext}
-              disabled={isLoading}
+              disabled={isLoading || imageUploadState.isUploading}
             >
               <Text style={styles.nextButtonText}>
                 {isLoading ? '생성 중...' : 
+                 imageUploadState.isUploading ? '이미지 업로드 중...' :
                  currentStep === 1 ? '다음' : 
                  eventData.type === 'wedding' ? '결혼식 청첩장 만들기' :
                  eventData.type === 'funeral' ? '부고 만들기' :
@@ -2656,6 +2848,14 @@ export default function CreateEventScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* 이미지 업로드 진행 모달 */}
+        <ImageUploadModal
+          visible={imageUploadState.isUploading}
+          currentIndex={imageUploadState.currentIndex}
+          totalCount={imageUploadState.totalCount}
+          onCancel={handleUploadCancel}
+        />
 
         {/* 토스 스타일 모달들 */}
         <TossModal
@@ -3328,6 +3528,10 @@ const styles = StyleSheet.create({
     borderColor: TossColors.success,
     backgroundColor: TossColors.success + '10',
   },
+  categoryUploadButtonUploading: {
+    borderColor: TossColors.warning,
+    backgroundColor: TossColors.warning + '10',
+  },
   categoryUploadButtonText: {
     fontSize: 14,
     fontWeight: '600',
@@ -3339,6 +3543,9 @@ const styles = StyleSheet.create({
   },
   categoryUploadButtonTextDisabled: {
     color: TossColors.success,
+  },
+  categoryUploadButtonTextUploading: {
+    color: TossColors.warning,
   },
   categoryImagesScroll: {
     marginHorizontal: -4,
@@ -3352,6 +3559,14 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 8,
     backgroundColor: TossColors.border,
+  },
+  categoryImageStatus: {
+    position: 'absolute',
+    bottom: 2,
+    left: 2,
+    backgroundColor: TossColors.background,
+    borderRadius: 8,
+    padding: 2,
   },
   categoryImageRemove: {
     position: 'absolute',
@@ -3598,6 +3813,75 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: TossColors.background,
+  },
+  
+  // 이미지 업로드 모달
+  uploadModalOverlay: {
+    flex: 1,
+    backgroundColor: TossColors.overlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  uploadModalContainer: {
+    backgroundColor: TossColors.background,
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 320,
+    overflow: 'hidden',
+  },
+  uploadModalContent: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  uploadIconContainer: {
+    marginBottom: 16,
+  },
+  uploadModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: TossColors.text,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  uploadModalMessage: {
+    fontSize: 15,
+    color: TossColors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  uploadProgressContainer: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  uploadProgressTrack: {
+    width: '100%',
+    height: 6,
+    backgroundColor: TossColors.border,
+    borderRadius: 3,
+    marginBottom: 8,
+  },
+  uploadProgressFill: {
+    height: '100%',
+    backgroundColor: TossColors.primary,
+    borderRadius: 3,
+  },
+  uploadProgressText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TossColors.primary,
+  },
+  uploadModalCancelButton: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: TossColors.border,
+  },
+  uploadModalCancelText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: TossColors.textSecondary,
   },
   
   // 토스 스타일 모달
