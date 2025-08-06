@@ -1,5 +1,5 @@
 // src/screens/event/CreateEventScreen.js - 부고 전용 개선 버전 (이미지 Storage 업로드 추가)
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef }from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,8 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUserInfo } from '../../lib/supabaseHelper';
+import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUserInfo, moveImagesToEventFolder,
+} from '../../lib/supabaseHelper';
 import DaumPostcode from '../../components/DaumPostcode';
 import WeddingTemplatePreview from './templates/WeddingTemplatePreview';
 import FuneralTemplatePreview from './templates/FuneralTemplatePreview';
@@ -435,7 +436,6 @@ export default function CreateEventScreen({ navigation, route }) {
   // 스크롤 및 입력 필드 참조
   const scrollViewRef = useRef(null);
   const sectionPositions = useRef({
-    eventType: 0,
     names: 0,
     contact: 0,
     parents: 0,
@@ -498,33 +498,6 @@ export default function CreateEventScreen({ navigation, route }) {
       }),
     ]).start();
   }, [currentStep]);
-
-  const eventTypes = [
-    { 
-      key: 'wedding', 
-      label: '결혼식', 
-      emoji: '💒', 
-      description: '평생을 함께할 특별한 날',
-    },
-    { 
-      key: 'funeral', 
-      label: '부고', 
-      emoji: '🕯️', 
-      description: '소중한 분을 보내드리는 날',
-    },
-    { 
-      key: 'birthday', 
-      label: '돌잔치', 
-      emoji: '🎂', 
-      description: '아이의 첫 번째 생일',
-    },
-    { 
-      key: 'other', 
-      label: '기타', 
-      emoji: '🎉', 
-      description: '특별한 기념일',
-    },
-  ];
 
   const templates = {
     wedding: [
@@ -920,7 +893,6 @@ export default function CreateEventScreen({ navigation, route }) {
     return categorized;
   };
 
-  // 🔥 이미지 선택 및 업로드 함수 - 전면 개선
   const pickImagesForCategory = async (category) => {
     try {
       console.log('🔍 [DEBUG] 카테고리 선택:', category.key, category.label);
@@ -930,19 +902,19 @@ export default function CreateEventScreen({ navigation, route }) {
         showTossModal('권한 필요', '사진을 선택하려면 갤러리 접근 권한이 필요해요', () => {});
         return;
       }
-
+  
       const currentCount = getCategoryImageCount(category.key);
       const remainingCount = category.maxCount - currentCount;
-
+  
       console.log('🔍 [DEBUG] 현재 카운트:', currentCount, '남은 카운트:', remainingCount);
-
+  
       if (remainingCount <= 0) {
         showTossModal('알림', `${category.label}은 최대 ${category.maxCount}장까지 업로드 가능해요`, () => {});
         return;
       }
-
+  
       const allowsMultiple = remainingCount > 1 && category.maxCount > 1;
-
+  
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: !allowsMultiple,
@@ -950,7 +922,7 @@ export default function CreateEventScreen({ navigation, route }) {
         quality: 0.8,
         allowsMultipleSelection: allowsMultiple,
       });
-
+  
       if (!result.canceled && result.assets && result.assets.length > 0) {
         console.log('🔍 [DEBUG] 선택된 이미지 개수:', result.assets.length);
         
@@ -960,9 +932,12 @@ export default function CreateEventScreen({ navigation, route }) {
           showTossModal('오류', '사용자 정보를 확인할 수 없어요. 다시 로그인해주세요.', () => {});
           return;
         }
-
+  
         const currentUser = userResult.user;
         const selectedImages = result.assets.slice(0, remainingCount);
+        
+        // 🔥 임시 eventId 생성 (실제 이벤트 생성 전까지 사용)
+        const tempEventId = `temp_${Date.now()}`;
         
         // 🔥 업로드 상태 시작
         setImageUploadState({
@@ -971,18 +946,19 @@ export default function CreateEventScreen({ navigation, route }) {
           totalCount: selectedImages.length,
           uploadingCategory: category.label,
         });
-
+  
         console.log('🔍 [DEBUG] 이미지 업로드 시작:', selectedImages.length, '개');
-
+  
         const uploadPromises = selectedImages.map(async (asset, index) => {
           try {
-            // 파일 이름 생성 (카테고리와 타임스탬프 포함)
+            // 🔥 파일 이름 생성 - eventId 포함 (카테고리와 타임스탬프 포함)
             const timestamp = new Date().getTime();
             const fileName = `${category.key}_${timestamp}_${index}.jpg`;
             
             console.log('🔍 [DEBUG] 개별 이미지 업로드 시작:', fileName);
-
-            const uploadResult = await uploadImageToStorage(asset.uri, fileName, currentUser.id);
+  
+            // 🔥 uploadImageToStorage에 eventId 전달
+            const uploadResult = await uploadImageToStorage(asset.uri, fileName, currentUser.id, tempEventId);
             
             // 진행 상황 업데이트
             setImageUploadState(prev => ({
@@ -999,6 +975,7 @@ export default function CreateEventScreen({ navigation, route }) {
                 id: `${category.key}_${timestamp}_${index}`,
                 publicUrl: uploadResult.data.publicUrl,
                 storagePath: uploadResult.data.path,
+                eventId: tempEventId, // 🔥 eventId 추가
                 uploadSuccess: true,
               };
             } else {
@@ -1008,6 +985,7 @@ export default function CreateEventScreen({ navigation, route }) {
                 category: category.key,
                 categoryLabel: category.label,
                 id: `${category.key}_${timestamp}_${index}`,
+                eventId: tempEventId, // 🔥 eventId 추가
                 uploadSuccess: false,
                 error: uploadResult.error,
               };
@@ -1019,12 +997,13 @@ export default function CreateEventScreen({ navigation, route }) {
               category: category.key,
               categoryLabel: category.label,
               id: `${category.key}_${Date.now()}_${index}`,
+              eventId: tempEventId, // 🔥 eventId 추가
               uploadSuccess: false,
               error: error.message,
             };
           }
         });
-
+  
         const results = await Promise.all(uploadPromises);
         
         // 🔥 업로드 상태 종료
@@ -1034,7 +1013,7 @@ export default function CreateEventScreen({ navigation, route }) {
           totalCount: 0,
           uploadingCategory: null,
         });
-
+  
         const successfulUploads = results.filter(result => result.uploadSuccess);
         const failedUploads = results.filter(result => !result.uploadSuccess);
         
@@ -1043,7 +1022,7 @@ export default function CreateEventScreen({ navigation, route }) {
           success: successfulUploads.length,
           failed: failedUploads.length
         });
-
+  
         if (successfulUploads.length > 0) {
           // 성공적으로 업로드된 이미지들을 상태에 추가
           setEventData(prevData => {
@@ -1057,15 +1036,16 @@ export default function CreateEventScreen({ navigation, route }) {
               // 다중 이미지 허용 카테고리: 기존 배열에 추가
               updatedImages = [...prevData.images, ...successfulUploads];
             }
-
+  
             console.log('🔍 [DEBUG] 최종 이미지 배열 업데이트:', updatedImages.length, '개');
             
             return {
               ...prevData,
               images: updatedImages,
+              tempEventId: tempEventId, // 🔥 임시 eventId 저장
             };
           });
-
+  
           if (failedUploads.length > 0) {
             showTossModal(
               '일부 업로드 실패', 
@@ -1094,6 +1074,7 @@ export default function CreateEventScreen({ navigation, route }) {
       showTossModal('오류', '사진 선택 중 문제가 발생했어요', () => {});
     }
   };
+  
 
   const handleTemplatePreview = (template) => {
     console.log('🔍 [DEBUG] 템플릿 미리보기 시작:', template.name);
@@ -1210,204 +1191,194 @@ export default function CreateEventScreen({ navigation, route }) {
     }
   };
 
-  const handleSave = async () => {
-    setIsLoading(true);
+// CreateEventScreen.js의 handleSave 함수 - 간소화된 버전
 
-    try {
-      const eventTitle = eventData.type === 'wedding' 
-        ? `${eventData.groomName} ♥ ${eventData.brideName} 결혼식`
-        : eventData.type === 'funeral'
-        ? `故 ${eventData.deceasedName} 부고`
-        : eventData.title.trim();
+const handleSave = async () => {
+  setIsLoading(true);
 
-      const categorizedImages = getCategorizedImages();
-      console.log('🔍 [DEBUG] 저장할 카테고리별 이미지:', categorizedImages);
+  try {
+    const eventTitle = eventData.type === 'wedding' 
+      ? `${eventData.groomName} ♥ ${eventData.brideName} 결혼식`
+      : eventData.type === 'funeral'
+      ? `故 ${eventData.deceasedName} 부고`
+      : eventData.title.trim();
 
-      let formattedEventData = {
-        event_type: eventData.type,
-        event_name: eventTitle,
-        template_style: eventData.selectedTemplate?.style || 'modern-dark',
-        family_relations: eventData.familyRelations,
-        preset_amounts: eventData.presetAmounts,
-        status: 'active',
-        is_finalized: false,
-        // 🔥 이제 publicUrl을 포함한 이미지 정보 저장
-        image_urls: eventData.images.map(img => ({
-          uri: img.publicUrl || img.uri, // publicUrl 우선 사용
-          category: img.category,
-          categoryLabel: img.categoryLabel,
-          id: img.id,
-          publicUrl: img.publicUrl,
-          storagePath: img.storagePath,
-        })),
-        
-        // 방명록 설정 추가
-        allow_messages: eventData.allowMessages,
-        message_placeholder: eventData.messageSettings.placeholder,
+    const categorizedImages = getCategorizedImages();
+    console.log('🔍 [DEBUG] 저장할 카테고리별 이미지:', categorizedImages);
+
+    let formattedEventData = {
+      event_type: eventData.type,
+      event_name: eventTitle,
+      template_style: eventData.selectedTemplate?.style || 'modern-dark',
+      family_relations: eventData.familyRelations,
+      preset_amounts: eventData.presetAmounts,
+      status: 'active',
+      is_finalized: false,
+      
+      // 🔥 이미지는 현재 업로드된 상태 그대로 저장
+      image_urls: eventData.images.map(img => ({
+        uri: img.publicUrl || img.uri,
+        category: img.category,
+        categoryLabel: img.categoryLabel,
+        id: img.id,
+        storagePath: img.storagePath || null,
+        publicUrl: img.publicUrl || null,
+        eventId: img.eventId || null
+      })),
+      
+      // 방명록 설정 추가
+      allow_messages: eventData.allowMessages,
+      message_placeholder: eventData.messageSettings.placeholder,
+    };
+
+    // 이벤트 타입별 데이터 처리
+    if (eventData.type === 'wedding') {
+      const fullLocation = eventData.detailedAddress 
+        ? `${eventData.location} ${eventData.detailedAddress}`.trim()
+        : eventData.location.trim();
+
+      const parentsContactInfo = {
+        groom_father_contact: eventData.groomFatherContact || null,
+        groom_mother_contact: eventData.groomMotherContact || null,
+        bride_father_contact: eventData.brideFatherContact || null,
+        bride_mother_contact: eventData.brideMotherContact || null,
+        reception_time: eventData.receptionTime && eventData.receptionTime instanceof Date && !isNaN(eventData.receptionTime.getTime()) ? 
+          eventData.receptionTime.toTimeString().split(' ')[0] : null,
       };
 
-      if (eventData.type === 'wedding') {
-        const fullLocation = eventData.detailedAddress 
-          ? `${eventData.location} ${eventData.detailedAddress}`.trim()
-          : eventData.location.trim();
-
-        // 부모님 연락처 정보를 additional_info에 저장
-        const parentsContactInfo = {
-          groom_father_contact: eventData.groomFatherContact || null,
-          groom_mother_contact: eventData.groomMotherContact || null,
-          bride_father_contact: eventData.brideFatherContact || null,
-          bride_mother_contact: eventData.brideMotherContact || null,
-          reception_time: eventData.receptionTime && eventData.receptionTime instanceof Date && !isNaN(eventData.receptionTime.getTime()) ? 
-            eventData.receptionTime.toTimeString().split(' ')[0] : null,
-        };
-
-        formattedEventData = {
-          ...formattedEventData,
-          event_date: eventData.date && eventData.date instanceof Date && !isNaN(eventData.date.getTime()) ? 
-            eventData.date.toISOString().split('T')[0] : null,
-          location: fullLocation || null,
-          detailed_address: eventData.detailedAddress.trim() || null,
-          main_person_name: `${eventData.groomName}, ${eventData.brideName}`,
-          bride_name: eventData.brideName.trim(),
-          groom_name: eventData.groomName.trim(),
-          bride_father_name: eventData.brideFatherName.trim() || null,
-          bride_mother_name: eventData.brideMotherName.trim() || null,
-          groom_father_name: eventData.groomFatherName.trim() || null,
-          groom_mother_name: eventData.groomMotherName.trim() || null,
-          bride_contact: eventData.brideContact || null,
-          groom_contact: eventData.groomContact || null,
-          ceremony_time: eventData.ceremonyTime && eventData.ceremonyTime instanceof Date && !isNaN(eventData.ceremonyTime.getTime()) ? 
-            eventData.ceremonyTime.toTimeString().split(' ')[0] : null,
-          custom_message: eventData.customMessage.trim() || null,
-          parking_info: eventData.parkingInfo.trim() || null,
-          additional_info: {
-            ...parentsContactInfo,
-            categorized_images: categorizedImages,
-            message_settings: eventData.messageSettings,
-          }
-        };
-      } else if (eventData.type === 'funeral') {
-        // 부고 데이터 처리 - 상주 정보 포함
-        
-        // 🔥 상주 정보 필터링 및 정리
-        const validFamilyMembers = eventData.familyMembers
-          .filter(member => member.names && member.names.trim())
-          .map(member => ({
-            relation: member.relation,
-            names: member.names.trim()
-          }));
-        
-        console.log('🔍 저장할 부고 데이터:', {
-          deceasedName: eventData.deceasedName,
-          familyMembersCount: validFamilyMembers.length,
-          primaryContact: eventData.primaryContact,
-          funeralHome: eventData.funeralHome,
-          burialLocation: eventData.burialLocation,
-          imageCount: eventData.images.length,
-          imagesWithPublicUrl: eventData.images.filter(img => img.publicUrl).length,
-        });
-        
-        formattedEventData = {
-          ...formattedEventData,
-          
-          // 🔥 CreateEventScreen의 camelCase 필드들을 DB 형식으로 매핑
-          event_type: 'funeral',
-          main_person_name: eventData.deceasedName.trim(),
-          event_name: eventTitle,
-          
-          // 장례식장 정보
-          location: eventData.funeralAddress?.trim() || null,
-          detailed_address: eventData.detailedAddress?.trim() || null,
-          
-          // 고인 정보 - camelCase에서 snake_case로 변환
-          deceased_age: parseInt(eventData.deceasedAge) || null,
-          death_date: eventData.deathDate && eventData.deathDate instanceof Date && !isNaN(eventData.deathDate.getTime()) ? 
-            eventData.deathDate.toISOString().split('T')[0] : null,
-          deceased_gender: eventData.deceasedGender || '남',
-          
-          // 장례 일정
-          casket_date: eventData.casketDate && eventData.casketDate instanceof Date && !isNaN(eventData.casketDate.getTime()) ? 
-            eventData.casketDate.toISOString().split('T')[0] : null,
-          casket_time: eventData.casketTime && eventData.casketTime instanceof Date && !isNaN(eventData.casketTime.getTime()) ? 
-            eventData.casketTime.toTimeString().split(' ')[0] : null,
-          burial_date: eventData.burialDate && eventData.burialDate instanceof Date && !isNaN(eventData.burialDate.getTime()) ? 
-            eventData.burialDate.toISOString().split('T')[0] : null,
-          burial_time: eventData.burialTime && eventData.burialTime instanceof Date && !isNaN(eventData.burialTime.getTime()) ? 
-            eventData.burialTime.toTimeString().split(' ')[0] : null,
-          burial_location: eventData.burialLocation?.trim() || null,
-          secondary_burial_location: eventData.secondaryBurialLocation?.trim() || null,
-          
-          // 연락처 및 기타 정보
-          primary_contact: eventData.primaryContact || null,
-          secondary_contact: eventData.secondaryContact || null,
-          funeral_director: eventData.funeralDirector?.trim() || null,
-          funeral_home: eventData.funeralHome?.trim() || null,
-          custom_message: eventData.customMessage?.trim() || null,
-          
-          // 🔥 supabaseHelper.js에서 사용할 수 있도록 camelCase 버전도 함께 전달
-          deceasedName: eventData.deceasedName.trim(), // camelCase 버전
-          familyMembers: validFamilyMembers, // camelCase 버전
-          
-          // 🔥 additional_info에 저장할 정보들
-          additional_info: {
-            // 🔥 상주 정보를 family_members로 저장
-            family_members: validFamilyMembers,
-            categorized_images: categorizedImages,
-            message_settings: eventData.messageSettings,
-            // 기타 메타데이터
-            created_via: 'app_v2.3',
-            version: '2.3',
-          }
-        };
-      } else {
-        // 기타 타입 처리
-        const fullLocation = eventData.detailedAddress 
-          ? `${eventData.location} ${eventData.detailedAddress}`.trim()
-          : eventData.location.trim();
-
-        formattedEventData = {
-          ...formattedEventData,
-          event_date: eventData.date && eventData.date instanceof Date && !isNaN(eventData.date.getTime()) ? 
-            eventData.date.toISOString().split('T')[0] : null,
-          location: fullLocation || null,
-          detailed_address: eventData.detailedAddress.trim() || null,
-          main_person_name: eventData.hostName?.trim(),
-          custom_message: eventData.customMessage.trim() || null,
-          additional_info: {
-            message_settings: eventData.messageSettings,
-          }
-        };
-      }
-
-      console.log('🔍 [DEBUG] 최종 저장 데이터 - 이미지 정보:', {
-        totalImages: formattedEventData.image_urls.length,
-        imagesWithPublicUrl: formattedEventData.image_urls.filter(img => img.publicUrl).length,
-        imagesWithStoragePath: formattedEventData.image_urls.filter(img => img.storagePath).length,
+      formattedEventData = {
+        ...formattedEventData,
+        event_date: eventData.date && eventData.date instanceof Date && !isNaN(eventData.date.getTime()) ? 
+          eventData.date.toISOString().split('T')[0] : null,
+        location: fullLocation || null,
+        detailed_address: eventData.detailedAddress.trim() || null,
+        main_person_name: `${eventData.groomName}, ${eventData.brideName}`,
+        bride_name: eventData.brideName.trim(),
+        groom_name: eventData.groomName.trim(),
+        bride_father_name: eventData.brideFatherName.trim() || null,
+        bride_mother_name: eventData.brideMotherName.trim() || null,
+        groom_father_name: eventData.groomFatherName.trim() || null,
+        groom_mother_name: eventData.groomMotherName.trim() || null,
+        bride_contact: eventData.brideContact || null,
+        groom_contact: eventData.groomContact || null,
+        ceremony_time: eventData.ceremonyTime && eventData.ceremonyTime instanceof Date && !isNaN(eventData.ceremonyTime.getTime()) ? 
+          eventData.ceremonyTime.toTimeString().split(' ')[0] : null,
+        custom_message: eventData.customMessage.trim() || null,
+        parking_info: eventData.parkingInfo.trim() || null,
+        additional_info: {
+          ...parentsContactInfo,
+          categorized_images: categorizedImages,
+          message_settings: eventData.messageSettings,
+        }
+      };
+    } else if (eventData.type === 'funeral') {
+      // 부고 데이터 처리
+      const validFamilyMembers = eventData.familyMembers
+        .filter(member => member.names && member.names.trim())
+        .map(member => ({
+          relation: member.relation,
+          names: member.names.trim()
+        }));
+      
+      console.log('🔍 저장할 부고 데이터:', {
+        deceasedName: eventData.deceasedName,
+        familyMembersCount: validFamilyMembers.length,
+        primaryContact: eventData.primaryContact,
+        funeralHome: eventData.funeralHome,
+        burialLocation: eventData.burialLocation,
+        imageCount: eventData.images.length,
+        imagesWithPublicUrl: eventData.images.filter(img => img.publicUrl).length,
       });
+      
+      formattedEventData = {
+        ...formattedEventData,
+        event_type: 'funeral',
+        main_person_name: eventData.deceasedName.trim(),
+        event_name: eventTitle,
+        location: eventData.funeralAddress?.trim() || null,
+        detailed_address: eventData.detailedAddress?.trim() || null,
+        deceased_age: parseInt(eventData.deceasedAge) || null,
+        death_date: eventData.deathDate && eventData.deathDate instanceof Date && !isNaN(eventData.deathDate.getTime()) ? 
+          eventData.deathDate.toISOString().split('T')[0] : null,
+        deceased_gender: eventData.deceasedGender || '남',
+        casket_date: eventData.casketDate && eventData.casketDate instanceof Date && !isNaN(eventData.casketDate.getTime()) ? 
+          eventData.casketDate.toISOString().split('T')[0] : null,
+        casket_time: eventData.casketTime && eventData.casketTime instanceof Date && !isNaN(eventData.casketTime.getTime()) ? 
+          eventData.casketTime.toTimeString().split(' ')[0] : null,
+        burial_date: eventData.burialDate && eventData.burialDate instanceof Date && !isNaN(eventData.burialDate.getTime()) ? 
+          eventData.burialDate.toISOString().split('T')[0] : null,
+        burial_time: eventData.burialTime && eventData.burialTime instanceof Date && !isNaN(eventData.burialTime.getTime()) ? 
+          eventData.burialTime.toTimeString().split(' ')[0] : null,
+        burial_location: eventData.burialLocation?.trim() || null,
+        secondary_burial_location: eventData.secondaryBurialLocation?.trim() || null,
+        primary_contact: eventData.primaryContact || null,
+        secondary_contact: eventData.secondaryContact || null,
+        funeral_director: eventData.funeralDirector?.trim() || null,
+        funeral_home: eventData.funeralHome?.trim() || null,
+        custom_message: eventData.customMessage?.trim() || null,
+        deceasedName: eventData.deceasedName.trim(),
+        familyMembers: validFamilyMembers,
+        additional_info: {
+          family_members: validFamilyMembers,
+          categorized_images: categorizedImages,
+          message_settings: eventData.messageSettings,
+          created_via: 'app_v2.3',
+          version: '2.3',
+        }
+      };
+    } else {
+      // 기타 타입 처리
+      const fullLocation = eventData.detailedAddress 
+        ? `${eventData.location} ${eventData.detailedAddress}`.trim()
+        : eventData.location.trim();
 
-      const result = await createEvent(formattedEventData);
-
-      if (result.success) {
-        setCurrentStep(3);
-        setTimeout(() => {
-          navigation.navigate('EventDisplay', { 
-            eventId: result.data.id,
-            templateStyle: eventData.selectedTemplate?.style || 'modern-dark',
-            categorizedImages: categorizedImages,
-            allowMessages: eventData.allowMessages,
-            messageSettings: eventData.messageSettings,
-          });
-        }, 2000);
-      } else {
-        showTossModal('오류', '경조사 등록에 실패했어요. 다시 시도해주세요', () => {});
-      }
-    } catch (error) {
-      console.error('🔍 [DEBUG] 저장 오류:', error);
-      showTossModal('오류', '경조사 등록 중 문제가 발생했어요', () => {});
-    } finally {
-      setIsLoading(false);
+      formattedEventData = {
+        ...formattedEventData,
+        event_date: eventData.date && eventData.date instanceof Date && !isNaN(eventData.date.getTime()) ? 
+          eventData.date.toISOString().split('T')[0] : null,
+        location: fullLocation || null,
+        detailed_address: eventData.detailedAddress.trim() || null,
+        main_person_name: eventData.hostName?.trim(),
+        custom_message: eventData.customMessage.trim() || null,
+        additional_info: {
+          message_settings: eventData.messageSettings,
+        }
+      };
     }
-  };
+
+    console.log('🔍 [DEBUG] 최종 저장 데이터 - 이미지 정보:', {
+      totalImages: formattedEventData.image_urls.length,
+      imagesWithPublicUrl: formattedEventData.image_urls.filter(img => img.publicUrl).length,
+      imagesWithStoragePath: formattedEventData.image_urls.filter(img => img.storagePath).length,
+    });
+
+    // 🔥 이벤트 생성 (이미지 이동 과정 생략)
+    const result = await createEvent(formattedEventData);
+
+    if (result.success) {
+      console.log('✅ 이벤트 생성 및 이미지 저장 완료, ID:', result.data.id);
+      
+      setCurrentStep(3);
+      setTimeout(() => {
+        navigation.navigate('EventDisplay', { 
+          eventId: result.data.id,
+          templateStyle: eventData.selectedTemplate?.style || 'modern-dark',
+          categorizedImages: categorizedImages,
+          allowMessages: eventData.allowMessages,
+          messageSettings: eventData.messageSettings,
+        });
+      }, 2000);
+    } else {
+      throw new Error(result.error);
+    }
+
+  } catch (error) {
+    console.error('🔍 [DEBUG] 저장 오류:', error);
+    showTossModal('오류', '경조사 등록 중 문제가 발생했어요', () => {});
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // 연락처 입력 핸들러
   const handleContactChange = (text, field) => {
@@ -1433,54 +1404,6 @@ export default function CreateEventScreen({ navigation, route }) {
   };
 
   // 메인 렌더링 함수들
-  const renderEventTypeSelector = () => (
-    <Animated.View 
-      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
-      onLayout={(event) => {
-        sectionPositions.current.eventType = event.nativeEvent.layout.y;
-      }}
-    >
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>어떤 경조사인가요?</Text>
-        <Text style={styles.sectionSubtitle}>준비하실 경조사 종류를 선택해주세요</Text>
-      </View>
-      
-      <View style={styles.typeGrid}>
-        {eventTypes.map((type) => (
-          <TouchableOpacity
-            key={type.key}
-            style={[
-              styles.typeCard,
-              eventData.type === type.key && styles.typeCardSelected,
-            ]}
-            onPress={() => setEventData({ ...eventData, type: type.key })}
-          >
-            <Text style={styles.typeEmoji}>{type.emoji}</Text>
-            <View style={styles.typeTextContainer}>
-              <Text style={[
-                styles.typeLabel,
-                eventData.type === type.key && styles.typeLabelSelected
-              ]}>
-                {type.label}
-              </Text>
-              <Text style={[
-                styles.typeDescription,
-                eventData.type === type.key && styles.typeDescriptionSelected
-              ]}>
-                {type.description}
-              </Text>
-            </View>
-            {eventData.type === type.key && (
-              <View style={styles.typeCheckContainer}>
-                <Ionicons name="checkmark-circle" size={20} color={TossColors.primary} />
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
-      </View>
-    </Animated.View>
-  );
-
   const renderWeddingForm = () => (
     <Animated.View 
       style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
@@ -2135,7 +2058,7 @@ export default function CreateEventScreen({ navigation, route }) {
         </View>
       </View>
 
-      <View style={styles.parentsSection}>
+              <View style={styles.parentsSection}>
         <Text style={styles.parentTitle}>신부측 부모님</Text>
         <View style={styles.formRow}>
           <View style={styles.inputWrapper}>
@@ -2741,8 +2664,6 @@ export default function CreateEventScreen({ navigation, route }) {
         // 컨텐츠 사이즈가 변경될 때마다 위치 재계산
       }}
     >
-      {renderEventTypeSelector()}
-      
       {/* 결혼식 폼들 */}
       {eventData.type === 'wedding' && (
         <>
@@ -3064,50 +2985,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: TossColors.textSecondary,
     lineHeight: 20,
-  },
-  
-  // 경조사 타입 선택
-  typeGrid: {
-    gap: 12,
-  },
-  typeCard: {
-    backgroundColor: TossColors.surface,
-    borderRadius: 12,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: TossColors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  typeCardSelected: {
-    borderColor: TossColors.primary,
-    backgroundColor: TossColors.secondary,
-  },
-  typeEmoji: {
-    fontSize: 24,
-    marginRight: 16,
-  },
-  typeTextContainer: {
-    flex: 1,
-  },
-  typeLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: TossColors.text,
-    marginBottom: 2,
-  },
-  typeLabelSelected: {
-    color: TossColors.primary,
-  },
-  typeDescription: {
-    fontSize: 13,
-    color: TossColors.textSecondary,
-  },
-  typeDescriptionSelected: {
-    color: TossColors.primary,
-  },
-  typeCheckContainer: {
-    marginLeft: 8,
   },
   
   // 폼 요소
@@ -4177,4 +4054,4 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontWeight: '600',
   },
-});
+}); 

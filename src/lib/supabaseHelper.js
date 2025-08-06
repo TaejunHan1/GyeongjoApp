@@ -72,16 +72,303 @@ export const getCurrentUserInfo = async () => {
   }
 };
 
-// ===== 이미지 업로드 관련 함수들 =====
+/**
+ * 🔥 임시 이미지들을 실제 eventId 폴더로 이동
+ */
+export const moveImagesToEventFolder = async (images, realEventId, tempEventId) => {
+  try {
+    console.log('🔍 이미지 이동 시작:', {
+      imageCount: images.length,
+      realEventId,
+      tempEventId
+    });
+
+    const movePromises = images.map(async (image) => {
+      try {
+        if (!image.storagePath || !image.publicUrl) {
+          console.log('⚠️ Storage 정보 없는 이미지 건너뛰기:', image.id);
+          return {
+            ...image,
+            moveSuccess: false,
+            error: 'Storage 정보 없음'
+          };
+        }
+
+        // 기존 경로에서 파일 다운로드
+        const { data: fileData, error: downloadError } = await supabase.storage
+          .from('event-images')
+          .download(image.storagePath);
+
+        if (downloadError) {
+          throw new Error(`파일 다운로드 실패: ${downloadError.message}`);
+        }
+
+        // 새 경로 생성
+        const pathParts = image.storagePath.split('/');
+        const userId = pathParts[0];
+        const fileName = pathParts[pathParts.length - 1];
+        const newPath = `${userId}/${realEventId}/${fileName}`;
+
+        // 새 위치에 업로드
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('event-images')
+          .upload(newPath, fileData, {
+            contentType: 'image/jpeg',
+            upsert: true
+          });
+
+        if (uploadError) {
+          throw new Error(`새 위치 업로드 실패: ${uploadError.message}`);
+        }
+
+        // 새 Public URL 생성
+        const { data: { publicUrl: newPublicUrl } } = supabase.storage
+          .from('event-images')
+          .getPublicUrl(newPath);
+
+        // 기존 파일 삭제
+        try {
+          await supabase.storage
+            .from('event-images')
+            .remove([image.storagePath]);
+        } catch (deleteError) {
+          console.warn('⚠️ 기존 파일 삭제 실패 (무시):', deleteError);
+        }
+
+        console.log('✅ 이미지 이동 성공:', {
+          from: image.storagePath,
+          to: newPath,
+          newUrl: newPublicUrl
+        });
+
+        return {
+          ...image,
+          storagePath: newPath,
+          publicUrl: newPublicUrl,
+          eventId: realEventId,
+          moveSuccess: true
+        };
+
+      } catch (error) {
+        console.error('❌ 개별 이미지 이동 실패:', error);
+        return {
+          ...image,
+          moveSuccess: false,
+          error: error.message
+        };
+      }
+    });
+
+    const results = await Promise.all(movePromises);
+    
+    const successfulMoves = results.filter(result => result.moveSuccess);
+    const failedMoves = results.filter(result => !result.moveSuccess);
+
+    console.log('✅ 이미지 이동 완료:', {
+      total: images.length,
+      success: successfulMoves.length,
+      failed: failedMoves.length
+    });
+
+    return {
+      success: true,
+      data: {
+        updatedImages: successfulMoves,
+        failedImages: failedMoves,
+        totalSuccess: successfulMoves.length,
+        totalFailed: failedMoves.length
+      }
+    };
+
+  } catch (error) {
+    console.error('❌ moveImagesToEventFolder error:', error);
+    return {
+      success: false,
+      error: error.message || '이미지 이동에 실패했습니다.'
+    };
+  }
+};
 
 /**
- * 단일 이미지를 Supabase Storage에 업로드
+ * 🔥 이벤트의 image_urls 필드 업데이트
  */
-export const uploadImageToStorage = async (imageUri, fileName, userId) => {
+export const updateEventImages = async (eventId, updatedImages) => {
+  try {
+    console.log('🔍 이벤트 이미지 DB 업데이트 시작:', {
+      eventId,
+      imageCount: updatedImages.length
+    });
+
+    const imageUrls = updatedImages.map(img => ({
+      uri: img.publicUrl,
+      category: img.category,
+      categoryLabel: img.categoryLabel,
+      id: img.id,
+      storagePath: img.storagePath,
+      publicUrl: img.publicUrl,
+      eventId: img.eventId
+    }));
+
+    const { data, error } = await supabase
+      .from('events')
+      .update({
+        image_urls: imageUrls,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', eventId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ 이벤트 이미지 DB 업데이트 오류:', error);
+      throw error;
+    }
+
+    console.log('✅ 이벤트 이미지 DB 업데이트 완료');
+    
+    return {
+      success: true,
+      data
+    };
+
+  } catch (error) {
+    console.error('❌ updateEventImages error:', error);
+    return {
+      success: false,
+      error: error.message || '이미지 DB 업데이트에 실패했습니다.'
+    };
+  }
+};
+
+/**
+ * 🔥 특정 eventId의 Storage 이미지들 가져오기
+ */
+export const getEventStorageImages = async (userId, eventId) => {
+  try {
+    console.log('🔍 특정 이벤트 Storage 이미지 조회:', { userId, eventId });
+    
+    // eventId 폴더의 파일 목록 가져오기
+    const { data: files, error } = await supabase.storage
+      .from('event-images')
+      .list(`${userId}/${eventId}`);
+
+    if (error) {
+      console.error('❌ Storage 파일 목록 조회 오류:', error);
+      return { success: false, error: error.message };
+    }
+
+    if (!files || files.length === 0) {
+      console.log('📭 해당 이벤트의 이미지가 없음');
+      return { success: true, data: { files: [], count: 0 } };
+    }
+
+    console.log('✅ Storage 파일 목록:', files);
+    
+    // 각 파일의 public URL 생성
+    const filesWithUrls = files.map(file => {
+      const fullPath = `${userId}/${eventId}/${file.name}`;
+      const { data: { publicUrl } } = supabase.storage
+        .from('event-images')
+        .getPublicUrl(fullPath);
+      
+      return {
+        ...file,
+        publicUrl,
+        fullPath,
+        eventId,
+        category: determineImageCategory(file.name) // 파일명에서 카테고리 추정
+      };
+    });
+
+    return {
+      success: true,
+      data: {
+        files: filesWithUrls,
+        count: files.length
+      }
+    };
+    
+  } catch (error) {
+    console.error('❌ getEventStorageImages error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * 🔥 파일명에서 이미지 카테고리 추정
+ */
+const determineImageCategory = (fileName) => {
+  const lowerFileName = fileName.toLowerCase();
+  
+  if (lowerFileName.includes('main')) return 'main';
+  if (lowerFileName.includes('gallery')) return 'gallery';
+  if (lowerFileName.includes('groom')) return 'groom';
+  if (lowerFileName.includes('bride')) return 'bride';
+  
+  // 기본값은 main
+  return 'main';
+};
+
+
+/**
+ * Storage에서 특정 이벤트의 모든 이미지 삭제
+ */
+export const deleteEventStorageImages = async (userId, eventId) => {
+  try {
+    console.log('🔍 이벤트 Storage 이미지 삭제 시작:', { userId, eventId });
+    
+    // 해당 이벤트 폴더의 모든 파일 목록 가져오기
+    const { data: files, error: listError } = await supabase.storage
+      .from('event-images')
+      .list(`${userId}/${eventId}`);
+
+    if (listError) {
+      console.error('❌ 파일 목록 조회 오류:', listError);
+      return { success: false, error: listError.message };
+    }
+
+    if (!files || files.length === 0) {
+      console.log('📭 삭제할 파일이 없음');
+      return { success: true, data: { deletedCount: 0 } };
+    }
+
+    // 파일 경로 생성
+    const filePaths = files.map(file => `${userId}/${eventId}/${file.name}`);
+    
+    // 일괄 삭제
+    const { data, error: deleteError } = await supabase.storage
+      .from('event-images')
+      .remove(filePaths);
+
+    if (deleteError) {
+      console.error('❌ 파일 삭제 오류:', deleteError);
+      return { success: false, error: deleteError.message };
+    }
+
+    console.log('✅ 이벤트 Storage 이미지 삭제 완료:', filePaths.length, '개');
+    
+    return {
+      success: true,
+      data: {
+        deletedCount: filePaths.length,
+        deletedFiles: filePaths
+      }
+    };
+
+  } catch (error) {
+    console.error('❌ deleteEventStorageImages error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+
+
+export const uploadImageToStorage = async (imageUri, fileName, userId, eventId = null) => {
   try {
     console.log('🔍 이미지 업로드 시작:', { 
       fileName, 
       userId, 
+      eventId,
       imageUri: imageUri?.slice(0, 50) + '...',
       supabaseUrl: supabase.supabaseUrl?.slice(0, 30) + '...' 
     });
@@ -107,20 +394,23 @@ export const uploadImageToStorage = async (imageUri, fileName, userId) => {
       throw new Error(`파일 읽기 실패: ${fileError.message}`);
     }
     
-    // 2. 파일 이름 정리 및 경로 생성
+    // 2. 파일 이름 정리 및 경로 생성 - eventId 포함
     const timestamp = new Date().getTime();
     const cleanFileName = fileName?.replace(/[^a-zA-Z0-9.-]/g, '_') || 'image.jpg';
-    const uniqueFileName = `${userId}/${timestamp}_${cleanFileName}`;
+    
+    // 🔥 Storage 경로: userId/eventId/fileName 구조
+    const storageEventId = eventId || `temp_${timestamp}`;
+    const uniqueFileName = `${userId}/${storageEventId}/${timestamp}_${cleanFileName}`;
     
     console.log('🔍 업로드 경로:', uniqueFileName);
     
-    // 3. Supabase Storage에 업로드 (버킷 확인 없이 바로 시도)
+    // 3. Supabase Storage에 업로드
     const { data, error } = await supabase.storage
       .from('event-images')
       .upload(uniqueFileName, fileData, {
         contentType: 'image/jpeg',
-        upsert: false,
-        duplex: 'half' // React Native 호환성을 위해 추가
+        upsert: true, // 🔥 덮어쓰기 허용
+        duplex: 'half'
       });
 
     if (error) {
@@ -130,12 +420,10 @@ export const uploadImageToStorage = async (imageUri, fileName, userId) => {
         error: error
       });
       
-      // 버킷이 없는 경우 친화적인 에러 메시지
       if (error.message?.includes('does not exist') || error.message?.includes('not found')) {
         throw new Error('event-images 버킷이 존재하지 않습니다. Supabase Dashboard에서 버킷을 생성해주세요.');
       }
       
-      // 권한 문제인 경우
       if (error.message?.includes('permission') || error.message?.includes('policy')) {
         throw new Error('Storage 업로드 권한이 없습니다. Supabase Dashboard에서 Storage 정책을 확인해주세요.');
       }
@@ -161,7 +449,8 @@ export const uploadImageToStorage = async (imageUri, fileName, userId) => {
       data: {
         path: data.path,
         publicUrl: publicUrl,
-        fileName: uniqueFileName
+        fileName: uniqueFileName,
+        eventId: storageEventId
       }
     };
 
@@ -177,7 +466,6 @@ export const uploadImageToStorage = async (imageUri, fileName, userId) => {
     };
   }
 };
-
 /**
  * 여러 이미지를 일괄 업로드
  */
@@ -1260,27 +1548,110 @@ export const getDefaultMessagePlaceholder = (eventType) => {
  */
 export const getActiveEvents = async () => {
   try {
+    console.log('🔍 활성 이벤트 조회 시작');
+    
+    // 1. 현재 사용자 정보 가져오기
     const userResult = await getCurrentUserInfo();
     if (!userResult.success) {
-      throw new Error(userResult.error);
+      console.error('❌ 사용자 정보 없음:', userResult.error);
+      return {
+        success: false,
+        error: userResult.error
+      };
     }
 
     const currentUser = userResult.user;
+    console.log('👤 활성 이벤트 조회 대상 사용자:', {
+      id: currentUser.id,
+      name: currentUser.name,
+      auth_method: currentUser.auth_method || 'unknown',
+      source: userResult.source
+    });
 
+    // 2. 🔥 중복 방지를 위한 DISTINCT 쿼리 사용
     const { data, error } = await supabase
       .from('events')
-      .select('*')
+      .select(`
+        id,
+        event_name,
+        event_type,
+        event_date,
+        ceremony_time,
+        main_person_name,
+        groom_name,
+        bride_name,
+        location,
+        detailed_address,
+        template_style,
+        status,
+        created_at,
+        updated_at,
+        user_id,
+        custom_message,
+        allow_messages,
+        message_placeholder,
+        additional_info,
+        image_urls,
+        deceased_age,
+        death_date,
+        deceased_gender,
+        casket_date,
+        casket_time,
+        burial_date,
+        burial_time,
+        burial_location,
+        secondary_burial_location,
+        primary_contact,
+        secondary_contact,
+        funeral_director,
+        funeral_home
+      `)
       .eq('user_id', currentUser.id)
       .eq('status', 'active')
       .order('created_at', { ascending: false });
 
     if (error) {
       console.error('❌ 활성 이벤트 조회 오류:', error);
-      throw error;
+      return {
+        success: false,
+        error: error.message
+      };
     }
 
-    // 🔥 부고 데이터 후처리 - additional_info에서 정보 추출
-    const processedData = data?.map(event => {
+    if (!data || data.length === 0) {
+      // console.log('📭 활성 이벤트 없음');
+      return {
+        success: true,
+        data: []
+      };
+    }
+
+    // 3. 🔥 클라이언트 사이드에서도 중복 제거 (안전장치)
+    const uniqueEvents = data.filter((event, index, self) => 
+      index === self.findIndex(e => e.id === event.id)
+    );
+
+    // console.log(`✅ 활성 이벤트 조회 완료:`, {
+    //   rawCount: data.length,
+    //   uniqueCount: uniqueEvents.length,
+    //   duplicatesRemoved: data.length - uniqueEvents.length,
+    //   userId: currentUser.id
+    // });
+
+    // 4. 🔥 각 이벤트의 상세 디버깅 정보
+    uniqueEvents.forEach((event, index) => {
+      // console.log(`🎭 활성 이벤트 ${index + 1}:`, {
+      //   id: event.id,
+      //   name: event.event_name,
+      //   type: event.event_type,
+      //   status: event.status,
+      //   user_id: event.user_id,
+      //   created_at: event.created_at?.slice(0, 19) // 시간 부분만
+      // });
+    });
+
+    // 5. 🔥 부고 데이터 후처리 - additional_info에서 정보 추출
+    const processedData = uniqueEvents.map(event => {
       const processedEvent = { ...event };
       
       if (event.event_type === 'funeral' && event.additional_info) {
@@ -1302,15 +1673,16 @@ export const getActiveEvents = async () => {
         
         console.log(`🎭 부고 ${event.event_name} 가족 정보 추출:`, {
           familyMembersCount: processedEvent.family_members?.length || 0,
-          familyMembers: processedEvent.family_members?.map(fm => ({ relation: fm.relation, names: fm.names })) || []
+          familyMembers: processedEvent.family_members?.map(fm => ({ 
+            relation: fm.relation, 
+            names: fm.names 
+          })) || []
         });
       }
       
       return processedEvent;
-    }) || [];
+    });
 
-    console.log('✅ 활성 이벤트 조회 완료:', processedData.length);
-    
     return {
       success: true,
       data: processedData

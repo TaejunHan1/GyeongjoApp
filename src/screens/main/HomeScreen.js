@@ -1,4 +1,4 @@
-// src/screens/main/HomeScreen.js - QR 버튼 제거 및 부고 정보 전달 개선
+// src/screens/main/HomeScreen.js - 중복 이벤트 문제 해결
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -18,10 +18,42 @@ import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../../styles/constants';
 import { supabase } from '../../lib/supabase';
-import { getUserEvents, getActiveEvents } from '../../lib/supabaseHelper';
+import { getUserEvents, getActiveEvents, debugUserInfo } from '../../lib/supabaseHelper';
+import Svg, { Rect, Circle, Path, Ellipse, G } from 'react-native-svg';
 
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
+
+// 🔥 커스텀 SVG 아이콘 컴포넌트들
+const WeddingIcon = () => (
+  <Svg width="64" height="64" viewBox="0 0 90 90" fill="none">
+    <Rect width="90" height="90" rx="18" fill="#FFF"/>
+    <Rect x="20" y="18" width="50" height="60" rx="8" fill="#EAF3FF" stroke="#0064FF" strokeWidth="2"/>
+    <Rect x="28" y="26" width="34" height="14" rx="4" fill="#FFF"/>
+    <Rect x="32" y="44" width="26" height="5" rx="2.5" fill="#BBD5FF"/>
+    <Circle cx="45" cy="62" r="8" fill="#FFF7F0" stroke="#FFAA64" strokeWidth="2"/>
+    <Path d="M40 59 Q45 69 50 59" stroke="#FFAA64" strokeWidth="1.5" fill="none"/>
+    <Ellipse cx="43" cy="61.5" rx="1.6" ry="2.2" fill="#FF7F63"/>
+    <Ellipse cx="47" cy="61.5" rx="1.6" ry="2.2" fill="#FF7F63"/>
+    <Rect x="41.5" y="65" width="7" height="1.6" rx="0.8" fill="#FFAA64"/>
+  </Svg>
+);
+
+const FuneralIcon = () => (
+  <Svg width="64" height="64" viewBox="0 0 90 90" fill="none">
+    <Rect width="90" height="90" rx="18" fill="#FFF"/>
+    <Rect x="20" y="18" width="50" height="60" rx="8" fill="#F4F4F5" stroke="#A8B3C7" strokeWidth="2"/>
+    <Rect x="28" y="26" width="34" height="14" rx="4" fill="#FFF"/>
+    <Rect x="32" y="44" width="26" height="5" rx="2.5" fill="#E3E6EE"/>
+    <G>
+      <Ellipse cx="45" cy="62" rx="7.5" ry="9" fill="#FFF" stroke="#A8B3C7" strokeWidth="2"/>
+      <Rect x="41" y="70" width="8" height="3" rx="1.5" fill="#A8B3C7"/>
+      <Rect x="44" y="56.2" width="2" height="7" rx="1" fill="#A8B3C7"/>
+      <Ellipse cx="45" cy="56" rx="4" ry="2.2" fill="#A8B3C7" opacity="0.4"/>
+      <Path d="M41.5 63 C43 66, 47 66, 48.5 63" stroke="#BCC5D2" strokeWidth="1.2" fill="none"/>
+    </G>
+  </Svg>
+);
 
 export default function HomeScreen({ navigation, userInfo, session, isAuthenticated }) {
   const [user, setUser] = useState(null);
@@ -29,6 +61,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const [activeEvents, setActiveEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [selectedTab, setSelectedTab] = useState('active'); // 'active' or 'completed'
   
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -70,9 +103,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     },
   ];
 
-  // 화면 포커스 시 데이터 새로고침
+  // 화면 포커스 시 데이터 새로고침 - 중복 호출 방지
   useFocusEffect(
     React.useCallback(() => {
+      console.log('🏠 화면 포커스 - 데이터 로드 시작');
       loadUserData();
       loadEvents();
       loadActiveEvents();
@@ -99,14 +133,53 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     return () => clearInterval(interval);
   }, [fadeAnim]);
 
-  // 사용자 정보 통합 로드 함수
+  // 🔥 서울 시간 기준 날짜 비교 함수 - 완전히 새로 작성
+  const isEventCompleted = (eventDate) => {
+    if (!eventDate) return true; // 미정인 경우 완료로 처리
+    
+    try {
+      // 현재 서울 시간 구하기
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      // 이벤트 날짜 구하기
+      const eventDay = new Date(eventDate);
+      const eventDateOnly = new Date(eventDay.getFullYear(), eventDay.getMonth(), eventDay.getDate());
+      
+      // 오늘보다 이전이면 완료, 오늘 이후(오늘 포함)면 진행중
+      const isCompleted = eventDateOnly < today;
+      
+      // console.log('📅 날짜 확인:', {
+      //   이벤트날짜: eventDate,
+      //   이벤트날짜만: eventDateOnly.toLocaleDateString('ko-KR'),
+      //   오늘날짜: today.toLocaleDateString('ko-KR'),
+      //   완료여부: isCompleted ? '완료' : '진행중',
+      //   비교: `${eventDateOnly.getTime()} < ${today.getTime()} = ${isCompleted}`
+      // });
+      
+      return isCompleted;
+      
+    } catch (error) {
+      console.error('❌ 날짜 오류:', error);
+      return true;
+    }
+  };
+
+  // 🔥 개선된 사용자 정보 로드 함수 - 명확한 우선순위
   const loadUserData = async () => {
     try {
       console.log('👤 사용자 정보 로드 시작');
       
-      // 1. Props로 받은 userInfo 우선 사용
+      // 🔥 디버깅을 위해 사용자 정보 확인
+      await debugUserInfo();
+      
+      // 1순위: Props로 받은 userInfo (폰 인증)
       if (userInfo?.userId) {
-        console.log('✅ Props userInfo 사용:', userInfo.userName);
+        console.log('✅ Props userInfo 사용:', {
+          userId: userInfo.userId,
+          userName: userInfo.userName,
+          phone: userInfo.phone
+        });
         setUser({
           id: userInfo.userId,
           user_metadata: { name: userInfo.userName },
@@ -116,13 +189,26 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         return;
       }
       
-      // 2. AsyncStorage에서 확인
+      // 2순위: Supabase Auth 세션
+      if (session?.user) {
+        console.log('✅ Supabase session 사용:', {
+          id: session.user.id,
+          email: session.user.email
+        });
+        setUser(session.user);
+        return;
+      }
+      
+      // 3순위: AsyncStorage 확인 (폰 인증)
       const storedUserInfo = await AsyncStorage.getItem('userInfo');
       const isLoggedIn = await AsyncStorage.getItem('isLoggedIn');
       
       if (isLoggedIn === 'true' && storedUserInfo) {
         const parsedUserInfo = JSON.parse(storedUserInfo);
-        console.log('✅ AsyncStorage userInfo 사용:', parsedUserInfo.userName);
+        console.log('✅ AsyncStorage userInfo 사용:', {
+          userId: parsedUserInfo.userId,
+          userName: parsedUserInfo.userName
+        });
         setUser({
           id: parsedUserInfo.userId,
           user_metadata: { name: parsedUserInfo.userName },
@@ -132,17 +218,13 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         return;
       }
       
-      // 3. Supabase Auth 확인
-      if (session?.user) {
-        console.log('✅ Supabase session 사용');
-        setUser(session.user);
-        return;
-      }
-      
-      // 4. 마지막 시도 - 직접 Supabase 조회
+      // 4순위: 직접 Supabase 조회
       const { data: { user }, error } = await supabase.auth.getUser();
       if (user) {
-        console.log('✅ Supabase 직접 조회 성공');
+        console.log('✅ Supabase 직접 조회 성공:', {
+          id: user.id,
+          email: user.email
+        });
         setUser(user);
       } else {
         console.log('❌ 사용자 정보 없음');
@@ -153,18 +235,40 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     }
   };
 
+  // 🔥 개선된 이벤트 로드 함수 - 명확한 사용자 정보 전달
   const loadEvents = async () => {
     try {
       setLoading(true);
       console.log('📅 이벤트 로드 시작');
       
-      // userInfo를 getUserEvents에 전달
-      const currentUserInfo = userInfo?.userId ? {
-        id: userInfo.userId,
-        name: userInfo.userName,
-        phone: userInfo.phone,
-        auth_method: 'phone'
-      } : null;
+      // 🔥 명확한 사용자 정보 준비
+      let currentUserInfo = null;
+      
+      if (userInfo?.userId) {
+        // Props에서 받은 정보 사용
+        currentUserInfo = {
+          id: userInfo.userId,
+          name: userInfo.userName,
+          phone: userInfo.phone,
+          auth_method: 'phone'
+        };
+        console.log('📅 Props userInfo로 이벤트 조회:', currentUserInfo.id);
+      } else if (session?.user) {
+        // Supabase 세션 사용
+        currentUserInfo = {
+          id: session.user.id,
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0],
+          email: session.user.email,
+          auth_method: 'supabase'
+        };
+        console.log('📅 Supabase session으로 이벤트 조회:', currentUserInfo.id);
+      }
+      
+      if (!currentUserInfo) {
+        console.log('❌ 사용자 정보 없음 - 이벤트 조회 불가');
+        setEvents([]);
+        return;
+      }
       
       const result = await getUserEvents(currentUserInfo);
       
@@ -183,51 +287,39 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     }
   };
 
-  // HomeScreen.js의 loadActiveEvents 함수에 디버깅 로그 추가
+  // 🔥 개선된 활성 이벤트 로드 함수 - 중복 제거 및 디버깅 강화
   const loadActiveEvents = async () => {
     try {
       console.log('📅 활성 이벤트 로드 시작');
       
+      // 🔥 상태 초기화
+      setActiveEvents([]);
+      
       const result = await getActiveEvents();
       
       if (result.success) {
-        console.log(`✅ 활성 이벤트 로드 완료: ${result.data?.length || 0}개`);
+        const rawData = result.data || [];
+        console.log(`✅ 활성 이벤트 원본 데이터: ${rawData.length}개`);
         
-        // 🔍 디버깅: 각 이벤트의 상세 정보 로그
-        result.data?.forEach((event, index) => {
-          console.log(`🎭 이벤트 ${index + 1}:`, {
-            id: event.id,
-            name: event.event_name,
-            type: event.event_type,
-            templateStyle: event.template_style,
-            imageUrls: event.image_urls?.length || 0,
-            additionalInfo: event.additional_info ? 'exists' : 'null',
-            categorizedImages: event.additional_info?.categorized_images ? 'exists' : 'null'
-          });
-          
-          // 이미지 정보 상세 로그
-          if (event.image_urls && event.image_urls.length > 0) {
-            console.log(`📸 이벤트 ${index + 1} 이미지 상세:`, 
-              event.image_urls.map(img => ({
-                category: img.category,
-                hasUri: !!img.uri
-              }))
-            );
-          }
-          
-          // additional_info 상세 로그
-          if (event.additional_info?.categorized_images) {
-            const catImages = event.additional_info.categorized_images;
-            console.log(`📁 이벤트 ${index + 1} 카테고리별 이미지:`, {
-              main: catImages.main?.length || 0,
-              gallery: catImages.gallery?.length || 0,
-              groom: catImages.groom?.length || 0,
-              bride: catImages.bride?.length || 0
-            });
-          }
+        // 🔥 중복 제거 - ID 기준으로 고유한 이벤트만 필터링
+        const uniqueEvents = rawData.filter((event, index, self) => 
+          index === self.findIndex(e => e.id === event.id)
+        );
+        
+        console.log(`🔧 중복 제거 후: ${uniqueEvents.length}개`);
+        
+        // 🔍 각 이벤트 상세 로그
+        uniqueEvents.forEach((event, index) => {
+          // console.log(`🎭 고유 이벤트 ${index + 1}:`, {
+          //   id: event.id,
+          //   name: event.event_name,
+          //   type: event.event_type,
+          //   created_at: event.created_at,
+          //   user_id: event.user_id
+          // });
         });
         
-        setActiveEvents(result.data || []);
+        setActiveEvents(uniqueEvents);
       } else {
         console.error('❌ 활성 이벤트 로드 실패:', result.error);
         setActiveEvents([]);
@@ -266,7 +358,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     );
   };
 
-  // QR 스캔 기능 (수정됨)
+  // QR 스캔 기능
   const handleQRScan = () => {
     Alert.alert('준비중', 'QR 스캐너 기능을 준비 중입니다.');
   };
@@ -433,6 +525,21 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     });
   };
 
+  // 🔥 수동 새로고침 함수 추가
+  const handleRefresh = async () => {
+    console.log('🔄 수동 새로고침 시작');
+    setLoading(true);
+    await loadUserData();
+    await loadEvents();
+    await loadActiveEvents();
+    setLoading(false);
+  };
+
+  // 🔥 더보기 버튼 핸들러
+  const handleViewMore = () => {
+    navigation.navigate('MyEvents');
+  };
+
   const currentSlideData = slides[currentSlide];
   
   // 사용자 이름 결정 로직 개선
@@ -445,6 +552,48 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   };
 
   const userName = getUserName();
+
+  // 🔥 모든 이벤트 합치기 및 날짜 기준 분류
+  const allEvents = [...activeEvents, ...events].filter((event, index, self) => 
+    index === self.findIndex(e => e.id === event.id)
+  );
+  
+  // 🔥 서울 시간 기준으로 진행중/완료 분류
+  const activeEventsFiltered = allEvents.filter(event => {
+    const isCompleted = isEventCompleted(event.event_date);
+    // console.log('🔍 이벤트 분류:', {
+    //   eventName: event.event_name,
+    //   eventDate: event.event_date,
+    //   isCompleted,
+    //   category: isCompleted ? '완료' : '진행중'
+    // });
+    return !isCompleted;
+  });
+  
+  const completedEventsFiltered = allEvents.filter(event => {
+    const isCompleted = isEventCompleted(event.event_date);
+    return isCompleted;
+  });
+  
+  // 🔥 최대 3개까지만 표시
+  const currentEvents = selectedTab === 'active' 
+    ? activeEventsFiltered.slice(0, 3) 
+    : completedEventsFiltered.slice(0, 3);
+  
+  const totalCount = selectedTab === 'active' 
+    ? activeEventsFiltered.length 
+    : completedEventsFiltered.length;
+  
+  const hasMore = totalCount > 3;
+
+  // 🔥 분류 결과 로그
+  // console.log('📊 이벤트 분류 결과:', {
+  //   totalEvents: allEvents.length,
+  //   activeCount: activeEventsFiltered.length,
+  //   completedCount: completedEventsFiltered.length,
+  //   activeEvents: activeEventsFiltered.map(e => ({ name: e.event_name, date: e.event_date })),
+  //   completedEvents: completedEventsFiltered.map(e => ({ name: e.event_name, date: e.event_date }))
+  // });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -459,6 +608,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           </Text>
         </View>
         <View style={styles.headerRight}>
+          {/* 🔥 디버깅용 새로고침 버튼 추가 */}
+          <TouchableOpacity onPress={handleRefresh} style={styles.headerButton}>
+            <Ionicons name="refresh-outline" size={24} color={Colors.gray600} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleQRScan} style={styles.headerButton}>
             <Ionicons name="qr-code-outline" size={24} color={Colors.gray600} />
           </TouchableOpacity>
@@ -495,54 +648,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           </View>
         </View>
 
-        {/* 현재 진행중인 행사들 */}
-        {activeEvents.length > 0 && (
-          <View style={styles.activeEventsSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>현재 진행중인 행사</Text>
-              <Text style={styles.eventCount}>({activeEvents.length})</Text>
-            </View>
-            
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.activeEventsList}
-            >
-              {activeEvents.map((event) => (
-                <TouchableOpacity
-                  key={event.id}
-                  style={styles.activeEventCard}
-                  onPress={() => handleActiveEventPress(event)}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.eventTypeIndicator, { backgroundColor: getEventColor(event.event_type) }]}>
-                    <Ionicons 
-                      name={getEventIcon(event.event_type)} 
-                      size={16} 
-                      color={Colors.white} 
-                    />
-                  </View>
-                  <Text style={styles.activeEventTitle} numberOfLines={2}>
-                    {event.event_name}
-                  </Text>
-                  <Text style={styles.activeEventDate}>
-                    {event.event_date ? formatDate(event.event_date) : '날짜 미정'}
-                  </Text>
-                  
-                  {/* 전시모드 안내 - 더 눈에 띄게 */}
-                  <View style={styles.displayModeHint}>
-                    <Ionicons name="tv" size={14} color={Colors.primary} />
-                    <Text style={styles.displayModeText}>
-                      {event.event_type === 'funeral' ? '추모모드' : '전시모드'}로 보기
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* 퀵 액션 */}
+        {/* 빠른 시작 - 청첩장과 부고장만 */}
         <View style={styles.quickSection}>
           <Text style={styles.sectionTitle}>빠른 시작</Text>
           <Text style={styles.sectionSubtitle}>
@@ -553,11 +659,17 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               style={styles.quickItem}
               onPress={() => handleQuickStart('wedding')}
             >
-              <View style={[styles.quickIcon, { backgroundColor: Colors.wedding }]}>
-                <Ionicons name="heart" size={24} color={Colors.white} />
+              <View style={styles.quickIcon}>
+                <WeddingIcon />
               </View>
-              <Text style={styles.quickTitle}>결혼식</Text>
-              <Text style={styles.quickSubtitle}>새로운 시작을 축하해요</Text>
+              <Text style={styles.quickTitle}>청첩장</Text>
+              <Text style={styles.quickSubtitle}>행복한 결혼 소식을 전해보세요</Text>
+              <TouchableOpacity 
+                style={[styles.quickButton, { backgroundColor: Colors.wedding }]}
+                onPress={() => handleQuickStart('wedding')}
+              >
+                <Text style={styles.quickButtonText}>만들기</Text>
+              </TouchableOpacity>
               <View style={styles.quickTypeIndicator}>
                 <Text style={styles.quickTypeText}>경사</Text>
               </View>
@@ -567,112 +679,148 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               style={styles.quickItem}
               onPress={() => handleQuickStart('funeral')}
             >
-              <View style={[styles.quickIcon, { backgroundColor: Colors.funeral }]}>
-                <Ionicons name="flower" size={24} color={Colors.white} />
+              <View style={styles.quickIcon}>
+                <FuneralIcon />
               </View>
-              <Text style={styles.quickTitle}>부고</Text>
-              <Text style={styles.quickSubtitle}>마지막 인사를 전해요</Text>
+              <Text style={styles.quickTitle}>부고장</Text>
+              <Text style={styles.quickSubtitle}>슬픈 소식을 정중하게 전달하세요</Text>
+              <TouchableOpacity 
+                style={[styles.quickButton, { backgroundColor: Colors.funeral }]}
+                onPress={() => handleQuickStart('funeral')}
+              >
+                <Text style={styles.quickButtonText}>만들기</Text>
+              </TouchableOpacity>
               <View style={[styles.quickTypeIndicator, { backgroundColor: Colors.funeral }]}>
                 <Text style={[styles.quickTypeText, { color: Colors.white }]}>조사</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.quickItem}
-              onPress={() => handleQuickStart('birthday')}
-            >
-              <View style={[styles.quickIcon, { backgroundColor: Colors.celebration }]}>
-                <Ionicons name="gift" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.quickTitle}>돌잔치</Text>
-              <Text style={styles.quickSubtitle}>소중한 성장을 기념해요</Text>
-              <View style={styles.quickTypeIndicator}>
-                <Text style={styles.quickTypeText}>경사</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.quickItem}
-              onPress={() => handleQuickStart('other')}
-            >
-              <View style={[styles.quickIcon, { backgroundColor: Colors.other }]}>
-                <Ionicons name="add-circle" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.quickTitle}>기타</Text>
-              <Text style={styles.quickSubtitle}>다양한 행사를 만들어요</Text>
-              <View style={styles.quickTypeIndicator}>
-                <Text style={styles.quickTypeText}>기타</Text>
               </View>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* 최근 경조사 */}
-        <View style={styles.recentSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>최근 경조사</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('MyEvents')}>
-              <Text style={styles.sectionLink}>전체보기</Text>
+        {/* 🔥 나의 경조사 관리 - 통합된 섹션 */}
+        <View style={styles.eventsManagementSection}>
+          <Text style={styles.sectionTitle}>나의 경조사 관리</Text>
+          
+          {/* 탭 버튼 */}
+          <View style={styles.tabContainer}>
+            <TouchableOpacity
+              style={[styles.tabButton, selectedTab === 'active' && styles.activeTabButton]}
+              onPress={() => setSelectedTab('active')}
+            >
+              <Text style={[styles.tabText, selectedTab === 'active' && styles.activeTabText]}>
+                진행중 ({activeEventsFiltered.length})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabButton, selectedTab === 'completed' && styles.activeTabButton]}
+              onPress={() => setSelectedTab('completed')}
+            >
+              <Text style={[styles.tabText, selectedTab === 'completed' && styles.activeTabText]}>
+                최근 완료 ({completedEventsFiltered.length})
+              </Text>
             </TouchableOpacity>
           </View>
 
+          {/* 이벤트 리스트 */}
           {loading ? (
             <View style={styles.loadingContainer}>
               <Ionicons name="refresh" size={24} color={Colors.gray400} />
               <Text style={styles.loadingText}>불러오는 중...</Text>
             </View>
-          ) : events.length > 0 ? (
+          ) : currentEvents.length > 0 ? (
             <View style={styles.eventsList}>
-              {events.slice(0, 3).map((event) => (
+              {currentEvents.map((event) => (
                 <TouchableOpacity
                   key={event.id}
-                  style={styles.eventItem}
-                  onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
+                  style={[
+                    styles.eventListItem,
+                    selectedTab === 'completed' && styles.completedEventItem
+                  ]}
+                  onPress={() => handleActiveEventPress(event)}
+                  activeOpacity={0.8}
                 >
-                  <View style={styles.eventIcon}>
-                    <Ionicons 
-                      name={getEventIcon(event.event_type)} 
-                      size={20} 
-                      color={getEventColor(event.event_type)} 
-                    />
-                  </View>
-                  <View style={styles.eventInfo}>
-                    <Text style={styles.eventTitle}>{event.event_name}</Text>
-                    <Text style={styles.eventDate}>
-                      {event.event_date ? formatDate(event.event_date) : '날짜 미정'}
-                    </Text>
-                    <View style={styles.eventStatusContainer}>
-                      <View style={[
-                        styles.eventStatusBadge, 
-                        { backgroundColor: event.status === 'active' ? Colors.success : Colors.gray300 }
-                      ]}>
-                        <Text style={[
-                          styles.eventStatusText,
-                          { color: event.status === 'active' ? Colors.white : Colors.textSecondary }
-                        ]}>
-                          {event.status === 'active' ? '진행중' : '완료'}
-                        </Text>
-                      </View>
+                  {/* 🔥 완료된 항목에 왼쪽 파란색 바 */}
+                  {selectedTab === 'completed' && (
+                    <View style={styles.completedMarker} />
+                  )}
+
+                  {/* 🔥 이벤트 타입 표시 (왼쪽) */}
+                  <View style={styles.eventTypeColumn}>
+                    <View style={[
+                      styles.eventTypeBadge, 
+                      { backgroundColor: getEventStatusColor(event.event_type) }
+                    ]}>
+                      <Text style={styles.eventTypeBadgeText}>
+                        {getEventTypeText(event.event_type)}
+                      </Text>
                     </View>
                   </View>
-                  <View style={styles.eventStats}>
-                    <Text style={styles.eventCount}>0건</Text>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.gray400} />
+
+                  {/* 이벤트 정보 */}
+                  <View style={styles.eventListInfo}>
+                    <Text style={styles.eventListTitle} numberOfLines={1}>
+                      {event.event_name}
+                    </Text>
+                    
+                    <Text style={styles.eventListLocation}>
+                      {event.location || '장소 미정'}
+                    </Text>
+                    
+                    <Text style={styles.eventListDate} numberOfLines={1}>
+                      {event.event_date ? formatDate(event.event_date) : '날짜 미정'}
+                    </Text>
                   </View>
+
+                  {/* 🔥 완료/화살표 */}
+                  {selectedTab === 'completed' ? (
+                    <TouchableOpacity 
+                      style={styles.completedButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        // 완료 버튼 클릭 시 동작 (예: 통계 보기, 상세 보기 등)
+                        console.log('완료 버튼 클릭:', event.event_name);
+                      }}
+                    >
+                      <Text style={styles.completedButtonText}>완료</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.eventArrow}>
+                      <Ionicons name="chevron-forward" size={20} color={Colors.gray400} />
+                    </View>
+                  )}
                 </TouchableOpacity>
               ))}
+              
+              {/* 🔥 더보기 버튼 */}
+              {hasMore && (
+                <TouchableOpacity 
+                  style={styles.viewMoreButton}
+                  onPress={handleViewMore}
+                >
+                  <Text style={styles.viewMoreText}>
+                    더보기 ({totalCount - 3}개 더)
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             <View style={styles.emptyState}>
               <Ionicons name="calendar-outline" size={48} color={Colors.gray300} />
-              <Text style={styles.emptyTitle}>아직 등록된 경조사가 없어요</Text>
-              <Text style={styles.emptySubtitle}>첫 번째 경조사를 만들어보세요</Text>
-              <TouchableOpacity 
-                style={styles.createButton}
-                onPress={() => navigation.navigate('CreateEvent')}
-              >
-                <Text style={styles.createButtonText}>경조사 만들기</Text>
-              </TouchableOpacity>
+              <Text style={styles.emptyTitle}>
+                {selectedTab === 'active' ? '진행중인 경조사가 없어요' : '완료된 경조사가 없어요'}
+              </Text>
+              <Text style={styles.emptySubtitle}>
+                {selectedTab === 'active' ? '첫 번째 경조사를 만들어보세요' : '첫 번째 경조사를 완료해보세요'}
+              </Text>
+              {selectedTab === 'active' && (
+                <TouchableOpacity 
+                  style={styles.createButton}
+                  onPress={() => navigation.navigate('CreateEvent')}
+                >
+                  <Text style={styles.createButtonText}>경조사 만들기</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>
@@ -682,7 +830,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           <Text style={styles.sectionTitle}>이번 달 요약</Text>
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{events.length}</Text>
+              <Text style={styles.statNumber}>{allEvents.length}</Text>
               <Text style={styles.statLabel}>총 경조사</Text>
             </View>
             <View style={styles.statItem}>
@@ -690,7 +838,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               <Text style={styles.statLabel}>총 부조금</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{activeEvents.length}</Text>
+              <Text style={styles.statNumber}>{activeEventsFiltered.length}</Text>
               <Text style={styles.statLabel}>진행중</Text>
             </View>
           </View>
@@ -718,6 +866,22 @@ const getEventColor = (eventType) => {
     case 'funeral': return Colors.funeral;
     case 'birthday': return Colors.celebration;
     default: return Colors.other;
+  }
+};
+
+const getEventStatusColor = (eventType) => {
+  switch (eventType) {
+    case 'wedding': return Colors.wedding;
+    case 'funeral': return Colors.funeral;
+    default: return Colors.success;
+  }
+};
+
+const getEventTypeText = (eventType) => {
+  switch (eventType) {
+    case 'wedding': return '결혼식';
+    case 'funeral': return '부고';
+    default: return '행사';
   }
 };
 
@@ -831,66 +995,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     width: 20,
   },
-
-  // 활성 이벤트 섹션
-  activeEventsSection: {
-    marginBottom: 32,
-  },
-  activeEventsList: {
-    paddingRight: 20,
-    gap: 16,
-  },
-  activeEventCard: {
-    width: 220,
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.gray100,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  eventTypeIndicator: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  activeEventTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 8,
-    lineHeight: 22,
-  },
-  activeEventDate: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginBottom: 16,
-  },
   
-  // 전시모드 힌트 - 더 강조
-  displayModeHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray100,
-  },
-  displayModeText: {
-    fontSize: 12,
-    color: Colors.primary,
-    fontWeight: '500',
-  },
-  
-  // 퀵 액션
+  // 퀵 액션 - 수정됨
   quickSection: {
     marginBottom: 40,
   },
@@ -907,11 +1013,10 @@ const styles = StyleSheet.create({
   },
   quickGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 12,
   },
   quickItem: {
-    width: isTablet ? '23%' : '48%',
+    flex: 1,
     backgroundColor: Colors.white,
     borderRadius: 16,
     padding: 20,
@@ -924,27 +1029,37 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
     position: 'relative',
+    minHeight: 180,
   },
   quickIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
     marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   quickTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: Colors.textPrimary,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   quickSubtitle: {
     fontSize: 12,
     color: Colors.textSecondary,
     textAlign: 'center',
     lineHeight: 16,
+    marginBottom: 16,
+    flex: 1,
+  },
+  quickButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
     marginBottom: 8,
+  },
+  quickButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.white,
   },
   quickTypeIndicator: {
     backgroundColor: Colors.success,
@@ -960,85 +1075,160 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.white,
   },
-  
-  // 최근 섹션
-  recentSection: {
+
+  // 🔥 새로운 경조사 관리 섹션
+  eventsManagementSection: {
     marginBottom: 40,
   },
-  sectionHeader: {
+  
+  // 탭 컨테이너
+  tabContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: Colors.gray50,
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 20,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 16,
   },
-  eventCount: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    fontWeight: '500',
+  activeTabButton: {
+    backgroundColor: Colors.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  sectionLink: {
+  tabText: {
     fontSize: 14,
-    color: Colors.primary,
     fontWeight: '500',
+    color: Colors.textSecondary,
+  },
+  activeTabText: {
+    color: Colors.primary,
+    fontWeight: '600',
   },
   
-  // 이벤트 리스트
+  // 이벤트 리스트 아이템
   eventsList: {
     gap: 12,
   },
-  eventItem: {
+  eventListItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.white,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: Colors.gray100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    position: 'relative',
   },
-  eventIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.gray50,
-    justifyContent: 'center',
+  
+  // 🔥 완료된 이벤트 아이템 (왼쪽 여백 추가)
+  completedEventItem: {
+    paddingLeft: 20,
+  },
+  
+  // 🔥 완료된 항목 왼쪽 파란색 마커
+  completedMarker: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: Colors.primary,
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+  },
+  
+  // 🔥 이벤트 타입 컬럼 (왼쪽)
+  eventTypeColumn: {
+    width: 60,
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 16,
   },
-  eventInfo: {
+  eventTypeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 12,
+    minWidth: 50,
+    alignItems: 'center',
+  },
+  eventTypeBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+  
+  // 이벤트 정보
+  eventListInfo: {
     flex: 1,
   },
-  eventTitle: {
+  eventListTitle: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
     color: Colors.textPrimary,
     marginBottom: 4,
+    lineHeight: 20,
   },
-  eventDate: {
+  eventListLocation: {
     fontSize: 14,
     color: Colors.textSecondary,
-    marginBottom: 4,
+    lineHeight: 18,
+    marginBottom: 2,
   },
-  eventStatusContainer: {
-    flexDirection: 'row',
+  eventListDate: {
+    fontSize: 13,
+    color: Colors.gray400,
+    lineHeight: 16,
   },
-  eventStatusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+  
+  // 화살표
+  eventArrow: {
+    marginLeft: 12,
   },
-  eventStatusText: {
-    fontSize: 10,
-    fontWeight: '600',
+  
+  // 🔥 완료 버튼
+  completedButton: {
+    marginLeft: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.gray100,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  eventStats: {
+  completedButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+  },
+  
+  // 🔥 더보기 버튼
+  viewMoreButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    backgroundColor: Colors.gray50,
+    borderRadius: 12,
+    paddingVertical: 16,
+    marginTop: 8,
+    gap: 6,
   },
-  eventCount: {
+  viewMoreText: {
     fontSize: 14,
-    color: Colors.textSecondary,
     fontWeight: '500',
+    color: Colors.primary,
   },
   
   // 빈 상태

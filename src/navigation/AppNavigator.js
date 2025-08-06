@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import HomeScreen from '../screens/main/HomeScreen';
 import MyEventsScreen from '../screens/main/MyEventsScreen';
+import GuideScreen from '../screens/main/GuideScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import CreateEventScreen from '../screens/event/CreateEventScreen';
 import EventDetailScreen from '../screens/event/EventDetailScreen';
@@ -16,7 +17,20 @@ import ContributionScreen from '../screens/event/ContributionScreen';
 import QRCodeScreen from '../screens/event/QRCodeScreen';
 import EventDisplayScreen from '../screens/event/EventDisplayScreen';
 
-// [수정] 파일명과 컴포넌트명을 'SettingsScreen' (복수형)으로 통일합니다.
+// 참여자용 가이드 관련 화면들 (기존 경로 수정)
+import MoneyGuideScreen from '../screens/main/guides/participant/MoneyGuideScreen';
+import MannerGuideScreen from '../screens/main/guides/participant/MannerGuideScreen';
+import EtiquetteGuideScreen from '../screens/main/guides/participant/EtiquetteGuideScreen';
+import RecommendServiceScreen from '../screens/main/guides/participant/RecommendServiceScreen';
+
+// 🆕 주최자용 가이드 관련 화면들
+import WeddingPrepGuideScreen from '../screens/main/guides/host/WeddingPrepGuideScreen';
+import FuneralPrepGuideScreen from '../screens/main/guides/host/FuneralPrepGuideScreen';
+import BudgetCalculatorScreen from '../screens/main/guides/host/BudgetCalculatorScreen';
+import VendorListScreen from '../screens/main/guides/host/VendorListScreen';
+import ChecklistManagerScreen from '../screens/main/guides/host/ChecklistManagerScreen';
+import TimelineScreen from '../screens/main/guides/host/TimelineScreen';
+
 import SettingsScreen from '../screens/main/SettingsScreen'; 
 import ContributionSettingsScreen from '../screens/main/ContributionSettingsScreen';
 
@@ -25,7 +39,7 @@ import { Colors } from '../styles/constants';
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// 하단 탭 네비게이터
+// 하단 탭 네비게이터 - 4개 탭으로 확장
 function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
   return (
     <Tab.Navigator
@@ -38,6 +52,8 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'MyEvents') {
             iconName = focused ? 'list' : 'list-outline';
+          } else if (route.name === 'Guide') {
+            iconName = focused ? 'book' : 'book-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           }
@@ -74,6 +90,7 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
           />
         )}
       </Tab.Screen>
+      
       <Tab.Screen 
         name="MyEvents" 
         options={{ tabBarLabel: '내 행사' }}
@@ -87,6 +104,22 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
           />
         )}
       </Tab.Screen>
+      
+      {/* 🆕 경조사 가이드 탭 추가 */}
+      <Tab.Screen 
+        name="Guide" 
+        options={{ tabBarLabel: '가이드' }}
+      >
+        {(props) => (
+          <GuideScreen 
+            {...props} 
+            userInfo={userInfo}
+            session={session}
+            isAuthenticated={isAuthenticated}
+          />
+        )}
+      </Tab.Screen>
+      
       <Tab.Screen 
         name="Profile" 
         options={{ tabBarLabel: '프로필' }}
@@ -257,6 +290,278 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
           {(props) => (
             <EventDisplayScreen 
               {...props} 
+            />
+          )}
+        </Stack.Screen>
+
+        {/* 🆕 참여자용 가이드 관련 화면들 */}
+        <Stack.Screen 
+          name="MoneyGuide" 
+          options={{
+            headerShown: true,
+            title: '축의금 가이드',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <MoneyGuideScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen 
+          name="MannerGuide" 
+          options={{
+            headerShown: true,
+            title: '복장 & 매너',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <MannerGuideScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen 
+          name="EtiquetteGuide" 
+          options={{
+            headerShown: true,
+            title: '예절 가이드',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <EtiquetteGuideScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen 
+          name="RecommendService" 
+          options={{
+            headerShown: true,
+            title: '추천 서비스',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <RecommendServiceScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        {/* 🆕 주최자용 가이드 관련 화면들 */}
+        <Stack.Screen 
+          name="WeddingPrepGuide" 
+          options={{
+            headerShown: true,
+            title: '결혼식 준비 가이드',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <WeddingPrepGuideScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen 
+          name="FuneralPrepGuide" 
+          options={{
+            headerShown: true,
+            title: '장례식 준비 가이드',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <FuneralPrepGuideScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen 
+          name="BudgetCalculator" 
+          options={{
+            headerShown: true,
+            title: '예산 계산기',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <BudgetCalculatorScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen 
+          name="VendorList" 
+          options={{
+            headerShown: true,
+            title: '업체 리스트',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <VendorListScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen 
+          name="ChecklistManager" 
+          options={{
+            headerShown: true,
+            title: '체크리스트 관리',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <ChecklistManagerScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen 
+          name="Timeline" 
+          options={{
+            headerShown: true,
+            title: '준비 타임라인',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <TimelineScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
             />
           )}
         </Stack.Screen>
