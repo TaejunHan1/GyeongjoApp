@@ -363,9 +363,18 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     Alert.alert('준비중', 'QR 스캐너 기능을 준비 중입니다.');
   };
 
-  // 빠른 시작 버튼 핸들러
+  // 🔥 수정된 빠른 시작 버튼 핸들러
   const handleQuickStart = (eventType) => {
-    navigation.navigate('CreateEvent', { eventType });
+    if (eventType === 'wedding') {
+      // 🆕 결혼식은 전용 스크린으로
+      navigation.navigate('CreateWedding');
+    } else if (eventType === 'funeral') {
+      // 🔄 부고는 전용 스크린으로 수정
+      navigation.navigate('CreateFuneral');
+    } else {
+      // 🔄 기타 타입들은 기존 방식 유지
+      navigation.navigate('CreateEvent', { eventType });
+    }
   };
 
   // 🔥 수정된 handleActiveEventPress 함수 - 부고 정보 포함

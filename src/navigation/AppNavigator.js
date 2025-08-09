@@ -10,6 +10,13 @@ import MyEventsScreen from '../screens/main/MyEventsScreen';
 import GuideScreen from '../screens/main/GuideScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import CreateEventScreen from '../screens/event/CreateEventScreen';
+
+// 🆕 새로 추가된 결혼식 전용 스크린
+import CreateWeddingScreen from '../screens/event/wedding/CreateWeddingScreen';
+
+// 🆕 새로 추가된 부고 전용 스크린
+import CreateFuneralScreen from '../screens/event/funeral/CreateFuneralScreen';
+
 import EventDetailScreen from '../screens/event/EventDetailScreen';
 import ContributionScreen from '../screens/event/ContributionScreen';
 
@@ -189,6 +196,62 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
         >
           {(props) => (
             <CreateEventScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+        
+        {/* 🆕 결혼식 전용 스크린 추가 */}
+        <Stack.Screen 
+          name="CreateWedding" 
+          options={{
+            headerShown: true,
+            title: '결혼식 청첩장 만들기',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <CreateWeddingScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+        
+        {/* 🆕 부고 전용 스크린 추가 */}
+        <Stack.Screen 
+          name="CreateFuneral" 
+          options={{
+            headerShown: true,
+            title: '부고장 만들기',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <CreateFuneralScreen 
               {...props} 
               userInfo={userInfo}
               session={session}
