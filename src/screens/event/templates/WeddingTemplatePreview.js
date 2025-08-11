@@ -6,6 +6,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import ModernDarkTemplate from './wedding/ModernDarkTemplate';
 import KoreanElegantTemplate from './wedding/KoreanElegantTemplate';
 import VintageAppTemplate from './wedding/VintageAppTemplate';
+import RomanticPinkTemplate from './wedding/RomanticPinkTemplate'; // 추가된 import
 
 // 메인 렌더링 컴포넌트
 export default function WeddingTemplatePreview({ 
@@ -50,6 +51,8 @@ export default function WeddingTemplatePreview({
       return <KoreanElegantTemplate {...commonProps} />;
     case 'vintage-app': 
       return <VintageAppTemplate {...commonProps} />;
+    case 'romantic-pink':  // 추가된 케이스
+      return <RomanticPinkTemplate {...commonProps} />;
     default: 
       return (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>

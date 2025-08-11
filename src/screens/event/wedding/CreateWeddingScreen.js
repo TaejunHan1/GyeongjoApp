@@ -446,6 +446,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
     ]).start();
   }, [currentStep]);
 
+  // 🔥 템플릿 목록 - 로맨틱 핑크 추가
   const templates = {
     wedding: [
       {
@@ -457,18 +458,26 @@ export default function CreateWeddingScreen({ navigation, route }) {
         features: ['다크 모드', '그라디언트'],
       },
       {
-        id: 'romantic-gold', 
+        id: 'romantic-pink',  // 🔥 새로 추가
+        name: '로맨틱 핑크',
+        description: '따뜻하고 로맨틱한 분위기',
+        preview: require('../../../../assets/images/aa2.png'),
+        style: 'romantic-pink',
+        features: ['핑크 톤', '감성적 디자인'],
+      },
+      {
+        id: 'korean-elegant', 
         name: '한국 전통',
         description: '우아한 한국 전통 스타일',
-        preview: require('../../../../assets/images/aa2.png'),
-        style: 'romantic-gold',
+        preview: require('../../../../assets/images/aa3.png'),
+        style: 'korean-elegant',
         features: ['전통 색상', '한국적 레이아웃'],
       },
       {
         id: 'vintage-app',
         name: '빈티지 앱',
         description: '트렌디한 스토리 스타일',
-        preview: require('../../../../assets/images/aa3.png'),
+        preview: require('../../../../assets/images/aa1.png'),
         style: 'vintage-app',
         features: ['스토리 타임라인', '모던 색감'],
       },

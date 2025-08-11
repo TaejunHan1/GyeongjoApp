@@ -13,6 +13,8 @@ import {
   Linking,
   Share,
   Platform,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -866,6 +868,378 @@ export const VintageAppCalendar = ({ targetDate, style }) => {
             ))}
           </View>
         </View>
+      </View>
+    </View>
+  );
+};
+
+// ========== 추가된 컴포넌트들 ==========
+
+// RomanticPinkCalendar 컴포넌트 (로맨틱 핑크 달력)
+export const RomanticPinkCalendar = ({ targetDate, style }) => {
+  const calendarData = getCalendarData(targetDate);
+  const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  
+  return (
+    <View style={{
+      backgroundColor: 'white',
+      borderRadius: 15,
+      padding: 30,
+      marginVertical: 30,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.08,
+      shadowRadius: 30,
+      elevation: 5,
+      ...style
+    }}>
+      <Text style={{
+        fontSize: 18,
+        color: '#333',
+        marginBottom: 25,
+        fontWeight: '500',
+        textAlign: 'center'
+      }}>
+        {calendarData.monthNameEn} {calendarData.year}
+      </Text>
+      
+      <View style={{ flexDirection: 'row', marginBottom: 15 }}>
+        {weekDays.map((day, index) => (
+          <Text key={index} style={{
+            flex: 1,
+            textAlign: 'center',
+            fontSize: 12,
+            color: index === 0 ? '#ff6b6b' : '#666',
+            fontWeight: '500'
+          }}>
+            {day}
+          </Text>
+        ))}
+      </View>
+      
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {calendarData.days.map((dayData, index) => (
+          <View key={index} style={{ 
+            width: '14.28%', 
+            aspectRatio: 1,
+            padding: 5 
+          }}>
+            {dayData.isTargetDate ? (
+              <View style={{
+                flex: 1,
+                backgroundColor: '#C2B0A2',
+                borderRadius: 8,
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: '#C2B0A2',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 15,
+                elevation: 3
+              }}>
+                <Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }}>
+                  {dayData.day}
+                </Text>
+              </View>
+            ) : (
+              <View style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 8
+              }}>
+                <Text style={{
+                  color: !dayData.isCurrentMonth ? '#ddd' : 
+                         index % 7 === 0 ? '#ff6b6b' : '#666',
+                  fontSize: 14
+                }}>
+                  {dayData.day || ''}
+                </Text>
+              </View>
+            )}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+};
+
+// OpeningOverlay 컴포넌트 (오프닝 오버레이)
+export const OpeningOverlay = ({ visible }) => {
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const strokeAnim = useRef(new Animated.Value(0)).current;
+  
+  useEffect(() => {
+    if (visible) {
+      // 텍스트 쓰기 애니메이션
+      Animated.timing(strokeAnim, {
+        toValue: 1,
+        duration: 2500,
+        useNativeDriver: false,
+        easing: Easing.ease,
+      }).start();
+      
+      // 페이드아웃
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 1500,
+        delay: 3500,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible]);
+  
+  if (!visible) return null;
+  
+  return (
+    <Animated.View 
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        zIndex: 9999,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: fadeAnim
+      }}
+      pointerEvents={visible ? 'auto' : 'none'}
+    >
+      <Text style={{
+        fontFamily: Platform.OS === 'ios' ? 'Snell Roundhand' : 'cursive',
+        fontSize: 48,
+        color: 'white',
+        fontStyle: 'italic'
+      }}>
+        Happy Wedding
+      </Text>
+    </Animated.View>
+  );
+};
+
+// GuestBookMessages 컴포넌트 (방명록 메시지)
+export const GuestBookMessages = ({ messages = [], onAddMessage }) => {
+  return (
+    <View style={{ maxWidth: 400, alignSelf: 'center', width: '100%' }}>
+      {messages.map((message, index) => (
+        <View key={index} style={{
+          backgroundColor: 'white',
+          borderRadius: 15,
+          padding: 25,
+          marginBottom: 20,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 5 },
+          shadowOpacity: 0.05,
+          shadowRadius: 15,
+          elevation: 3
+        }}>
+          <View style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 15
+          }}>
+            <Text style={{ color: '#999', fontSize: 13 }}>
+              From. {message.from}
+            </Text>
+            <Text style={{ color: '#DDD', fontSize: 12 }}>
+              {message.date}
+            </Text>
+          </View>
+          <Text style={{
+            lineHeight: 24,
+            color: '#555',
+            fontSize: 14
+          }}>
+            {message.content}
+          </Text>
+        </View>
+      ))}
+      
+      <TouchableOpacity 
+        style={{
+          width: '100%',
+          padding: 18,
+          borderRadius: 30,
+          marginTop: 30,
+          overflow: 'hidden'
+        }}
+        onPress={onAddMessage}
+      >
+        <LinearGradient
+          colors={['#C2B0A2', '#9B8D82']}
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            borderRadius: 30
+          }}
+        />
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <Text style={{ fontSize: 16, marginRight: 8 }}>💌</Text>
+          <Text style={{ color: 'white', fontSize: 15, fontWeight: '500' }}>
+            축하 메시지 남기기
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// AccountToggle 컴포넌트 (계좌번호 토글)
+export const AccountToggle = ({ 
+  groomAccount, 
+  brideAccount, 
+  activeToggle, 
+  onToggle, 
+  onCopy 
+}) => {
+  return (
+    <View style={{ maxWidth: 400, alignSelf: 'center', width: '100%' }}>
+      {/* 신랑 계좌 */}
+      <View style={{
+        marginBottom: 15,
+        borderRadius: 15,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.08,
+        shadowRadius: 20,
+        elevation: 3,
+        backgroundColor: 'white'
+      }}>
+        <TouchableOpacity 
+          onPress={() => onToggle('groom')}
+        >
+          <LinearGradient
+            colors={['#C2B0A2', '#9B8D82']}
+            style={{
+              padding: 20,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
+            <Text style={{ color: 'white', fontSize: 15, fontWeight: '500' }}>
+              신랑측 계좌번호
+            </Text>
+            <Text style={{ 
+              color: 'white', 
+              fontSize: 18,
+              transform: [{ rotate: activeToggle === 'groom' ? '180deg' : '0deg' }]
+            }}>
+              ▼
+            </Text>
+          </LinearGradient>
+        </TouchableOpacity>
+        
+        {activeToggle === 'groom' && (
+          <View style={{
+            backgroundColor: 'white',
+            padding: 25
+          }}>
+            <Text style={{ fontWeight: 'bold', fontSize: 14, marginBottom: 5 }}>
+              {groomAccount.bank}
+            </Text>
+            <Text style={{ fontSize: 15, marginBottom: 5, color: '#333' }}>
+              {groomAccount.number}
+            </Text>
+            <Text style={{ fontSize: 13, color: '#666', marginBottom: 15 }}>
+              예금주: {groomAccount.name}
+            </Text>
+            <TouchableOpacity 
+              style={{
+                backgroundColor: '#FFE0EC',
+                paddingVertical: 10,
+                paddingHorizontal: 25,
+                borderRadius: 20,
+                alignSelf: 'flex-start'
+              }}
+              onPress={() => onCopy(groomAccount.number)}
+            >
+              <Text style={{ color: '#666', fontSize: 13 }}>
+                계좌번호 복사
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+      
+      {/* 신부 계좌 */}
+      <View style={{
+        marginBottom: 15,
+        borderRadius: 15,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.08,
+        shadowRadius: 20,
+        elevation: 3,
+        backgroundColor: 'white'
+      }}>
+        <TouchableOpacity 
+          onPress={() => onToggle('bride')}
+        >
+          <LinearGradient
+            colors={['#C2B0A2', '#9B8D82']}
+            style={{
+              padding: 20,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
+            <Text style={{ color: 'white', fontSize: 15, fontWeight: '500' }}>
+              신부측 계좌번호
+            </Text>
+            <Text style={{ 
+              color: 'white', 
+              fontSize: 18,
+              transform: [{ rotate: activeToggle === 'bride' ? '180deg' : '0deg' }]
+            }}>
+              ▼
+            </Text>
+          </LinearGradient>
+        </TouchableOpacity>
+        
+        {activeToggle === 'bride' && (
+          <View style={{
+            backgroundColor: 'white',
+            padding: 25
+          }}>
+            <Text style={{ fontWeight: 'bold', fontSize: 14, marginBottom: 5 }}>
+              {brideAccount.bank}
+            </Text>
+            <Text style={{ fontSize: 15, marginBottom: 5, color: '#333' }}>
+              {brideAccount.number}
+            </Text>
+            <Text style={{ fontSize: 13, color: '#666', marginBottom: 15 }}>
+              예금주: {brideAccount.name}
+            </Text>
+            <TouchableOpacity 
+              style={{
+                backgroundColor: '#FFE0EC',
+                paddingVertical: 10,
+                paddingHorizontal: 25,
+                borderRadius: 20,
+                alignSelf: 'flex-start'
+              }}
+              onPress={() => onCopy(brideAccount.number)}
+            >
+              <Text style={{ color: '#666', fontSize: 13 }}>
+                계좌번호 복사
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </View>
   );

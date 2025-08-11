@@ -41,6 +41,150 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
   
+  // 오프닝 오버레이 스타일 (새로 추가)
+  openingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    zIndex: 9999,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  openingContent: {
+    alignItems: 'center',
+  },
+  openingText: {
+    fontFamily: Platform.OS === 'ios' ? 'Great Vibes' : 'serif',
+    fontSize: 48,
+    color: '#ffffff',
+    fontStyle: 'italic',
+  },
+  
+  // 방명록 스타일 (새로 추가)
+  guestbookContainer: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+  },
+  messageCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 15,
+    padding: 25,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 15,
+    elevation: 5,
+  },
+  messageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+  },
+  messageFrom: {
+    color: '#999',
+    fontSize: 14,
+  },
+  messageDate: {
+    color: '#DDD',
+    fontSize: 12,
+  },
+  messageContent: {
+    fontSize: 15,
+    lineHeight: 24,
+    color: '#555',
+  },
+  messageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#C2B0A2',
+    paddingVertical: 18,
+    borderRadius: 30,
+    marginTop: 30,
+  },
+  messageButtonIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  messageButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  
+  // 계좌 토글 스타일 (새로 추가)
+  accountToggleContainer: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+  },
+  toggleItem: {
+    marginBottom: 15,
+    borderRadius: 15,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  toggleItemActive: {
+    shadowOpacity: 0.15,
+  },
+  toggleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#C2B0A2',
+    padding: 20,
+  },
+  toggleTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  toggleArrow: {
+    color: '#ffffff',
+    fontSize: 18,
+  },
+  toggleContent: {
+    backgroundColor: '#ffffff',
+    padding: 25,
+  },
+  accountBank: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  accountNumber: {
+    fontSize: 18,
+    color: '#555',
+    marginBottom: 5,
+  },
+  accountName: {
+    fontSize: 14,
+    color: '#999',
+    marginBottom: 15,
+  },
+  copyButton: {
+    backgroundColor: '#FFE0EC',
+    paddingHorizontal: 25,
+    paddingVertical: 10,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  copyButtonText: {
+    color: '#666',
+    fontSize: 14,
+  },
+  
   // 카운트다운 공통 스타일
   countdownContainer: {
     flexDirection: 'row',
@@ -183,7 +327,623 @@ const styles = StyleSheet.create({
   },
 
   // =================================================================
-  // 달력 스타일
+  // 로맨틱 핑크 달력 스타일 (새로 추가)
+  // =================================================================
+  romanticCalendar: {
+    width: '100%',
+    maxWidth: 350,
+    alignSelf: 'center',
+    marginVertical: 30,
+  },
+  romanticCalendarContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 15,
+    padding: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 30,
+    elevation: 8,
+  },
+  romanticCalendarHeader: {
+    alignItems: 'center',
+    marginBottom: 25,
+  },
+  romanticCalendarTitle: {
+    fontSize: 20,
+    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+    color: '#333',
+    fontWeight: '500',
+  },
+  romanticCalendarWeekDays: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 15,
+  },
+  romanticCalendarWeekDay: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#666',
+    width: 35,
+    textAlign: 'center',
+  },
+  romanticCalendarSunday: {
+    color: '#ff6b6b',
+  },
+  romanticCalendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  romanticCalendarDayContainer: {
+    width: '14.28%',
+    aspectRatio: 1,
+    padding: 2,
+  },
+  romanticCalendarDay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  romanticCalendarWeddingDay: {
+    backgroundColor: '#C2B0A2',
+    shadowColor: '#C2B0A2',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  romanticCalendarDayText: {
+    fontSize: 13,
+    color: '#666',
+  },
+  romanticCalendarWeddingDayText: {
+    fontSize: 14,
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  romanticCalendarOtherMonthText: {
+    color: 'transparent',
+  },
+  romanticCalendarSundayText: {
+    color: '#ff6b6b',
+  },
+
+  // =================================================================
+  // 로맨틱 핑크 템플릿 스타일 (새로 추가)
+  // =================================================================
+  romantic_container: {
+    flex: 1,
+    backgroundColor: '#E7DFDA',
+  },
+  romantic_scrollView: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  
+  // 인트로 섹션
+  romantic_introSection: {
+    minHeight: height,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    position: 'relative',
+  },
+  romantic_introContent: {
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  romantic_subtitle: {
+    fontSize: 12,
+    color: '#C2B0A2',
+    letterSpacing: 3,
+    marginBottom: 10,
+  },
+  romantic_loveText: {
+    fontFamily: Platform.OS === 'ios' ? 'Dancing Script' : 'cursive',
+    fontSize: 64,
+    color: '#9B8D82',
+    marginVertical: 15,
+    fontWeight: '400',
+  },
+  romantic_mainImageContainer: {
+    width: width * 0.95,
+    maxWidth: 420,
+    height: 650,
+    borderRadius: 320,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    overflow: 'hidden',
+    marginTop: 20,
+    shadowColor: '#C2B0A2',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2,
+    shadowRadius: 60,
+    elevation: 15,
+  },
+  romantic_mainPhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  
+  // 인사말 섹션
+  romantic_greetingSection: {
+    backgroundColor: '#ffffff',
+    paddingVertical: 100,
+    paddingHorizontal: 35,
+    alignItems: 'center',
+  },
+  romantic_floatingHeart: {
+    marginBottom: 30,
+  },
+  romantic_heartPulse: {
+    fontSize: 32,
+  },
+  romantic_poem: {
+    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+    fontSize: 16,
+    lineHeight: 32,
+    color: '#666',
+    textAlign: 'center',
+    marginVertical: 40,
+    fontWeight: '300',
+  },
+  romantic_divider: {
+    width: 60,
+    height: 1,
+    backgroundColor: '#9B8D82',
+    opacity: 0.3,
+    marginVertical: 40,
+  },
+  romantic_coupleNames: {
+    fontSize: 17,
+    color: '#666',
+  },
+  romantic_boldText: {
+    fontWeight: '600',
+  },
+  
+  // 갤러리 섹션
+  romantic_gallerySection: {
+    backgroundColor: '#ffffff',
+    paddingVertical: 80,
+    overflow: 'hidden',
+  },
+  romantic_galleryTitle: {
+    fontFamily: Platform.OS === 'ios' ? 'Playfair Display' : 'serif',
+    fontSize: 40,
+    color: '#333',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  romantic_gallerySubtitle: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 40,
+  },
+  romantic_gallerySlider: {
+    paddingLeft: 40,
+  },
+  romantic_galleryItem: {
+    width: width * 0.75,
+    height: 350,
+    marginRight: 15,
+    borderRadius: 15,
+    overflow: 'hidden',
+    backgroundColor: '#F0EBE6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  romantic_galleryImage: {
+    width: '100%',
+    height: '100%',
+  },
+  romantic_galleryDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 30,
+  },
+  romantic_dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ddd',
+  },
+  romantic_dotActive: {
+    backgroundColor: '#9B8D82',
+    width: 30,
+    borderRadius: 4,
+  },
+  
+  // 날짜 섹션
+  romantic_dateSection: {
+    paddingVertical: 100,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  romantic_dateTextLarge: {
+    fontFamily: Platform.OS === 'ios' ? 'Dancing Script' : 'cursive',
+    fontSize: 64,
+    color: '#ffffff',
+    marginBottom: 20,
+  },
+  romantic_dateSubtext: {
+    fontSize: 17,
+    color: '#ffffff',
+    opacity: 0.9,
+  },
+  
+  // Wedding Day 섹션
+  romantic_weddingDaySection: {
+    backgroundColor: '#ffffff',
+    paddingVertical: 80,
+    paddingHorizontal: 20,
+  },
+  romantic_weddingDayTitle: {
+    fontFamily: Platform.OS === 'ios' ? 'Playfair Display' : 'serif',
+    fontSize: 40,
+    color: '#333',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 40,
+  },
+  romantic_dateInfo: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  romantic_dateMain: {
+    fontSize: 17,
+    color: '#333',
+    marginBottom: 10,
+  },
+  romantic_dateSub: {
+    fontSize: 14,
+    color: '#999',
+  },
+  romantic_calendar: {
+    marginBottom: 30,
+  },
+  romantic_countdown: {
+    marginBottom: 30,
+  },
+  romantic_countdownGrid: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  romantic_countdownNumber: {
+    fontSize: 28,
+    fontFamily: Platform.OS === 'ios' ? 'Playfair Display' : 'serif',
+    color: '#333',
+    fontWeight: '300',
+  },
+  romantic_countdownLabel: {
+    fontSize: 10,
+    color: '#999',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginTop: 8,
+  },
+  romantic_countdownMessage: {
+    fontSize: 17,
+    color: '#666',
+    textAlign: 'center',
+  },
+  romantic_heartText: {
+    color: '#C2B0A2',
+    fontSize: 20,
+  },
+  romantic_countdownDays: {
+    color: '#9B8D82',
+    fontWeight: '500',
+  },
+  
+  // 커플 섹션
+  romantic_coupleSection: {
+    paddingVertical: 80,
+    paddingHorizontal: 20,
+    position: 'relative',
+  },
+  romantic_coupleTitle: {
+    fontFamily: Platform.OS === 'ios' ? 'Playfair Display' : 'serif',
+    fontSize: 40,
+    color: '#333',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 50,
+  },
+  romantic_coupleCards: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 20,
+    flexWrap: 'wrap',
+  },
+  romantic_coupleCard: {
+    flex: 1,
+    minWidth: 140,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 30,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 30,
+    elevation: 8,
+  },
+  romantic_couplePhotoContainer: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    overflow: 'hidden',
+    marginBottom: 25,
+    backgroundColor: '#FFE0EC',
+  },
+  romantic_couplePhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  romantic_coupleRole: {
+    backgroundColor: '#C2B0A2',
+    color: '#ffffff',
+    paddingHorizontal: 18,
+    paddingVertical: 6,
+    borderRadius: 20,
+    fontSize: 12,
+    marginBottom: 15,
+    overflow: 'hidden',
+  },
+  romantic_coupleName: {
+    fontSize: 26,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 5,
+  },
+  romantic_coupleEngName: {
+    fontSize: 14,
+    color: '#999',
+    marginBottom: 20,
+  },
+  romantic_coupleParents: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 24,
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  romantic_coupleInfo: {
+    fontSize: 13,
+    color: '#999',
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  
+  // 메시지 섹션
+  romantic_messagesSection: {
+    paddingVertical: 80,
+    paddingHorizontal: 20,
+    position: 'relative',
+  },
+  romantic_messagesTitle: {
+    fontFamily: Platform.OS === 'ios' ? 'Playfair Display' : 'serif',
+    fontSize: 40,
+    color: '#333',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  romantic_messagesSubtitle: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 40,
+  },
+  
+  // 위치 섹션
+  romantic_locationSection: {
+    backgroundColor: '#ffffff',
+    paddingVertical: 80,
+    paddingHorizontal: 20,
+  },
+  romantic_locationTitle: {
+    fontFamily: Platform.OS === 'ios' ? 'Playfair Display' : 'serif',
+    fontSize: 40,
+    color: '#333',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 40,
+  },
+  romantic_venueInfo: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  romantic_venueName: {
+    fontSize: 20,
+    color: '#333',
+    fontWeight: '500',
+    marginBottom: 10,
+  },
+  romantic_venueAddress: {
+    fontSize: 15,
+    color: '#666',
+  },
+  romantic_mapContainer: {
+    height: 300,
+    backgroundColor: '#F0EBE6',
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 40,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 30,
+    elevation: 8,
+  },
+  romantic_mapPlaceholder: {
+    fontSize: 48,
+    marginBottom: 10,
+  },
+  romantic_mapText: {
+    fontSize: 14,
+    color: '#999',
+  },
+  romantic_transportCard: {
+    flexDirection: 'row',
+    backgroundColor: '#F8F5F2',
+    borderRadius: 20,
+    padding: 30,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  romantic_transportIcon: {
+    marginRight: 20,
+    fontSize: 24,
+  },
+  romantic_transportContent: {
+    flex: 1,
+  },
+  romantic_transportTitle: {
+    fontSize: 18,
+    color: '#C2B0A2',
+    marginBottom: 10,
+    fontWeight: '500',
+  },
+  romantic_transportText: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 24,
+  },
+  romantic_navigationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#9B8D82',
+    paddingVertical: 15,
+    borderRadius: 25,
+  },
+  romantic_navigationText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  
+  // 계좌 섹션
+  romantic_accountSection: {
+    paddingVertical: 80,
+    paddingHorizontal: 20,
+    position: 'relative',
+  },
+  romantic_accountTitle: {
+    fontFamily: Platform.OS === 'ios' ? 'Playfair Display' : 'serif',
+    fontSize: 40,
+    color: '#333',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  romantic_accountSubtitle: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 50,
+  },
+  
+  // 공유 섹션
+  romantic_shareSection: {
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+  },
+  romantic_shareButton: {
+    borderRadius: 15,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.2,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  romantic_shareButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+  },
+  romantic_shareButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  
+  // 푸터
+  romantic_footerSection: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  romantic_footerTitle: {
+    fontFamily: Platform.OS === 'ios' ? 'Playfair Display' : 'serif',
+    fontSize: 32,
+    color: '#ffffff',
+    marginBottom: 20,
+  },
+  romantic_footerDivider: {
+    width: 60,
+    height: 1,
+    backgroundColor: '#ffffff',
+    opacity: 0.5,
+    marginBottom: 20,
+  },
+  romantic_footerMessage: {
+    fontSize: 16,
+    color: '#ffffff',
+    opacity: 0.9,
+    textAlign: 'center',
+    lineHeight: 26,
+  },
+  
+  // 모달 스타일
+  romantic_modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  romantic_modalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 30,
+    width: '90%',
+    maxWidth: 400,
+  },
+  romantic_modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+  },
+  romantic_modalClose: {
+    position: 'absolute',
+    top: 15,
+    right: 15,
+  },
+
+  // =================================================================
+  // 기존 달력 스타일들
   // =================================================================
   
   // 모던 다크 달력 스타일
@@ -852,8 +1612,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
   },
-
-  // 부조하기 섹션 추가
   modern_donationSection: {
     paddingVertical: 80,
     paddingHorizontal: 30,
@@ -905,8 +1663,6 @@ const styles = StyleSheet.create({
   korean_scrollView: {
     flex: 1,
   },
-  
-  // 헤로 섹션
   korean_heroSection: {
     minHeight: height,
     justifyContent: 'center',
@@ -930,8 +1686,6 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 15,
   },
-  
-  // 이름 섹션
   korean_namesContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -952,8 +1706,6 @@ const styles = StyleSheet.create({
   korean_heartContainer: {
     marginHorizontal: 15,
   },
-  
-  // 날짜 섹션
   korean_dateContainer: {
     alignItems: 'center',
   },
@@ -980,8 +1732,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
   },
-  
-  // 카운트다운 섹션 추가
   korean_countdownSection: {
     paddingVertical: 50,
     paddingHorizontal: 20,
@@ -1005,8 +1755,6 @@ const styles = StyleSheet.create({
   korean_calendarSection: {
     marginTop: 30,
   },
-  
-  // 공통 섹션 스타일
   korean_messageSection: {
     paddingHorizontal: 30,
     paddingVertical: 50,
@@ -1042,8 +1790,6 @@ const styles = StyleSheet.create({
     paddingVertical: 50,
     alignItems: 'center',
   },
-  
-  // 섹션 헤더
   korean_sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1062,8 +1808,6 @@ const styles = StyleSheet.create({
     backgroundColor: KoreanColors.elegant.accent,
     opacity: 0.5,
   },
-  
-  // 메시지
   korean_customMessage: {
     fontSize: 16,
     lineHeight: 28,
@@ -1071,8 +1815,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
   },
-  
-  // 커플 정보
   korean_coupleGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1137,8 +1879,6 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     fontWeight: '500',
   },
-  
-  // 정보 카드
   korean_infoCard: {
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 20,
@@ -1185,8 +1925,6 @@ const styles = StyleSheet.create({
     color: KoreanColors.elegant.text,
     opacity: 0.7,
   },
-  
-  // 갤러리
   korean_galleryScroll: {
     paddingLeft: 20,
   },
@@ -1206,8 +1944,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  
-  // 지도 및 위치
   korean_mapContainer: {
     height: 200,
     backgroundColor: KoreanColors.elegant.secondary,
@@ -1252,8 +1988,6 @@ const styles = StyleSheet.create({
   korean_locationButtonTextSecondary: {
     color: KoreanColors.elegant.primary,
   },
-  
-  // 축의금
   korean_contributionCard: {
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 20,
@@ -1294,8 +2028,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
-  
-  // 공유 버튼
   korean_shareButton: {
     borderRadius: 15,
     overflow: 'hidden',
@@ -1317,8 +2049,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 10,
   },
-  
-  // 푸터
   korean_footerMessage: {
     fontSize: 16,
     color: KoreanColors.elegant.text,
@@ -1439,8 +2169,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 1,
   },
-  
-  // 카운트다운 섹션
   app_countdownSection: {
     paddingVertical: 60,
     paddingHorizontal: 25,
@@ -1477,7 +2205,6 @@ const styles = StyleSheet.create({
   app_calendarSection: {
     marginTop: 30,
   },
-  
   app_sectionContent: {
     alignItems: 'center',
   },
@@ -1700,8 +2427,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 30,
   },
-  
-  // 부조하기 버튼 추가
   app_donationButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1721,7 +2446,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#6c5ce7',
   },
-  
   app_shareButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1768,6 +2492,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
+  romantic_coupleCardsColumn: {
+  flexDirection: 'column',
+  gap: 40,
+  alignItems: 'center',
+  marginTop: 50,
+},
+romantic_coupleCardFull: {
+  backgroundColor: 'white',
+  borderRadius: 20,
+  padding: 40,
+  width: '90%',
+  maxWidth: 320,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.08,
+  shadowRadius: 30,
+  elevation: 5,
+  alignItems: 'center',
+},
+  
 });
 
 export default styles;
