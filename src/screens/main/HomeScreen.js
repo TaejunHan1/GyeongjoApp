@@ -1,4 +1,4 @@
-// src/screens/main/HomeScreen.js - 중복 이벤트 문제 해결
+// src/screens/main/HomeScreen.js - 개선된 통계 UI 포함 전체 코드
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -18,7 +18,13 @@ import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../../styles/constants';
 import { supabase } from '../../lib/supabase';
-import { getUserEvents, getActiveEvents, debugUserInfo } from '../../lib/supabaseHelper';
+import { 
+  getUserEvents, 
+  getActiveEvents, 
+  debugUserInfo,
+  getEventGuestBook,
+  getMonthlyStatistics 
+} from '../../lib/supabaseHelper';
 import Svg, { Rect, Circle, Path, Ellipse, G } from 'react-native-svg';
 
 const { width } = Dimensions.get('window');
@@ -62,6 +68,33 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const [loading, setLoading] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [selectedTab, setSelectedTab] = useState('active'); // 'active' or 'completed'
+  const [monthlyStats, setMonthlyStats] = useState({
+    totalEvents: 0,
+    monthlyEvents: 0,
+    activeEvents: 0,
+    
+    // 전체 통계
+    totalAmount: 0,
+    totalWeddingAmount: 0,
+    totalFuneralAmount: 0,
+    totalEntries: 0,
+    
+    // 이번 달 통계
+    receivedAmount: 0,
+    monthlyWeddingAmount: 0,
+    monthlyFuneralAmount: 0,
+    totalContributions: 0,
+    
+    // 이벤트별 상세
+    eventDetails: [],
+    
+    // 보낸 금액 (추후 구현)
+    sentAmount: 0,
+    sentContributions: 0,
+    
+    // 기간 정보
+    period: null
+  });
   
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -110,6 +143,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       loadUserData();
       loadEvents();
       loadActiveEvents();
+      loadMonthlyStatistics(); // 🔥 월별 통계 로드 추가
     }, [userInfo, session])
   );
 
@@ -133,6 +167,45 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     return () => clearInterval(interval);
   }, [fadeAnim]);
 
+  // 🔥 월별 통계 로드 함수
+  const loadMonthlyStatistics = async () => {
+    try {
+      console.log('📊 월별 통계 로드 시작');
+      
+      // 현재 사용자 정보 가져오기
+      let currentUserId = null;
+      
+      if (userInfo?.userId) {
+        currentUserId = userInfo.userId;
+      } else if (session?.user?.id) {
+        currentUserId = session.user.id;
+      } else {
+        const storedUserInfo = await AsyncStorage.getItem('userInfo');
+        if (storedUserInfo) {
+          const parsedInfo = JSON.parse(storedUserInfo);
+          currentUserId = parsedInfo.userId;
+        }
+      }
+      
+      if (!currentUserId) {
+        console.log('❌ 사용자 ID 없음 - 통계 로드 불가');
+        return;
+      }
+      
+      const result = await getMonthlyStatistics(currentUserId);
+      
+      if (result.success) {
+        console.log('✅ 월별 통계 로드 성공:', result.data);
+        setMonthlyStats(result.data);
+      } else {
+        console.error('❌ 월별 통계 로드 실패:', result.error);
+      }
+      
+    } catch (error) {
+      console.error('❌ 월별 통계 로드 예외:', error);
+    }
+  };
+
   // 🔥 서울 시간 기준 날짜 비교 함수 - 완전히 새로 작성
   const isEventCompleted = (eventDate) => {
     if (!eventDate) return true; // 미정인 경우 완료로 처리
@@ -148,14 +221,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       
       // 오늘보다 이전이면 완료, 오늘 이후(오늘 포함)면 진행중
       const isCompleted = eventDateOnly < today;
-      
-      // console.log('📅 날짜 확인:', {
-      //   이벤트날짜: eventDate,
-      //   이벤트날짜만: eventDateOnly.toLocaleDateString('ko-KR'),
-      //   오늘날짜: today.toLocaleDateString('ko-KR'),
-      //   완료여부: isCompleted ? '완료' : '진행중',
-      //   비교: `${eventDateOnly.getTime()} < ${today.getTime()} = ${isCompleted}`
-      // });
       
       return isCompleted;
       
@@ -308,17 +373,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         
         console.log(`🔧 중복 제거 후: ${uniqueEvents.length}개`);
         
-        // 🔍 각 이벤트 상세 로그
-        uniqueEvents.forEach((event, index) => {
-          // console.log(`🎭 고유 이벤트 ${index + 1}:`, {
-          //   id: event.id,
-          //   name: event.event_name,
-          //   type: event.event_type,
-          //   created_at: event.created_at,
-          //   user_id: event.user_id
-          // });
-        });
-        
         setActiveEvents(uniqueEvents);
       } else {
         console.error('❌ 활성 이벤트 로드 실패:', result.error);
@@ -328,34 +382,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       console.error('❌ 활성 이벤트 로드 예외:', error);
       setActiveEvents([]);
     }
-  };
-
-  const handleLogout = () => {
-    Alert.alert(
-      '로그아웃',
-      '정말 로그아웃하시겠어요?',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '로그아웃',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // AsyncStorage 정리
-              await AsyncStorage.removeItem('userInfo');
-              await AsyncStorage.removeItem('isLoggedIn');
-              
-              // Supabase 로그아웃
-              await supabase.auth.signOut();
-              
-              console.log('✅ 로그아웃 완료');
-            } catch (error) {
-              console.error('❌ 로그아웃 오류:', error);
-            }
-          },
-        },
-      ]
-    );
   };
 
   // QR 스캔 기능
@@ -534,19 +560,26 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     });
   };
 
-  // 🔥 수동 새로고침 함수 추가
+  // 🔥 수동 새로고침 함수 수정 - 통계도 포함
   const handleRefresh = async () => {
     console.log('🔄 수동 새로고침 시작');
     setLoading(true);
     await loadUserData();
     await loadEvents();
     await loadActiveEvents();
+    await loadMonthlyStatistics(); // 🔥 통계 새로고침 추가
     setLoading(false);
   };
 
   // 🔥 더보기 버튼 핸들러
   const handleViewMore = () => {
     navigation.navigate('MyEvents');
+  };
+
+  // 🔥 통계 상세보기 - MyEvents 탭으로 이동하면서 통계 탭 선택
+  const handleStatisticsDetail = () => {
+    // Statistics 스크린이 없으므로 MyEvents로 이동
+    navigation.navigate('MyEvents', { initialTab: 'statistics' });
   };
 
   const currentSlideData = slides[currentSlide];
@@ -570,12 +603,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   // 🔥 서울 시간 기준으로 진행중/완료 분류
   const activeEventsFiltered = allEvents.filter(event => {
     const isCompleted = isEventCompleted(event.event_date);
-    // console.log('🔍 이벤트 분류:', {
-    //   eventName: event.event_name,
-    //   eventDate: event.event_date,
-    //   isCompleted,
-    //   category: isCompleted ? '완료' : '진행중'
-    // });
     return !isCompleted;
   });
   
@@ -595,14 +622,11 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   
   const hasMore = totalCount > 3;
 
-  // 🔥 분류 결과 로그
-  // console.log('📊 이벤트 분류 결과:', {
-  //   totalEvents: allEvents.length,
-  //   activeCount: activeEventsFiltered.length,
-  //   completedCount: completedEventsFiltered.length,
-  //   activeEvents: activeEventsFiltered.map(e => ({ name: e.event_name, date: e.event_date })),
-  //   completedEvents: completedEventsFiltered.map(e => ({ name: e.event_name, date: e.event_date }))
-  // });
+  // 🔥 금액 포맷팅 함수
+  const formatAmount = (amount) => {
+    if (!amount || amount === 0) return '0원';
+    return new Intl.NumberFormat('ko-KR').format(amount) + '원';
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -834,21 +858,147 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           )}
         </View>
 
-        {/* 통계 요약 */}
+        {/* 🔥 통계 요약 - 완전히 새로운 디자인 */}
         <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>이번 달 요약</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{allEvents.length}</Text>
-              <Text style={styles.statLabel}>총 경조사</Text>
+          <View style={styles.statsSectionHeader}>
+            <Text style={styles.sectionTitle}>
+              {monthlyStats.period?.monthName || new Date().toLocaleDateString('ko-KR', { month: 'long' })} 경조사 현황
+            </Text>
+            <TouchableOpacity 
+              onPress={handleStatisticsDetail}
+              style={styles.statsDetailButton}
+            >
+              <Text style={styles.statsDetailButtonText}>전체보기</Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* 🔥 이번 달 받은 금액 요약 카드 */}
+          {monthlyStats.receivedAmount > 0 || monthlyStats.totalContributions > 0 ? (
+            <>
+              <View style={styles.monthlyReceivedCard}>
+                <View style={styles.monthlyCardHeader}>
+                  <View style={styles.monthlyCardIconContainer}>
+                    <Ionicons name="wallet" size={24} color={Colors.white} />
+                  </View>
+                  <View style={styles.monthlyCardTitleSection}>
+                    <Text style={styles.monthlyCardTitle}>이번 달 받은 금액</Text>
+                    <Text style={styles.monthlyCardSubtitle}>총 {monthlyStats.totalContributions}건</Text>
+                  </View>
+                </View>
+                
+                <Text style={styles.monthlyTotalAmount}>
+                  {formatAmount(monthlyStats.receivedAmount)}
+                </Text>
+
+                {/* 타입별 분류 */}
+                <View style={styles.monthlyTypeBreakdown}>
+                  {monthlyStats.monthlyWeddingAmount > 0 && (
+                    <View style={styles.typeBreakdownItem}>
+                      <View style={[styles.typeIndicator, { backgroundColor: Colors.wedding }]} />
+                      <Text style={styles.typeLabel}>축의금</Text>
+                      <Text style={styles.typeAmount}>
+                        {formatAmount(monthlyStats.monthlyWeddingAmount)}
+                      </Text>
+                    </View>
+                  )}
+                  {monthlyStats.monthlyFuneralAmount > 0 && (
+                    <View style={styles.typeBreakdownItem}>
+                      <View style={[styles.typeIndicator, { backgroundColor: Colors.funeral }]} />
+                      <Text style={styles.typeLabel}>부조금</Text>
+                      <Text style={styles.typeAmount}>
+                        {formatAmount(monthlyStats.monthlyFuneralAmount)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+
+              {/* 🔥 이벤트별 상세 내역 - 중요! */}
+              {monthlyStats.eventDetails && monthlyStats.eventDetails.length > 0 && (
+                <View style={styles.eventBreakdownCard}>
+                  <Text style={styles.eventBreakdownTitle}>경조사별 상세</Text>
+                  {monthlyStats.eventDetails.map((detail, index) => (
+                    <View 
+                      key={`${detail.eventId}-${index}`} 
+                      style={[
+                        styles.eventBreakdownItem,
+                        index === monthlyStats.eventDetails.length - 1 && styles.lastBreakdownItem
+                      ]}
+                    >
+                      <View style={styles.eventBreakdownLeft}>
+                        <View style={[
+                          styles.eventTypeIcon,
+                          { backgroundColor: detail.eventType === 'wedding' ? Colors.wedding : Colors.funeral }
+                        ]}>
+                          <Ionicons 
+                            name={detail.eventType === 'wedding' ? 'heart' : 'flower'} 
+                            size={14} 
+                            color={Colors.white} 
+                          />
+                        </View>
+                        <View style={styles.eventBreakdownInfo}>
+                          <Text style={styles.eventBreakdownName} numberOfLines={1}>
+                            {detail.eventName}
+                          </Text>
+                          <Text style={styles.eventBreakdownType}>
+                            {detail.eventType === 'wedding' ? '결혼식' : '부고'} · {detail.count}건
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.eventBreakdownAmount}>
+                        {formatAmount(detail.amount)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </>
+          ) : (
+            <View style={styles.noMonthlyDataCard}>
+              <Ionicons name="calendar-clear-outline" size={48} color={Colors.gray300} />
+              <Text style={styles.noMonthlyDataText}>이번 달 경조사 데이터가 없습니다</Text>
+              <Text style={styles.noMonthlyDataSubtext}>새로운 경조사를 만들어보세요</Text>
             </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>0원</Text>
-              <Text style={styles.statLabel}>총 부조금</Text>
+          )}
+
+          {/* 🔥 보낸 금액 섹션 (미구현 상태 표시) */}
+          <View style={styles.sentMoneySection}>
+            <View style={styles.sentMoneySectionHeader}>
+              <Text style={styles.sentMoneySectionTitle}>이번 달 보낸 금액</Text>
+              <View style={styles.comingSoonBadge}>
+                <Text style={styles.comingSoonText}>준비중</Text>
+              </View>
             </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{activeEventsFiltered.length}</Text>
-              <Text style={styles.statLabel}>진행중</Text>
+            <Text style={styles.sentMoneySectionDescription}>
+              다른 경조사에 참여한 내역을 관리하는 기능을 준비하고 있습니다
+            </Text>
+          </View>
+
+          {/* 🔥 전체 누적 통계 */}
+          <View style={styles.totalStatsContainer}>
+            <Text style={styles.totalStatsTitle}>전체 누적 통계</Text>
+            <View style={styles.totalStatsGrid}>
+              <View style={styles.totalStatItem}>
+                <Ionicons name="calendar" size={24} color={Colors.primary} />
+                <Text style={styles.totalStatValue}>{monthlyStats.totalEvents}</Text>
+                <Text style={styles.totalStatLabel}>전체 경조사</Text>
+              </View>
+              <View style={styles.totalStatItem}>
+                <Ionicons name="people" size={24} color={Colors.success} />
+                <Text style={styles.totalStatValue}>{monthlyStats.totalEntries}</Text>
+                <Text style={styles.totalStatLabel}>누적 참여자</Text>
+              </View>
+              <View style={styles.totalStatItem}>
+                <Ionicons name="cash" size={24} color={Colors.warning} />
+                <Text style={styles.totalStatValue}>
+                  {monthlyStats.totalAmount >= 1000000 
+                    ? `${Math.floor(monthlyStats.totalAmount / 10000)}만원`
+                    : formatAmount(monthlyStats.totalAmount)
+                  }
+                </Text>
+                <Text style={styles.totalStatLabel}>누적 금액</Text>
+              </View>
             </View>
           </View>
         </View>
@@ -1280,29 +1430,285 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   
-  // 통계
+  // 🔥 완전히 새로운 통계 섹션 스타일
   statsSection: {
     marginBottom: 40,
   },
-  statsGrid: {
+  
+  statsSectionHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  
+  statsDetailButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  
+  statsDetailButtonText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '500',
+  },
+  
+  // 이번 달 받은 금액 카드
+  monthlyReceivedCard: {
+    backgroundColor: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    backgroundColor: Colors.primary,
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  
+  monthlyCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  
+  monthlyCardIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  
+  monthlyCardTitleSection: {
+    flex: 1,
+  },
+  
+  monthlyCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+  
+  monthlyCardSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+  
+  monthlyTotalAmount: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: Colors.white,
+    marginBottom: 20,
+  },
+  
+  monthlyTypeBreakdown: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+    paddingTop: 16,
+    gap: 12,
+  },
+  
+  typeBreakdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  
+  typeIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  
+  typeLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+  },
+  
+  typeAmount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+  
+  // 이벤트별 상세 내역 카드
+  eventBreakdownCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.gray100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  
+  eventBreakdownTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 16,
+  },
+  
+  eventBreakdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray100,
+  },
+  
+  lastBreakdownItem: {
+    borderBottomWidth: 0,
+  },
+  
+  eventBreakdownLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  
+  eventTypeIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  
+  eventBreakdownInfo: {
+    flex: 1,
+  },
+  
+  eventBreakdownName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  
+  eventBreakdownType: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  
+  eventBreakdownAmount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  
+  // 데이터 없음 카드
+  noMonthlyDataCard: {
+    backgroundColor: Colors.gray50,
+    borderRadius: 16,
+    padding: 40,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  
+  noMonthlyDataText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  
+  noMonthlyDataSubtext: {
+    fontSize: 14,
+    color: Colors.gray500,
+  },
+  
+  // 보낸 금액 섹션
+  sentMoneySection: {
     backgroundColor: Colors.gray50,
     borderRadius: 16,
     padding: 20,
+    marginBottom: 16,
   },
-  statItem: {
-    flex: 1,
+  
+  sentMoneySectionHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 8,
   },
-  statNumber: {
-    fontSize: 24,
+  
+  sentMoneySectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginRight: 8,
+  },
+  
+  comingSoonBadge: {
+    backgroundColor: Colors.warning,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  
+  comingSoonText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+  
+  sentMoneySectionDescription: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  
+  // 전체 누적 통계
+  totalStatsContainer: {
+    marginTop: 8,
+  },
+  
+  totalStatsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 16,
+  },
+  
+  totalStatsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  
+  totalStatItem: {
+    flex: 1,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray100,
+  },
+  
+  totalStatValue: {
+    fontSize: 20,
     fontWeight: '700',
-    color: Colors.primary,
+    color: Colors.textPrimary,
+    marginTop: 8,
     marginBottom: 4,
   },
-  statLabel: {
+  
+  totalStatLabel: {
     fontSize: 12,
     color: Colors.textSecondary,
-    fontWeight: '500',
   },
 });

@@ -1,4 +1,4 @@
-// src/lib/supabaseHelper.js - 메시지 기능 및 이미지 업로드 포함 완전 업데이트 버전
+// src/lib/supabaseHelper.js - guest_book 테이블 사용 버전
 import { supabase } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -309,7 +309,6 @@ const determineImageCategory = (fileName) => {
   return 'main';
 };
 
-
 /**
  * Storage에서 특정 이벤트의 모든 이미지 삭제
  */
@@ -360,8 +359,6 @@ export const deleteEventStorageImages = async (userId, eventId) => {
     return { success: false, error: error.message };
   }
 };
-
-
 
 export const uploadImageToStorage = async (imageUri, fileName, userId, eventId = null) => {
   try {
@@ -466,6 +463,7 @@ export const uploadImageToStorage = async (imageUri, fileName, userId, eventId =
     };
   }
 };
+
 /**
  * 여러 이미지를 일괄 업로드
  */
@@ -1004,13 +1002,14 @@ export const deleteEvent = async (eventId) => {
       console.log('⚠️ 메시지 삭제 중 오류 (무시):', messageError);
     }
 
+    // 🔥 guest_book 데이터 삭제
     try {
       await supabase
-        .from('contributions')
+        .from('guest_book')
         .delete()
         .eq('event_id', eventId);
-    } catch (contribError) {
-      console.log('⚠️ 부조금 삭제 중 오류 (무시):', contribError);
+    } catch (guestBookError) {
+      console.log('⚠️ 방명록 삭제 중 오류 (무시):', guestBookError);
     }
 
     const { error } = await supabase
@@ -1040,7 +1039,7 @@ export const deleteEvent = async (eventId) => {
 };
 
 /**
- * 특정 이벤트 상세 정보 조회 (메시지 포함)
+ * 특정 이벤트 상세 정보 조회 (guest_book 포함)
  */
 export const getEventDetail = async (eventId) => {
   try {
@@ -1048,14 +1047,15 @@ export const getEventDetail = async (eventId) => {
       .from('events')
       .select(`
         *,
-        contributions (
+        guest_book (
           id,
-          contributor_name,
+          guest_name,
           amount,
-          relation_to,
-          notes,
-          is_confirmed,
-          is_manual_entry,
+          relation_category,
+          relation_detail,
+          message,
+          message_type,
+          is_verified,
           created_at,
           updated_at
         )
@@ -1066,6 +1066,28 @@ export const getEventDetail = async (eventId) => {
     if (error) {
       console.error('❌ 이벤트 상세 조회 오류:', error);
       throw error;
+    }
+
+    // 🔥 guest_book_stats에서 통계 정보도 가져오기
+    const { data: stats } = await supabase
+      .from('guest_book_stats')
+      .select('*')
+      .eq('event_id', eventId)
+      .single();
+
+    if (stats) {
+      data.statistics = {
+        totalAmount: stats.total_amount || 0,
+        totalEntries: stats.total_entries || 0,
+        attendingCount: stats.attending_count || 0,
+        messageCount: stats.message_count || 0,
+        verifiedCount: stats.verified_count || 0,
+        // 결혼식 전용 통계
+        groomSideAmount: stats.groom_side_amount || 0,
+        brideSideAmount: stats.bride_side_amount || 0,
+        groomSideCount: stats.groom_side_count || 0,
+        brideSideCount: stats.bride_side_count || 0,
+      };
     }
 
     console.log('✅ 이벤트 상세 조회 완료:', eventId);
@@ -1169,186 +1191,51 @@ export const getEventMessages = async (eventId, limit = 50) => {
   }
 };
 
+// ===== Guest Book (부조금/축의금) 관련 함수들 =====
+
 /**
- * 메시지 수정
+ * 방명록에 부조금/축의금 추가
  */
-export const updateEventMessage = async (messageId, updateData) => {
+export const addGuestBookEntry = async (eventId, guestData) => {
   try {
-    console.log('🔍 메시지 수정 시도:', { messageId, updateData });
+    console.log('💰 방명록 추가:', { eventId, guestData });
 
-    const { data, error } = await supabase
-      .from('event_messages')
-      .update({
-        message: updateData.message,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', messageId)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('❌ 메시지 수정 에러:', error);
-      throw error;
-    }
-
-    console.log('✅ 메시지 수정 성공:', data.id);
-    return { success: true, data };
-  } catch (error) {
-    console.error('❌ updateEventMessage error:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-/**
- * 메시지 삭제
- */
-export const deleteEventMessage = async (messageId) => {
-  try {
-    console.log('🔍 메시지 삭제 시도:', messageId);
-
-    const { error } = await supabase
-      .from('event_messages')
-      .delete()
-      .eq('id', messageId);
-
-    if (error) {
-      console.error('❌ 메시지 삭제 에러:', error);
-      throw error;
-    }
-
-    console.log('✅ 메시지 삭제 성공');
-    return { success: true };
-  } catch (error) {
-    console.error('❌ deleteEventMessage error:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-/**
- * 메시지 통계 조회
- */
-export const getEventMessageStats = async (eventId) => {
-  try {
-    console.log('🔍 메시지 통계 조회 시도:', eventId);
-
-    const { data, error } = await supabase
-      .from('event_messages')
-      .select('message_type, is_anonymous')
-      .eq('event_id', eventId);
-
-    if (error) {
-      console.error('❌ 메시지 통계 조회 에러:', error);
-      throw error;
-    }
-
-    const stats = {
-      total: data.length,
-      anonymous: data.filter(msg => msg.is_anonymous).length,
-      named: data.filter(msg => !msg.is_anonymous).length,
-      byType: data.reduce((acc, msg) => {
-        acc[msg.message_type] = (acc[msg.message_type] || 0) + 1;
-        return acc;
-      }, {})
-    };
-
-    console.log('✅ 메시지 통계 조회 성공:', stats);
-    return { success: true, data: stats };
-  } catch (error) {
-    console.error('❌ getEventMessageStats error:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-/**
- * 실시간 메시지 구독
- */
-export const subscribeToEventMessages = (eventId, onMessage) => {
-  console.log('🔍 메시지 실시간 구독 시작:', eventId);
-
-  const subscription = supabase
-    .channel(`event_messages:${eventId}`)
-    .on('postgres_changes', 
-      { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'event_messages',
-        filter: `event_id=eq.${eventId}`
-      }, 
-      (payload) => {
-        console.log('✅ 새 메시지 수신:', payload);
-        if (onMessage) {
-          onMessage(payload.new);
-        }
-      }
-    )
-    .subscribe();
-
-  return {
-    unsubscribe: () => {
-      console.log('🔍 메시지 구독 해제');
-      supabase.removeChannel(subscription);
-    }
-  };
-};
-
-/**
- * 이벤트 메시지 허용 설정 업데이트
- */
-export const updateEventMessageSettings = async (eventId, allowMessages, placeholder) => {
-  try {
-    console.log('🔍 이벤트 메시지 설정 업데이트 시도:', { eventId, allowMessages, placeholder });
-
-    const { data, error } = await supabase
+    // 이벤트 타입 확인
+    const { data: event } = await supabase
       .from('events')
-      .update({ 
-        allow_messages: allowMessages,
-        message_placeholder: placeholder,
-        updated_at: new Date().toISOString() 
-      })
+      .select('event_type')
       .eq('id', eventId)
-      .select()
       .single();
 
-    if (error) {
-      console.error('❌ 이벤트 메시지 설정 업데이트 에러:', error);
-      throw error;
-    }
-
-    console.log('✅ 이벤트 메시지 설정 업데이트 성공:', data.id);
-    return { success: true, data };
-  } catch (error) {
-    console.error('❌ updateEventMessageSettings error:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-// ===== 부조금 관련 함수들 =====
-
-/**
- * 부조금 추가
- */
-export const addContribution = async (contributionData) => {
-  try {
-    const userResult = await getCurrentUserInfo();
-    if (!userResult.success) {
-      throw new Error(userResult.error);
-    }
+    // message_type 자동 설정 (결혼식이면 축하, 장례식이면 조의)
+    const messageType = event?.event_type === 'wedding' ? 'congratulation' : 'condolence';
 
     const { data, error } = await supabase
-      .from('contributions')
+      .from('guest_book')
       .insert([{
-        ...contributionData,
+        event_id: eventId,
+        guest_name: guestData.guest_name,
+        guest_phone: guestData.guest_phone,
+        amount: guestData.amount,
+        relation_category: guestData.relation_category,
+        relation_detail: guestData.relation_detail,
+        message: guestData.message,
+        message_type: messageType,
+        amount_type: 'money',
+        payment_method: guestData.payment_method || 'cash',
+        attending: guestData.attending !== false,
+        is_verified: false,
         created_at: new Date().toISOString()
       }])
       .select()
       .single();
 
     if (error) {
-      console.error('❌ 부조금 추가 오류:', error);
+      console.error('❌ 방명록 추가 오류:', error);
       throw error;
     }
 
-    console.log('✅ 부조금 추가 완료:', data.id);
+    console.log('✅ 방명록 추가 완료:', data.id);
     
     return {
       success: true,
@@ -1356,163 +1243,96 @@ export const addContribution = async (contributionData) => {
     };
 
   } catch (error) {
-    console.error('❌ addContribution error:', error);
+    console.error('❌ addGuestBookEntry error:', error);
     return {
       success: false,
-      error: error.message || '부조금 추가에 실패했습니다.'
+      error: error.message || '방명록 추가에 실패했습니다.'
     };
   }
 };
 
 /**
- * 특정 이벤트의 부조금 목록 조회
+ * 특정 이벤트의 방명록 목록 조회
  */
-export const getEventContributions = async (eventId) => {
+export const getEventGuestBook = async (eventId) => {
   try {
     const { data, error } = await supabase
-      .from('contributions')
-      .select(`
-        id,
-        contributor_name,
-        amount,
-        relation_to,
-        notes,
-        is_confirmed,
-        is_manual_entry,
-        created_at,
-        updated_at
-      `)
+      .from('guest_book')
+      .select('*')
       .eq('event_id', eventId)
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('❌ 부조금 목록 조회 오류:', error);
+      console.error('❌ 방명록 조회 오류:', error);
       throw error;
     }
 
-    console.log('✅ 부조금 목록 조회 완료:', data?.length || 0);
+    // 관계별 통계도 함께 조회
+    const { data: relationStats } = await supabase
+      .from('guest_book_relation_stats')
+      .select('*')
+      .eq('event_id', eventId);
+
+    console.log('✅ 방명록 조회 완료:', data?.length || 0);
     
     return {
       success: true,
-      data: data || []
+      data: {
+        entries: data || [],
+        relationStats: relationStats || []
+      }
     };
 
   } catch (error) {
-    console.error('❌ getEventContributions error:', error);
+    console.error('❌ getEventGuestBook error:', error);
     return {
       success: false,
-      error: error.message || '부조금 목록을 불러올 수 없습니다.'
+      error: error.message || '방명록을 불러올 수 없습니다.'
     };
   }
 };
 
 /**
- * 부조금 수정
- */
-export const updateContribution = async (contributionId, updateData) => {
-  try {
-    const { data, error } = await supabase
-      .from('contributions')
-      .update({
-        ...updateData,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', contributionId)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('❌ 부조금 수정 오류:', error);
-      throw error;
-    }
-
-    console.log('✅ 부조금 수정 완료:', contributionId);
-    
-    return {
-      success: true,
-      data
-    };
-
-  } catch (error) {
-    console.error('❌ updateContribution error:', error);
-    return {
-      success: false,
-      error: error.message || '부조금 수정에 실패했습니다.'
-    };
-  }
-};
-
-/**
- * 부조금 삭제
- */
-export const deleteContribution = async (contributionId) => {
-  try {
-    const { error } = await supabase
-      .from('contributions')
-      .delete()
-      .eq('id', contributionId);
-
-    if (error) {
-      console.error('❌ 부조금 삭제 오류:', error);
-      throw error;
-    }
-
-    console.log('✅ 부조금 삭제 완료:', contributionId);
-    
-    return {
-      success: true
-    };
-
-  } catch (error) {
-    console.error('❌ deleteContribution error:', error);
-    return {
-      success: false,
-      error: error.message || '부조금 삭제에 실패했습니다.'
-    };
-  }
-};
-
-/**
- * 이벤트 통계 조회
+ * 이벤트 통계 조회 (guest_book_stats 뷰 사용)
  */
 export const getEventStatistics = async (eventId) => {
   try {
-    const { data, error } = await supabase
-      .from('contributions')
-      .select('amount, is_confirmed, relation_to')
-      .eq('event_id', eventId);
+    // guest_book_stats 뷰에서 통계 가져오기
+    const { data: stats, error } = await supabase
+      .from('guest_book_stats')
+      .select('*')
+      .eq('event_id', eventId)
+      .single();
 
-    if (error) {
-      console.error('❌ 이벤트 통계 조회 오류:', error);
+    if (error && error.code !== 'PGRST116') { // 데이터 없음 에러는 무시
+      console.error('❌ 통계 조회 오류:', error);
       throw error;
     }
 
-    const totalContributions = data.length;
-    const totalAmount = data.reduce((sum, contrib) => sum + (contrib.amount || 0), 0);
-    const confirmedCount = data.filter(contrib => contrib.is_confirmed).length;
-    const pendingCount = totalContributions - confirmedCount;
-    
-    const relationStats = data.reduce((acc, contrib) => {
-      const relation = contrib.relation_to || '기타';
-      if (!acc[relation]) {
-        acc[relation] = { count: 0, amount: 0 };
-      }
-      acc[relation].count += 1;
-      acc[relation].amount += contrib.amount || 0;
-      return acc;
-    }, {});
+    // 관계별 통계도 가져오기
+    const { data: relationStats } = await supabase
+      .from('guest_book_relation_stats')
+      .select('*')
+      .eq('event_id', eventId);
 
     console.log('✅ 이벤트 통계 조회 완료');
     
     return {
       success: true,
       data: {
-        totalContributions,
-        totalAmount,
-        confirmedCount,
-        pendingCount,
-        averageAmount: totalContributions > 0 ? Math.round(totalAmount / totalContributions) : 0,
-        relationStats
+        totalContributions: stats?.total_entries || 0,
+        totalAmount: stats?.total_amount || 0,
+        verifiedCount: stats?.verified_count || 0,
+        attendingCount: stats?.attending_count || 0,
+        messageCount: stats?.message_count || 0,
+        averageAmount: stats?.avg_amount || 0,
+        // 결혼식 전용
+        groomSideAmount: stats?.groom_side_amount || 0,
+        brideSideAmount: stats?.bride_side_amount || 0,
+        groomSideCount: stats?.groom_side_count || 0,
+        brideSideCount: stats?.bride_side_count || 0,
+        // 관계별 통계
+        relationStats: relationStats || []
       }
     };
 
@@ -1525,23 +1345,202 @@ export const getEventStatistics = async (eventId) => {
   }
 };
 
-// ===== 기타 유틸리티 함수들 =====
+// 1. supabaseHelper.js - getMonthlyStatistics 함수 수정
+export const getMonthlyStatistics = async (userId) => {
+  try {
+    console.log('📊 월별 통계 조회 시작:', userId);
+    
+    if (!userId) {
+      console.error('❌ 사용자 ID 없음');
+      return {
+        success: false,
+        error: '사용자 정보가 없습니다.'
+      };
+    }
 
-/**
- * 이벤트 타입별 기본 메시지 플레이스홀더
- */
-export const getDefaultMessagePlaceholder = (eventType) => {
-  switch (eventType) {
-    case 'wedding':
-      return '결혼을 축하합니다.';
-    case 'funeral':
-      return '삼가 고인의 명복을 빕니다.';
-    case 'birthday':
-      return '첫 돌을 축하합니다.';
-    default:
-      return '축하합니다.';
+    // 🔥 한국 시간 기준으로 수정
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    
+    // 이번 달 1일 00:00:00 (로컬 시간)
+    const startOfMonth = new Date(year, month, 1, 0, 0, 0);
+    // 이번 달 마지막날 23:59:59 (로컬 시간)
+    const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59);
+    
+    console.log('📅 조회 기간 (로컬):', {
+      start: startOfMonth.toLocaleString('ko-KR'),
+      end: endOfMonth.toLocaleString('ko-KR'),
+      startISO: startOfMonth.toISOString(),
+      endISO: endOfMonth.toISOString()
+    });
+
+    // 1. 사용자의 모든 이벤트 가져오기
+    const { data: events, error: eventsError } = await supabase
+      .from('events')
+      .select('id, event_name, event_type, event_date, status, created_at')
+      .eq('user_id', userId);
+
+    if (eventsError) {
+      console.error('❌ 이벤트 조회 오류:', eventsError);
+      throw eventsError;
+    }
+
+    console.log('📊 전체 이벤트 수:', events.length);
+
+    // 2. 이번 달 생성된 이벤트 필터링
+    const monthlyEvents = events.filter(event => {
+      const createdDate = new Date(event.created_at);
+      return createdDate >= startOfMonth && createdDate <= endOfMonth;
+    });
+
+    console.log('📊 이번 달 생성된 이벤트:', monthlyEvents.length);
+
+    // 3. 활성 이벤트 수 계산
+    const activeEvents = events.filter(event => event.status === 'active');
+
+    // 4. 🔥 전체 및 월별 통계 초기화
+    let stats = {
+      // 전체 통계
+      totalReceivedAmount: 0,
+      totalWeddingAmount: 0,
+      totalFuneralAmount: 0,
+      totalEntries: 0,
+      
+      // 이번 달 통계
+      monthlyReceivedAmount: 0,
+      monthlyWeddingAmount: 0,
+      monthlyFuneralAmount: 0,
+      monthlyEntries: 0,
+      
+      // 이벤트별 상세
+      eventDetails: []
+    };
+
+    // 5. 각 이벤트별 guest_book 통계 조회
+    for (const event of events) {
+      console.log(`📊 이벤트 ${event.event_name} 통계 조회 중...`);
+      
+      // 🔥 전체 통계 - guest_book_stats 뷰 사용
+      const { data: eventStats, error: statsError } = await supabase
+        .from('guest_book_stats')
+        .select('*')
+        .eq('event_id', event.id)
+        .single();
+
+      if (!statsError && eventStats) {
+        const eventTotal = eventStats.total_amount || 0;
+        const eventCount = eventStats.total_entries || 0;
+        
+        stats.totalReceivedAmount += eventTotal;
+        stats.totalEntries += eventCount;
+        
+        // 타입별 분류
+        if (event.event_type === 'wedding') {
+          stats.totalWeddingAmount += eventTotal;
+        } else if (event.event_type === 'funeral') {
+          stats.totalFuneralAmount += eventTotal;
+        }
+        
+        console.log(`  - 전체: ${eventCount}건, ${eventTotal}원`);
+      }
+
+      // 🔥 이번 달 데이터만 직접 조회
+      const { data: monthlyGuests, error: monthlyError } = await supabase
+        .from('guest_book')
+        .select('*')
+        .eq('event_id', event.id)
+        .gte('created_at', startOfMonth.toISOString())
+        .lte('created_at', endOfMonth.toISOString());
+
+      if (!monthlyError && monthlyGuests && monthlyGuests.length > 0) {
+        const monthlyEventTotal = monthlyGuests.reduce((sum, guest) => 
+          sum + (guest.amount || 0), 0
+        );
+        const monthlyEventCount = monthlyGuests.length;
+        
+        stats.monthlyReceivedAmount += monthlyEventTotal;
+        stats.monthlyEntries += monthlyEventCount;
+        
+        // 타입별 분류
+        if (event.event_type === 'wedding') {
+          stats.monthlyWeddingAmount += monthlyEventTotal;
+        } else if (event.event_type === 'funeral') {
+          stats.monthlyFuneralAmount += monthlyEventTotal;
+        }
+        
+        // 이벤트별 상세 정보 저장
+        if (monthlyEventCount > 0) {
+          stats.eventDetails.push({
+            eventId: event.id,
+            eventName: event.event_name,
+            eventType: event.event_type,
+            amount: monthlyEventTotal,
+            count: monthlyEventCount
+          });
+        }
+        
+        console.log(`  - 이번달: ${monthlyEventCount}건, ${monthlyEventTotal}원`);
+      }
+    }
+
+    // 6. 최종 결과 반환
+    const result = {
+      // 이벤트 통계
+      totalEvents: events.length,
+      monthlyEvents: monthlyEvents.length,
+      activeEvents: activeEvents.length,
+      
+      // 🔥 전체 통계
+      totalAmount: stats.totalReceivedAmount,
+      totalWeddingAmount: stats.totalWeddingAmount,
+      totalFuneralAmount: stats.totalFuneralAmount,
+      totalEntries: stats.totalEntries,
+      
+      // 🔥 이번 달 통계
+      receivedAmount: stats.monthlyReceivedAmount,
+      monthlyWeddingAmount: stats.monthlyWeddingAmount,
+      monthlyFuneralAmount: stats.monthlyFuneralAmount,
+      totalContributions: stats.monthlyEntries,
+      
+      // 이벤트별 상세
+      eventDetails: stats.eventDetails,
+      
+      // 추후 구현 예정 (보낸 금액)
+      sentAmount: 0,
+      sentContributions: 0,
+      
+      // 기간 정보
+      period: {
+        year: year,
+        month: month + 1,
+        monthName: new Date(year, month).toLocaleDateString('ko-KR', { month: 'long' }),
+        startDate: startOfMonth.toISOString(),
+        endDate: endOfMonth.toISOString()
+      }
+    };
+
+    console.log('✅ 월별 통계 조회 완료:', {
+      전체: `${stats.totalEntries}건 / ${stats.totalReceivedAmount}원`,
+      이번달: `${stats.monthlyEntries}건 / ${stats.monthlyReceivedAmount}원`,
+      결혼: `${stats.monthlyWeddingAmount}원`,
+      부고: `${stats.monthlyFuneralAmount}원`
+    });
+    
+    return {
+      success: true,
+      data: result
+    };
+
+  } catch (error) {
+    console.error('❌ getMonthlyStatistics error:', error);
+    return {
+      success: false,
+      error: error.message || '월별 통계 조회에 실패했습니다.'
+    };
   }
 };
+
 
 /**
  * 활성 이벤트만 조회 - 상주 정보 포함
@@ -1619,7 +1618,6 @@ export const getActiveEvents = async () => {
     }
 
     if (!data || data.length === 0) {
-      // console.log('📭 활성 이벤트 없음');
       return {
         success: true,
         data: []
@@ -1631,26 +1629,7 @@ export const getActiveEvents = async () => {
       index === self.findIndex(e => e.id === event.id)
     );
 
-    // console.log(`✅ 활성 이벤트 조회 완료:`, {
-    //   rawCount: data.length,
-    //   uniqueCount: uniqueEvents.length,
-    //   duplicatesRemoved: data.length - uniqueEvents.length,
-    //   userId: currentUser.id
-    // });
-
-    // 4. 🔥 각 이벤트의 상세 디버깅 정보
-    uniqueEvents.forEach((event, index) => {
-      // console.log(`🎭 활성 이벤트 ${index + 1}:`, {
-      //   id: event.id,
-      //   name: event.event_name,
-      //   type: event.event_type,
-      //   status: event.status,
-      //   user_id: event.user_id,
-      //   created_at: event.created_at?.slice(0, 19) // 시간 부분만
-      // });
-    });
-
-    // 5. 🔥 부고 데이터 후처리 - additional_info에서 정보 추출
+    // 4. 🔥 부고 데이터 후처리 - additional_info에서 정보 추출
     const processedData = uniqueEvents.map(event => {
       const processedEvent = { ...event };
       
@@ -1755,6 +1734,24 @@ export const finalizeEvent = async (eventId) => {
   } catch (error) {
     console.error('❌ finalizeEvent error:', error);
     return { success: false, error: error.message };
+  }
+};
+
+// ===== 유틸리티 함수들 =====
+
+/**
+ * 이벤트 타입별 기본 메시지 플레이스홀더
+ */
+export const getDefaultMessagePlaceholder = (eventType) => {
+  switch (eventType) {
+    case 'wedding':
+      return '결혼을 축하합니다.';
+    case 'funeral':
+      return '삼가 고인의 명복을 빕니다.';
+    case 'birthday':
+      return '첫 돌을 축하합니다.';
+    default:
+      return '축하합니다.';
   }
 };
 
