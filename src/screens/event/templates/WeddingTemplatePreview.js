@@ -3,10 +3,12 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
 // 분리된 템플릿들 import
-import ModernDarkTemplate from './wedding/ModernDarkTemplate';
+import ModernDarkTemplate from './wedding/ModernMinimalTemplate';
+import ModernMinimalTemplate from './wedding/ElegantGardenTemplate';
 import KoreanElegantTemplate from './wedding/KoreanElegantTemplate';
 import VintageAppTemplate from './wedding/VintageAppTemplate';
-import RomanticPinkTemplate from './wedding/RomanticPinkTemplate'; // 추가된 import
+import RomanticPinkTemplate from './wedding/RomanticPinkTemplate';
+import ElegantGardenTemplate from './wedding/ElegantGardenTemplate';
 
 // 메인 렌더링 컴포넌트
 export default function WeddingTemplatePreview({ 
@@ -47,12 +49,14 @@ export default function WeddingTemplatePreview({
   switch (template.style) {
     case 'modern-dark': 
       return <ModernDarkTemplate {...commonProps} />;
-    case 'romantic-gold': 
+    case 'korean-elegant':
       return <KoreanElegantTemplate {...commonProps} />;
     case 'vintage-app': 
       return <VintageAppTemplate {...commonProps} />;
-    case 'romantic-pink':  // 추가된 케이스
+    case 'romantic-pink':
       return <RomanticPinkTemplate {...commonProps} />;
+    case 'elegant-garden':
+      return <ElegantGardenTemplate {...commonProps} />;
     default: 
       return (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>

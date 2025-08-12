@@ -15,6 +15,8 @@ import {
   Platform,
   TextInput,
   KeyboardAvoidingView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -873,8 +875,6 @@ export const VintageAppCalendar = ({ targetDate, style }) => {
   );
 };
 
-// ========== 추가된 컴포넌트들 ==========
-
 // RomanticPinkCalendar 컴포넌트 (로맨틱 핑크 달력)
 export const RomanticPinkCalendar = ({ targetDate, style }) => {
   const calendarData = getCalendarData(targetDate);
@@ -1019,54 +1019,76 @@ export const OpeningOverlay = ({ visible }) => {
   );
 };
 
-// GuestBookMessages 컴포넌트 (방명록 메시지)
-export const GuestBookMessages = ({ messages = [], onAddMessage }) => {
+// 🔥 GuestBookMessages 컴포넌트 - 실제 DB 메시지 표시 및 작성
+export const GuestBookMessages = ({ 
+  messages = [], 
+  onAddMessage, 
+  style,
+  loadingMessages = false,
+  placeholder = '축하 메시지를 입력해주세요',
+  messageType = 'congratulation'
+}) => {
+  const [showMessageForm, setShowMessageForm] = useState(false);
+  const [newMessage, setNewMessage] = useState({
+    name: '',
+    message: '',
+    phone: '',
+    isAnonymous: false
+  });
+
+  const handleSubmitMessage = async () => {
+    if (!newMessage.message.trim()) {
+      Alert.alert('알림', '메시지를 입력해주세요.');
+      return;
+    }
+
+    if (!newMessage.isAnonymous && !newMessage.name.trim()) {
+      Alert.alert('알림', '이름을 입력해주세요.');
+      return;
+    }
+
+    // 메시지 제출
+    await onAddMessage({
+      name: newMessage.isAnonymous ? '익명' : newMessage.name,
+      message: newMessage.message,
+      phone: newMessage.phone,
+      isAnonymous: newMessage.isAnonymous
+    });
+
+    // 폼 초기화
+    setNewMessage({
+      name: '',
+      message: '',
+      phone: '',
+      isAnonymous: false
+    });
+    setShowMessageForm(false);
+  };
+
+  // 메시지 포맷팅 함수
+  const formatMessageDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ko-KR', {
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   return (
-    <View style={{ maxWidth: 400, alignSelf: 'center', width: '100%' }}>
-      {messages.map((message, index) => (
-        <View key={index} style={{
-          backgroundColor: 'white',
-          borderRadius: 15,
-          padding: 25,
-          marginBottom: 20,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 5 },
-          shadowOpacity: 0.05,
-          shadowRadius: 15,
-          elevation: 3
-        }}>
-          <View style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 15
-          }}>
-            <Text style={{ color: '#999', fontSize: 13 }}>
-              From. {message.from}
-            </Text>
-            <Text style={{ color: '#DDD', fontSize: 12 }}>
-              {message.date}
-            </Text>
-          </View>
-          <Text style={{
-            lineHeight: 24,
-            color: '#555',
-            fontSize: 14
-          }}>
-            {message.content}
-          </Text>
-        </View>
-      ))}
-      
+    <View style={[{ maxWidth: 400, alignSelf: 'center', width: '100%' }, style]}>
+      {/* 메시지 작성 버튼 */}
       <TouchableOpacity 
         style={{
           width: '100%',
           padding: 18,
           borderRadius: 30,
-          marginTop: 30,
+          marginBottom: 20,
           overflow: 'hidden'
         }}
-        onPress={onAddMessage}
+        onPress={() => setShowMessageForm(true)}
       >
         <LinearGradient
           colors={['#C2B0A2', '#9B8D82']}
@@ -1086,10 +1108,182 @@ export const GuestBookMessages = ({ messages = [], onAddMessage }) => {
         }}>
           <Text style={{ fontSize: 16, marginRight: 8 }}>💌</Text>
           <Text style={{ color: 'white', fontSize: 15, fontWeight: '500' }}>
-            축하 메시지 남기기
+            {messageType === 'condolence' ? '조문 메시지 남기기' : '축하 메시지 남기기'}
           </Text>
         </View>
       </TouchableOpacity>
+
+      {/* 메시지 작성 폼 */}
+      {showMessageForm && (
+        <View style={{
+          backgroundColor: 'white',
+          borderRadius: 15,
+          padding: 25,
+          marginBottom: 20,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 5 },
+          shadowOpacity: 0.1,
+          shadowRadius: 15,
+          elevation: 3
+        }}>
+          <View style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 20
+          }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: '#333' }}>
+              메시지 작성
+            </Text>
+            <TouchableOpacity onPress={() => setShowMessageForm(false)}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          {!newMessage.isAnonymous && (
+            <>
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#DDD',
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 12,
+                  fontSize: 14
+                }}
+                placeholder="이름"
+                value={newMessage.name}
+                onChangeText={(text) => setNewMessage({...newMessage, name: text})}
+              />
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#DDD',
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 12,
+                  fontSize: 14
+                }}
+                placeholder="연락처 (선택)"
+                value={newMessage.phone}
+                onChangeText={(text) => setNewMessage({...newMessage, phone: text})}
+                keyboardType="phone-pad"
+              />
+            </>
+          )}
+
+          <TextInput
+            style={{
+              borderWidth: 1,
+              borderColor: '#DDD',
+              borderRadius: 8,
+              padding: 12,
+              marginBottom: 12,
+              fontSize: 14,
+              minHeight: 100,
+              textAlignVertical: 'top'
+            }}
+            placeholder={placeholder}
+            value={newMessage.message}
+            onChangeText={(text) => setNewMessage({...newMessage, message: text})}
+            multiline
+            numberOfLines={4}
+          />
+
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginBottom: 20
+            }}
+            onPress={() => setNewMessage({...newMessage, isAnonymous: !newMessage.isAnonymous})}
+          >
+            <Ionicons 
+              name={newMessage.isAnonymous ? "checkbox" : "square-outline"} 
+              size={20} 
+              color="#666" 
+            />
+            <Text style={{ marginLeft: 8, fontSize: 14, color: '#666' }}>
+              익명으로 작성
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#C2B0A2',
+              paddingVertical: 14,
+              borderRadius: 8,
+              alignItems: 'center'
+            }}
+            onPress={handleSubmitMessage}
+          >
+            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+              메시지 남기기
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* 메시지 목록 */}
+      {loadingMessages ? (
+        <View style={{ padding: 40, alignItems: 'center' }}>
+          <ActivityIndicator size="small" color="#666" />
+          <Text style={{ marginTop: 10, fontSize: 14, color: '#666' }}>
+            메시지를 불러오는 중...
+          </Text>
+        </View>
+      ) : messages.length > 0 ? (
+        messages.map((message, index) => (
+          <View key={message.id || index} style={{
+            backgroundColor: 'white',
+            borderRadius: 15,
+            padding: 25,
+            marginBottom: 20,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 5 },
+            shadowOpacity: 0.05,
+            shadowRadius: 15,
+            elevation: 3
+          }}>
+            <View style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 15
+            }}>
+              <Text style={{ color: '#999', fontSize: 13 }}>
+                From. {message.sender_name || message.name || message.from || '익명'}
+              </Text>
+              <Text style={{ color: '#DDD', fontSize: 12 }}>
+                {formatMessageDate(message.created_at || message.date)}
+              </Text>
+            </View>
+            <Text style={{
+              lineHeight: 24,
+              color: '#555',
+              fontSize: 14
+            }}>
+              {message.message || message.content}
+            </Text>
+          </View>
+        ))
+      ) : (
+        <View style={{
+          alignItems: 'center',
+          paddingVertical: 40,
+          backgroundColor: 'white',
+          borderRadius: 15,
+          marginBottom: 20
+        }}>
+          <Ionicons name="chatbubbles-outline" size={48} color="#DDD" />
+          <Text style={{ fontSize: 16, color: '#999', marginTop: 12, marginBottom: 8 }}>
+            {messageType === 'condolence' ? '아직 조문 메시지가 없습니다' : '아직 축하 메시지가 없습니다'}
+          </Text>
+          <Text style={{ fontSize: 14, color: '#BBB' }}>
+            {messageType === 'condolence' ? '첫 번째로 조문 메시지를 남겨보세요' : '첫 번째로 축하 메시지를 남겨보세요!'}
+          </Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -1243,4 +1437,22 @@ export const AccountToggle = ({
       </View>
     </View>
   );
+};
+
+// Export all components
+export default {
+  FallingPetals,
+  FloatingHearts,
+  HeartPulse,
+  CountdownDisplay,
+  ImageViewer,
+  MainPhotoSlideshow,
+  PhotoGallery,
+  ModernDarkCalendar,
+  KoreanElegantCalendar,
+  VintageAppCalendar,
+  RomanticPinkCalendar,
+  OpeningOverlay,
+  GuestBookMessages,
+  AccountToggle,
 };

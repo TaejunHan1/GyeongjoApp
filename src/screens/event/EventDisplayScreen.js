@@ -1,4 +1,4 @@
-// src/screens/event/EventDisplayScreen.js - 부조하기 버튼 QR코드 연결
+// src/screens/event/EventDisplayScreen.js - 부조하기 버튼 QR코드 연결 및 메시지 기능
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../styles/constants';
-import { getEventDetail } from '../../lib/supabaseHelper';
+import { getEventDetail, getEventMessages, createEventMessage } from '../../lib/supabaseHelper';
 import WeddingTemplatePreview from './templates/WeddingTemplatePreview';
 import FuneralTemplatePreview from './templates/FuneralTemplatePreview';
 
@@ -31,6 +31,8 @@ export default function EventDisplayScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [showExitButton, setShowExitButton] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [eventMessages, setEventMessages] = useState([]); // 🔥 메시지 state 추가
+  const [loadingMessages, setLoadingMessages] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -48,6 +50,7 @@ export default function EventDisplayScreen({ navigation, route }) {
       setLoading(false);
     } else {
       loadEventData();
+      loadEventMessages(); // 🔥 메시지 로드 추가
     }
     
     startAnimations();
@@ -89,6 +92,31 @@ export default function EventDisplayScreen({ navigation, route }) {
     }
   };
 
+  // 🔥 메시지 로드 함수 추가
+  const loadEventMessages = async () => {
+    if (!eventId || eventId === 'preview') return;
+    
+    try {
+      setLoadingMessages(true);
+      console.log('📬 메시지 로드 시작:', eventId);
+      
+      const result = await getEventMessages(eventId);
+      
+      if (result.success) {
+        console.log('✅ 메시지 로드 성공:', result.data.length);
+        setEventMessages(result.data || []);
+      } else {
+        console.error('❌ 메시지 로드 실패:', result.error);
+        setEventMessages([]);
+      }
+    } catch (error) {
+      console.error('❌ 메시지 로드 예외:', error);
+      setEventMessages([]);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
   const startAnimations = () => {
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -124,7 +152,10 @@ export default function EventDisplayScreen({ navigation, route }) {
 
   const getFinalEventData = () => {
     if (passedEventData) {
-      return passedEventData;
+      return {
+        ...passedEventData,
+        guestMessages: eventMessages // 🔥 메시지 추가
+      };
     }
 
     if (event) {
@@ -151,6 +182,7 @@ export default function EventDisplayScreen({ navigation, route }) {
           secondaryContact: event.secondary_contact,
           funeralDirector: event.funeral_director,
           customMessage: event.custom_message,
+          guestMessages: eventMessages // 🔥 메시지 추가
         };
 
         if (event.additional_info) {
@@ -176,11 +208,14 @@ export default function EventDisplayScreen({ navigation, route }) {
           brideMotherName: event.bride_mother_name,
           groomContact: event.groom_contact,
           brideContact: event.bride_contact,
+          guestMessages: eventMessages // 🔥 메시지 추가
         };
       }
     }
 
-    return {};
+    return {
+      guestMessages: eventMessages // 🔥 기본값에도 메시지 추가
+    };
   };
 
   const getFinalCategorizedImages = () => {
@@ -254,9 +289,37 @@ export default function EventDisplayScreen({ navigation, route }) {
     });
   };
 
+  // 🔥 메시지 제출 핸들러 수정 - 실제 DB 저장
   const handleMessageSubmit = async (messageData) => {
     console.log('📝 메시지 제출:', messageData);
-    Alert.alert('감사합니다', '메시지가 전달되었습니다.');
+    
+    if (isPreviewMode) {
+      Alert.alert('알림', '미리보기 모드에서는 메시지를 저장할 수 없습니다.');
+      return;
+    }
+    
+    try {
+      // DB에 메시지 저장
+      const result = await createEventMessage(eventId || event.id, {
+        sender_name: messageData.name || '익명',
+        sender_phone: messageData.phone || '',
+        message: messageData.message,
+        message_type: getEventType() === 'funeral' ? 'condolence' : 'congratulation',
+        is_anonymous: messageData.isAnonymous || false
+      });
+      
+      if (result.success) {
+        Alert.alert('감사합니다', '메시지가 전달되었습니다.');
+        
+        // 메시지 목록 새로고침
+        await loadEventMessages();
+      } else {
+        Alert.alert('오류', '메시지 저장에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('❌ 메시지 저장 오류:', error);
+      Alert.alert('오류', '메시지 저장 중 문제가 발생했습니다.');
+    }
   };
 
   if (loading) {
@@ -317,6 +380,7 @@ export default function EventDisplayScreen({ navigation, route }) {
             allowMessages={messageSettings.allowMessages}
             messageSettings={messageSettings.messageSettings}
             onMessageSubmit={handleMessageSubmit}
+            loadingMessages={loadingMessages}
           />
         ) : (
           <WeddingTemplatePreview
@@ -327,6 +391,7 @@ export default function EventDisplayScreen({ navigation, route }) {
             allowMessages={messageSettings.allowMessages}
             messageSettings={messageSettings.messageSettings}
             onMessageSubmit={handleMessageSubmit}
+            loadingMessages={loadingMessages}
           />
         )}
       </Animated.View>
