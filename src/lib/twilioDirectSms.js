@@ -2,9 +2,9 @@
 // Twilio REST API 직접 연동
 
 // Twilio 계정 정보
-const TWILIO_ACCOUNT_SID = 'AC5dd31b5e03e762535d6b924d7fc75bf1';
-const TWILIO_AUTH_TOKEN = '8241502dffed02b342346e8cf671d530';
-const TWILIO_MESSAGE_SERVICE_SID = 'MG3b71d5e9e3b1c461f51ef67b3519266a';
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || 'AC5dd31b5e03e762535d6b924d7fc75bf1';
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '8241502dffed02b342346e8cf671d530';
+const TWILIO_MESSAGE_SERVICE_SID = process.env.TWILIO_MESSAGE_SERVICE_SID || 'MG3b71d5e9e3b1c461f51ef67b3519266a';
 
 // Base64 인코딩을 위한 유틸리티
 const base64Encode = (str) => {

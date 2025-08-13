@@ -16,7 +16,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.gyeongjoapp",
+      "bundleIdentifier": "com.jeongdam.gyeongjoapp",
       "infoPlist": {
         "CFBundleURLTypes": [
           {
@@ -31,7 +31,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.yourcompany.gyeongjoapp",
+      "package": "com.jeongdam.gyeongjoapp",
       "intentFilters": [
         {
           "action": "VIEW",
