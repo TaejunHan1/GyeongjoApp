@@ -31,7 +31,8 @@ import {
   getPersonalSchedules,
   debugUserInfo,
   getEventGuestBook,
-  getMonthlyStatistics 
+  getMonthlyStatistics,
+  getEventStatistics 
 } from '../../lib/supabaseHelper';
 import Svg, { Rect, Circle, Path, Ellipse, G } from 'react-native-svg';
 
@@ -677,7 +678,38 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       
       if (result.success) {
         console.log(`✅ 이벤트 로드 완료: ${result.data?.length || 0}개`);
-        setEvents(result.data || []);
+        
+        // 🔥 각 이벤트별 통계 정보 추가
+        const eventsWithStats = await Promise.all(
+          (result.data || []).map(async (event) => {
+            try {
+              const statsResult = await getEventStatistics(event.id);
+              if (statsResult.success) {
+                return {
+                  ...event,
+                  total_contributions: statsResult.data.totalContributions,
+                  total_amount: statsResult.data.totalAmount,
+                  verified_count: statsResult.data.verifiedCount,
+                  attending_count: statsResult.data.attendingCount,
+                  average_amount: statsResult.data.averageAmount
+                };
+              }
+            } catch (error) {
+              console.error(`❌ 이벤트 ${event.id} 통계 로드 실패:`, error);
+            }
+            // 통계 로드 실패 시 기본값
+            return {
+              ...event,
+              total_contributions: 0,
+              total_amount: 0,
+              verified_count: 0,
+              attending_count: 0,
+              average_amount: 0
+            };
+          })
+        );
+        
+        setEvents(eventsWithStats);
       } else {
         console.error('❌ 이벤트 로드 실패:', result.error);
         setEvents([]);
@@ -730,10 +762,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     }
   };
 
-  // QR 스캔 기능
-  const handleQRScan = () => {
-    Alert.alert('준비중', 'QR 스캐너 기능을 준비 중입니다.');
-  };
 
   // 🔥 수정된 빠른 시작 버튼 핸들러
   const handleQuickStart = (eventType) => {
@@ -1072,16 +1100,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     });
   };
 
-  // 🔥 수동 새로고침 함수 수정 - 통계도 포함
-  const handleRefresh = async () => {
-    console.log('🔄 수동 새로고침 시작');
-    setLoading(true);
-    await loadUserData();
-    await loadEvents();
-    await loadActiveEvents();
-    await loadMonthlyStatistics(); // 🔥 통계 새로고침 추가
-    setLoading(false);
-  };
 
   // 🔥 더보기 버튼 핸들러
   const handleViewMore = () => {
@@ -1158,18 +1176,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           <Text style={styles.headerSubtitle}>
             {userName}님 안녕하세요!
           </Text>
-        </View>
-        <View style={styles.headerRight}>
-          {/* 🔥 디버깅용 새로고침 버튼 추가 */}
-          <TouchableOpacity onPress={handleRefresh} style={styles.headerButton}>
-            <Ionicons name="refresh-outline" size={24} color={Colors.gray600} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleQRScan} style={styles.headerButton}>
-            <Ionicons name="qr-code-outline" size={24} color={Colors.gray600} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.headerButton}>
-            <Ionicons name="settings-outline" size={24} color={Colors.gray600} />
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -1253,6 +1259,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         <View style={styles.eventsManagementSection}>
           <Text style={styles.sectionTitle}>내가 주최한 경조사</Text>
           
+          
           {/* 탭 버튼 */}
           <View style={styles.tabContainer}>
             <TouchableOpacity
@@ -1330,6 +1337,27 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                     <Text style={styles.eventListDate} numberOfLines={1}>
                       {event.event_date ? formatDate(event.event_date) : '날짜 미정'}
                     </Text>
+                    
+                    {/* 🔥 행사별 통계 정보 */}
+                    <View style={styles.eventStatsRow}>
+                      <View style={styles.eventStatItem}>
+                        <Ionicons name="people-outline" size={14} color={Colors.gray500} />
+                        <Text style={styles.eventStatText}>
+                          {event.total_contributions || 0}명 참여
+                        </Text>
+                      </View>
+                      <View style={styles.eventStatItem}>
+                        <Ionicons name="cash-outline" size={14} color={Colors.gray500} />
+                        <Text style={styles.eventStatText}>
+                          {event.total_amount 
+                            ? (event.total_amount >= 10000 
+                                ? `${Math.floor(event.total_amount / 10000)}만원` 
+                                : `${event.total_amount.toLocaleString()}원`)
+                            : '0원'
+                          }
+                        </Text>
+                      </View>
+                    </View>
                   </View>
 
                   {/* 🔥 완료/화살표 */}
@@ -1523,35 +1551,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             })()}
           </View>
 
-          {/* 🔥 전체 누적 통계 - 간소화된 디자인 */}
-          <View style={styles.summaryStatsContainer}>
-            <Text style={styles.summaryStatsTitle}>전체 통계 요약</Text>
-            
-            <View style={styles.summaryStatsGrid}>
-              <View style={styles.summaryStatCard}>
-                <Ionicons name="calendar" size={24} color={Colors.primary} />
-                <Text style={styles.summaryStatValue}>{monthlyStats.totalEvents}</Text>
-                <Text style={styles.summaryStatLabel}>총 경조사</Text>
-              </View>
-              
-              <View style={styles.summaryStatCard}>
-                <Ionicons name="people" size={24} color={Colors.success} />
-                <Text style={styles.summaryStatValue}>{monthlyStats.totalEntries}</Text>
-                <Text style={styles.summaryStatLabel}>총 참여자</Text>
-              </View>
-              
-              <View style={styles.summaryStatCard}>
-                <Ionicons name="cash" size={24} color={Colors.warning} />
-                <Text style={styles.summaryStatValue}>
-                  {monthlyStats.totalAmount >= 1000000 
-                    ? `${Math.floor(monthlyStats.totalAmount / 10000)}만원`
-                    : formatAmount(monthlyStats.totalAmount)
-                  }
-                </Text>
-                <Text style={styles.summaryStatLabel}>총 금액</Text>
-              </View>
-            </View>
-          </View>
         </View>
 
         <View style={{ height: 100 }} />
@@ -1945,18 +1944,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
     marginTop: 2,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.gray50,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   
   // 콘텐츠
@@ -2646,45 +2633,6 @@ const styles = StyleSheet.create({
     color: Colors.white,
   },
   
-  // 🔥 간소화된 통계 요약
-  summaryStatsContainer: {
-    marginTop: 8,
-  },
-  
-  summaryStatsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 16,
-  },
-  
-  summaryStatsGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  
-  summaryStatCard: {
-    flex: 1,
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.gray100,
-  },
-  
-  summaryStatValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  
-  summaryStatLabel: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-  },
   
   // 더보기 버튼 스타일
   showMoreButton: {
@@ -3152,6 +3100,29 @@ const styles = StyleSheet.create({
 
   tossEventArrow: {
     marginLeft: 8,
+  },
+
+
+  // 🔥 각 행사별 통계 스타일
+  eventStatsRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray100,
+  },
+
+  eventStatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+
+  eventStatText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.gray500,
+    marginLeft: 4,
   },
 
   tossModalActions: {
