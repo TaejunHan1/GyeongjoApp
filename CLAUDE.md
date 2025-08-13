@@ -76,13 +76,15 @@ AppNavigator (authenticated)
 
 ### Event Management System
 The app specializes in Korean cultural events (경조사):
-- **Wedding Events**: 5 template styles (Classic, Modern, Garden, Luxury)
+- **Wedding Events**: 5 template styles (Classic, Modern, Garden, Luxury, Vintage)
 - **Funeral Events**: Solemn memorial template
 - **QR Code System**: Generate QR codes for guest contributions
 - **Real-time Updates**: Live contribution tracking
 
 Key screens:
 - `CreateEventScreen.js`: Two-step event creation wizard
+- `CreateWeddingScreen.js`: Specialized wedding event creation
+- `CreateFuneralScreen.js`: Specialized funeral event creation
 - `EventDisplayScreen.js`: Template-based event display with QR codes
 - `ContributionScreen.js`: Guest contribution form
 
@@ -91,6 +93,7 @@ Located in `src/screens/event/templates/wedding/`:
 - Shared components in `WeddingCommonComponents.js`
 - Style utilities in `WeddingStyles.js` and `WeddingUtils.js`
 - Each template is a self-contained component with unique styling
+- Templates: Classic, Modern, Garden, Luxury, Vintage + Funeral template
 
 ### Supabase Configuration
 - URL: `https://ofshqvrldcesvjtredxo.supabase.co`

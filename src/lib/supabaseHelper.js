@@ -686,6 +686,215 @@ export const getUserEvents = async (passedUserInfo = null) => {
 };
 
 /**
+ * 개인 일정 조회
+ */
+export const getPersonalSchedules = async (passedUserInfo = null) => {
+  try {
+    console.log('🔍 getPersonalSchedules 시작');
+    
+    let currentUser = null;
+    
+    if (passedUserInfo?.id) {
+      console.log('✅ 전달받은 userInfo 사용:', {
+        id: passedUserInfo.id,
+        name: passedUserInfo.name
+      });
+      currentUser = passedUserInfo;
+    } else {
+      const userResult = await getCurrentUserInfo();
+      if (!userResult.success) {
+        throw new Error(userResult.error);
+      }
+      currentUser = userResult.user;
+    }
+    
+    console.log('👤 개인 일정 조회 대상 사용자:', {
+      id: currentUser.id,
+      name: currentUser.name,
+      auth_method: currentUser.auth_method || 'unknown'
+    });
+    
+    const { data, error } = await supabase
+      .from('personal_schedules')
+      .select(`
+        id,
+        title,
+        event_type,
+        event_date,
+        location,
+        notes,
+        created_at,
+        updated_at
+      `)
+      .eq('user_id', currentUser.id)
+      .order('event_date', { ascending: false });
+
+    if (error) {
+      console.error('❌ 개인 일정 조회 오류:', error);
+      throw error;
+    }
+
+    console.log(`✅ 개인 일정 조회 완료: ${data?.length || 0}개`);
+    
+    // 개인 일정 데이터를 이벤트 형식에 맞게 변환
+    const personalSchedules = (data || []).map(schedule => ({
+      id: schedule.id,
+      event_name: schedule.title,
+      title: schedule.title, // 호환성을 위해 둘 다 제공
+      event_type: schedule.event_type,
+      event_date: schedule.event_date,
+      location: schedule.location,
+      notes: schedule.notes,
+      source: 'personal', // 개인 일정임을 표시
+      is_personal_schedule: true,
+      is_reminder_set: false, // 기본값 설정
+      created_at: schedule.created_at,
+      updated_at: schedule.updated_at,
+      status: 'active'
+    }));
+    
+    return {
+      success: true,
+      data: personalSchedules
+    };
+
+  } catch (error) {
+    console.error('❌ getPersonalSchedules error:', error);
+    return {
+      success: false,
+      error: error.message || '개인 일정을 불러올 수 없습니다.'
+    };
+  }
+};
+
+/**
+ * 개인 일정 생성
+ */
+export const createPersonalSchedule = async (scheduleData, passedUserInfo = null) => {
+  try {
+    console.log('🔍 createPersonalSchedule 시작:', scheduleData);
+    
+    let currentUser = null;
+    
+    if (passedUserInfo?.id) {
+      currentUser = passedUserInfo;
+    } else {
+      const userResult = await getCurrentUserInfo();
+      if (!userResult.success) {
+        throw new Error(userResult.error);
+      }
+      currentUser = userResult.user;
+    }
+    
+    console.log('👤 개인 일정 생성 대상 사용자:', {
+      id: currentUser.id,
+      name: currentUser.name,
+      auth_method: currentUser.auth_method || 'unknown'
+    });
+    
+    console.log('📝 생성할 일정 데이터:', {
+      user_id: currentUser.id,
+      title: scheduleData.title,
+      event_type: scheduleData.event_type,
+      event_date: scheduleData.event_date,
+      location: scheduleData.location
+    });
+    
+    const { data, error } = await supabase
+      .from('personal_schedules')
+      .insert([{
+        user_id: currentUser.id,
+        title: scheduleData.title,
+        event_type: scheduleData.event_type,
+        event_date: scheduleData.event_date,
+        location: scheduleData.location || null,
+        notes: scheduleData.notes || null
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ 개인 일정 생성 오류:', error);
+      throw error;
+    }
+
+    console.log('✅ 개인 일정 생성 완료:', data.id);
+    
+    return {
+      success: true,
+      data: {
+        id: data.id,
+        event_name: data.title,
+        title: data.title,
+        event_type: data.event_type,
+        event_date: data.event_date,
+        location: data.location,
+        notes: data.notes,
+        source: 'personal',
+        is_personal_schedule: true,
+        status: 'active',
+        created_at: data.created_at
+      }
+    };
+
+  } catch (error) {
+    console.error('❌ createPersonalSchedule error:', error);
+    return {
+      success: false,
+      error: error.message || '개인 일정을 생성할 수 없습니다.'
+    };
+  }
+};
+
+/**
+ * 통합 이벤트 조회 (주최 경조사 + 개인 일정)
+ */
+export const getAllUserEvents = async (passedUserInfo = null) => {
+  try {
+    console.log('🔍 getAllUserEvents 시작 - 주최 경조사 + 개인 일정');
+    
+    // 주최 경조사 조회
+    const hostedEventsResult = await getUserEvents(passedUserInfo);
+    const personalSchedulesResult = await getPersonalSchedules(passedUserInfo);
+    
+    const hostedEvents = hostedEventsResult.success ? hostedEventsResult.data : [];
+    const personalSchedules = personalSchedulesResult.success ? personalSchedulesResult.data : [];
+    
+    // 주최 경조사에 source 마킹
+    const markedHostedEvents = hostedEvents.map(event => ({
+      ...event,
+      source: 'hosted',
+      is_personal_schedule: false
+    }));
+    
+    // 두 데이터 병합
+    const allEvents = [...markedHostedEvents, ...personalSchedules];
+    
+    // 날짜순 정렬 (최신순)
+    allEvents.sort((a, b) => new Date(b.event_date) - new Date(a.event_date));
+    
+    console.log(`✅ 통합 이벤트 조회 완료: 주최 ${hostedEvents.length}개 + 개인 ${personalSchedules.length}개 = 총 ${allEvents.length}개`);
+    
+    return {
+      success: true,
+      data: allEvents,
+      breakdown: {
+        hosted: hostedEvents.length,
+        personal: personalSchedules.length,
+        total: allEvents.length
+      }
+    };
+
+  } catch (error) {
+    console.error('❌ getAllUserEvents error:', error);
+    return {
+      success: false,
+      error: error.message || '이벤트를 불러올 수 없습니다.'
+    };
+  }
+};
+
+/**
  * 새 이벤트 생성 (메시지 기능 및 이미지 업로드 포함) - 화이트리스트 방식
  */
 export const createEvent = async (eventData) => {

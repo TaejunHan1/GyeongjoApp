@@ -11,6 +11,11 @@ import {
   Animated,
   Alert,
   Image,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +26,9 @@ import { supabase } from '../../lib/supabase';
 import { 
   getUserEvents, 
   getActiveEvents, 
+  getAllUserEvents,
+  createPersonalSchedule,
+  getPersonalSchedules,
   debugUserInfo,
   getEventGuestBook,
   getMonthlyStatistics 
@@ -29,6 +37,165 @@ import Svg, { Rect, Circle, Path, Ellipse, G } from 'react-native-svg';
 
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
+
+// 🔥 이벤트 역할 구분
+const EVENT_ROLES = {
+  HOST: 'host',        // 주최자 (내가 주최하는 경조사)
+  PARTICIPANT: 'participant'  // 참여자 (참석할 다른 사람의 경조사)
+};
+
+// 🔥 캘린더 컴포넌트
+const CalendarComponent = ({ events, onDatePress, onEventPress, currentCalendarDate, onMonthChange }) => {
+  const [currentDate, setCurrentDate] = useState(currentCalendarDate || new Date());
+  
+  // 현재 월의 첫 번째 날과 마지막 날
+  const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+  
+  // 달력 시작 날짜 (이전 월의 일부 포함)
+  const startDate = new Date(firstDay);
+  startDate.setDate(startDate.getDate() - firstDay.getDay());
+  
+  // 달력 끝 날짜 (다음 월의 일부 포함)
+  const endDate = new Date(lastDay);
+  endDate.setDate(endDate.getDate() + (6 - lastDay.getDay()));
+  
+  // 날짜 배열 생성 (6주)
+  const dates = [];
+  const current = new Date(startDate);
+  while (current <= endDate) {
+    dates.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+  }
+  
+  // 특정 날짜의 개인 일정만 찾기 (주최한 경조사 제외)
+  const getEventsForDate = (date) => {
+    const filteredEvents = events.filter(event => {
+      if (!event.event_date) return false;
+      const eventDate = new Date(event.event_date);
+      const isPersonalSchedule = event.source === 'personal' || event.is_personal_schedule;
+      const matchesDate = eventDate.toDateString() === date.toDateString();
+      
+      // 디버깅 로그
+      if (matchesDate) {
+        console.log('📅 캘린더 날짜 매칭:', {
+          date: date.toDateString(),
+          eventDate: eventDate.toDateString(),
+          eventName: event.event_name || event.title,
+          isPersonalSchedule,
+          source: event.source,
+          is_personal_schedule: event.is_personal_schedule
+        });
+      }
+      
+      return matchesDate && isPersonalSchedule;
+    });
+    
+    if (filteredEvents.length > 0) {
+      console.log('📅 해당 날짜 이벤트 수:', filteredEvents.length, 'for', date.toDateString());
+    }
+    
+    return filteredEvents;
+  };
+  
+  // 이전/다음 달로 이동
+  const goToPreviousMonth = () => {
+    const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+    setCurrentDate(newDate);
+    onMonthChange && onMonthChange(newDate);
+  };
+  
+  const goToNextMonth = () => {
+    const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+    setCurrentDate(newDate);
+    onMonthChange && onMonthChange(newDate);
+  };
+  
+  const renderDate = (date, index) => {
+    const isCurrentMonth = date.getMonth() === currentDate.getMonth();
+    const isToday = date.toDateString() === new Date().toDateString();
+    const dayEvents = getEventsForDate(date);
+    const eventCount = dayEvents.length;
+    
+    return (
+      <TouchableOpacity
+        key={index}
+        style={[
+          styles.calendarDay,
+          !isCurrentMonth && styles.calendarDayOther,
+          isToday && styles.calendarDayToday,
+        ]}
+        onPress={() => onDatePress(date, dayEvents)}
+        activeOpacity={0.7}
+      >
+        <Text style={[
+          styles.calendarDayText,
+          !isCurrentMonth && styles.calendarDayTextOther,
+          isToday && styles.calendarDayTextToday,
+        ]}>
+          {date.getDate()}
+        </Text>
+        
+        {/* 일정 표시 점들 */}
+        {eventCount > 0 && (
+          <View style={styles.eventIndicatorContainer}>
+            {eventCount === 1 ? (
+              <View style={[styles.eventDot, styles.personalEventDot]} />
+            ) : eventCount === 2 ? (
+              <>
+                <View style={[styles.eventDot, styles.personalEventDot]} />
+                <View style={[styles.eventDot, styles.personalEventDot]} />
+              </>
+            ) : (
+              <View style={styles.multipleEventIndicator}>
+                <Text style={styles.multipleEventText}>{eventCount}</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+  
+  return (
+    <View style={styles.calendar}>
+      {/* 캘린더 헤더 */}
+      <View style={styles.calendarHeader}>
+        <TouchableOpacity onPress={goToPreviousMonth} style={styles.calendarNavButton}>
+          <Ionicons name="chevron-back" size={20} color={Colors.primary} />
+        </TouchableOpacity>
+        
+        <Text style={styles.calendarHeaderTitle}>
+          {currentDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}
+        </Text>
+        
+        <TouchableOpacity onPress={goToNextMonth} style={styles.calendarNavButton}>
+          <Ionicons name="chevron-forward" size={20} color={Colors.primary} />
+        </TouchableOpacity>
+      </View>
+      
+      {/* 요일 헤더 */}
+      <View style={styles.calendarWeekHeader}>
+        {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => (
+          <View key={index} style={styles.calendarWeekDay}>
+            <Text style={[
+              styles.calendarWeekDayText,
+              index === 0 && styles.calendarSundayText,
+              index === 6 && styles.calendarSaturdayText
+            ]}>
+              {day}
+            </Text>
+          </View>
+        ))}
+      </View>
+      
+      {/* 날짜 그리드 */}
+      <View style={styles.calendarGrid}>
+        {dates.map((date, index) => renderDate(date, index))}
+      </View>
+    </View>
+  );
+};
 
 // 🔥 커스텀 SVG 아이콘 컴포넌트들
 const WeddingIcon = () => (
@@ -61,6 +228,163 @@ const FuneralIcon = () => (
   </Svg>
 );
 
+// 🔥 일정 추가 모달 컴포넌트
+const EventAddModal = ({ visible, onClose, selectedDate, onAddEvent }) => {
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventType, setEventType] = useState('wedding'); // 'wedding' 또는 'funeral'
+  const [eventLocation, setEventLocation] = useState('');
+
+  const handleAddEvent = () => {
+    if (eventTitle.trim()) {
+      onAddEvent(eventTitle, eventType, eventLocation);
+      setEventTitle('');
+      setEventLocation('');
+    }
+  };
+
+  const formatDate = (date) => {
+    return date.toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      weekday: 'long'
+    });
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView 
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.modalBackdrop} />
+        </TouchableWithoutFeedback>
+        <TouchableWithoutFeedback onPress={() => {}}>
+          <View style={styles.modalContent}>
+          {/* 모달 헤더 */}
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>일정 추가</Text>
+            <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
+              <Ionicons name="close" size={24} color={Colors.gray400} />
+            </TouchableOpacity>
+          </View>
+          
+          {/* 선택된 날짜 표시 */}
+          <View style={styles.selectedDateContainer}>
+            <Ionicons name="calendar" size={20} color={Colors.primary} />
+            <Text style={styles.selectedDateText}>{formatDate(selectedDate)}</Text>
+          </View>
+          
+          {/* 경조사 종류 선택 */}
+          <View style={styles.eventTypeContainer}>
+            <Text style={styles.inputLabel}>경조사 종류</Text>
+            <View style={styles.eventTypeButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.eventTypeButton,
+                  eventType === 'wedding' && styles.eventTypeButtonActive
+                ]}
+                onPress={() => setEventType('wedding')}
+              >
+                <Ionicons 
+                  name="heart" 
+                  size={20} 
+                  color={eventType === 'wedding' ? Colors.white : Colors.wedding} 
+                />
+                <Text style={[
+                  styles.eventTypeButtonText,
+                  eventType === 'wedding' && styles.eventTypeButtonTextActive
+                ]}>
+                  결혼식
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.eventTypeButton,
+                  eventType === 'funeral' && styles.eventTypeButtonActive
+                ]}
+                onPress={() => setEventType('funeral')}
+              >
+                <Ionicons 
+                  name="flower" 
+                  size={20} 
+                  color={eventType === 'funeral' ? Colors.white : Colors.funeral} 
+                />
+                <Text style={[
+                  styles.eventTypeButtonText,
+                  eventType === 'funeral' && styles.eventTypeButtonTextActive
+                ]}>
+                  장례식
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          
+          {/* 일정 제목 입력 */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>일정 제목</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder={`예: ${eventType === 'wedding' ? '김철수 결혼식' : '동료 부친상'}`}
+              value={eventTitle}
+              onChangeText={setEventTitle}
+              autoFocus={true}
+              multiline={false}
+              returnKeyType="next"
+            />
+          </View>
+          
+          {/* 장소 입력 */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>장소 (선택사항)</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="예: 강남구 웨딩홀, 서초동 장례식장"
+              value={eventLocation}
+              onChangeText={setEventLocation}
+              multiline={false}
+              returnKeyType="done"
+              onSubmitEditing={handleAddEvent}
+            />
+          </View>
+          
+          {/* 액션 버튼들 */}
+          <View style={styles.modalActions}>
+            <TouchableOpacity style={styles.modalCancelButton} onPress={onClose}>
+              <Text style={styles.modalCancelButtonText}>취소</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[
+                styles.modalAddButton,
+                !eventTitle.trim() && styles.modalAddButtonDisabled
+              ]}
+              onPress={handleAddEvent}
+              disabled={!eventTitle.trim()}
+            >
+              <Text style={[
+                styles.modalAddButtonText,
+                !eventTitle.trim() && styles.modalAddButtonTextDisabled
+              ]}>
+                일정 추가
+              </Text>
+            </TouchableOpacity>
+          </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+};
+
 export default function HomeScreen({ navigation, userInfo, session, isAuthenticated }) {
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
@@ -68,6 +392,14 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const [loading, setLoading] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [selectedTab, setSelectedTab] = useState('active'); // 'active' or 'completed'
+  const [calendarDate, setCalendarDate] = useState(new Date()); // 🔥 캘린더 현재 날짜 상태
+  const [showMoreEvents, setShowMoreEvents] = useState(false); // 🔥 더보기 상태
+  const [showEventModal, setShowEventModal] = useState(false); // 🔥 일정 추가 모달 상태
+  const [selectedDate, setSelectedDate] = useState(new Date()); // 🔥 선택된 날짜
+  const [showEventListModal, setShowEventListModal] = useState(false); // 🔥 일정 목록 모달 상태
+  const [selectedDateEvents, setSelectedDateEvents] = useState([]); // 🔥 선택된 날짜의 일정들
+  const [showTossConfirmModal, setShowTossConfirmModal] = useState(false); // 🔥 토스 스타일 확인 모달
+  const [showTossSuccessModal, setShowTossSuccessModal] = useState(false); // 🔥 토스 스타일 성공 모달
   const [monthlyStats, setMonthlyStats] = useState({
     totalEvents: 0,
     monthlyEvents: 0,
@@ -97,6 +429,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   });
   
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  
+  // 토스 모달 애니메이션 값들
+  const confirmModalSlideAnim = useRef(new Animated.Value(0)).current;
+  const confirmModalOpacity = useRef(new Animated.Value(0)).current;
+  const successModalScale = useRef(new Animated.Value(0)).current;
+  const successModalOpacity = useRef(new Animated.Value(0)).current;
 
   // Props 확인 로그
   useEffect(() => {
@@ -335,7 +673,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         return;
       }
       
-      const result = await getUserEvents(currentUserInfo);
+      const result = await getAllUserEvents(currentUserInfo);
       
       if (result.success) {
         console.log(`✅ 이벤트 로드 완료: ${result.data?.length || 0}개`);
@@ -352,7 +690,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     }
   };
 
-  // 🔥 개선된 활성 이벤트 로드 함수 - 중복 제거 및 디버깅 강화
+  // 🔥 개선된 활성 이벤트 로드 함수 - 개인 일정 포함
   const loadActiveEvents = async () => {
     try {
       console.log('📅 활성 이벤트 로드 시작');
@@ -360,14 +698,22 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       // 🔥 상태 초기화
       setActiveEvents([]);
       
-      const result = await getActiveEvents();
+      // 개인 일정 불러오기
+      const personalResult = await getPersonalSchedules();
       
-      if (result.success) {
-        const rawData = result.data || [];
-        console.log(`✅ 활성 이벤트 원본 데이터: ${rawData.length}개`);
+      if (personalResult.success) {
+        const personalSchedules = personalResult.data || [];
+        console.log(`✅ 개인 일정 데이터: ${personalSchedules.length}개`);
+        
+        // 개인 일정에 필요한 속성 추가
+        const formattedSchedules = personalSchedules.map(schedule => ({
+          ...schedule,
+          is_personal_schedule: true,
+          source: 'personal'
+        }));
         
         // 🔥 중복 제거 - ID 기준으로 고유한 이벤트만 필터링
-        const uniqueEvents = rawData.filter((event, index, self) => 
+        const uniqueEvents = formattedSchedules.filter((event, index, self) => 
           index === self.findIndex(e => e.id === event.id)
         );
         
@@ -375,7 +721,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         
         setActiveEvents(uniqueEvents);
       } else {
-        console.error('❌ 활성 이벤트 로드 실패:', result.error);
+        console.error('❌ 개인 일정 로드 실패:', personalResult.error);
         setActiveEvents([]);
       }
     } catch (error) {
@@ -403,151 +749,317 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     }
   };
 
-  // 🔥 수정된 handleActiveEventPress 함수 - 부고 정보 포함
-  const handleActiveEventPress = (event) => {
-    console.log('🎭 전시모드로 이동:', event.event_name, '타입:', event.event_type);
-    
-    // DB에서 저장된 이미지와 템플릿 정보 파싱
-    const templateStyle = event.template_style || (event.event_type === 'funeral' ? 'traditional-dark' : 'modern-dark');
-    
-    // additional_info에서 카테고리별 이미지 정보 추출
-    const additionalInfo = event.additional_info || {};
-    const categorizedImages = additionalInfo.categorized_images || {};
-    
-    // image_urls에서 카테고리별로 이미지 분류 (백업 로직)
-    const imageUrls = event.image_urls || [];
-    const fallbackCategorizedImages = {
-      main: imageUrls.filter(img => img.category === 'main'),
-      gallery: imageUrls.filter(img => img.category === 'gallery'),
-      groom: imageUrls.filter(img => img.category === 'groom'),
-      bride: imageUrls.filter(img => img.category === 'bride'),
-      all: imageUrls
-    };
-    
-    // 카테고리별 이미지가 없으면 fallback 사용
-    const finalCategorizedImages = Object.keys(categorizedImages).length > 0 
-      ? categorizedImages 
-      : fallbackCategorizedImages;
-    
-    // 🔥 이벤트 타입에 따른 데이터 준비
-    let eventData = {
-      type: event.event_type,
-    };
+  // 🔥 토스 모달 애니메이션 함수들
+  const showConfirmModal = () => {
+    setShowTossConfirmModal(true);
+    // 동시에 슬라이드업과 페이드인 애니메이션
+    Animated.parallel([
+      Animated.timing(confirmModalSlideAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(confirmModalOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
 
-    if (event.event_type === 'funeral') {
-      // 🔥 부고 데이터 준비 - additional_info에서 상주 정보 추출
-      const familyMembers = event.family_members || 
-                           additionalInfo.family_members || 
-                           [];
-      
-      eventData = {
-        ...eventData,
-        // 고인 정보
-        deceasedName: event.deceased_name || event.main_person_name,
-        deceasedAge: event.deceased_age,
-        deathDate: event.death_date,
-        deceasedGender: event.deceased_gender || '남',
-        
-        // 장례 일정
-        casketDate: event.casket_date || event.funeral_start_date || additionalInfo.funeral_start_date,
-        casketTime: event.casket_time,
-        burialDate: event.burial_date || event.funeral_end_date || additionalInfo.funeral_end_date,
-        burialTime: event.burial_time,
-        burialLocation: event.burial_location,
-        secondaryBurialLocation: event.secondary_burial_location,
-        
-        // 장례식장 정보
-        funeralHome: event.funeral_home,
-        location: event.location, // 장례식장 주소
-        detailedAddress: event.detailed_address, // 빈소 위치
-        
-        // 🔥 가족 정보 (상주) - 여러 소스에서 확인
-        familyMembers: Array.isArray(familyMembers) ? familyMembers : [],
-        
-        // 연락처
-        primaryContact: event.primary_contact,
-        secondaryContact: event.secondary_contact,
-        funeralDirector: event.funeral_director,
-        
-        // 메시지
-        customMessage: event.custom_message,
-        
-        // additional_info에서 추가 정보 병합
-        ...additionalInfo,
-      };
-      
-      // 🔍 상주 정보 디버깅 로그
-      console.log('🎭 상주 정보 확인:', {
-        eventName: event.event_name,
-        familyMembersFromEvent: event.family_members?.length || 0,
-        familyMembersFromAdditional: additionalInfo.family_members?.length || 0,
-        finalFamilyMembers: eventData.familyMembers?.length || 0,
-        familyMemberDetails: eventData.familyMembers?.map(fm => ({ 
-          relation: fm.relation, 
-          names: fm.names,
-          hasNames: !!fm.names 
-        })) || []
-      });
+  const hideConfirmModal = () => {
+    Animated.parallel([
+      Animated.timing(confirmModalSlideAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(confirmModalOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowTossConfirmModal(false);
+      // 애니메이션 값 초기화
+      confirmModalSlideAnim.setValue(0);
+      confirmModalOpacity.setValue(0);
+    });
+  };
+
+  const showSuccessModal = () => {
+    setShowTossSuccessModal(true);
+    // 스케일과 페이드인 애니메이션
+    Animated.parallel([
+      Animated.spring(successModalScale, {
+        toValue: 1,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+      Animated.timing(successModalOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const hideSuccessModal = () => {
+    Animated.parallel([
+      Animated.spring(successModalScale, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+      Animated.timing(successModalOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowTossSuccessModal(false);
+      // 애니메이션 값 초기화
+      successModalScale.setValue(0);
+      successModalOpacity.setValue(0);
+    });
+  };
+
+  // 🔥 캘린더 날짜 클릭 핸들러
+  const handleCalendarDatePress = (date, dayEvents = []) => {
+    console.log('📅 캘린더 날짜 선택:', date, '이벤트 수:', dayEvents.length);
+    setSelectedDate(date);
+    setSelectedDateEvents(dayEvents);
+    
+    if (dayEvents.length === 0) {
+      // 일정이 없는 경우: 바로 일정 추가 모달
+      setShowEventModal(true);
     } else {
-      // 🔥 결혼식 데이터 준비 (기존 로직)
-      eventData = {
-        ...eventData,
-        // 기본 정보
-        groomName: event.groom_name,
-        brideName: event.bride_name,
-        date: event.event_date,
-        ceremonyTime: event.ceremony_time,
-        location: event.location,
-        detailedAddress: event.detailed_address,
-        customMessage: event.custom_message,
-        parkingInfo: event.parking_info,
-        
-        // 부모님 정보
-        groomFatherName: event.groom_father_name,
-        groomMotherName: event.groom_mother_name,
-        brideFatherName: event.bride_father_name,
-        brideMotherName: event.bride_mother_name,
-        groomContact: event.groom_contact,
-        brideContact: event.bride_contact,
-        
-        // additional_info에서 추가 정보
-        groomFatherContact: additionalInfo.groom_father_contact,
-        groomMotherContact: additionalInfo.groom_mother_contact,
-        brideFatherContact: additionalInfo.bride_father_contact,
-        brideMotherContact: additionalInfo.bride_mother_contact,
-        receptionTime: additionalInfo.reception_time,
-      };
+      // 일정이 있는 경우: 토스 스타일 확인 모달 (애니메이션 포함)
+      showConfirmModal();
+    }
+  };
+
+  // 🔥 캘린더 월 변경 핸들러
+  const handleCalendarMonthChange = (newDate) => {
+    console.log('📅 캘린더 월 변경:', newDate);
+    setCalendarDate(newDate);
+  };
+
+  // 🔥 현재 캘린더 월의 경조사 필터링 함수
+  const getMonthlyEvents = () => {
+    const currentMonth = calendarDate.getMonth();
+    const currentYear = calendarDate.getFullYear();
+    
+    // 개인 일정(activeEvents)만 사용
+    return activeEvents.filter(event => {
+      if (!event.event_date) return false;
+      
+      const eventDate = new Date(event.event_date);
+      return eventDate.getMonth() === currentMonth && 
+             eventDate.getFullYear() === currentYear;
+    }).sort((a, b) => {
+      // 날짜순 정렬
+      if (!a.event_date) return 1;
+      if (!b.event_date) return -1;
+      return new Date(a.event_date) - new Date(b.event_date);
+    });
+  };
+
+  // 🔥 월별 이벤트를 주최자/참여자로 분리
+  const getGroupedMonthlyEvents = () => {
+    const monthlyEvents = getMonthlyEvents();
+    const hostEvents = monthlyEvents.filter(event => 
+      event.source === 'hosted' && !event.is_personal_schedule
+    );
+    const participantEvents = monthlyEvents.filter(event => 
+      event.source === 'personal' || event.is_personal_schedule
+    );
+    
+    return { hostEvents, participantEvents };
+  };
+
+  // 🔥 이벤트 역할 구분 함수
+  const getEventRole = (event) => {
+    // 주최자: 내가 생성한 경조사 (events 테이블에서 온 데이터)
+    if (event.source === 'hosted' && !event.is_personal_schedule) {
+      return EVENT_ROLES.HOST;
+    }
+    // 참여자: 개인 일정으로 추가한 다른 사람의 경조사
+    if (event.source === 'personal' || event.is_personal_schedule) {
+      return EVENT_ROLES.PARTICIPANT;
+    }
+    return EVENT_ROLES.PARTICIPANT; // 기본값
+  };
+
+  // 🔥 역할별 이벤트 분리 함수
+  const separateEventsByRole = (events) => {
+    const hostEvents = events.filter(event => getEventRole(event) === EVENT_ROLES.HOST);
+    const participantEvents = events.filter(event => getEventRole(event) === EVENT_ROLES.PARTICIPANT);
+    
+    return {
+      hostEvents,
+      participantEvents
+    };
+  };
+
+
+  // 🔥 이벤트 클릭 처리 - 소스에 따라 다르게 처리
+  const handleActiveEventPress = (event, source = 'management') => {
+    const eventRole = getEventRole(event);
+    const roleText = eventRole === EVENT_ROLES.HOST ? '주최자' : '참여자';
+    
+    // 캘린더에서 클릭: 단순 로그만 출력 (모달 제거)
+    if (source === 'calendar') {
+      console.log(`📅 ${roleText} 일정 선택:`, event.event_name || event.title);
+      return;
     }
     
-    console.log('🎭 전달할 데이터:', {
-      eventId: event.id,
-      eventType: event.event_type,
-      templateStyle,
-      categorizedImages: {
-        main: finalCategorizedImages.main?.length || 0,
-        gallery: finalCategorizedImages.gallery?.length || 0,
-        groom: finalCategorizedImages.groom?.length || 0,
-        bride: finalCategorizedImages.bride?.length || 0
-      },
-      eventDataKeys: Object.keys(eventData),
-      // 부고 전용 디버깅
-      ...(event.event_type === 'funeral' && {
-        funeralDebug: {
-          deceasedName: eventData.deceasedName,
-          familyMembersCount: eventData.familyMembers?.length || 0,
-          primaryContact: eventData.primaryContact,
-          funeralHome: eventData.funeralHome,
-          burialLocation: eventData.burialLocation
-        }
-      })
-    });
-    
-    navigation.navigate('EventDisplay', { 
-      eventId: event.id,
-      templateStyle: templateStyle,
-      categorizedImages: finalCategorizedImages,
-      eventData: eventData
-    });
+    // 나의 경조사 관리에서 클릭: 디스플레이 모드로 이동 (기존 로직)
+    if (source === 'management') {
+      // DB에서 저장된 이미지와 템플릿 정보 파싱
+      const templateStyle = event.template_style || (event.event_type === 'funeral' ? 'traditional-dark' : 'modern-dark');
+      
+      // additional_info에서 카테고리별 이미지 정보 추출
+      const additionalInfo = event.additional_info || {};
+      const categorizedImages = additionalInfo.categorized_images || {};
+      
+      // image_urls에서 카테고리별로 이미지 분류 (백업 로직)
+      const imageUrls = event.image_urls || [];
+      const fallbackCategorizedImages = {
+        main: imageUrls.filter(img => img.category === 'main'),
+        gallery: imageUrls.filter(img => img.category === 'gallery'),
+        groom: imageUrls.filter(img => img.category === 'groom'),
+        bride: imageUrls.filter(img => img.category === 'bride'),
+        all: imageUrls
+      };
+      
+      // 카테고리별 이미지가 없으면 fallback 사용
+      const finalCategorizedImages = Object.keys(categorizedImages).length > 0 
+        ? categorizedImages 
+        : fallbackCategorizedImages;
+      
+      // 🔥 이벤트 타입에 따른 데이터 준비
+      let eventData = {
+        type: event.event_type,
+      };
+
+      if (event.event_type === 'funeral') {
+        // 🔥 부고 데이터 준비 - additional_info에서 상주 정보 추출
+        const familyMembers = event.family_members || 
+                             additionalInfo.family_members || 
+                             [];
+        
+        eventData = {
+          ...eventData,
+          // 고인 정보
+          deceasedName: event.deceased_name || event.main_person_name,
+          deceasedAge: event.deceased_age,
+          deathDate: event.death_date,
+          deceasedGender: event.deceased_gender || '남',
+          
+          // 장례 일정
+          casketDate: event.casket_date || event.funeral_start_date || additionalInfo.funeral_start_date,
+          casketTime: event.casket_time,
+          burialDate: event.burial_date || event.funeral_end_date || additionalInfo.funeral_end_date,
+          burialTime: event.burial_time,
+          burialLocation: event.burial_location,
+          secondaryBurialLocation: event.secondary_burial_location,
+          
+          // 장례식장 정보
+          funeralHome: event.funeral_home,
+          location: event.location, // 장례식장 주소
+          detailedAddress: event.detailed_address, // 빈소 위치
+          
+          // 🔥 가족 정보 (상주) - 여러 소스에서 확인
+          familyMembers: Array.isArray(familyMembers) ? familyMembers : [],
+          
+          // 연락처
+          primaryContact: event.primary_contact,
+          secondaryContact: event.secondary_contact,
+          funeralDirector: event.funeral_director,
+          
+          // 메시지
+          customMessage: event.custom_message,
+          
+          // additional_info에서 추가 정보 병합
+          ...additionalInfo,
+        };
+        
+        // 🔍 상주 정보 디버깅 로그
+        console.log('🎭 상주 정보 확인:', {
+          eventName: event.event_name,
+          familyMembersFromEvent: event.family_members?.length || 0,
+          familyMembersFromAdditional: additionalInfo.family_members?.length || 0,
+          finalFamilyMembers: eventData.familyMembers?.length || 0,
+          familyMemberDetails: eventData.familyMembers?.map(fm => ({ 
+            relation: fm.relation, 
+            names: fm.names,
+            hasNames: !!fm.names 
+          })) || []
+        });
+      } else {
+        // 🔥 결혼식 데이터 준비 (기존 로직)
+        eventData = {
+          ...eventData,
+          // 기본 정보
+          groomName: event.groom_name,
+          brideName: event.bride_name,
+          date: event.event_date,
+          ceremonyTime: event.ceremony_time,
+          location: event.location,
+          detailedAddress: event.detailed_address,
+          customMessage: event.custom_message,
+          parkingInfo: event.parking_info,
+          
+          // 부모님 정보
+          groomFatherName: event.groom_father_name,
+          groomMotherName: event.groom_mother_name,
+          brideFatherName: event.bride_father_name,
+          brideMotherName: event.bride_mother_name,
+          groomContact: event.groom_contact,
+          brideContact: event.bride_contact,
+          
+          // additional_info에서 추가 정보
+          groomFatherContact: additionalInfo.groom_father_contact,
+          groomMotherContact: additionalInfo.groom_mother_contact,
+          brideFatherContact: additionalInfo.bride_father_contact,
+          brideMotherContact: additionalInfo.bride_mother_contact,
+          receptionTime: additionalInfo.reception_time,
+        };
+      }
+      
+      console.log('🎭 전달할 데이터:', {
+        eventId: event.id,
+        eventType: event.event_type,
+        templateStyle,
+        categorizedImages: {
+          main: finalCategorizedImages.main?.length || 0,
+          gallery: finalCategorizedImages.gallery?.length || 0,
+          groom: finalCategorizedImages.groom?.length || 0,
+          bride: finalCategorizedImages.bride?.length || 0
+        },
+        eventDataKeys: Object.keys(eventData),
+        // 부고 전용 디버깅
+        ...(event.event_type === 'funeral' && {
+          funeralDebug: {
+            deceasedName: eventData.deceasedName,
+            familyMembersCount: eventData.familyMembers?.length || 0,
+            primaryContact: eventData.primaryContact,
+            funeralHome: eventData.funeralHome,
+            burialLocation: eventData.burialLocation
+          }
+        })
+      });
+      
+      navigation.navigate('EventDisplay', { 
+        eventId: event.id,
+        templateStyle: templateStyle,
+        categorizedImages: finalCategorizedImages,
+        eventData: eventData
+      });
+    }
   };
 
   // 부조하기 버튼 클릭
@@ -595,18 +1107,25 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   const userName = getUserName();
 
-  // 🔥 모든 이벤트 합치기 및 날짜 기준 분류
-  const allEvents = [...activeEvents, ...events].filter((event, index, self) => 
-    index === self.findIndex(e => e.id === event.id)
-  );
+  // 🔥 나의 경조사 관리는 주최한 경조사만 사용 (개인 일정 완전 제외)
+  const hostedEvents = events.filter((event, index, self) => {
+    // 중복 제거
+    const isUnique = index === self.findIndex(e => e.id === event.id);
+    // 개인 일정 제외 (source가 'personal'이거나 is_personal_schedule이 true인 항목 제외)
+    const isNotPersonalSchedule = !(event.source === 'personal' || event.is_personal_schedule);
+    // 실제 경조사 이벤트만 포함 (created_by나 user_id가 있는 주최한 경조사)
+    const isHostedEvent = event.created_by || (event.user_id && !event.is_personal_schedule);
+    
+    return isUnique && isNotPersonalSchedule && isHostedEvent;
+  });
   
-  // 🔥 서울 시간 기준으로 진행중/완료 분류
-  const activeEventsFiltered = allEvents.filter(event => {
+  // 🔥 서울 시간 기준으로 진행중/완료 분류 - 주최한 경조사만
+  const activeEventsFiltered = hostedEvents.filter(event => {
     const isCompleted = isEventCompleted(event.event_date);
     return !isCompleted;
   });
   
-  const completedEventsFiltered = allEvents.filter(event => {
+  const completedEventsFiltered = hostedEvents.filter(event => {
     const isCompleted = isEventCompleted(event.event_date);
     return isCompleted;
   });
@@ -730,9 +1249,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           </View>
         </View>
 
-        {/* 🔥 나의 경조사 관리 - 통합된 섹션 */}
+        {/* 🔥 내가 주최한 경조사 - 호스트 역할 */}
         <View style={styles.eventsManagementSection}>
-          <Text style={styles.sectionTitle}>나의 경조사 관리</Text>
+          <Text style={styles.sectionTitle}>내가 주최한 경조사</Text>
           
           {/* 탭 버튼 */}
           <View style={styles.tabContainer}>
@@ -791,9 +1310,18 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
                   {/* 이벤트 정보 */}
                   <View style={styles.eventListInfo}>
-                    <Text style={styles.eventListTitle} numberOfLines={1}>
-                      {event.event_name}
-                    </Text>
+                    <View style={styles.eventTitleRow}>
+                      <Text style={styles.eventListTitle} numberOfLines={1}>
+                        {event.event_name || event.title}
+                      </Text>
+                      {/* 🔥 개인 일정 표시 */}
+                      {(event.source === 'personal' || event.is_personal_schedule) && (
+                        <View style={styles.personalScheduleBadge}>
+                          <Ionicons name="calendar-outline" size={12} color={Colors.gray500} />
+                          <Text style={styles.personalScheduleBadgeText}>개인</Text>
+                        </View>
+                      )}
+                    </View>
                     
                     <Text style={styles.eventListLocation}>
                       {event.location || '장소 미정'}
@@ -849,155 +1377,178 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               {selectedTab === 'active' && (
                 <TouchableOpacity 
                   style={styles.createButton}
-                  onPress={() => navigation.navigate('CreateEvent')}
+                  onPress={() => handleCalendarDatePress(new Date())}
                 >
-                  <Text style={styles.createButtonText}>경조사 만들기</Text>
+                  <Text style={styles.createButtonText}>일정 추가</Text>
                 </TouchableOpacity>
               )}
             </View>
           )}
         </View>
 
-        {/* 🔥 통계 요약 - 완전히 새로운 디자인 */}
-        <View style={styles.statsSection}>
-          <View style={styles.statsSectionHeader}>
-            <Text style={styles.sectionTitle}>
-              {monthlyStats.period?.monthName || new Date().toLocaleDateString('ko-KR', { month: 'long' })} 경조사 현황
-            </Text>
+        {/* 🔥 참여할 경조사 일정 관리 - 참여자 역할 */}
+        <View style={styles.calendarSection}>
+          <View style={styles.calendarSectionHeader}>
+            <Text style={styles.sectionTitle}>참여할 경조사 일정</Text>
             <TouchableOpacity 
-              onPress={handleStatisticsDetail}
-              style={styles.statsDetailButton}
+              onPress={() => handleCalendarDatePress(new Date())}
+              style={styles.addEventButton}
             >
-              <Text style={styles.statsDetailButtonText}>전체보기</Text>
-              <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+              <Ionicons name="add" size={20} color={Colors.white} />
+              <Text style={styles.addEventButtonText}>일정 추가</Text>
             </TouchableOpacity>
           </View>
 
-          {/* 🔥 이번 달 받은 금액 요약 카드 */}
-          {monthlyStats.receivedAmount > 0 || monthlyStats.totalContributions > 0 ? (
-            <>
-              <View style={styles.monthlyReceivedCard}>
-                <View style={styles.monthlyCardHeader}>
-                  <View style={styles.monthlyCardIconContainer}>
-                    <Ionicons name="wallet" size={24} color={Colors.white} />
-                  </View>
-                  <View style={styles.monthlyCardTitleSection}>
-                    <Text style={styles.monthlyCardTitle}>이번 달 받은 금액</Text>
-                    <Text style={styles.monthlyCardSubtitle}>총 {monthlyStats.totalContributions}건</Text>
-                  </View>
-                </View>
-                
-                <Text style={styles.monthlyTotalAmount}>
-                  {formatAmount(monthlyStats.receivedAmount)}
-                </Text>
-
-                {/* 타입별 분류 */}
-                <View style={styles.monthlyTypeBreakdown}>
-                  {monthlyStats.monthlyWeddingAmount > 0 && (
-                    <View style={styles.typeBreakdownItem}>
-                      <View style={[styles.typeIndicator, { backgroundColor: Colors.wedding }]} />
-                      <Text style={styles.typeLabel}>축의금</Text>
-                      <Text style={styles.typeAmount}>
-                        {formatAmount(monthlyStats.monthlyWeddingAmount)}
-                      </Text>
-                    </View>
-                  )}
-                  {monthlyStats.monthlyFuneralAmount > 0 && (
-                    <View style={styles.typeBreakdownItem}>
-                      <View style={[styles.typeIndicator, { backgroundColor: Colors.funeral }]} />
-                      <Text style={styles.typeLabel}>부조금</Text>
-                      <Text style={styles.typeAmount}>
-                        {formatAmount(monthlyStats.monthlyFuneralAmount)}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-
-              {/* 🔥 이벤트별 상세 내역 - 중요! */}
-              {monthlyStats.eventDetails && monthlyStats.eventDetails.length > 0 && (
-                <View style={styles.eventBreakdownCard}>
-                  <Text style={styles.eventBreakdownTitle}>경조사별 상세</Text>
-                  {monthlyStats.eventDetails.map((detail, index) => (
-                    <View 
-                      key={`${detail.eventId}-${index}`} 
-                      style={[
-                        styles.eventBreakdownItem,
-                        index === monthlyStats.eventDetails.length - 1 && styles.lastBreakdownItem
-                      ]}
-                    >
-                      <View style={styles.eventBreakdownLeft}>
-                        <View style={[
-                          styles.eventTypeIcon,
-                          { backgroundColor: detail.eventType === 'wedding' ? Colors.wedding : Colors.funeral }
-                        ]}>
-                          <Ionicons 
-                            name={detail.eventType === 'wedding' ? 'heart' : 'flower'} 
-                            size={14} 
-                            color={Colors.white} 
-                          />
-                        </View>
-                        <View style={styles.eventBreakdownInfo}>
-                          <Text style={styles.eventBreakdownName} numberOfLines={1}>
-                            {detail.eventName}
-                          </Text>
-                          <Text style={styles.eventBreakdownType}>
-                            {detail.eventType === 'wedding' ? '결혼식' : '부고'} · {detail.count}건
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={styles.eventBreakdownAmount}>
-                        {formatAmount(detail.amount)}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </>
-          ) : (
-            <View style={styles.noMonthlyDataCard}>
-              <Ionicons name="calendar-clear-outline" size={48} color={Colors.gray300} />
-              <Text style={styles.noMonthlyDataText}>이번 달 경조사 데이터가 없습니다</Text>
-              <Text style={styles.noMonthlyDataSubtext}>새로운 경조사를 만들어보세요</Text>
-            </View>
-          )}
-
-          {/* 🔥 보낸 금액 섹션 (미구현 상태 표시) */}
-          <View style={styles.sentMoneySection}>
-            <View style={styles.sentMoneySectionHeader}>
-              <Text style={styles.sentMoneySectionTitle}>이번 달 보낸 금액</Text>
-              <View style={styles.comingSoonBadge}>
-                <Text style={styles.comingSoonText}>준비중</Text>
-              </View>
-            </View>
-            <Text style={styles.sentMoneySectionDescription}>
-              다른 경조사에 참여한 내역을 관리하는 기능을 준비하고 있습니다
-            </Text>
+          {/* 🔥 월별 캘린더 */}
+          <View style={styles.calendarContainer}>
+            <CalendarComponent 
+              events={(() => {
+                console.log('🔥 캘린더에 전달되는 activeEvents:', activeEvents.length, 'items');
+                activeEvents.forEach((event, i) => {
+                  console.log(`🔥 Event ${i}:`, {
+                    id: event.id,
+                    title: event.event_name || event.title,
+                    date: event.event_date,
+                    source: event.source,
+                    is_personal_schedule: event.is_personal_schedule
+                  });
+                });
+                return activeEvents;
+              })()}
+              onDatePress={handleCalendarDatePress}
+              onEventPress={handleActiveEventPress}
+              currentCalendarDate={calendarDate}
+              onMonthChange={handleCalendarMonthChange}
+            />
           </View>
 
-          {/* 🔥 전체 누적 통계 */}
-          <View style={styles.totalStatsContainer}>
-            <Text style={styles.totalStatsTitle}>전체 누적 통계</Text>
-            <View style={styles.totalStatsGrid}>
-              <View style={styles.totalStatItem}>
+          {/* 🔥 이번 달 경조사 티켓 - 주최자/참여자 분리 */}
+          <View style={styles.monthlyTicketsContainer}>
+            <Text style={styles.monthlyTicketsTitle}>
+              {calendarDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })} 참여 예정 일정
+            </Text>
+            
+            {(() => {
+              const { participantEvents } = getGroupedMonthlyEvents();
+              // 🔥 참여자 일정만 표시
+              const hasEvents = participantEvents.length > 0;
+              
+              if (!hasEvents) {
+                return (
+                  <View style={styles.noEventsContainer}>
+                    <Ionicons name="calendar-outline" size={40} color={Colors.gray300} />
+                    <Text style={styles.noEventsText}>이번 달 참여 예정 일정이 없습니다</Text>
+                  </View>
+                );
+              }
+              
+              return (
+                <View style={styles.ticketsList}>
+                  {/* 🔥 참여자 일정만 표시 */}
+                  {participantEvents.slice(0, showMoreEvents ? 5 : 3).map((event, index) => (
+                        <TouchableOpacity
+                          key={event.id}
+                          style={[
+                            styles.eventTicket,
+                            { borderLeftColor: event.event_type === 'wedding' ? Colors.wedding : Colors.funeral }
+                          ]}
+                          onPress={() => handleActiveEventPress(event, 'calendar')}
+                          activeOpacity={0.8}
+                        >
+                          <View style={styles.ticketDateSection}>
+                            <Text style={styles.ticketDay}>
+                              {event.event_date ? new Date(event.event_date).getDate() : '?'}
+                            </Text>
+                            <Text style={styles.ticketWeekday}>
+                              {event.event_date ? 
+                                new Date(event.event_date).toLocaleDateString('ko-KR', { weekday: 'short' }) : 
+                                '미정'
+                              }
+                            </Text>
+                          </View>
+                          
+                          <View style={styles.ticketContent}>
+                            <View style={styles.ticketHeader}>
+                              <Text style={styles.ticketTitle} numberOfLines={1}>
+                                {event.event_name || event.title}
+                              </Text>
+                              <View style={[
+                                styles.ticketTypeBadge,
+                                { backgroundColor: event.event_type === 'wedding' ? Colors.wedding : Colors.funeral }
+                              ]}>
+                                <Text style={styles.ticketTypeText}>
+                                  {event.event_type === 'wedding' ? '경사' : '조사'}
+                                </Text>
+                              </View>
+                            </View>
+                            
+                            <Text style={styles.ticketLocation} numberOfLines={1}>
+                              {event.location || '장소 미정'}
+                            </Text>
+                            
+                            {event.event_date && (
+                              <Text style={styles.ticketTime}>
+                                {new Date(event.event_date).toLocaleDateString('ko-KR', { 
+                                  month: 'long', 
+                                  day: 'numeric' 
+                                })}
+                              </Text>
+                            )}
+                          </View>
+                          
+                          <View style={styles.ticketAction}>
+                            <Ionicons name="chevron-forward" size={20} color={Colors.gray400} />
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                  
+                  {/* 더보기 버튼 */}
+                  {participantEvents.length > 3 && (
+                    <TouchableOpacity 
+                      style={styles.showMoreButton}
+                      onPress={() => setShowMoreEvents(!showMoreEvents)}
+                    >
+                      <Text style={styles.showMoreButtonText}>
+                        {showMoreEvents ? '간단히 보기' : `더보기 (${participantEvents.length - 3}개)`}
+                      </Text>
+                      <Ionicons 
+                        name={showMoreEvents ? "chevron-up" : "chevron-down"} 
+                        size={16} 
+                        color={Colors.primary} 
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })()}
+          </View>
+
+          {/* 🔥 전체 누적 통계 - 간소화된 디자인 */}
+          <View style={styles.summaryStatsContainer}>
+            <Text style={styles.summaryStatsTitle}>전체 통계 요약</Text>
+            
+            <View style={styles.summaryStatsGrid}>
+              <View style={styles.summaryStatCard}>
                 <Ionicons name="calendar" size={24} color={Colors.primary} />
-                <Text style={styles.totalStatValue}>{monthlyStats.totalEvents}</Text>
-                <Text style={styles.totalStatLabel}>전체 경조사</Text>
+                <Text style={styles.summaryStatValue}>{monthlyStats.totalEvents}</Text>
+                <Text style={styles.summaryStatLabel}>총 경조사</Text>
               </View>
-              <View style={styles.totalStatItem}>
+              
+              <View style={styles.summaryStatCard}>
                 <Ionicons name="people" size={24} color={Colors.success} />
-                <Text style={styles.totalStatValue}>{monthlyStats.totalEntries}</Text>
-                <Text style={styles.totalStatLabel}>누적 참여자</Text>
+                <Text style={styles.summaryStatValue}>{monthlyStats.totalEntries}</Text>
+                <Text style={styles.summaryStatLabel}>총 참여자</Text>
               </View>
-              <View style={styles.totalStatItem}>
+              
+              <View style={styles.summaryStatCard}>
                 <Ionicons name="cash" size={24} color={Colors.warning} />
-                <Text style={styles.totalStatValue}>
+                <Text style={styles.summaryStatValue}>
                   {monthlyStats.totalAmount >= 1000000 
                     ? `${Math.floor(monthlyStats.totalAmount / 10000)}만원`
                     : formatAmount(monthlyStats.totalAmount)
                   }
                 </Text>
-                <Text style={styles.totalStatLabel}>누적 금액</Text>
+                <Text style={styles.summaryStatLabel}>총 금액</Text>
               </View>
             </View>
           </View>
@@ -1005,6 +1556,321 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
         <View style={{ height: 100 }} />
       </ScrollView>
+      
+      {/* 🔥 일정 추가 모달 */}
+      <EventAddModal 
+        visible={showEventModal}
+        onClose={() => setShowEventModal(false)}
+        selectedDate={selectedDate}
+        onAddEvent={async (eventTitle, eventType, eventLocation) => {
+          try {
+            // 개인 일정 생성
+            const scheduleData = {
+              title: eventTitle.trim(),
+              event_type: eventType,
+              event_date: selectedDate.toISOString().split('T')[0], // YYYY-MM-DD 형식
+              location: eventLocation.trim() || null
+            };
+            
+            // 현재 사용자 정보 준비 (loadEvents와 동일한 로직)
+            let currentUserInfo = null;
+            if (userInfo?.userId) {
+              currentUserInfo = {
+                id: userInfo.userId,
+                name: userInfo.userName,
+                phone: userInfo.phone,
+                auth_method: 'phone'
+              };
+            } else if (session?.user) {
+              currentUserInfo = {
+                id: session.user.id,
+                name: session.user.user_metadata?.name || session.user.email?.split('@')[0],
+                email: session.user.email,
+                auth_method: 'supabase'
+              };
+            }
+            
+            const result = await createPersonalSchedule(scheduleData, currentUserInfo);
+            
+            if (result.success) {
+              // 🔥 디버깅: 새로 생성된 일정 데이터 확인
+              console.log('🔥 새로 생성된 일정 데이터:', result.data);
+              
+              // UI에 즉시 반영 - 개인 일정은 activeEvents에 추가
+              setActiveEvents(prev => {
+                const updated = [...prev, result.data];
+                console.log('🔥 업데이트된 activeEvents 수:', updated.length);
+                return updated;
+              });
+              // 🔥 토스 스타일 성공 모달 표시
+              setShowEventModal(false);
+              setTimeout(() => {
+                showSuccessModal();
+                // 3초 후 자동으로 닫기
+                setTimeout(() => {
+                  hideSuccessModal();
+                }, 3000);
+              }, 200);
+            } else {
+              Alert.alert('오류', result.error || '일정 추가에 실패했습니다.');
+              setShowEventModal(false);
+            }
+          } catch (error) {
+            console.error('이벤트 추가 오류:', error);
+            Alert.alert('오류', '일정 추가 중 오류가 발생했습니다.');
+          }
+        }}
+      />
+
+      {/* 🔥 일정 목록 모달 */}
+      <Modal
+        visible={showEventListModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowEventListModal(false)}
+      >
+        <SafeAreaView style={styles.eventListModal}>
+          <View style={styles.eventListHeader}>
+            <View>
+              <Text style={styles.eventModalTitle}>일정 목록</Text>
+              <Text style={styles.eventModalDate}>
+                {selectedDate.toLocaleDateString('ko-KR', { 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric',
+                  weekday: 'long'
+                })}
+              </Text>
+            </View>
+            <TouchableOpacity 
+              onPress={() => setShowEventListModal(false)} 
+              style={styles.eventListCloseButton}
+            >
+              <Ionicons name="close" size={24} color={Colors.gray400} />
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.eventListContent} showsVerticalScrollIndicator={false}>
+            {selectedDateEvents.map((event, index) => (
+              <TouchableOpacity
+                key={event.id || index}
+                style={styles.eventListItem}
+                onPress={() => {
+                  // 일정 편집 기능은 나중에 구현
+                  console.log('일정 편집:', event);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.eventListItemContent}>
+                  <View style={styles.eventListItemHeader}>
+                    <Text style={styles.eventListItemTitle}>
+                      {event.event_name || event.title}
+                    </Text>
+                    <View style={styles.eventListItemBadge}>
+                      <Ionicons 
+                        name={event.event_type === 'wedding' ? 'heart' : 'flower'} 
+                        size={12} 
+                        color={Colors.primary} 
+                      />
+                      <Text style={styles.eventListItemBadgeText}>
+                        {event.event_type === 'wedding' ? '결혼' : '조문'}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  {event.location && (
+                    <View style={styles.eventListItemLocation}>
+                      <Ionicons name="location-outline" size={14} color={Colors.gray500} />
+                      <Text style={styles.eventListItemLocationText}>
+                        {event.location}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray400} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          
+          <View style={styles.eventListFooter}>
+            <TouchableOpacity 
+              style={styles.addEventFromListButton}
+              onPress={() => {
+                setShowEventListModal(false);
+                setShowEventModal(true);
+              }}
+            >
+              <Ionicons name="add" size={20} color={Colors.white} />
+              <Text style={styles.addEventFromListButtonText}>일정 추가</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* 🔥 토스 스타일 확인 모달 */}
+      <Modal
+        visible={showTossConfirmModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowTossConfirmModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={hideConfirmModal}>
+          <Animated.View 
+            style={[
+              styles.tossModalOverlay,
+              {
+                opacity: confirmModalOpacity
+              }
+            ]}
+          >
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <Animated.View 
+                style={[
+                  styles.tossModalContainer,
+                  {
+                    transform: [{
+                      translateY: confirmModalSlideAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [300, 0], // 300px 아래에서 슬라이드업
+                      })
+                    }]
+                  }
+                ]}
+              >
+                <View style={styles.tossModalHeader}>
+                  <Text style={styles.tossModalTitle}>
+                    {selectedDate.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+                  </Text>
+                  <Text style={styles.tossModalSubtitle}>
+                    {selectedDateEvents.length}개의 일정이 있어요
+                  </Text>
+                </View>
+
+                <ScrollView style={styles.tossEventList} showsVerticalScrollIndicator={false}>
+                  {selectedDateEvents.map((event, index) => (
+                    <TouchableOpacity
+                      key={event.id || index}
+                      style={styles.tossEventItem}
+                      onPress={() => {
+                        // 일정 편집 기능은 나중에 구현
+                        console.log('일정 편집:', event);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      {/* 🔥 이벤트 타입 표시 (왼쪽) */}
+                      <View style={styles.tossEventTypeColumn}>
+                        <View style={[
+                          styles.tossEventTypeBadge, 
+                          { backgroundColor: getEventStatusColor(event.event_type) }
+                        ]}>
+                          <Text style={styles.tossEventTypeBadgeText}>
+                            {getEventTypeText(event.event_type)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* 이벤트 정보 */}
+                      <View style={styles.tossEventInfo}>
+                        <View style={styles.tossEventTitleRow}>
+                          <Text style={styles.tossEventTitle} numberOfLines={1}>
+                            {event.event_name || event.title}
+                          </Text>
+                          <Text style={styles.tossEventTime}>
+                            {new Date(event.event_date).toLocaleDateString('ko-KR', { 
+                              month: 'short', 
+                              day: 'numeric' 
+                            })}
+                          </Text>
+                        </View>
+                        
+                        {event.location && (
+                          <View style={styles.tossEventLocationRow}>
+                            <Ionicons name="location-outline" size={14} color={Colors.gray400} />
+                            <Text style={styles.tossEventLocation} numberOfLines={1}>
+                              {event.location}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* 🔥 화살표 */}
+                      <View style={styles.tossEventArrow}>
+                        <Ionicons name="chevron-forward" size={20} color={Colors.gray400} />
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <View style={styles.tossModalActions}>
+                  <TouchableOpacity 
+                    style={styles.tossModalButton}
+                    onPress={() => {
+                      hideConfirmModal();
+                      setTimeout(() => setShowEventModal(true), 100);
+                    }}
+                  >
+                    <Ionicons name="add-circle" size={20} color={Colors.white} />
+                    <Text style={styles.tossModalButtonText}>일정 추가하기</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.tossModalButton, styles.tossModalCancelButton]}
+                    onPress={hideConfirmModal}
+                  >
+                    <Text style={[styles.tossModalButtonText, styles.tossModalCancelText]}>
+                      닫기
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          </Animated.View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* 🔥 토스 스타일 성공 모달 */}
+      <Modal
+        visible={showTossSuccessModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowTossSuccessModal(false)}
+      >
+        <Animated.View 
+          style={[
+            styles.tossModalOverlay,
+            {
+              opacity: successModalOpacity
+            }
+          ]}
+        >
+          <Animated.View 
+            style={[
+              styles.tossSuccessContainer,
+              {
+                transform: [{
+                  scale: successModalScale
+                }],
+                opacity: successModalOpacity
+              }
+            ]}
+          >
+            <View style={styles.tossSuccessIcon}>
+              <Ionicons name="checkmark" size={30} color={Colors.white} />
+            </View>
+            <Text style={styles.tossSuccessTitle}>일정이 추가되었어요</Text>
+            <Text style={styles.tossSuccessSubtitle}>
+              {selectedDate.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+            </Text>
+            <TouchableOpacity 
+              style={styles.tossSuccessButton}
+              onPress={hideSuccessModal}
+            >
+              <Text style={styles.tossSuccessButtonText}>확인</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </Animated.View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1333,12 +2199,38 @@ const styles = StyleSheet.create({
   eventListInfo: {
     flex: 1,
   },
+  
+  eventTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  
   eventListTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: Colors.textPrimary,
-    marginBottom: 4,
     lineHeight: 20,
+    flex: 1,
+  },
+  
+  // 🔥 개인 일정 표시 배지
+  personalScheduleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.gray100,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    gap: 2,
+    marginLeft: 8,
+  },
+  
+  personalScheduleBadgeText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: Colors.gray500,
   },
   eventListLocation: {
     fontSize: 14,
@@ -1430,120 +2322,40 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   
-  // 🔥 완전히 새로운 통계 섹션 스타일
-  statsSection: {
+  // 🔥 캘린더 섹션 스타일
+  calendarSection: {
     marginBottom: 40,
   },
   
-  statsSectionHeader: {
+  calendarSectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
   },
   
-  statsDetailButton: {
+  addEventButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
-  
-  statsDetailButtonText: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: '500',
-  },
-  
-  // 이번 달 받은 금액 카드
-  monthlyReceivedCard: {
-    backgroundColor: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     backgroundColor: Colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    gap: 6,
   },
   
-  monthlyCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  
-  monthlyCardIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  
-  monthlyCardTitleSection: {
-    flex: 1,
-  },
-  
-  monthlyCardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.white,
-  },
-  
-  monthlyCardSubtitle: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 2,
-  },
-  
-  monthlyTotalAmount: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: Colors.white,
-    marginBottom: 20,
-  },
-  
-  monthlyTypeBreakdown: {
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.2)',
-    paddingTop: 16,
-    gap: 12,
-  },
-  
-  typeBreakdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  
-  typeIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  
-  typeLabel: {
-    flex: 1,
+  addEventButtonText: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-  },
-  
-  typeAmount: {
-    fontSize: 16,
     fontWeight: '600',
     color: Colors.white,
   },
   
-  // 이벤트별 상세 내역 카드
-  eventBreakdownCard: {
+  // 캘린더 컨테이너
+  calendarContainer: {
     backgroundColor: Colors.white,
     borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: Colors.gray100,
     shadowColor: '#000',
@@ -1553,143 +2365,305 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   
-  eventBreakdownTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 16,
+  // 캘린더 스타일
+  calendar: {
+    width: '100%',
   },
   
-  eventBreakdownItem: {
+  calendarHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
+    marginBottom: 16,
+    paddingHorizontal: 8,
   },
   
-  lastBreakdownItem: {
-    borderBottomWidth: 0,
-  },
-  
-  eventBreakdownLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  
-  eventTypeIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  calendarNavButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primary + '10',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
   
-  eventBreakdownInfo: {
-    flex: 1,
-  },
-  
-  eventBreakdownName: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-    marginBottom: 2,
-  },
-  
-  eventBreakdownType: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  
-  eventBreakdownAmount: {
-    fontSize: 16,
+  calendarHeaderTitle: {
+    fontSize: 18,
     fontWeight: '600',
     color: Colors.textPrimary,
   },
   
-  // 데이터 없음 카드
-  noMonthlyDataCard: {
-    backgroundColor: Colors.gray50,
-    borderRadius: 16,
-    padding: 40,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  
-  noMonthlyDataText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: Colors.textSecondary,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  
-  noMonthlyDataSubtext: {
-    fontSize: 14,
-    color: Colors.gray500,
-  },
-  
-  // 보낸 금액 섹션
-  sentMoneySection: {
-    backgroundColor: Colors.gray50,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-  },
-  
-  sentMoneySectionHeader: {
+  calendarWeekHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     marginBottom: 8,
   },
   
-  sentMoneySectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginRight: 8,
+  calendarWeekDay: {
+    width: '14.28%', // 7분의 1로 통일
+    alignItems: 'center',
+    paddingVertical: 8,
   },
   
-  comingSoonBadge: {
-    backgroundColor: Colors.warning,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  calendarWeekDayText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  
+  calendarSundayText: {
+    color: Colors.error,
+  },
+  
+  calendarSaturdayText: {
+    color: Colors.primary,
+  },
+  
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  
+  calendarDay: {
+    width: '14.28%', // 7분의 1
+    aspectRatio: 1, // 정사각형 유지
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    minHeight: 48, // 최소 높이 보장
+  },
+  
+  calendarDayOther: {
+    opacity: 0.3,
+  },
+  
+  calendarDayToday: {
+    backgroundColor: Colors.primary, // 선명한 파란색 배경
     borderRadius: 8,
   },
   
-  comingSoonText: {
+  // 일정 표시 점들 스타일
+  eventIndicatorContainer: {
+    position: 'absolute',
+    bottom: 2,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+  },
+
+  eventDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    marginHorizontal: 1,
+  },
+
+  personalEventDot: {
+    backgroundColor: Colors.primary, // 파란색 점
+  },
+
+  multipleEventIndicator: {
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    minWidth: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  multipleEventText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  
+  calendarDayText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.textPrimary,
+  },
+  
+  calendarDayTextOther: {
+    color: Colors.gray400,
+  },
+  
+  calendarDayTextToday: {
+    color: Colors.white, // 흰색 텍스트로 선명한 대비
+    fontWeight: '700',
+  },
+  
+  calendarDayTextWithEvents: {
+    fontWeight: '600',
+    color: 'rgba(0, 122, 255, 0.9)', // iOS 블루 진한 색상
+  },
+  
+  // 🔥 월별 티켓 스타일
+  monthlyTicketsContainer: {
+    marginBottom: 24,
+  },
+  
+  // 🔥 이벤트 섹션 분리 스타일
+  eventSection: {
+    marginBottom: 16,
+  },
+  
+  eventSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 12,
+    paddingLeft: 4,
+  },
+  
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 12,
+    paddingLeft: 4,
+  },
+  
+  monthlyTicketsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 16,
+  },
+  
+  ticketsList: {
+    gap: 12,
+  },
+  
+  eventTicket: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12, // 티켓 간격 추가
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray100,
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  
+  ticketDateSection: {
+    width: 50,
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  
+  ticketDay: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    lineHeight: 28,
+  },
+  
+  ticketWeekday: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  
+  ticketContent: {
+    flex: 1,
+  },
+  
+  ticketHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  
+  ticketTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    flex: 1,
+    marginRight: 8,
+  },
+  
+  ticketTypeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  
+  ticketTypeText: {
     fontSize: 10,
     fontWeight: '600',
     color: Colors.white,
   },
   
-  sentMoneySectionDescription: {
-    fontSize: 13,
+  ticketLocation: {
+    fontSize: 14,
     color: Colors.textSecondary,
-    lineHeight: 18,
+    marginBottom: 4,
   },
   
-  // 전체 누적 통계
-  totalStatsContainer: {
+  ticketTime: {
+    fontSize: 12,
+    color: Colors.gray500,
+  },
+  
+  ticketAction: {
+    marginLeft: 12,
+  },
+  
+  // 티켓 없음 상태
+  noTicketsContainer: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    backgroundColor: Colors.gray50,
+    borderRadius: 12,
+  },
+  
+  noTicketsText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  
+  createEventFromCalendarButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 16,
+  },
+  
+  createEventFromCalendarText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+  
+  // 🔥 간소화된 통계 요약
+  summaryStatsContainer: {
     marginTop: 8,
   },
   
-  totalStatsTitle: {
+  summaryStatsTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: Colors.textPrimary,
     marginBottom: 16,
   },
   
-  totalStatsGrid: {
+  summaryStatsGrid: {
     flexDirection: 'row',
     gap: 12,
   },
   
-  totalStatItem: {
+  summaryStatCard: {
     flex: 1,
     backgroundColor: Colors.white,
     borderRadius: 12,
@@ -1699,16 +2673,606 @@ const styles = StyleSheet.create({
     borderColor: Colors.gray100,
   },
   
-  totalStatValue: {
-    fontSize: 20,
+  summaryStatValue: {
+    fontSize: 18,
     fontWeight: '700',
     color: Colors.textPrimary,
     marginTop: 8,
     marginBottom: 4,
   },
   
-  totalStatLabel: {
-    fontSize: 12,
+  summaryStatLabel: {
+    fontSize: 11,
     color: Colors.textSecondary,
   },
+  
+  // 더보기 버튼 스타일
+  showMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: Colors.primary + '08',
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 6,
+  },
+  
+  showMoreButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.primary,
+  },
+  
+  // 🔥 모달 스타일
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  
+  modalContent: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    zIndex: 1,
+  },
+  
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray100,
+    marginBottom: 20,
+  },
+  
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.gray50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  
+  selectedDateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary + '10',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 24,
+    gap: 8,
+  },
+  
+  selectedDateText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  
+  eventTypeContainer: {
+    marginBottom: 24,
+  },
+  
+  // 🔥 일정 모드 선택 스타일
+  eventModeContainer: {
+    marginBottom: 24,
+  },
+  
+  eventModeButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  
+  eventModeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.gray200,
+    backgroundColor: Colors.white,
+    gap: 6,
+  },
+  
+  eventModeButtonActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+  },
+  
+  eventModeButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  
+  eventModeButtonTextActive: {
+    color: Colors.white,
+  },
+  
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 12,
+  },
+  
+  eventTypeButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  
+  eventTypeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.gray200,
+    backgroundColor: Colors.white,
+    gap: 8,
+  },
+  
+  eventTypeButtonActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+  },
+  
+  eventTypeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  
+  eventTypeButtonTextActive: {
+    color: Colors.white,
+  },
+  
+  inputContainer: {
+    marginBottom: 24,
+  },
+  
+  textInput: {
+    borderWidth: 2,
+    borderColor: Colors.gray200,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    fontSize: 16,
+    color: Colors.textPrimary,
+    backgroundColor: Colors.white,
+    minHeight: 56,
+  },
+  
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    paddingTop: 8,
+  },
+  
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: Colors.gray100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  modalCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  
+  modalAddButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  modalAddButtonDisabled: {
+    backgroundColor: Colors.gray200,
+  },
+  
+  modalAddButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+  
+  modalAddButtonTextDisabled: {
+    color: Colors.gray400,
+  },
+
+  // 🔥 일정 목록 모달 스타일
+  eventListModal: {
+    flex: 1,
+    backgroundColor: Colors.white,
+  },
+
+  eventListHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray100,
+  },
+
+  eventModalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.gray900,
+  },
+
+  eventModalDate: {
+    fontSize: 16,
+    color: Colors.gray600,
+    marginTop: 4,
+  },
+
+  eventListCloseButton: {
+    padding: 8,
+  },
+
+  eventListContent: {
+    flex: 1,
+    padding: 20,
+  },
+
+  eventListItem: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  eventListItemContent: {
+    flex: 1,
+  },
+
+  eventListItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+
+  eventListItemTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.gray900,
+    flex: 1,
+  },
+
+  eventListItemBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+
+  eventListItemBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.primary,
+    marginLeft: 4,
+  },
+
+  eventListItemLocation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+
+  eventListItemLocationText: {
+    fontSize: 14,
+    color: Colors.gray500,
+    marginLeft: 4,
+  },
+
+  eventListFooter: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray100,
+  },
+
+  addEventFromListButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    paddingVertical: 16,
+    borderRadius: 12,
+  },
+
+  addEventFromListButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.white,
+    marginLeft: 8,
+  },
+
+  // Toss 스타일 모달 스타일
+  tossModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+
+  tossModalContainer: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+    minHeight: 300,
+  },
+
+  tossModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 10,
+  },
+
+  tossModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.gray900,
+  },
+
+  tossModalCloseButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.gray100,
+  },
+
+  tossModalContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+
+  tossEventList: {
+    marginVertical: 10,
+  },
+
+  tossEventItem: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  tossEventTypeColumn: {
+    marginRight: 12,
+  },
+
+  tossEventTypeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 40,
+    alignItems: 'center',
+  },
+
+  tossEventTypeBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+
+  tossEventInfo: {
+    flex: 1,
+  },
+
+  tossEventTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+
+  tossEventTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.gray900,
+    flex: 1,
+    marginRight: 8,
+  },
+
+  tossEventTime: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.gray500,
+  },
+
+  tossEventLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+
+  tossEventLocation: {
+    fontSize: 14,
+    color: Colors.gray500,
+    marginLeft: 4,
+    flex: 1,
+  },
+
+  tossEventArrow: {
+    marginLeft: 8,
+  },
+
+  tossModalActions: {
+    paddingHorizontal: 20,
+    paddingBottom: 30,
+    paddingTop: 10,
+    flexDirection: 'row',
+    gap: 12,
+  },
+
+  tossModalButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+  },
+
+  tossModalCancelButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.gray100,
+  },
+
+  tossModalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+
+  tossModalCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.gray700,
+  },
+
+  // 성공 모달 스타일
+  tossSuccessContainer: {
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    padding: 30,
+    margin: 20,
+    alignItems: 'center',
+    minHeight: 200,
+    justifyContent: 'center',
+  },
+
+  tossSuccessIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+
+  tossSuccessTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.gray900,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+
+  tossSuccessMessage: {
+    fontSize: 16,
+    color: Colors.gray600,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+
+  tossSuccessButton: {
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+  },
+
+  tossSuccessButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+
+  // 추가 토스 모달 스타일
+  tossModalSubtitle: {
+    fontSize: 16,
+    color: Colors.gray600,
+    marginTop: 8,
+    textAlign: 'left',
+  },
+
+  tossEventContent: {
+    flex: 1,
+  },
+
+  tossEventTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.gray900,
+  },
+
+  tossModalCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.gray700,
+  },
+
+  tossSuccessSubtitle: {
+    fontSize: 16,
+    color: Colors.gray600,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+
 });
