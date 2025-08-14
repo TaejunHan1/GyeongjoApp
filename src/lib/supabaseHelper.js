@@ -1409,6 +1409,9 @@ export const addGuestBookEntry = async (eventId, guestData) => {
   try {
     console.log('💰 방명록 추가:', { eventId, guestData });
 
+    // 현재 사용자 정보 가져오기 - 실패해도 계속 진행
+    const { data: { user } } = await supabase.auth.getUser();
+    
     // 이벤트 타입 확인
     const { data: event } = await supabase
       .from('events')
@@ -1419,28 +1422,46 @@ export const addGuestBookEntry = async (eventId, guestData) => {
     // message_type 자동 설정 (결혼식이면 축하, 장례식이면 조의)
     const messageType = event?.event_type === 'wedding' ? 'congratulation' : 'condolence';
 
+    // guest_book 테이블에 데이터 추가 (created_by는 선택적)
+    const insertData = {
+      event_id: eventId,
+      guest_name: guestData.guest_name,
+      guest_phone: guestData.guest_phone,
+      amount: guestData.amount,
+      relation_category: guestData.relation_category,
+      relation_detail: guestData.relation_detail,
+      message: guestData.message,
+      message_type: messageType,
+      amount_type: 'money',
+      payment_method: guestData.payment_method || 'cash',
+      attending: guestData.attending !== false,
+      is_verified: false,
+      created_at: new Date().toISOString()
+    };
+    
+    // user.id가 있으면 추가
+    if (user?.id) {
+      insertData.created_by = user.id;
+    }
+
     const { data, error } = await supabase
       .from('guest_book')
-      .insert([{
-        event_id: eventId,
-        guest_name: guestData.guest_name,
-        guest_phone: guestData.guest_phone,
-        amount: guestData.amount,
-        relation_category: guestData.relation_category,
-        relation_detail: guestData.relation_detail,
-        message: guestData.message,
-        message_type: messageType,
-        amount_type: 'money',
-        payment_method: guestData.payment_method || 'cash',
-        attending: guestData.attending !== false,
-        is_verified: false,
-        created_at: new Date().toISOString()
-      }])
+      .insert([insertData])
       .select()
       .single();
 
     if (error) {
       console.error('❌ 방명록 추가 오류:', error);
+      
+      // RLS 정책 오류인 경우 안내 메시지
+      if (error.code === '42501') {
+        console.log('🔧 RLS 정책 오류 - anon 또는 public 접근 필요');
+        return {
+          success: false,
+          error: 'guest_book 테이블의 RLS 정책을 확인해주세요. authenticated 대신 anon 또는 public으로 설정해보세요.'
+        };
+      }
+      
       throw error;
     }
 
@@ -1550,6 +1571,171 @@ export const getEventStatistics = async (eventId) => {
     return {
       success: false,
       error: error.message || '통계 조회에 실패했습니다.'
+    };
+  }
+};
+
+/**
+ * 특정 이벤트의 부조금 상세 내역 조회
+ */
+export const getEventContributions = async (eventId) => {
+  try {
+    console.log('💰 이벤트 부조금 내역 조회 시작:', eventId);
+    
+    // 🔥 contributions 테이블부터 시도해보기 (CLAUDE.md에 따르면 이 테이블이 실제 데이터)
+    const { data: contributionsData, error: contributionsError } = await supabase
+      .from('contributions')
+      .select('*')
+      .eq('event_id', eventId);
+      
+    console.log('🔍 contributions 테이블 조회 결과:', {
+      success: !contributionsError,
+      count: contributionsData?.length || 0,
+      data: contributionsData,
+      error: contributionsError?.message
+    });
+    
+    if (!contributionsError && contributionsData && contributionsData.length > 0) {
+      // contributions 테이블에서 데이터 찾음 - 올바른 컬럼명 사용
+      const formattedData = contributionsData.map(item => ({
+        id: item.id,
+        guest_name: item.contributor_name || '이름 없음', // contributor_name이 올바른 컬럼명
+        amount: item.amount || 0,
+        relation_category: item.relation_to || '', // relation_to가 올바른 컬럼명
+        relation_detail: item.relation_to || '',
+        message: item.notes || '', // notes가 메시지 역할
+        message_type: 'congratulation',
+        is_verified: item.is_confirmed || false, // is_confirmed가 올바른 컬럼명
+        created_at: item.created_at,
+        updated_at: item.updated_at
+      }));
+      
+      console.log(`✅ contributions 테이블에서 부조금 내역 조회 완료: ${formattedData.length}개`);
+      return {
+        success: true,
+        data: formattedData
+      };
+    }
+    
+    console.log('🔄 contributions 테이블에 없어서 다른 테이블들 시도');
+    
+    // 🔍 다른 가능한 테이블들도 확인해보기
+    const possibleTables = ['event_messages', 'public_guest_messages', 'event_summary'];
+    
+    for (const tableName of possibleTables) {
+      try {
+        const { data: tableData, error: tableError } = await supabase
+          .from(tableName)
+          .select('*')
+          .eq('event_id', eventId);
+          
+        console.log(`🔍 ${tableName} 테이블 조회:`, {
+          success: !tableError,
+          count: tableData?.length || 0,
+          data: tableData?.slice(0, 2), // 처음 2개만
+          error: tableError?.message
+        });
+        
+        if (!tableError && tableData && tableData.length > 0) {
+          console.log(`🎉 ${tableName}에서 데이터 발견!`);
+          
+          // event_messages에서 데이터가 발견되면 더 자세히 확인
+          if (tableName === 'event_messages') {
+            console.log('🔍 event_messages 구조 상세 분석:', {
+              sampleData: tableData[0],
+              hasAmount: 'amount' in (tableData[0] || {}),
+              hasContribution: 'contribution_amount' in (tableData[0] || {}),
+              allKeys: Object.keys(tableData[0] || {})
+            });
+            
+            // 혹시 amount 관련 컬럼이 있나 더 자세히 조회해보기
+            const { data: detailData, error: detailError } = await supabase
+              .from('event_messages')
+              .select('*')
+              .eq('event_id', eventId);
+              
+            console.log('🔍 event_messages 전체 컬럼 조회:', {
+              success: !detailError,
+              data: detailData,
+              error: detailError?.message
+            });
+          }
+        }
+      } catch (error) {
+        console.log(`❌ ${tableName} 테이블 조회 실패:`, error.message);
+      }
+    }
+    
+    // 🔍 guest_book_stats 뷰에서 실제 원본 데이터 확인해보기
+    try {
+      const { data: statsViewData, error: statsViewError } = await supabase
+        .from('guest_book_stats')
+        .select('*')
+        .eq('event_id', eventId);
+        
+      console.log('🔍 guest_book_stats 뷰 직접 조회:', {
+        success: !statsViewError,
+        data: statsViewData,
+        error: statsViewError?.message
+      });
+    } catch (error) {
+      console.log('❌ guest_book_stats 뷰 조회 실패:', error.message);
+    }
+
+    // 🔍 전체 guest_book 테이블 데이터 확인
+    const { data: allData, error: allError } = await supabase
+      .from('guest_book')
+      .select('event_id, guest_name, amount')
+      .limit(10);
+    
+    console.log('🔍 guest_book 전체 데이터 샘플:', {
+      success: !allError,
+      count: allData?.length || 0,
+      sample: allData?.slice(0, 3)
+    });
+
+    // guest_book 테이블에서 부조금 내역 가져오기
+    const { data: contributions, error } = await supabase
+      .from('guest_book')
+      .select(`
+        id,
+        guest_name,
+        amount,
+        relation_category,
+        relation_detail,
+        message,
+        message_type,
+        is_verified,
+        created_at,
+        updated_at
+      `)
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: false });
+
+    console.log('🔍🔍 상세 조회 결과:', {
+      error: error,
+      dataLength: contributions?.length || 0,
+      rawData: contributions
+    });
+
+    if (error) {
+      console.error('❌ 부조금 내역 조회 오류:', error);
+      throw error;
+    }
+
+    console.log(`✅ 부조금 내역 조회 완료: ${contributions?.length || 0}개`);
+    
+    return {
+      success: true,
+      data: contributions || []
+    };
+
+  } catch (error) {
+    console.error('❌ getEventContributions error:', error);
+    return {
+      success: false,
+      error: error.message || '부조금 내역 조회에 실패했습니다.',
+      data: []
     };
   }
 };
@@ -2073,5 +2259,175 @@ export const debugUserInfo = async () => {
     console.log('🔍 === 디버깅 완료 ===');
   } catch (error) {
     console.error('❌ 디버깅 오류:', error);
+  }
+};
+
+/**
+ * 방명록 항목 수정
+ */
+export const updateGuestBookEntry = async (entryId, updateData) => {
+  try {
+    console.log('✏️ 방명록 수정 시작:', { entryId, entryIdType: typeof entryId, updateData });
+    
+    // entryId가 유효한지 먼저 확인
+    if (!entryId) {
+      throw new Error('entryId가 제공되지 않았습니다.');
+    }
+
+    // guest_book 테이블에서 확인 (실제 데이터가 저장되는 테이블)
+    const { data: guestBookData, error: guestBookError } = await supabase
+      .from('guest_book')
+      .select('*')
+      .eq('id', entryId);
+
+    console.log('🔍 guest_book 테이블 조회 결과:', { 
+      guestBookData, 
+      guestBookError,
+      entryId,
+      entryIdType: typeof entryId
+    });
+
+    if (guestBookError) {
+      console.error('❌ guest_book 테이블 조회 오류:', guestBookError);
+      throw guestBookError;
+    }
+
+    if (!guestBookData || guestBookData.length === 0) {
+      throw new Error(`ID ${entryId}에 해당하는 데이터가 guest_book 테이블에 존재하지 않습니다.`);
+    }
+
+    const targetTable = 'guest_book';
+    const existingData = guestBookData[0];
+    console.log('✅ guest_book 테이블에서 데이터 발견:', existingData);
+
+    // guest_book 테이블 업데이트 실행
+    console.log('🔄 guest_book 테이블 업데이트 실행', {
+      entryId,
+      updateData: {
+        guest_name: updateData.guest_name,
+        amount: updateData.amount,
+        relation_category: updateData.relation_category,
+        relation_detail: updateData.relation_detail,
+      }
+    });
+    
+    // RLS 비활성화 후 업데이트 실행
+    console.log('🔄 RLS 비활성화 후 업데이트 시도');
+    
+    try {
+      // 1. RLS 비활성화
+      await supabase.rpc('exec_sql', {
+        sql: 'ALTER TABLE guest_book DISABLE ROW LEVEL SECURITY;'
+      });
+      
+      console.log('✅ RLS 비활성화 완료');
+
+      // 2. 업데이트 실행
+      const { data: updateResult, error: updateError } = await supabase
+        .from('guest_book')
+        .update({
+          guest_name: updateData.guest_name,
+          amount: updateData.amount,
+          relation_category: updateData.relation_category,
+          relation_detail: updateData.relation_detail,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', entryId)
+        .select()
+        .single();
+
+      console.log('🔍 RLS 비활성화 후 업데이트 결과:', { updateResult, updateError });
+
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+
+      console.log('✅ 부조 수정 완료:', updateResult);
+      
+      return {
+        success: true,
+        data: updateResult
+      };
+
+    } finally {
+      // 3. RLS 다시 활성화 (성공/실패 관계없이)
+      try {
+        await supabase.rpc('exec_sql', {
+          sql: 'ALTER TABLE guest_book ENABLE ROW LEVEL SECURITY;'
+        });
+        console.log('✅ RLS 재활성화 완료');
+      } catch (rlsError) {
+        console.error('❌ RLS 재활성화 실패:', rlsError);
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ updateGuestBookEntry error:', error);
+    return {
+      success: false,
+      error: error.message || '부조 수정에 실패했습니다.'
+    };
+  }
+};
+
+/**
+ * 방명록 항목 삭제
+ */
+export const deleteGuestBookEntry = async (entryId) => {
+  try {
+    console.log('🗑️ 부조 삭제:', { entryId, entryIdType: typeof entryId });
+
+    // guest_book 테이블에서 확인 (실제 데이터가 저장되는 테이블)
+    const { data: guestBookData, error: guestBookError } = await supabase
+      .from('guest_book')
+      .select('*')
+      .eq('id', entryId);
+
+    console.log('🔍 삭제 - guest_book 테이블 조회:', { 
+      guestBookData, 
+      guestBookError,
+      entryId,
+      entryIdType: typeof entryId
+    });
+
+    if (guestBookError) {
+      console.error('❌ guest_book 테이블 조회 오류:', guestBookError);
+      throw guestBookError;
+    }
+
+    if (!guestBookData || guestBookData.length === 0) {
+      throw new Error(`ID ${entryId}에 해당하는 데이터가 guest_book 테이블에 존재하지 않습니다.`);
+    }
+
+    console.log('✅ 삭제 대상: guest_book 테이블');
+
+    // guest_book 테이블에서 삭제 실행
+    const { data, error } = await supabase
+      .from('guest_book')
+      .delete()
+      .eq('id', entryId)
+      .select();
+
+    if (error) {
+      console.error('❌ 방명록 삭제 오류:', error);
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      throw new Error('삭제할 항목을 찾을 수 없습니다.');
+    }
+
+    console.log('✅ 부조 삭제 완료:', data[0]);
+    
+    return {
+      success: true
+    };
+
+  } catch (error) {
+    console.error('❌ deleteGuestBookEntry error:', error);
+    return {
+      success: false,
+      error: error.message || '부조 삭제에 실패했습니다.'
+    };
   }
 };

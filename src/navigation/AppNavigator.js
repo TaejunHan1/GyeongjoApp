@@ -41,6 +41,11 @@ import TimelineScreen from '../screens/main/guides/host/TimelineScreen';
 import SettingsScreen from '../screens/main/SettingsScreen'; 
 import ContributionSettingsScreen from '../screens/main/ContributionSettingsScreen';
 
+// 🆕 장소/업체 관련 화면들
+import VenueSearchScreen from '../screens/venue/VenueSearchScreen';
+import WeddingVenueListScreen from '../screens/venue/WeddingVenueListScreen';
+import FuneralVenueListScreen from '../screens/venue/FuneralVenueListScreen';
+
 import { Colors } from '../styles/constants';
 
 const Stack = createStackNavigator();
@@ -61,6 +66,8 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
             iconName = focused ? 'list' : 'list-outline';
           } else if (route.name === 'Guide') {
             iconName = focused ? 'book' : 'book-outline';
+          } else if (route.name === 'Venue') {
+            iconName = focused ? 'business' : 'business-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           }
@@ -119,6 +126,21 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
       >
         {(props) => (
           <GuideScreen 
+            {...props} 
+            userInfo={userInfo}
+            session={session}
+            isAuthenticated={isAuthenticated}
+          />
+        )}
+      </Tab.Screen>
+
+      {/* 🆕 장소/업체 탭 추가 */}
+      <Tab.Screen 
+        name="Venue" 
+        options={{ tabBarLabel: '장소' }}
+      >
+        {(props) => (
+          <VenueSearchScreen 
             {...props} 
             userInfo={userInfo}
             session={session}
@@ -681,6 +703,63 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
               {...props} 
               userInfo={userInfo}
               session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        {/* 🆕 장소 관련 화면들 */}
+        <Stack.Screen 
+          name="WeddingVenueList" 
+          options={{
+            headerShown: true,
+            title: '결혼식장 목록',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <WeddingVenueListScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+              isAuthenticated={isAuthenticated}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen 
+          name="FuneralVenueList" 
+          options={{
+            headerShown: true,
+            title: '장례식장 목록',
+            headerStyle: {
+              backgroundColor: Colors.white,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray100,
+            },
+            headerTitleStyle: {
+              fontSize: 18,
+              fontWeight: '600',
+              color: Colors.textPrimary,
+            },
+            headerTintColor: Colors.textPrimary,
+          }}
+        >
+          {(props) => (
+            <FuneralVenueListScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+              isAuthenticated={isAuthenticated}
             />
           )}
         </Stack.Screen>

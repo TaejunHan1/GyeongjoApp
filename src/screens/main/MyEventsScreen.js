@@ -14,42 +14,126 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../../styles/constants';
-import { getUserEvents, deleteEvent } from '../../lib/supabaseHelper';
+import { getUserEvents, getEventStatistics, deleteEvent, getEventContributions } from '../../lib/supabaseHelper';
 
-export default function MyEventsScreen({ navigation }) {
-  const [events, setEvents] = useState([]);
+export default function MyEventsScreen({ navigation, userInfo, session, isAuthenticated }) {
+  const [activeTab, setActiveTab] = useState('hosted'); // hosted, participated
+  const [hostedEvents, setHostedEvents] = useState([]);
+  const [participatedEvents, setParticipatedEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState('all'); // all, active, completed
+  const [hostedFilter, setHostedFilter] = useState('all'); // all, active, completed
 
   // 화면 포커스 시 데이터 새로고침
   useFocusEffect(
     React.useCallback(() => {
-      loadEvents();
+      loadAllData();
     }, [])
   );
 
-  const loadEvents = async () => {
+  const loadAllData = async () => {
     try {
       setLoading(true);
-      const result = await getUserEvents();
-      
-      if (result.success) {
-        setEvents(result.data || []);
-      } else {
-        Alert.alert('오류', result.error || '경조사 목록을 불러올 수 없습니다.');
-      }
+      await Promise.all([
+        loadHostedEvents(),
+        loadParticipatedEvents()
+      ]);
     } catch (error) {
-      console.error('Events loading error:', error);
-      Alert.alert('오류', '경조사 목록을 불러오는 중 오류가 발생했습니다.');
+      console.error('전체 데이터 로딩 오류:', error);
     } finally {
       setLoading(false);
     }
   };
 
+  // 날짜 기반으로 이벤트 상태 자동 판별
+  const determineEventStatus = (eventDate) => {
+    if (!eventDate) return 'active';
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // 시간을 00:00:00으로 설정
+    
+    const eventDateObj = new Date(eventDate);
+    eventDateObj.setHours(0, 0, 0, 0); // 시간을 00:00:00으로 설정
+    
+    // 오늘 날짜이거나 미래 날짜면 진행중, 과거 날짜면 완료
+    return eventDateObj >= today ? 'active' : 'completed';
+  };
+
+  const loadHostedEvents = async () => {
+    try {
+      const result = await getUserEvents();
+      
+      if (result.success) {
+        // 🔥 개인 일정 제외하고 실제 경조사만 필터링
+        const hostedEventsOnly = (result.data || []).filter(event => 
+          !event.is_personal_schedule && !event.isPersonalSchedule && event.source !== 'personal'
+        );
+        
+        console.log('🔍 필터링 결과:', {
+          전체: result.data?.length || 0,
+          경조사만: hostedEventsOnly.length,
+          개인일정제외됨: (result.data?.length || 0) - hostedEventsOnly.length
+        });
+        
+        // 통계 정보를 포함한 이벤트 데이터 가져오기
+        const eventsWithStats = await Promise.all(
+          hostedEventsOnly.map(async (event) => {
+            try {
+              const statsResult = await getEventStatistics(event.id);
+              // 날짜 기반으로 상태 자동 판별
+              const autoStatus = determineEventStatus(event.event_date);
+              
+              return {
+                ...event,
+                status: autoStatus, // 자동 판별된 상태로 업데이트
+                stats: {
+                  totalContributions: statsResult.data?.totalContributions || 0,
+                  totalAmount: statsResult.data?.totalAmount || 0,
+                  averageAmount: statsResult.data?.averageAmount || 0,
+                  participantCount: statsResult.data?.totalContributions || 0 // totalContributions가 실제 참여자 수
+                }
+              };
+            } catch (error) {
+              console.error('통계 로딩 오류:', error);
+              const autoStatus = determineEventStatus(event.event_date);
+              return {
+                ...event,
+                status: autoStatus,
+                stats: {
+                  totalContributions: 0,
+                  totalAmount: 0,
+                  averageAmount: 0,
+                  participantCount: 0
+                }
+              };
+            }
+          })
+        );
+        setHostedEvents(eventsWithStats);
+      } else {
+        console.error('주최 이벤트 로딩 실패:', result.error);
+        setHostedEvents([]);
+      }
+    } catch (error) {
+      console.error('주최 이벤트 로딩 오류:', error);
+      setHostedEvents([]);
+    }
+  };
+
+  const loadParticipatedEvents = async () => {
+    try {
+      // TODO: 참여한 경조사 데이터 로직 구현 필요
+      // 현재는 임시로 빈 배열 설정
+      setParticipatedEvents([]);
+    } catch (error) {
+      console.error('참여 이벤트 로딩 오류:', error);
+      setParticipatedEvents([]);
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadEvents();
+    await loadAllData();
     setRefreshing(false);
   };
 
@@ -67,7 +151,7 @@ export default function MyEventsScreen({ navigation }) {
               const result = await deleteEvent(eventId);
               if (result.success) {
                 Alert.alert('완료', '경조사가 삭제되었습니다.');
-                loadEvents(); // 목록 새로고침
+                loadHostedEvents(); // 목록 새로고침
               } else {
                 Alert.alert('오류', result.error || '삭제에 실패했습니다.');
               }
@@ -80,24 +164,119 @@ export default function MyEventsScreen({ navigation }) {
     );
   };
 
-  // 필터링된 이벤트 목록
-  const filteredEvents = events.filter(event => {
-    if (filter === 'all') return true;
-    if (filter === 'active') return event.status === 'active';
-    if (filter === 'completed') return event.status === 'completed';
+  // 주최 이벤트 필터링
+  const filteredHostedEvents = hostedEvents.filter(event => {
+    if (hostedFilter === 'all') return true;
+    if (hostedFilter === 'active') return event.status === 'active';
+    if (hostedFilter === 'completed') return event.status === 'completed';
     return true;
   });
 
-  // 필터 버튼 스타일
-  const getFilterButtonStyle = (filterType) => ({
-    ...styles.filterButton,
-    backgroundColor: filter === filterType ? Colors.primary : Colors.gray100,
-  });
+  const renderTabButton = (tab, title, count) => (
+    <TouchableOpacity
+      style={[
+        styles.tabButton,
+        activeTab === tab && styles.tabButtonActive
+      ]}
+      onPress={() => setActiveTab(tab)}
+    >
+      <Text style={[
+        styles.tabText,
+        activeTab === tab && styles.tabTextActive
+      ]}>
+        {title}
+      </Text>
+      <Text style={[
+        styles.tabCount,
+        activeTab === tab && styles.tabCountActive
+      ]}>
+        ({count})
+      </Text>
+    </TouchableOpacity>
+  );
 
-  const getFilterTextStyle = (filterType) => ({
-    ...styles.filterText,
-    color: filter === filterType ? Colors.white : Colors.textSecondary,
-  });
+  const renderHostedEvents = () => (
+    <>
+      {/* 필터 */}
+      <View style={styles.filterSection}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterContainer}
+        >
+          {[
+            { id: 'all', label: '전체', count: hostedEvents.length },
+            { id: 'active', label: '진행중', count: hostedEvents.filter(e => e.status === 'active').length },
+            { id: 'completed', label: '완료', count: hostedEvents.filter(e => e.status === 'completed').length }
+          ].map(filter => (
+            <TouchableOpacity
+              key={filter.id}
+              style={[
+                styles.filterButton,
+                hostedFilter === filter.id && styles.filterButtonActive
+              ]}
+              onPress={() => setHostedFilter(filter.id)}
+            >
+              <Text style={[
+                styles.filterText,
+                hostedFilter === filter.id && styles.filterTextActive
+              ]}>
+                {filter.label} ({filter.count})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* 주최 이벤트 목록 */}
+      <View style={styles.eventsList}>
+        {filteredHostedEvents.length > 0 ? (
+          filteredHostedEvents.map((event) => (
+            <HostedEventCard
+              key={event.id}
+              event={event}
+              onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
+              onDelete={() => handleDeleteEvent(event.id, event.event_name)}
+            />
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons name="calendar-outline" size={64} color={Colors.gray300} />
+            <Text style={styles.emptyTitle}>
+              {hostedFilter === 'all' ? '주최한 경조사가 없어요' 
+               : hostedFilter === 'active' ? '진행중인 경조사가 없어요'
+               : '완료된 경조사가 없어요'}
+            </Text>
+            <Text style={styles.emptySubtitle}>
+              홈 화면에서 첫 번째 경조사를 만들어보세요
+            </Text>
+          </View>
+        )}
+      </View>
+    </>
+  );
+
+  const renderParticipatedEvents = () => (
+    <View style={styles.eventsList}>
+      <View style={styles.emptyState}>
+        <Ionicons name="gift-outline" size={64} color={Colors.gray300} />
+        <Text style={styles.emptyTitle}>참여한 경조사가 없어요</Text>
+        <Text style={styles.emptySubtitle}>
+          다른 분의 경조사에 참여하여 부조금을 기록해보세요
+        </Text>
+        <TouchableOpacity 
+          style={styles.addParticipationButton}
+          onPress={() => {
+            // TODO: 참여 경조사 추가 화면으로 이동
+            Alert.alert('준비중', '참여 경조사 추가 기능을 준비중입니다.');
+          }}
+        >
+          <Ionicons name="add" size={20} color={Colors.white} />
+          <Text style={styles.addParticipationText}>참여 기록 추가</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -106,52 +285,16 @@ export default function MyEventsScreen({ navigation }) {
       {/* 헤더 */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>내 경조사</Text>
-        <TouchableOpacity 
-          style={styles.addButton}
-          onPress={() => navigation.navigate('CreateEvent')}
-        >
-          <Ionicons name="add" size={24} color={Colors.white} />
-        </TouchableOpacity>
+        <Text style={styles.headerSubtitle}>경조사 관리 및 부조금 기록</Text>
       </View>
 
-      {/* 필터 */}
-      <View style={styles.filterSection}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterContainer}
-        >
-          <TouchableOpacity
-            style={getFilterButtonStyle('all')}
-            onPress={() => setFilter('all')}
-          >
-            <Text style={getFilterTextStyle('all')}>전체</Text>
-            <Text style={getFilterTextStyle('all')}>({events.length})</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={getFilterButtonStyle('active')}
-            onPress={() => setFilter('active')}
-          >
-            <Text style={getFilterTextStyle('active')}>진행중</Text>
-            <Text style={getFilterTextStyle('active')}>
-              ({events.filter(e => e.status === 'active').length})
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={getFilterButtonStyle('completed')}
-            onPress={() => setFilter('completed')}
-          >
-            <Text style={getFilterTextStyle('completed')}>완료</Text>
-            <Text style={getFilterTextStyle('completed')}>
-              ({events.filter(e => e.status === 'completed').length})
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
+      {/* 탭 */}
+      <View style={styles.tabContainer}>
+        {renderTabButton('hosted', '주최한 경조사', hostedEvents.length)}
+        {renderTabButton('participated', '참여한 경조사', participatedEvents.length)}
       </View>
 
-      {/* 이벤트 목록 */}
+      {/* 콘텐츠 */}
       <ScrollView 
         style={styles.content}
         refreshControl={
@@ -169,38 +312,10 @@ export default function MyEventsScreen({ navigation }) {
             <Ionicons name="refresh" size={32} color={Colors.gray400} />
             <Text style={styles.loadingText}>불러오는 중...</Text>
           </View>
-        ) : filteredEvents.length > 0 ? (
-          <View style={styles.eventsList}>
-            {filteredEvents.map((event) => (
-              <EventCard
-                key={event.id}
-                event={event}
-                onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
-                onDelete={() => handleDeleteEvent(event.id, event.event_name)}
-              />
-            ))}
-          </View>
+        ) : activeTab === 'hosted' ? (
+          renderHostedEvents()
         ) : (
-          <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={64} color={Colors.gray300} />
-            <Text style={styles.emptyTitle}>
-              {filter === 'all' ? '등록된 경조사가 없어요' 
-               : filter === 'active' ? '진행중인 경조사가 없어요'
-               : '완료된 경조사가 없어요'}
-            </Text>
-            <Text style={styles.emptySubtitle}>
-              {filter === 'all' ? '첫 번째 경조사를 만들어보세요'
-               : '다른 필터를 선택해보세요'}
-            </Text>
-            {filter === 'all' && (
-              <TouchableOpacity 
-                style={styles.createButton}
-                onPress={() => navigation.navigate('CreateEvent')}
-              >
-                <Text style={styles.createButtonText}>경조사 만들기</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          renderParticipatedEvents()
         )}
 
         <View style={{ height: 100 }} />
@@ -209,8 +324,8 @@ export default function MyEventsScreen({ navigation }) {
   );
 }
 
-// 이벤트 카드 컴포넌트
-const EventCard = ({ event, onPress, onDelete }) => {
+// 주최 이벤트 카드 컴포넌트
+const HostedEventCard = ({ event, onPress, onDelete }) => {
   const getEventIcon = () => {
     switch (event.event_type) {
       case 'wedding': return 'heart';
@@ -248,7 +363,13 @@ const EventCard = ({ event, onPress, onDelete }) => {
     });
   };
 
+  const formatAmount = (amount) => {
+    if (!amount || amount === 0) return '0원';
+    return `${amount.toLocaleString()}원`;
+  };
+
   const statusBadge = getStatusBadge();
+  const stats = event.stats || {};
 
   return (
     <TouchableOpacity style={styles.eventCard} onPress={onPress}>
@@ -285,19 +406,20 @@ const EventCard = ({ event, onPress, onDelete }) => {
         </View>
       </View>
 
+      {/* 부조금 통계 */}
       <View style={styles.eventStats}>
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>0</Text>
-          <Text style={styles.statLabel}>부조금</Text>
+          <Text style={styles.statNumber}>{stats.participantCount || 0}명</Text>
+          <Text style={styles.statLabel}>참여자</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>0건</Text>
-          <Text style={styles.statLabel}>참석자</Text>
+          <Text style={styles.statNumber}>{formatAmount(stats.totalAmount)}</Text>
+          <Text style={styles.statLabel}>총 부조금</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>0원</Text>
+          <Text style={styles.statNumber}>{formatAmount(stats.averageAmount)}</Text>
           <Text style={styles.statLabel}>평균</Text>
         </View>
       </View>
@@ -306,7 +428,10 @@ const EventCard = ({ event, onPress, onDelete }) => {
         <Text style={styles.eventHost}>
           주최: {event.main_person_name || '미입력'}
         </Text>
-        <Ionicons name="chevron-forward" size={16} color={Colors.gray400} />
+        <View style={styles.eventFooterRight}>
+          <Text style={styles.viewDetailsText}>부조금 상세보기</Text>
+          <Ionicons name="chevron-forward" size={16} color={Colors.gray400} />
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -320,9 +445,6 @@ const styles = StyleSheet.create({
   
   // 헤더
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 50,
     paddingBottom: 16,
@@ -334,17 +456,54 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: Colors.textPrimary,
+    marginBottom: 4,
   },
-  addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
+  headerSubtitle: {
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
   
-  // 필터
+  // 탭
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: Colors.white,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray100,
+  },
+  tabButton: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginHorizontal: 4,
+    backgroundColor: Colors.gray50,
+  },
+  tabButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+    marginRight: 4,
+  },
+  tabTextActive: {
+    color: Colors.white,
+  },
+  tabCount: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  tabCountActive: {
+    color: Colors.white,
+  },
+  
+  // 필터 (주최 이벤트용)
   filterSection: {
     backgroundColor: Colors.white,
     paddingVertical: 16,
@@ -356,26 +515,31 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   filterButton: {
-    flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    alignItems: 'center',
-    gap: 4,
+    backgroundColor: Colors.gray100,
+  },
+  filterButtonActive: {
+    backgroundColor: Colors.primary,
   },
   filterText: {
     fontSize: 14,
     fontWeight: '500',
+    color: Colors.textSecondary,
+  },
+  filterTextActive: {
+    color: Colors.white,
   },
   
   // 콘텐츠
   content: {
     flex: 1,
-    paddingHorizontal: 20,
   },
   
   // 이벤트 목록
   eventsList: {
+    paddingHorizontal: 20,
     paddingTop: 20,
     gap: 16,
   },
@@ -452,7 +616,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statNumber: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: Colors.primary,
     marginBottom: 2,
@@ -477,35 +641,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
   },
+  eventFooterRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  viewDetailsText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '500',
+    marginRight: 4,
+  },
   
   // 빈 상태
   emptyState: {
     alignItems: 'center',
-    paddingTop: 80,
+    paddingTop: 60,
     paddingHorizontal: 40,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
     color: Colors.textSecondary,
-    marginTop: 24,
+    marginTop: 20,
     marginBottom: 8,
     textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 24,
+    lineHeight: 20,
+    marginBottom: 24,
   },
-  createButton: {
+  
+  // 참여 추가 버튼
+  addParticipationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.primary,
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 8,
   },
-  createButtonText: {
+  addParticipationText: {
     fontSize: 16,
     fontWeight: '600',
     color: Colors.white,

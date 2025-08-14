@@ -78,23 +78,23 @@ const CalendarComponent = ({ events, onDatePress, onEventPress, currentCalendarD
       const matchesDate = eventDate.toDateString() === date.toDateString();
       
       // 디버깅 로그
-      if (matchesDate) {
-        console.log('📅 캘린더 날짜 매칭:', {
-          date: date.toDateString(),
-          eventDate: eventDate.toDateString(),
-          eventName: event.event_name || event.title,
-          isPersonalSchedule,
-          source: event.source,
-          is_personal_schedule: event.is_personal_schedule
-        });
-      }
+      // if (matchesDate) {
+      //   console.log('📅 캘린더 날짜 매칭:', {
+      //     date: date.toDateString(),
+      //     eventDate: eventDate.toDateString(),
+      //     eventName: event.event_name || event.title,
+      //     isPersonalSchedule,
+      //     source: event.source,
+      //     is_personal_schedule: event.is_personal_schedule
+      //   });
+      // }
       
       return matchesDate && isPersonalSchedule;
     });
     
-    if (filteredEvents.length > 0) {
-      console.log('📅 해당 날짜 이벤트 수:', filteredEvents.length, 'for', date.toDateString());
-    }
+    // if (filteredEvents.length > 0) {
+    //   console.log('📅 해당 날짜 이벤트 수:', filteredEvents.length, 'for', date.toDateString());
+    // }
     
     return filteredEvents;
   };
@@ -1431,15 +1431,15 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           <View style={styles.calendarContainer}>
             <CalendarComponent 
               events={(() => {
-                console.log('🔥 캘린더에 전달되는 activeEvents:', activeEvents.length, 'items');
+                // console.log('🔥 캘린더에 전달되는 activeEvents:', activeEvents.length, 'items');
                 activeEvents.forEach((event, i) => {
-                  console.log(`🔥 Event ${i}:`, {
-                    id: event.id,
-                    title: event.event_name || event.title,
-                    date: event.event_date,
-                    source: event.source,
-                    is_personal_schedule: event.is_personal_schedule
-                  });
+                  // console.log(`🔥 Event ${i}:`, {
+                  //   id: event.id,
+                  //   title: event.event_name || event.title,
+                  //   date: event.event_date,
+                  //   source: event.source,
+                  //   is_personal_schedule: event.is_personal_schedule
+                  // });
                 });
                 return activeEvents;
               })()}
