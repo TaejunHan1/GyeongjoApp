@@ -68,6 +68,12 @@ export default function EventDetailScreen({ navigation, route }) {
   const [inputEditable, setInputEditable] = useState(true);
   const searchInputRef = useRef(null);
   const keyboardActivated = useRef(false); // 키보드 활성화 상태 추적
+  
+  // 통계 모달
+  const [statisticsModalVisible, setStatisticsModalVisible] = useState(false);
+  
+  // 확정 관리 모달
+  const [verifyManageModalVisible, setVerifyManageModalVisible] = useState(false);
 
   // 검색 모달 열기
   const openSearchModal = () => {
@@ -675,7 +681,7 @@ export default function EventDetailScreen({ navigation, route }) {
           
           <TouchableOpacity 
             style={styles.tossActionButton}
-            onPress={() => Alert.alert('통계 정보', `📊 부조 통계\n\n신랑측: ${stats.totalCount > 0 ? Math.floor(stats.totalCount * 0.6) : 0}건\n신부측: ${stats.totalCount > 0 ? Math.ceil(stats.totalCount * 0.4) : 0}건\n\n평균 부조금: ${formatAmount(stats.averageAmount)}\n총 부조금: ${formatAmount(stats.totalAmount)}`)}
+            onPress={() => setStatisticsModalVisible(true)}
           >
             <View style={styles.tossActionImageContainer}>
               <Image 
@@ -689,14 +695,7 @@ export default function EventDetailScreen({ navigation, route }) {
           
           <TouchableOpacity 
             style={styles.tossActionButton}
-            onPress={() => {
-              const unverifiedCount = contributions.filter(c => !c.is_verified).length;
-              const verifiedCount = contributions.filter(c => c.is_verified).length;
-              Alert.alert(
-                '확인 현황', 
-                `✅ 확인됨: ${verifiedCount}건\n⏳ 미확인: ${unverifiedCount}건\n\n확인이 필요한 부조가 ${unverifiedCount}건 있습니다.`
-              );
-            }}
+            onPress={() => setVerifyManageModalVisible(true)}
           >
             <View style={styles.tossActionImageContainer}>
               <Image 
@@ -705,7 +704,7 @@ export default function EventDetailScreen({ navigation, route }) {
                 resizeMode="contain"
               />
             </View>
-            <Text style={styles.tossActionText}>확인현황</Text>
+            <Text style={styles.tossActionText}>확정관리</Text>
           </TouchableOpacity>
           
         </View>
@@ -1196,6 +1195,301 @@ export default function EventDetailScreen({ navigation, route }) {
               <View style={{ height: 20 }} />
             </ScrollView>
             </KeyboardAvoidingView>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* 토스 스타일 통계 모달 */}
+      <Modal
+        visible={statisticsModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setStatisticsModalVisible(false)}
+      >
+        <SafeAreaView style={styles.tossStatModalContainer}>
+          <View style={styles.tossStatModalContent}>
+            {/* 헤더 */}
+            <View style={styles.tossStatModalHeader}>
+              <TouchableOpacity
+                style={styles.tossStatModalCloseButton}
+                onPress={() => setStatisticsModalVisible(false)}
+              >
+                <Ionicons name="close" size={24} color="#191F28" />
+              </TouchableOpacity>
+              <Text style={styles.tossStatModalTitle}>부조 통계</Text>
+              <View style={{ width: 40 }} />
+            </View>
+
+            <ScrollView 
+              style={styles.tossStatModalScrollView}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* 총 요약 */}
+              <View style={styles.tossStatSummaryCard}>
+                <View style={styles.tossStatMainAmount}>
+                  <Text style={styles.tossStatLabel}>총 부조금</Text>
+                  <Text style={styles.tossStatBigValue}>
+                    {formatAmount(contributions.reduce((sum, c) => sum + (c.amount || 0), 0))}
+                  </Text>
+                </View>
+                <View style={styles.tossStatDivider} />
+                <View style={styles.tossStatSubInfo}>
+                  <View style={styles.tossStatInfoItem}>
+                    <Text style={styles.tossStatSmallLabel}>총 건수</Text>
+                    <Text style={styles.tossStatSmallValue}>{contributions.length}건</Text>
+                  </View>
+                  <View style={styles.tossStatInfoItem}>
+                    <Text style={styles.tossStatSmallLabel}>평균 부조금</Text>
+                    <Text style={styles.tossStatSmallValue}>
+                      {formatAmount(contributions.length > 0 ? Math.round(contributions.reduce((sum, c) => sum + (c.amount || 0), 0) / contributions.length) : 0)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* 금액대별 분포 차트 */}
+              <View style={styles.tossStatChartCard}>
+                <Text style={styles.tossStatSectionTitle}>금액대별 분포</Text>
+                <View style={styles.tossStatBars}>
+                  {(() => {
+                    const ranges = [
+                      { label: '~5만', count: contributions.filter(c => c.amount < 50000).length },
+                      { label: '5~10만', count: contributions.filter(c => c.amount >= 50000 && c.amount < 100000).length },
+                      { label: '10~20만', count: contributions.filter(c => c.amount >= 100000 && c.amount < 200000).length },
+                      { label: '20만~', count: contributions.filter(c => c.amount >= 200000).length },
+                    ];
+                    const maxCount = Math.max(...ranges.map(r => r.count), 1);
+                    
+                    return ranges.map((range, index) => (
+                      <View key={index} style={styles.tossStatBarContainer}>
+                        <View style={styles.tossStatBarWrapper}>
+                          <View 
+                            style={[
+                              styles.tossStatBar,
+                              { height: `${(range.count / maxCount) * 100}%` }
+                            ]} 
+                          />
+                          <Text style={styles.tossStatBarCount}>{range.count}</Text>
+                        </View>
+                        <Text style={styles.tossStatBarLabel}>{range.label}</Text>
+                      </View>
+                    ));
+                  })()}
+                </View>
+              </View>
+
+              {/* 확정 현황 */}
+              <View style={styles.tossStatStatusCard}>
+                <Text style={styles.tossStatSectionTitle}>확정 현황</Text>
+                <View style={styles.tossStatProgressContainer}>
+                  <View style={styles.tossStatProgressBar}>
+                    <View 
+                      style={[
+                        styles.tossStatProgressFill,
+                        { width: `${contributions.length > 0 ? (contributions.filter(c => c.is_verified).length / contributions.length * 100) : 0}%` }
+                      ]} 
+                    />
+                  </View>
+                  <View style={styles.tossStatProgressInfo}>
+                    <View style={styles.tossStatProgressItem}>
+                      <View style={[styles.tossStatDot, { backgroundColor: '#3182F6' }]} />
+                      <Text style={styles.tossStatProgressLabel}>확정</Text>
+                      <Text style={styles.tossStatProgressValue}>
+                        {contributions.filter(c => c.is_verified).length}건
+                      </Text>
+                    </View>
+                    <View style={styles.tossStatProgressItem}>
+                      <View style={[styles.tossStatDot, { backgroundColor: '#E5E8EB' }]} />
+                      <Text style={styles.tossStatProgressLabel}>미확정</Text>
+                      <Text style={styles.tossStatProgressValue}>
+                        {contributions.filter(c => !c.is_verified).length}건
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* 관계별 통계 */}
+              <View style={styles.tossStatRelationCard}>
+                <Text style={styles.tossStatSectionTitle}>관계별 통계</Text>
+                <View style={styles.tossStatRelationList}>
+                  {(() => {
+                    const relationStats = {};
+                    contributions.forEach(c => {
+                      const key = c.relation_detail || '기타';
+                      if (!relationStats[key]) {
+                        relationStats[key] = { count: 0, amount: 0 };
+                      }
+                      relationStats[key].count++;
+                      relationStats[key].amount += c.amount || 0;
+                    });
+                    
+                    return Object.entries(relationStats)
+                      .sort((a, b) => b[1].amount - a[1].amount)
+                      .map(([relation, stats]) => (
+                        <View key={relation} style={styles.tossStatRelationItem}>
+                          <Text style={styles.tossStatRelationName}>{relation}</Text>
+                          <View style={styles.tossStatRelationInfo}>
+                            <Text style={styles.tossStatRelationCount}>{stats.count}건</Text>
+                            <Text style={styles.tossStatRelationAmount}>{formatAmount(stats.amount)}</Text>
+                          </View>
+                        </View>
+                      ));
+                  })()}
+                </View>
+              </View>
+
+              <View style={{ height: 40 }} />
+            </ScrollView>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* 토스 스타일 확정 관리 모달 */}
+      <Modal
+        visible={verifyManageModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setVerifyManageModalVisible(false)}
+      >
+        <SafeAreaView style={styles.tossVerifyModalContainer}>
+          <View style={styles.tossVerifyModalContent}>
+            {/* 헤더 */}
+            <View style={styles.tossVerifyModalHeader}>
+              <TouchableOpacity
+                style={styles.tossVerifyModalCloseButton}
+                onPress={() => setVerifyManageModalVisible(false)}
+              >
+                <Ionicons name="close" size={24} color="#191F28" />
+              </TouchableOpacity>
+              <Text style={styles.tossVerifyModalTitle}>확정 관리</Text>
+              <View style={{ width: 40 }} />
+            </View>
+
+            <ScrollView 
+              style={styles.tossVerifyModalScrollView}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* 확정 현황 요약 */}
+              <View style={styles.tossVerifySummaryCard}>
+                <View style={styles.tossVerifyStatusRow}>
+                  <View style={styles.tossVerifyStatusItem}>
+                    <View style={[styles.tossVerifyStatusIcon, { backgroundColor: '#E8F5E9' }]}>
+                      <Ionicons name="checkmark-circle" size={32} color="#4CAF50" />
+                    </View>
+                    <Text style={styles.tossVerifyStatusLabel}>확정됨</Text>
+                    <Text style={styles.tossVerifyStatusCount}>
+                      {contributions.filter(c => c.is_verified).length}건
+                    </Text>
+                    <Text style={styles.tossVerifyStatusAmount}>
+                      {formatAmount(contributions.filter(c => c.is_verified).reduce((sum, c) => sum + (c.amount || 0), 0))}
+                    </Text>
+                  </View>
+                  <View style={styles.tossVerifyDivider} />
+                  <View style={styles.tossVerifyStatusItem}>
+                    <View style={[styles.tossVerifyStatusIcon, { backgroundColor: '#FFF3E0' }]}>
+                      <Ionicons name="time-outline" size={32} color="#FF9800" />
+                    </View>
+                    <Text style={styles.tossVerifyStatusLabel}>미확정</Text>
+                    <Text style={styles.tossVerifyStatusCount}>
+                      {contributions.filter(c => !c.is_verified).length}건
+                    </Text>
+                    <Text style={styles.tossVerifyStatusAmount}>
+                      {formatAmount(contributions.filter(c => !c.is_verified).reduce((sum, c) => sum + (c.amount || 0), 0))}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* 미확정 목록 */}
+              {contributions.filter(c => !c.is_verified).length > 0 && (
+                <View style={styles.tossVerifyListCard}>
+                  <View style={styles.tossVerifyListHeader}>
+                    <Text style={styles.tossVerifyListTitle}>미확정 부조 목록</Text>
+                    <TouchableOpacity
+                      style={styles.tossVerifyAllButton}
+                      onPress={async () => {
+                        Alert.alert(
+                          '전체 확정',
+                          '모든 미확정 부조를 확정하시겠습니까?',
+                          [
+                            { text: '취소', style: 'cancel' },
+                            {
+                              text: '확정',
+                              onPress: async () => {
+                                // 모든 미확정 항목 확정 처리
+                                const unverifiedItems = contributions.filter(c => !c.is_verified);
+                                for (const item of unverifiedItems) {
+                                  await toggleGuestBookVerification(item.id);
+                                }
+                                await loadEventData();
+                                Alert.alert('완료', '모든 부조가 확정되었습니다.');
+                              }
+                            }
+                          ]
+                        );
+                      }}
+                    >
+                      <Text style={styles.tossVerifyAllButtonText}>전체 확정</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.tossVerifyList}>
+                    {contributions.filter(c => !c.is_verified).map((item, index) => (
+                      <View key={item.id || index} style={styles.tossVerifyListItem}>
+                        <View style={styles.tossVerifyListItemInfo}>
+                          <Text style={styles.tossVerifyListItemName}>{item.guest_name}</Text>
+                          <Text style={styles.tossVerifyListItemDetail}>
+                            {item.relation_detail || '관계 미지정'} · {formatAmount(item.amount)}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.tossVerifyListItemButton}
+                          onPress={async () => {
+                            await toggleGuestBookVerification(item.id);
+                            await loadEventData();
+                          }}
+                        >
+                          <Text style={styles.tossVerifyListItemButtonText}>확정</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* 확정된 목록 */}
+              {contributions.filter(c => c.is_verified).length > 0 && (
+                <View style={styles.tossVerifyListCard}>
+                  <Text style={styles.tossVerifyListTitle}>확정된 부조 목록</Text>
+                  <View style={styles.tossVerifyList}>
+                    {contributions.filter(c => c.is_verified).map((item, index) => (
+                      <View key={item.id || index} style={[styles.tossVerifyListItem, styles.tossVerifyListItemConfirmed]}>
+                        <View style={styles.tossVerifyListItemInfo}>
+                          <View style={styles.tossVerifyListItemNameRow}>
+                            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                            <Text style={[styles.tossVerifyListItemName, { marginLeft: 4 }]}>{item.guest_name}</Text>
+                          </View>
+                          <Text style={styles.tossVerifyListItemDetail}>
+                            {item.relation_detail || '관계 미지정'} · {formatAmount(item.amount)}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.tossVerifyListItemButton, styles.tossVerifyListItemButtonCancel]}
+                          onPress={async () => {
+                            await toggleGuestBookVerification(item.id);
+                            await loadEventData();
+                          }}
+                        >
+                          <Text style={styles.tossVerifyListItemButtonCancelText}>취소</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              <View style={{ height: 40 }} />
+            </ScrollView>
           </View>
         </SafeAreaView>
       </Modal>
@@ -2566,5 +2860,392 @@ const styles = StyleSheet.create({
   searchModalEmptySubtext: {
     fontSize: 14,
     color: Colors.textSecondary,
+  },
+  
+  // 토스 스타일 통계 모달
+  tossStatModalContainer: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+  },
+  tossStatModalContent: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+  },
+  tossStatModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'white',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E8EB',
+  },
+  tossStatModalCloseButton: {
+    padding: 4,
+  },
+  tossStatModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#191F28',
+  },
+  tossStatModalScrollView: {
+    flex: 1,
+    padding: 16,
+  },
+  tossStatSummaryCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  tossStatMainAmount: {
+    alignItems: 'center',
+    paddingBottom: 16,
+  },
+  tossStatLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7684',
+    marginBottom: 8,
+  },
+  tossStatBigValue: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#191F28',
+  },
+  tossStatDivider: {
+    height: 1,
+    backgroundColor: '#E5E8EB',
+    marginVertical: 16,
+  },
+  tossStatSubInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  tossStatInfoItem: {
+    alignItems: 'center',
+  },
+  tossStatSmallLabel: {
+    fontSize: 13,
+    color: '#6B7684',
+    marginBottom: 4,
+  },
+  tossStatSmallValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#191F28',
+  },
+  tossStatChartCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  tossStatSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#191F28',
+    marginBottom: 16,
+  },
+  tossStatBars: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-end',
+    height: 120,
+  },
+  tossStatBarContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  tossStatBarWrapper: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  tossStatBar: {
+    width: '60%',
+    backgroundColor: '#3182F6',
+    borderRadius: 4,
+    minHeight: 4,
+  },
+  tossStatBarCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#191F28',
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  tossStatBarLabel: {
+    fontSize: 11,
+    color: '#6B7684',
+    marginTop: 4,
+  },
+  tossStatStatusCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  tossStatProgressContainer: {
+    marginTop: 8,
+  },
+  tossStatProgressBar: {
+    height: 8,
+    backgroundColor: '#E5E8EB',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  tossStatProgressFill: {
+    height: '100%',
+    backgroundColor: '#3182F6',
+  },
+  tossStatProgressInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  tossStatProgressItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tossStatDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  tossStatProgressLabel: {
+    fontSize: 14,
+    color: '#6B7684',
+  },
+  tossStatProgressValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#191F28',
+  },
+  tossStatRelationCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  tossStatRelationList: {
+    gap: 12,
+  },
+  tossStatRelationItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F5F5',
+  },
+  tossStatRelationName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#191F28',
+  },
+  tossStatRelationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  tossStatRelationCount: {
+    fontSize: 13,
+    color: '#6B7684',
+  },
+  tossStatRelationAmount: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#191F28',
+  },
+  
+  // 토스 스타일 확정 관리 모달
+  tossVerifyModalContainer: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+  },
+  tossVerifyModalContent: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+  },
+  tossVerifyModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'white',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E8EB',
+  },
+  tossVerifyModalCloseButton: {
+    padding: 4,
+  },
+  tossVerifyModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#191F28',
+  },
+  tossVerifyModalScrollView: {
+    flex: 1,
+    padding: 16,
+  },
+  tossVerifySummaryCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  tossVerifyStatusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  tossVerifyStatusItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  tossVerifyStatusIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  tossVerifyStatusLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7684',
+    marginBottom: 4,
+  },
+  tossVerifyStatusCount: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#191F28',
+    marginBottom: 4,
+  },
+  tossVerifyStatusAmount: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3182F6',
+  },
+  tossVerifyDivider: {
+    width: 1,
+    backgroundColor: '#E5E8EB',
+    marginHorizontal: 16,
+  },
+  tossVerifyListCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  tossVerifyListHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  tossVerifyListTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#191F28',
+  },
+  tossVerifyAllButton: {
+    backgroundColor: '#3182F6',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  tossVerifyAllButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'white',
+  },
+  tossVerifyList: {
+    gap: 8,
+  },
+  tossVerifyListItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  tossVerifyListItemConfirmed: {
+    backgroundColor: '#F0F9FF',
+    borderColor: '#3182F6',
+  },
+  tossVerifyListItemInfo: {
+    flex: 1,
+  },
+  tossVerifyListItemName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#191F28',
+    marginBottom: 2,
+  },
+  tossVerifyListItemNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tossVerifyListItemDetail: {
+    fontSize: 13,
+    color: '#6B7684',
+  },
+  tossVerifyListItemButton: {
+    backgroundColor: '#3182F6',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  tossVerifyListItemButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'white',
+  },
+  tossVerifyListItemButtonCancel: {
+    backgroundColor: '#F5F5F5',
+  },
+  tossVerifyListItemButtonCancelText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7684',
   },
 });
