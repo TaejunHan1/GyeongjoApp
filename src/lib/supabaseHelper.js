@@ -1938,6 +1938,64 @@ export const getMonthlyStatistics = async (userId) => {
 
 
 /**
+ * 부조금 확정/미확정 토글
+ */
+export const toggleGuestBookVerification = async (entryId) => {
+  try {
+    console.log('🔄 부조금 확정 상태 토글 시작:', entryId);
+
+    // 현재 상태 조회
+    const { data: currentEntry, error: fetchError } = await supabase
+      .from('guest_book')
+      .select('is_verified')
+      .eq('id', entryId)
+      .single();
+
+    if (fetchError) {
+      console.error('❌ 현재 상태 조회 오류:', fetchError);
+      throw fetchError;
+    }
+
+    // 상태 토글
+    const newVerifiedState = !currentEntry.is_verified;
+
+    const { data, error } = await supabase
+      .from('guest_book')
+      .update({ 
+        is_verified: newVerifiedState,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', entryId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ 부조금 확정 상태 업데이트 오류:', error);
+      throw error;
+    }
+
+    console.log('✅ 부조금 확정 상태 업데이트 완료:', {
+      entryId,
+      previousState: currentEntry.is_verified,
+      newState: newVerifiedState
+    });
+
+    return {
+      success: true,
+      data: data,
+      isVerified: newVerifiedState
+    };
+
+  } catch (error) {
+    console.error('❌ toggleGuestBookVerification error:', error);
+    return {
+      success: false,
+      error: error.message || '확정 상태 변경에 실패했습니다.'
+    };
+  }
+};
+
+/**
  * 활성 이벤트만 조회 - 상주 정보 포함
  */
 export const getActiveEvents = async () => {

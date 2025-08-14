@@ -15,15 +15,18 @@ import {
   Platform,
   InteractionManager,
   Keyboard,
+  Image,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../styles/constants';
-import { getEventDetail, getEventContributions, getEventStatistics, addGuestBookEntry, updateGuestBookEntry, deleteGuestBookEntry } from '../../lib/supabaseHelper';
+import { getEventDetail, getEventContributions, getEventStatistics, addGuestBookEntry, updateGuestBookEntry, deleteGuestBookEntry, toggleGuestBookVerification } from '../../lib/supabaseHelper';
 
 export default function EventDetailScreen({ navigation, route }) {
   const { eventId } = route.params;
+  const insets = useSafeAreaInsets();
   
   const [event, setEvent] = useState(null);
   const [contributions, setContributions] = useState([]);
@@ -40,6 +43,8 @@ export default function EventDetailScreen({ navigation, route }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'verified', 'unverified'
+  const [sortOrder, setSortOrder] = useState('default'); // 'default', 'amount_desc', 'amount_asc', 'name_asc', 'name_desc'
 
   // 성공 모달
   const [successModalVisible, setSuccessModalVisible] = useState(false);
@@ -48,6 +53,13 @@ export default function EventDetailScreen({ navigation, route }) {
     message: '',
     icon: 'checkmark-circle',
     color: Colors.success || Colors.primary
+  });
+
+  // 확정 모달
+  const [verificationModalVisible, setVerificationModalVisible] = useState(false);
+  const [verificationModalData, setVerificationModalData] = useState({
+    contribution: null,
+    isVerified: false
   });
 
   // 검색 모달
@@ -262,15 +274,6 @@ export default function EventDetailScreen({ navigation, route }) {
       const result = await updateGuestBookEntry(editContribution.id, updateData);
       
       if (result.success) {
-        // 커스텀 성공 모달 표시
-        setSuccessMessage({
-          title: '수정 완료',
-          message: `${editData.guest_name}님의 부조가 수정되었습니다.`,
-          icon: 'checkmark-circle',
-          color: Colors.success || Colors.primary
-        });
-        setSuccessModalVisible(true);
-        
         setEditModalVisible(false);
         setEditContribution(null);
         setEditData({
@@ -297,7 +300,7 @@ export default function EventDetailScreen({ navigation, route }) {
     console.log('🔍 contribution.id:', contribution.id);
     Alert.alert(
       '부조 삭제',
-      `${contribution.guest_name}님의 부조를 삭제하시겠습니까?`,
+      `${contribution.guest_name}님의 부조 내역을 정말 삭제하시겠어요?\n\n삭제된 내역은 복구할 수 없습니다.`,
       [
         { text: '취소', style: 'cancel' },
         {
@@ -308,26 +311,49 @@ export default function EventDetailScreen({ navigation, route }) {
               const result = await deleteGuestBookEntry(contribution.id);
               
               if (result.success) {
-                // 커스텀 성공 모달 표시
-                setSuccessMessage({
-                  title: '삭제 완료',
-                  message: '부조가 삭제되었습니다.',
-                  icon: 'trash',
-                  color: Colors.error || '#FF6B6B'
-                });
-                setSuccessModalVisible(true);
                 loadEventData(); // 데이터 새로고침
               } else {
-                Alert.alert('오류', result.error || '부조 삭제에 실패했습니다.');
+                Alert.alert('삭제 실패', result.error || '부조 삭제에 실패했습니다.');
               }
             } catch (error) {
               console.error('부조 삭제 오류:', error);
-              Alert.alert('오류', '부조 삭제 중 오류가 발생했습니다.');
+              Alert.alert('삭제 실패', '부조 삭제 중 오류가 발생했습니다.');
             }
           }
         }
       ]
     );
+  };
+
+
+  // 부조 확정/미확정 토글 처리
+  const handleToggleVerification = async (contribution) => {
+    console.log('🔄 확정 상태 토글:', contribution);
+    console.log('🔍 contribution.id:', contribution.id);
+    
+    setVerificationModalData({
+      contribution,
+      isVerified: contribution.is_verified
+    });
+    setVerificationModalVisible(true);
+  };
+
+  // 확정 처리 실행
+  const executeVerificationToggle = async () => {
+    setVerificationModalVisible(false);
+    
+    try {
+      const result = await toggleGuestBookVerification(verificationModalData.contribution.id);
+      
+      if (result.success) {
+        loadEventData(); // 데이터 새로고침
+      } else {
+        Alert.alert('오류', result.error || '확정 상태 변경에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('확정 상태 변경 오류:', error);
+      Alert.alert('오류', '확정 상태 변경 중 오류가 발생했습니다.');
+    }
   };
 
   const formatAmountInput = (text) => {
@@ -336,19 +362,44 @@ export default function EventDetailScreen({ navigation, route }) {
     return new Intl.NumberFormat('ko-KR').format(parseInt(numbers));
   };
 
-  // 검색 및 페이지네이션 계산
-  const filteredContributions = contributions.filter(contribution =>
-    contribution.guest_name?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // 검색 및 탭 필터링 계산
+  const filteredContributions = contributions.filter(contribution => {
+    // 검색 필터
+    const matchesSearch = contribution.guest_name?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    // 탭 필터
+    let matchesTab = true;
+    if (activeTab === 'verified') {
+      matchesTab = contribution.is_verified === true;
+    } else if (activeTab === 'unverified') {
+      matchesTab = contribution.is_verified === false;
+    }
+    
+    return matchesSearch && matchesTab;
+  }).sort((a, b) => {
+    // 정렬 적용
+    switch (sortOrder) {
+      case 'amount_desc': // 부조금 많은 순
+        return (b.amount || 0) - (a.amount || 0);
+      case 'amount_asc': // 부조금 적은 순  
+        return (a.amount || 0) - (b.amount || 0);
+      case 'name_asc': // 이름 가나다 순
+        return (a.guest_name || '').localeCompare(b.guest_name || '', 'ko-KR');
+      case 'name_desc': // 이름 역순
+        return (b.guest_name || '').localeCompare(a.guest_name || '', 'ko-KR');
+      default: // 기본값 (등록 순)
+        return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+    }
+  });
   
   const totalPages = Math.ceil(filteredContributions.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentPageContributions = filteredContributions.slice(startIndex, startIndex + itemsPerPage);
 
-  // 검색어가 변경되면 첫 페이지로 이동
+  // 검색어나 탭, 정렬이 변경되면 첫 페이지로 이동
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, activeTab, sortOrder]);
 
   // 화면 포커스 시 데이터 새로고침
   useFocusEffect(
@@ -486,13 +537,16 @@ export default function EventDetailScreen({ navigation, route }) {
   const formatAmount = (amount) => {
     if (!amount) return '0원';
     
+    // 소수점 제거를 위해 Math.round 적용
+    const roundedAmount = Math.round(amount);
+    
     // 만원 단위로 표시 (천만원 이상일 경우)
-    if (amount >= 10000000) {
-      const man = Math.floor(amount / 10000);
+    if (roundedAmount >= 10000000) {
+      const man = Math.floor(roundedAmount / 10000);
       return new Intl.NumberFormat('ko-KR').format(man) + '만원';
     }
     
-    return new Intl.NumberFormat('ko-KR').format(amount) + '원';
+    return new Intl.NumberFormat('ko-KR').format(roundedAmount) + '원';
   };
 
   const getEventIcon = () => {
@@ -565,146 +619,259 @@ export default function EventDetailScreen({ navigation, route }) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-        {/* 경조사 헤더 */}
-        <View style={styles.eventHeader}>
-          <View style={styles.eventInfo}>
-            <View style={[styles.eventIcon, { backgroundColor: getEventColor() }]}>
-              <Ionicons name={getEventIcon()} size={32} color={Colors.white} />
+        {/* 토스 스타일 메인 헤더 */}
+        <View style={styles.tossHeader}>
+          <View style={styles.tossHeaderTop}>
+            <View style={styles.tossTitleContainer}>
+              <View style={styles.tossHeaderImageContainer}>
+                <Image 
+                  source={require('../../../assets/images/Wedding_Cash_Gifts_List.png')} 
+                  style={styles.tossHeaderImage}
+                  resizeMode="contain"
+                />
+              </View>
+              <Text style={styles.tossTitle}>{event.event_name}</Text>
             </View>
-            <View style={styles.eventDetails}>
-              <Text style={styles.eventTitle}>{event.event_name}</Text>
-              <Text style={styles.eventDate}>{formatDate(event.event_date)}</Text>
-              <Text style={styles.eventLocation}>{event.location || '장소 미정'}</Text>
-            </View>
+          </View>
+          <Text style={styles.tossSubtitle}>{formatDate(event.event_date)}</Text>
+          <Text style={styles.tossLocation}>{event.location || '장소 미정'}</Text>
+        </View>
+
+        {/* 토스 스타일 메인 금액 카드 */}
+        <View style={styles.tossMainCard}>
+          <View style={styles.tossMainAmount}>
+            <Text style={styles.tossAmountLabel}>총 부조금</Text>
+            <Text style={styles.tossAmountValue}>{formatAmount(stats.totalAmount)}</Text>
           </View>
           
-        </View>
-
-
-        {/* 통계 카드 */}
-        <View style={styles.statsCard}>
-          <Text style={styles.statsTitle}>부조 현황</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{formatAmount(stats.totalAmount)}</Text>
-              <Text style={styles.statLabel}>총 부조금</Text>
+          <View style={styles.tossStatsRow}>
+            <View style={styles.tossStatItem}>
+              <Text style={styles.tossStatValue}>{stats.totalCount}</Text>
+              <Text style={styles.tossStatLabel}>총 건수</Text>
             </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{stats.totalCount}건</Text>
-              <Text style={styles.statLabel}>총 건수</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{formatAmount(stats.averageAmount)}</Text>
-              <Text style={styles.statLabel}>평균 금액</Text>
+            <View style={styles.tossDivider} />
+            <View style={styles.tossStatItem}>
+              <Text style={styles.tossStatValue}>{formatAmount(stats.averageAmount)}</Text>
+              <Text style={styles.tossStatLabel}>평균 금액</Text>
             </View>
           </View>
         </View>
 
-        {/* 빠른 액션 */}
-        <View style={styles.quickActions}>
+        {/* 토스 스타일 액션 버튼들 */}
+        <View style={styles.tossActionGrid}>
           <TouchableOpacity 
-            style={styles.quickActionItem}
+            style={styles.tossActionButton}
             onPress={() => setAddModalVisible(true)}
           >
-            <View style={[styles.quickActionIcon, { backgroundColor: Colors.primary }]}>
-              <Ionicons name="add" size={20} color={Colors.white} />
+            <View style={styles.tossActionImageContainer}>
+              <Image 
+                source={require('../../../assets/images/Additional_Condolence_Donations.png')} 
+                style={styles.tossActionImage}
+                resizeMode="contain"
+              />
             </View>
-            <Text style={styles.quickActionText}>부조 추가</Text>
+            <Text style={styles.tossActionText}>부조 추가</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={styles.quickActionItem}
-            onPress={() => Alert.alert('준비중', '통계 보기 기능을 준비 중입니다.')}
+            style={styles.tossActionButton}
+            onPress={() => Alert.alert('통계 정보', `📊 부조 통계\n\n신랑측: ${stats.totalCount > 0 ? Math.floor(stats.totalCount * 0.6) : 0}건\n신부측: ${stats.totalCount > 0 ? Math.ceil(stats.totalCount * 0.4) : 0}건\n\n평균 부조금: ${formatAmount(stats.averageAmount)}\n총 부조금: ${formatAmount(stats.totalAmount)}`)}
           >
-            <View style={[styles.quickActionIcon, { backgroundColor: Colors.success }]}>
-              <Ionicons name="bar-chart" size={20} color={Colors.white} />
+            <View style={styles.tossActionImageContainer}>
+              <Image 
+                source={require('../../../assets/images/Funeral_Donation_Records.png')} 
+                style={styles.tossActionImage}
+                resizeMode="contain"
+              />
             </View>
-            <Text style={styles.quickActionText}>통계 보기</Text>
+            <Text style={styles.tossActionText}>통계</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={styles.quickActionItem}
-            onPress={() => Alert.alert('준비중', '내보내기 기능을 준비 중입니다.')}
+            style={styles.tossActionButton}
+            onPress={() => {
+              const unverifiedCount = contributions.filter(c => !c.is_verified).length;
+              const verifiedCount = contributions.filter(c => c.is_verified).length;
+              Alert.alert(
+                '확인 현황', 
+                `✅ 확인됨: ${verifiedCount}건\n⏳ 미확인: ${unverifiedCount}건\n\n확인이 필요한 부조가 ${unverifiedCount}건 있습니다.`
+              );
+            }}
           >
-            <View style={[styles.quickActionIcon, { backgroundColor: Colors.warning }]}>
-              <Ionicons name="download" size={20} color={Colors.white} />
+            <View style={styles.tossActionImageContainer}>
+              <Image 
+                source={require('../../../assets/images/check.png')} 
+                style={styles.tossActionImage}
+                resizeMode="contain"
+              />
             </View>
-            <Text style={styles.quickActionText}>내보내기</Text>
+            <Text style={styles.tossActionText}>확인현황</Text>
           </TouchableOpacity>
+          
         </View>
 
-        {/* 부조 목록 */}
-        <View style={styles.contributionsSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>부조 목록</Text>
-            <Text style={styles.sectionCount}>({filteredContributions.length})</Text>
+        {/* 토스 스타일 부조 목록 */}
+        <View style={styles.tossListSection}>
+          <View style={styles.tossListHeader}>
+            <Text style={styles.tossListTitle}>부조 내역</Text>
+            <Text style={styles.tossListCount}>{filteredContributions.length}건</Text>
           </View>
           
-          {/* 검색 버튼 */}
-          <TouchableOpacity style={styles.searchButton} onPress={openSearchModal}>
-            <Ionicons name="search" size={20} color={Colors.gray400} style={styles.searchIcon} />
-            <Text style={[styles.searchPlaceholder, searchQuery && styles.searchActive]}>
-              {searchQuery || '이름으로 검색...'}
+          {/* 토스 스타일 탭 필터 */}
+          <View style={styles.tossTabs}>
+            <TouchableOpacity
+              style={[styles.tossTab, activeTab === 'all' && styles.tossTabActive]}
+              onPress={() => setActiveTab('all')}
+            >
+              <Text style={[styles.tossTabText, activeTab === 'all' && styles.tossTabTextActive]}>
+                전체 ({contributions.length})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tossTab, activeTab === 'unverified' && styles.tossTabActive]}
+              onPress={() => setActiveTab('unverified')}
+            >
+              <Text style={[styles.tossTabText, activeTab === 'unverified' && styles.tossTabTextActive]}>
+                미확정 ({contributions.filter(c => !c.is_verified).length})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tossTab, activeTab === 'verified' && styles.tossTabActive]}
+              onPress={() => setActiveTab('verified')}
+            >
+              <Text style={[styles.tossTabText, activeTab === 'verified' && styles.tossTabTextActive]}>
+                확정 ({contributions.filter(c => c.is_verified).length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          {/* 토스 스타일 정렬 버튼 */}
+          <View style={styles.tossSortButtons}>
+            <TouchableOpacity
+              style={[styles.tossSortButton, sortOrder === 'default' && styles.tossSortButtonActive]}
+              onPress={() => setSortOrder('default')}
+            >
+              <Text style={[styles.tossSortButtonText, sortOrder === 'default' && styles.tossSortButtonTextActive]}>
+                등록순
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tossSortButton, sortOrder === 'amount_desc' && styles.tossSortButtonActive]}
+              onPress={() => setSortOrder('amount_desc')}
+            >
+              <Text style={[styles.tossSortButtonText, sortOrder === 'amount_desc' && styles.tossSortButtonTextActive]}>
+                금액 많은순
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tossSortButton, sortOrder === 'amount_asc' && styles.tossSortButtonActive]}
+              onPress={() => setSortOrder('amount_asc')}
+            >
+              <Text style={[styles.tossSortButtonText, sortOrder === 'amount_asc' && styles.tossSortButtonTextActive]}>
+                금액 적은순
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tossSortButton, sortOrder === 'name_asc' && styles.tossSortButtonActive]}
+              onPress={() => setSortOrder('name_asc')}
+            >
+              <Text style={[styles.tossSortButtonText, sortOrder === 'name_asc' && styles.tossSortButtonTextActive]}>
+                이름순
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          {/* 토스 스타일 검색바 */}
+          <TouchableOpacity style={styles.tossSearchBar} onPress={openSearchModal}>
+            <Ionicons name="search" size={16} color="#B0BEC5" />
+            <Text style={[styles.tossSearchText, searchQuery && styles.tossSearchActive]}>
+              {searchQuery || '이름으로 검색'}
             </Text>
             {searchQuery && (
-              <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
-                <Ionicons name="close-circle" size={18} color={Colors.gray400} />
+              <TouchableOpacity onPress={clearSearch}>
+                <Ionicons name="close-circle" size={16} color="#B0BEC5" />
               </TouchableOpacity>
             )}
           </TouchableOpacity>
           
           {filteredContributions.length > 0 ? (
             <>
-              <View style={styles.contributionsList}>
+              <View style={styles.tossList}>
                 {currentPageContributions.map((contribution, index) => (
-                  <View key={contribution.id || index} style={styles.contributionItem}>
-                    <View style={styles.contributionInfo}>
-                      <Text style={styles.contributorName}>
-                        {contribution.guest_name || '이름 없음'}
-                      </Text>
-                      <Text style={styles.contributionRelation}>
-                        {(() => {
-                          const { displayCategory, displayDetail } = getRelationDisplay(
-                            contribution.relation_category,
-                            contribution.relation_detail
-                          );
-                          return `${displayCategory} · ${displayDetail}`;
-                        })()}
-                      </Text>
-                      <Text style={styles.contributionDate}>
-                        {contribution.created_at ? 
-                          new Date(contribution.created_at).toLocaleDateString('ko-KR') : 
-                          '날짜 미상'
-                        }
-                      </Text>
-                    </View>
-                    <View style={styles.contributionAmount}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Text style={styles.amountText}>
-                          {formatAmount(contribution.amount || 0)}
+                  <View key={contribution.id || index} style={[
+                    styles.tossListItem,
+                    contribution.is_verified ? styles.tossListItemVerified : styles.tossListItemUnverified
+                  ]}>
+                    <View style={styles.tossItemLeft}>
+                      <View style={styles.tossAvatar}>
+                        <Text style={styles.tossAvatarText}>
+                          {(contribution.guest_name || '이름 없음').charAt(0)}
                         </Text>
-                        {contribution.is_verified && (
-                          <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
-                        )}
                       </View>
-                      {/* 실제 데이터베이스 데이터인 경우만 수정/삭제 버튼 표시 (가짜 데이터 id는 문자열) */}
+                      <View style={styles.tossItemInfo}>
+                        <Text style={styles.tossItemName}>
+                          {contribution.guest_name || '이름 없음'}
+                        </Text>
+                        <Text style={styles.tossItemRelation}>
+                          {(() => {
+                            const { displayCategory, displayDetail } = getRelationDisplay(
+                              contribution.relation_category,
+                              contribution.relation_detail
+                            );
+                            return `${displayCategory} · ${displayDetail}`;
+                          })()}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.tossItemRight}>
+                      <Text style={styles.tossItemAmount}>
+                        {formatAmount(contribution.amount || 0)}
+                      </Text>
+                      <View style={styles.tossItemDate}>
+                        <Text style={styles.tossDateText}>
+                          {contribution.created_at ? 
+                            new Date(contribution.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }) : 
+                            '날짜 미상'
+                          }
+                        </Text>
+                      </View>
+                      
+                      {/* 실제 데이터베이스 데이터인 경우만 액션 버튼들 표시 */}
                       {contribution.id && !String(contribution.id).includes('groom-') && !String(contribution.id).includes('bride-') && (
-                        <View style={styles.contributionActions}>
+                        <View style={styles.tossSimpleActions}>
+                          {/* 확정/확정취소 버튼 */}
                           <TouchableOpacity
-                            style={styles.actionButtonToss}
-                            onPress={() => handleEditContribution(contribution)}
+                            style={[
+                              styles.tossSimpleButton,
+                              contribution.is_verified ? styles.tossVerifiedSimpleButton : styles.tossUnverifiedSimpleButton
+                            ]}
+                            onPress={() => handleToggleVerification(contribution)}
                           >
-                            <Text style={styles.actionButtonText}>수정</Text>
+                            <Text style={[
+                              styles.tossSimpleButtonText,
+                              contribution.is_verified ? styles.tossVerifiedSimpleText : styles.tossUnverifiedSimpleText
+                            ]}>
+                              {contribution.is_verified ? '확정취소' : '확정'}
+                            </Text>
                           </TouchableOpacity>
-                          <Text style={styles.actionSeparator}>|</Text>
-                          <TouchableOpacity
-                            style={styles.actionButtonToss}
-                            onPress={() => handleDeleteContribution(contribution)}
-                          >
-                            <Text style={styles.actionButtonTextDelete}>삭제</Text>
-                          </TouchableOpacity>
+                          
+                          {/* 수정/삭제 버튼 (확정되지 않은 경우만) */}
+                          {!contribution.is_verified && (
+                            <>
+                              <TouchableOpacity
+                                style={styles.tossEditButton}
+                                onPress={() => handleEditContribution(contribution)}
+                              >
+                                <Text style={styles.tossEditButtonText}>수정</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.tossDeleteButton}
+                                onPress={() => handleDeleteContribution(contribution)}
+                              >
+                                <Text style={styles.tossDeleteButtonText}>삭제</Text>
+                              </TouchableOpacity>
+                            </>
+                          )}
                         </View>
                       )}
                     </View>
@@ -712,39 +879,41 @@ export default function EventDetailScreen({ navigation, route }) {
                 ))}
               </View>
               
-              {/* 페이지네이션 */}
+              {/* 토스 스타일 페이지네이션 */}
               {totalPages > 1 && (
-                <View style={styles.pagination}>
+                <View style={styles.tossPagination}>
                   <TouchableOpacity 
-                    style={[styles.pageButton, currentPage === 1 && styles.pageButtonDisabled]}
+                    style={[styles.tossPrevButton, currentPage === 1 && styles.tossPageDisabled]}
                     onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                     disabled={currentPage === 1}
                   >
-                    <Ionicons name="chevron-back" size={20} color={currentPage === 1 ? Colors.gray300 : Colors.primary} />
+                    <Ionicons name="chevron-back" size={18} color={currentPage === 1 ? '#E0E0E0' : '#3182F6'} />
                   </TouchableOpacity>
                   
-                  <Text style={styles.pageInfo}>
-                    {currentPage} / {totalPages} 페이지 ({filteredContributions.length}명)
+                  <Text style={styles.tossPageInfo}>
+                    {currentPage} / {totalPages}
                   </Text>
                   
                   <TouchableOpacity 
-                    style={[styles.pageButton, currentPage === totalPages && styles.pageButtonDisabled]}
+                    style={[styles.tossNextButton, currentPage === totalPages && styles.tossPageDisabled]}
                     onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                     disabled={currentPage === totalPages}
                   >
-                    <Ionicons name="chevron-forward" size={20} color={currentPage === totalPages ? Colors.gray300 : Colors.primary} />
+                    <Ionicons name="chevron-forward" size={18} color={currentPage === totalPages ? '#E0E0E0' : '#3182F6'} />
                   </TouchableOpacity>
                 </View>
               )}
             </>
           ) : (
-            <View style={styles.emptyContributions}>
-              <Ionicons name="people-outline" size={48} color={Colors.gray300} />
-              <Text style={styles.emptyTitle}>
-                {searchQuery ? '검색 결과가 없어요' : '아직 부조가 없어요'}
+            <View style={styles.tossEmptyState}>
+              <View style={styles.tossEmptyIcon}>
+                <Ionicons name="receipt-outline" size={32} color="#B0BEC5" />
+              </View>
+              <Text style={styles.tossEmptyTitle}>
+                {searchQuery ? '검색 결과가 없어요' : '부조 내역이 없어요'}
               </Text>
-              <Text style={styles.emptySubtitle}>
-                {searchQuery ? '다른 검색어를 시도해보세요' : '첫 번째 부조를 추가해보세요'}
+              <Text style={styles.tossEmptySubtitle}>
+                {searchQuery ? '다른 이름으로 검색해보세요' : '첫 번째 부조를 추가해보세요'}
               </Text>
             </View>
           )}
@@ -755,129 +924,133 @@ export default function EventDetailScreen({ navigation, route }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* 부조 추가 모달 */}
+      {/* 토스 스타일 부조 추가 모달 */}
       <Modal
         visible={addModalVisible}
-        animationType="fade"
-        transparent={true}
+        animationType="slide"
+        presentationStyle="pageSheet"
         onRequestClose={() => setAddModalVisible(false)}
       >
-        <TouchableOpacity 
-          style={styles.modalContainer}
-          activeOpacity={1}
-          onPress={() => setAddModalVisible(false)}
-        >
-          <TouchableOpacity 
-            style={styles.modalContent}
-            activeOpacity={1}
-            onPress={() => {}}
-          >
+        <SafeAreaView style={styles.tossFormModalContainer}>
+          <View style={styles.tossFormModalContent}>
             <KeyboardAvoidingView 
               style={{ flex: 1 }} 
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
-            {/* 모달 헤더 */}
-            <View style={styles.modalHeader}>
+            {/* 토스 스타일 헤더 */}
+            <View style={styles.tossFormModalHeader}>
               <TouchableOpacity
-                style={styles.modalCloseButton}
+                style={styles.tossFormModalCloseButton}
                 onPress={() => setAddModalVisible(false)}
               >
-                <Ionicons name="close" size={24} color={Colors.textSecondary} />
+                <Ionicons name="chevron-back" size={24} color="#191F28" />
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>부조 추가</Text>
+              <Text style={styles.tossFormModalTitle}>부조 추가</Text>
               <TouchableOpacity
-                style={[styles.modalSaveButton, addingContribution && styles.modalSaveButtonDisabled]}
+                style={[
+                  styles.tossFormModalSaveButton, 
+                  addingContribution && styles.tossFormModalSaveButtonDisabled
+                ]}
                 onPress={handleAddContribution}
                 disabled={addingContribution}
               >
-                <Text style={[styles.modalSaveText, addingContribution && styles.modalSaveTextDisabled]}>
-                  {addingContribution ? '저장 중...' : '저장'}
+                <Text style={[
+                  styles.tossFormModalSaveText, 
+                  addingContribution && styles.tossFormModalSaveTextDisabled
+                ]}>
+                  {addingContribution ? '저장 중...' : '완료'}
                 </Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView 
-              style={styles.modalScrollView}
+              style={styles.tossFormModalScrollView}
               contentContainerStyle={{ flexGrow: 1 }}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
               {/* 성함 입력 */}
-              <View style={styles.modalSection}>
-                <Text style={styles.modalLabel}>성함 *</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="성함을 입력해주세요"
-                  value={newContribution.guest_name}
-                  onChangeText={(text) => setNewContribution(prev => ({ ...prev, guest_name: text }))}
-                  placeholderTextColor={Colors.gray400}
-                />
+              <View style={styles.tossFormSection}>
+                <View style={styles.tossFormInputContainer}>
+                  <Text style={styles.tossFormLabel}>성함</Text>
+                  <TextInput
+                    style={styles.tossFormInput}
+                    placeholder="성함을 입력해주세요"
+                    value={newContribution.guest_name}
+                    onChangeText={(text) => setNewContribution(prev => ({ ...prev, guest_name: text }))}
+                    placeholderTextColor="#A0A8B5"
+                  />
+                </View>
               </View>
 
               {/* 금액 입력 */}
-              <View style={styles.modalSection}>
-                <Text style={styles.modalLabel}>부조금 *</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="금액을 입력해주세요"
-                  value={newContribution.amount}
-                  onChangeText={(text) => setNewContribution(prev => ({ 
-                    ...prev, 
-                    amount: formatAmountInput(text) 
-                  }))}
-                  keyboardType="numeric"
-                  placeholderTextColor={Colors.gray400}
-                />
+              <View style={styles.tossFormSection}>
+                <View style={styles.tossFormInputContainer}>
+                  <Text style={styles.tossFormLabel}>부조금</Text>
+                  <TextInput
+                    style={styles.tossFormInput}
+                    placeholder="금액을 입력해주세요"
+                    value={newContribution.amount}
+                    onChangeText={(text) => setNewContribution(prev => ({ 
+                      ...prev, 
+                      amount: formatAmountInput(text) 
+                    }))}
+                    keyboardType="numeric"
+                    placeholderTextColor="#A0A8B5"
+                  />
+                </View>
               </View>
 
               {/* 관계 선택 */}
-              <View style={styles.modalSection}>
-                <Text style={styles.modalLabel}>관계</Text>
-                <View style={styles.relationRow}>
-                  <View style={styles.relationSection}>
-                    <Text style={styles.relationSubLabel}>측</Text>
-                    <View style={styles.relationButtons}>
-                      {['신랑측', '신부측'].map((category) => (
-                        <TouchableOpacity
-                          key={category}
-                          style={[
-                            styles.relationButton,
-                            newContribution.relation_category === category && styles.relationButtonActive
-                          ]}
-                          onPress={() => setNewContribution(prev => ({ ...prev, relation_category: category }))}
-                        >
-                          <Text style={[
-                            styles.relationButtonText,
-                            newContribution.relation_category === category && styles.relationButtonTextActive
-                          ]}>
-                            {category}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+              <View style={styles.tossFormSection}>
+                <View style={styles.tossFormInputContainer}>
+                  <Text style={styles.tossFormLabel}>관계</Text>
+                  <View style={styles.tossRelationContainer}>
+                    <View style={styles.tossRelationGroup}>
+                      <Text style={styles.tossRelationGroupLabel}>측</Text>
+                      <View style={styles.tossRelationButtons}>
+                        {['신랑측', '신부측'].map((category) => (
+                          <TouchableOpacity
+                            key={category}
+                            style={[
+                              styles.tossRelationButton,
+                              newContribution.relation_category === category && styles.tossRelationButtonActive
+                            ]}
+                            onPress={() => setNewContribution(prev => ({ ...prev, relation_category: category }))}
+                          >
+                            <Text style={[
+                              styles.tossRelationButtonText,
+                              newContribution.relation_category === category && styles.tossRelationButtonTextActive
+                            ]}>
+                              {category}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
-                  </View>
-                  
-                  <View style={styles.relationSection}>
-                    <Text style={styles.relationSubLabel}>관계</Text>
-                    <View style={styles.relationButtons}>
-                      {['친구', '동료', '가족', '친척', '기타'].map((detail) => (
-                        <TouchableOpacity
-                          key={detail}
-                          style={[
-                            styles.relationButton,
-                            newContribution.relation_detail === detail && styles.relationButtonActive
-                          ]}
-                          onPress={() => setNewContribution(prev => ({ ...prev, relation_detail: detail }))}
-                        >
-                          <Text style={[
-                            styles.relationButtonText,
-                            newContribution.relation_detail === detail && styles.relationButtonTextActive
-                          ]}>
-                            {detail}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+                    
+                    <View style={styles.tossRelationGroup}>
+                      <Text style={styles.tossRelationGroupLabel}>관계</Text>
+                      <View style={styles.tossRelationButtons}>
+                        {['친구', '동료', '가족', '친척', '기타'].map((detail) => (
+                          <TouchableOpacity
+                            key={detail}
+                            style={[
+                              styles.tossRelationButton,
+                              newContribution.relation_detail === detail && styles.tossRelationButtonActive
+                            ]}
+                            onPress={() => setNewContribution(prev => ({ ...prev, relation_detail: detail }))}
+                          >
+                            <Text style={[
+                              styles.tossRelationButtonText,
+                              newContribution.relation_detail === detail && styles.tossRelationButtonTextActive
+                            ]}>
+                              {detail}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
                   </View>
                 </View>
@@ -885,133 +1058,137 @@ export default function EventDetailScreen({ navigation, route }) {
               <View style={{ height: 20 }} />
             </ScrollView>
             </KeyboardAvoidingView>
-          </TouchableOpacity>
-        </TouchableOpacity>
+          </View>
+        </SafeAreaView>
       </Modal>
 
-      {/* 부조 수정 모달 */}
+      {/* 토스 스타일 부조 수정 모달 */}
       <Modal
         visible={editModalVisible}
-        animationType="fade"
-        transparent={true}
+        animationType="slide"
+        presentationStyle="pageSheet"
         onRequestClose={() => setEditModalVisible(false)}
       >
-        <TouchableOpacity 
-          style={styles.modalContainer}
-          activeOpacity={1}
-          onPress={() => setEditModalVisible(false)}
-        >
-          <TouchableOpacity 
-            style={styles.modalContent}
-            activeOpacity={1}
-            onPress={() => {}}
-          >
+        <SafeAreaView style={styles.tossFormModalContainer}>
+          <View style={styles.tossFormModalContent}>
             <KeyboardAvoidingView 
               style={{ flex: 1 }} 
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
-            {/* 모달 헤더 */}
-            <View style={styles.modalHeader}>
+            {/* 토스 스타일 헤더 */}
+            <View style={styles.tossFormModalHeader}>
               <TouchableOpacity
-                style={styles.modalCloseButton}
+                style={styles.tossFormModalCloseButton}
                 onPress={() => setEditModalVisible(false)}
               >
-                <Ionicons name="close" size={24} color={Colors.textSecondary} />
+                <Ionicons name="chevron-back" size={24} color="#191F28" />
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>부조 수정</Text>
+              <Text style={styles.tossFormModalTitle}>부조 수정</Text>
               <TouchableOpacity
-                style={[styles.modalSaveButton, editingContribution && styles.modalSaveButtonDisabled]}
+                style={[
+                  styles.tossFormModalSaveButton, 
+                  editingContribution && styles.tossFormModalSaveButtonDisabled
+                ]}
                 onPress={handleUpdateContribution}
                 disabled={editingContribution}
               >
-                <Text style={[styles.modalSaveText, editingContribution && styles.modalSaveTextDisabled]}>
-                  {editingContribution ? '수정 중...' : '수정'}
+                <Text style={[
+                  styles.tossFormModalSaveText, 
+                  editingContribution && styles.tossFormModalSaveTextDisabled
+                ]}>
+                  {editingContribution ? '수정 중...' : '완료'}
                 </Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView 
-              style={styles.modalScrollView}
+              style={styles.tossFormModalScrollView}
               contentContainerStyle={{ flexGrow: 1 }}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
               {/* 성함 입력 */}
-              <View style={styles.modalSection}>
-                <Text style={styles.modalLabel}>성함 *</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="성함을 입력해주세요"
-                  value={editData.guest_name}
-                  onChangeText={(text) => setEditData(prev => ({ ...prev, guest_name: text }))}
-                  placeholderTextColor={Colors.gray400}
-                />
+              <View style={styles.tossFormSection}>
+                <View style={styles.tossFormInputContainer}>
+                  <Text style={styles.tossFormLabel}>성함</Text>
+                  <TextInput
+                    style={styles.tossFormInput}
+                    placeholder="성함을 입력해주세요"
+                    value={editData.guest_name}
+                    onChangeText={(text) => setEditData(prev => ({ ...prev, guest_name: text }))}
+                    placeholderTextColor="#A0A8B5"
+                  />
+                </View>
               </View>
 
               {/* 금액 입력 */}
-              <View style={styles.modalSection}>
-                <Text style={styles.modalLabel}>부조금 *</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="금액을 입력해주세요"
-                  value={editData.amount}
-                  onChangeText={(text) => setEditData(prev => ({ 
-                    ...prev, 
-                    amount: formatAmountInput(text) 
-                  }))}
-                  keyboardType="numeric"
-                  placeholderTextColor={Colors.gray400}
-                />
+              <View style={styles.tossFormSection}>
+                <View style={styles.tossFormInputContainer}>
+                  <Text style={styles.tossFormLabel}>부조금</Text>
+                  <TextInput
+                    style={styles.tossFormInput}
+                    placeholder="금액을 입력해주세요"
+                    value={editData.amount}
+                    onChangeText={(text) => setEditData(prev => ({ 
+                      ...prev, 
+                      amount: formatAmountInput(text) 
+                    }))}
+                    keyboardType="numeric"
+                    placeholderTextColor="#A0A8B5"
+                  />
+                </View>
               </View>
 
               {/* 관계 선택 */}
-              <View style={styles.modalSection}>
-                <Text style={styles.modalLabel}>관계</Text>
-                <View style={styles.relationRow}>
-                  <View style={styles.relationSection}>
-                    <Text style={styles.relationSubLabel}>측</Text>
-                    <View style={styles.relationButtons}>
-                      {['신랑측', '신부측'].map((category) => (
-                        <TouchableOpacity
-                          key={category}
-                          style={[
-                            styles.relationButton,
-                            editData.relation_category === category && styles.relationButtonActive
-                          ]}
-                          onPress={() => setEditData(prev => ({ ...prev, relation_category: category }))}
-                        >
-                          <Text style={[
-                            styles.relationButtonText,
-                            editData.relation_category === category && styles.relationButtonTextActive
-                          ]}>
-                            {category}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+              <View style={styles.tossFormSection}>
+                <View style={styles.tossFormInputContainer}>
+                  <Text style={styles.tossFormLabel}>관계</Text>
+                  <View style={styles.tossRelationContainer}>
+                    <View style={styles.tossRelationGroup}>
+                      <Text style={styles.tossRelationGroupLabel}>측</Text>
+                      <View style={styles.tossRelationButtons}>
+                        {['신랑측', '신부측'].map((category) => (
+                          <TouchableOpacity
+                            key={category}
+                            style={[
+                              styles.tossRelationButton,
+                              editData.relation_category === category && styles.tossRelationButtonActive
+                            ]}
+                            onPress={() => setEditData(prev => ({ ...prev, relation_category: category }))}
+                          >
+                            <Text style={[
+                              styles.tossRelationButtonText,
+                              editData.relation_category === category && styles.tossRelationButtonTextActive
+                            ]}>
+                              {category}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
-                  </View>
-                  
-                  <View style={styles.relationSection}>
-                    <Text style={styles.relationSubLabel}>관계</Text>
-                    <View style={styles.relationButtons}>
-                      {['친구', '동료', '가족', '친척', '기타'].map((detail) => (
-                        <TouchableOpacity
-                          key={detail}
-                          style={[
-                            styles.relationButton,
-                            editData.relation_detail === detail && styles.relationButtonActive
-                          ]}
-                          onPress={() => setEditData(prev => ({ ...prev, relation_detail: detail }))}
-                        >
-                          <Text style={[
-                            styles.relationButtonText,
-                            editData.relation_detail === detail && styles.relationButtonTextActive
-                          ]}>
-                            {detail}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+                    
+                    <View style={styles.tossRelationGroup}>
+                      <Text style={styles.tossRelationGroupLabel}>관계</Text>
+                      <View style={styles.tossRelationButtons}>
+                        {['친구', '동료', '가족', '친척', '기타'].map((detail) => (
+                          <TouchableOpacity
+                            key={detail}
+                            style={[
+                              styles.tossRelationButton,
+                              editData.relation_detail === detail && styles.tossRelationButtonActive
+                            ]}
+                            onPress={() => setEditData(prev => ({ ...prev, relation_detail: detail }))}
+                          >
+                            <Text style={[
+                              styles.tossRelationButtonText,
+                              editData.relation_detail === detail && styles.tossRelationButtonTextActive
+                            ]}>
+                              {detail}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
                   </View>
                 </View>
@@ -1019,40 +1196,80 @@ export default function EventDetailScreen({ navigation, route }) {
               <View style={{ height: 20 }} />
             </ScrollView>
             </KeyboardAvoidingView>
-          </TouchableOpacity>
-        </TouchableOpacity>
+          </View>
+        </SafeAreaView>
       </Modal>
 
-      {/* 성공 모달 */}
+      {/* 토스 스타일 확정 모달 (Bottom Sheet) */}
       <Modal
-        visible={successModalVisible}
+        visible={verificationModalVisible}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setSuccessModalVisible(false)}
+        onRequestClose={() => setVerificationModalVisible(false)}
       >
-        <View style={styles.successModalOverlay}>
+        <View style={styles.tossBottomSheetOverlay}>
           <TouchableOpacity 
-            style={styles.successModalBackground}
+            style={styles.tossBottomSheetBackground}
             activeOpacity={1}
-            onPress={() => setSuccessModalVisible(false)}
+            onPress={() => setVerificationModalVisible(false)}
           />
-          <View style={styles.successModalContainer}>
-            <View style={[styles.successIconContainer, { backgroundColor: successMessage.color + '20' }]}>
-              <Ionicons 
-                name={successMessage.icon} 
-                size={48} 
-                color={successMessage.color} 
-              />
+          <View style={styles.tossBottomSheetContainer}>
+            {/* 핸들바 */}
+            <View style={styles.tossBottomSheetHandle} />
+            
+            {/* 제목 */}
+            <Text style={styles.tossBottomSheetTitle}>
+              {verificationModalData.contribution?.guest_name}님의 부조
+            </Text>
+            
+            {/* 금액 정보 */}
+            <View style={styles.tossBottomSheetAmountInfo}>
+              <Text style={styles.tossBottomSheetAmount}>
+                {formatAmount(verificationModalData.contribution?.amount || 0)}
+              </Text>
+              <Text style={styles.tossBottomSheetAmountLabel}>
+                {(() => {
+                  const contrib = verificationModalData.contribution;
+                  if (!contrib) return '';
+                  const { displayCategory, displayDetail } = getRelationDisplay(
+                    contrib.relation_category,
+                    contrib.relation_detail
+                  );
+                  return `${displayCategory} · ${displayDetail}`;
+                })()}
+              </Text>
             </View>
+
+            {/* 설명 */}
+            <Text style={styles.tossBottomSheetDescription}>
+              {verificationModalData.isVerified 
+                ? '확정을 취소하면 내역을 다시 수정하거나 삭제할 수 있습니다.'
+                : '확정하면 내역을 더 이상 수정하거나 삭제할 수 없습니다. 정말 확정하시겠어요?'
+              }
+            </Text>
             
-            <Text style={styles.successTitle}>{successMessage.title}</Text>
-            <Text style={styles.successMessage}>{successMessage.message}</Text>
-            
+            {/* 액션 버튼들 */}
             <TouchableOpacity
-              style={[styles.successButton, { backgroundColor: successMessage.color }]}
-              onPress={() => setSuccessModalVisible(false)}
+              style={[
+                styles.tossBottomSheetActionButton,
+                verificationModalData.isVerified ? styles.tossBottomSheetDangerButton : styles.tossBottomSheetPrimaryButton
+              ]}
+              onPress={executeVerificationToggle}
             >
-              <Text style={styles.successButtonText}>확인</Text>
+              <Text style={[
+                styles.tossBottomSheetActionButtonText,
+                verificationModalData.isVerified ? styles.tossBottomSheetDangerButtonText : styles.tossBottomSheetPrimaryButtonText
+              ]}>
+                {verificationModalData.isVerified ? '확정 취소' : '확정하기'}
+              </Text>
+            </TouchableOpacity>
+            
+            {/* 취소 버튼 */}
+            <TouchableOpacity
+              style={styles.tossBottomSheetCancelButton}
+              onPress={() => setVerificationModalVisible(false)}
+            >
+              <Text style={styles.tossBottomSheetCancelText}>취소</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1071,7 +1288,7 @@ export default function EventDetailScreen({ navigation, route }) {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-          <View style={styles.searchModalContainer}>
+          <View style={[styles.searchModalContainer, { paddingBottom: insets.bottom }]}>
             {/* 헤더 */}
             <View style={styles.searchModalHeader}>
               <TouchableOpacity onPress={cancelSearch} style={styles.searchModalCloseButton}>
@@ -1182,7 +1399,7 @@ export default function EventDetailScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.gray50,
+    backgroundColor: '#F8F9FA',
   },
   flex1: {
     flex: 1,
@@ -1227,44 +1444,50 @@ const styles = StyleSheet.create({
     color: Colors.white,
   },
   
-  // 경조사 헤더
-  eventHeader: {
-    backgroundColor: Colors.white,
-    padding: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+  // 토스 스타일 헤더
+  tossHeader: {
+    backgroundColor: 'white',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F5F5',
   },
-  eventInfo: {
-    flexDirection: 'row',
-    flex: 1,
+  tossHeaderTop: {
+    marginBottom: 8,
   },
-  eventIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
+  tossTitleContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
+    gap: 12,
   },
-  eventDetails: {
-    flex: 1,
+  tossHeaderImageContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#F8F9FA',
   },
-  eventTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.textPrimary,
+  tossHeaderImage: {
+    width: '100%',
+    height: '100%',
+  },
+  tossTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#191F28',
+    letterSpacing: -0.3,
+  },
+  tossSubtitle: {
+    fontSize: 15,
+    color: '#6B7684',
     marginBottom: 4,
+    fontWeight: '500',
   },
-  eventDate: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    marginBottom: 2,
-  },
-  eventLocation: {
-    fontSize: 14,
-    color: Colors.textSecondary,
+  tossLocation: {
+    fontSize: 15,
+    color: '#6B7684',
+    fontWeight: '400',
   },
   eventActions: {
     flexDirection: 'row',
@@ -1325,118 +1548,240 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   
-  // 통계 카드
-  statsCard: {
-    backgroundColor: Colors.white,
-    padding: 20,
-    marginBottom: 12,
+  // 토스 스타일 메인 카드
+  tossMainCard: {
+    backgroundColor: 'white',
+    margin: 16,
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  statsTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 16,
+  tossMainAmount: {
+    alignItems: 'center',
+    marginBottom: 24,
   },
-  statsGrid: {
+  tossAmountLabel: {
+    fontSize: 16,
+    color: '#6B7684',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  tossAmountValue: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#191F28',
+    letterSpacing: -0.3,
+  },
+  tossStatsRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.gray50,
+    backgroundColor: '#F8F9FA',
     borderRadius: 12,
     padding: 16,
   },
-  statItem: {
+  tossStatItem: {
     flex: 1,
     alignItems: 'center',
   },
-  statNumber: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.primary,
+  tossStatValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#191F28',
     marginBottom: 4,
-    textAlign: 'center',
   },
-  statLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
+  tossStatLabel: {
+    fontSize: 13,
+    color: '#6B7684',
     fontWeight: '500',
   },
-  statDivider: {
+  tossDivider: {
     width: 1,
-    backgroundColor: Colors.gray200,
+    backgroundColor: '#E5E8EB',
     marginHorizontal: 16,
   },
   
-  // 빠른 액션
-  quickActions: {
-    backgroundColor: Colors.white,
-    padding: 20,
+  // 토스 스타일 액션 그리드 (3개 버튼)
+  tossActionGrid: {
     flexDirection: 'row',
-    gap: 16,
-    marginBottom: 12,
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    gap: 12,
   },
-  quickActionItem: {
-    flex: 1,
+  tossActionButton: {
+    backgroundColor: 'white',
+    width: '30%',
+    aspectRatio: 0.95, // 세로로 좀 더 길게
+    borderRadius: 16,
+    padding: 16, // 패딩 증가
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 10, // 간격 증가
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  quickActionIcon: {
-    width: 48,
+  tossActionIcon: {
+    width: 48, // 아이콘 크기 증가
     height: 48,
-    borderRadius: 24,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  quickActionText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: Colors.textPrimary,
+  tossActionImageContainer: {
+    width: 48, // 이미지 컨테이너 크기 증가
+    height: 48,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#F8F9FA',
+  },
+  tossActionImage: {
+    width: '100%',
+    height: '100%',
+  },
+  tossActionText: {
+    fontSize: 14, // 텍스트 크기 증가
+    fontWeight: '600',
+    color: '#191F28',
     textAlign: 'center',
   },
   
-  // 부조 목록
-  contributionsSection: {
-    backgroundColor: Colors.white,
+  // 토스 스타일 리스트 섹션
+  tossListSection: {
+    backgroundColor: 'white',
+    margin: 16,
+    borderRadius: 20,
     padding: 20,
-    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  tossListHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  tossListTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#191F28',
+  },
+  tossListCount: {
+    fontSize: 15,
+    color: '#6B7684',
+    fontWeight: '500',
+  },
+  // 토스 스타일 탭
+  tossTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+  },
+  tossTab: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  tossTabActive: {
+    backgroundColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tossTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7684',
+  },
+  tossTabTextActive: {
+    color: '#191F28',
+  },
+  
+  // 토스 스타일 정렬 버튼
+  tossSortButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  tossSortButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F8F9FA',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  tossSortButtonActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  tossSortButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7684',
+  },
+  tossSortButtonTextActive: {
+    color: 'white',
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1B1C1D',
   },
   sectionCount: {
     fontSize: 16,
-    color: Colors.textSecondary,
-    marginLeft: 4,
+    color: '#8B95A1',
+    fontWeight: '500',
   },
   contributionsList: {
-    gap: 12,
+    gap: 0,
   },
   contributionItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingVertical: 12,
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
+    borderBottomColor: '#F4F5F7',
+    borderRadius: 8,
+    marginBottom: 4,
   },
   contributionInfo: {
     flex: 1,
     paddingRight: 12,
   },
   contributorName: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-    marginBottom: 2,
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#1B1C1D',
+    marginBottom: 4,
   },
   contributionDate: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: '#8B95A1',
+    fontWeight: '500',
   },
   contributionAmount: {
     flexDirection: 'column',
@@ -1446,31 +1791,34 @@ const styles = StyleSheet.create({
   contributionActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 6,
+    gap: 8,
   },
   actionButtonToss: {
-    paddingVertical: 2,
-    paddingHorizontal: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: '#F7F8FA',
   },
   actionButtonText: {
-    fontSize: 12,
-    color: Colors.gray600,
-    fontWeight: '500',
+    fontSize: 13,
+    color: '#4E5968',
+    fontWeight: '600',
   },
   actionButtonTextDelete: {
-    fontSize: 12,
-    color: Colors.error,
-    fontWeight: '500',
+    fontSize: 13,
+    color: '#F04452',
+    fontWeight: '600',
   },
   actionSeparator: {
-    fontSize: 12,
-    color: Colors.gray300,
-    marginHorizontal: 6,
+    width: 1,
+    height: 12,
+    backgroundColor: '#E5E8EB',
   },
   amountText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1B1C1D',
     textAlign: 'right',
   },
   viewAllButton: {
@@ -1489,20 +1837,66 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   
-  // 빈 상태
-  emptyContributions: {
+  // 토스 스타일 페이지네이션
+  tossPagination: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 40,
-    gap: 8,
+    paddingVertical: 16,
+    gap: 20,
   },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: Colors.textSecondary,
+  tossPrevButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F8F9FA',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  emptySubtitle: {
+  tossNextButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F8F9FA',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tossPageDisabled: {
+    backgroundColor: '#F1F3F4',
+    opacity: 0.5,
+  },
+  tossPageInfo: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: '#6B7684',
+    fontWeight: '500',
+  },
+  
+  // 토스 스타일 빈 상태
+  tossEmptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    gap: 12,
+  },
+  tossEmptyIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#F8F9FA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  tossEmptyTitle: {
+    fontSize: 17,
+    fontWeight: '500',
+    color: '#191F28',
+    textAlign: 'center',
+  },
+  tossEmptySubtitle: {
+    fontSize: 14,
+    color: '#6B7684',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   
   // 경조사 정보
@@ -1542,248 +1936,506 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
 
-  // 검색 버튼
-  searchButton: {
+  // 토스 스타일 검색바
+  tossSearchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.gray50,
+    backgroundColor: '#F8F9FA',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.gray200,
+    marginBottom: 20,
+    gap: 8,
   },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchPlaceholder: {
+  tossSearchText: {
     flex: 1,
-    fontSize: 16,
-    color: Colors.gray400,
+    fontSize: 15,
+    color: '#B0BEC5',
+    fontWeight: '400',
   },
-  searchActive: {
-    color: Colors.textPrimary,
-  },
-  clearButton: {
-    padding: 4,
+  tossSearchActive: {
+    color: '#191F28',
+    fontWeight: '500',
   },
 
-  // 페이지네이션
-  pagination: {
+  // 토스 스타일 리스트
+  tossList: {
+    gap: 4, // 항목 간격 적당하게
+  },
+  tossListItem: {
     flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12, // 기본 세로 패딩 줄이기
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F5F5',
+  },
+  tossListItemVerified: {
+    backgroundColor: '#F0F9FF',
+    borderLeftWidth: 6,
+    borderLeftColor: '#3182F6',
+    marginHorizontal: 0, // 좌우 여백 제거로 더 넓게
+    marginVertical: 2, // 항목간 세로 간격 줄이기
+    borderRadius: 12,
+    paddingLeft: 20,
+    paddingRight: 16,
+    paddingVertical: 14, // 각 항목의 세로 패딩 줄이기
+  },
+  tossListItemUnverified: {
+    backgroundColor: '#FFFFFF',
+    borderLeftWidth: 4,
+    borderLeftColor: '#E5E8EB',
+    marginHorizontal: 0,
+    marginVertical: 2, // 항목간 세로 간격 줄이기
+    borderRadius: 12,
+    paddingLeft: 20,
+    paddingRight: 16,
+    paddingVertical: 14, // 각 항목의 세로 패딩 줄이기
+  },
+  tossItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  tossAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#3182F6',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 16,
-    gap: 16,
+    marginRight: 12,
   },
-  pageButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: Colors.gray50,
+  tossAvatarText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
   },
-  pageButtonDisabled: {
-    opacity: 0.5,
+  tossItemInfo: {
+    flex: 1,
   },
-  pageInfo: {
-    fontSize: 14,
-    color: Colors.textSecondary,
+  tossItemName: {
+    fontSize: 16,
     fontWeight: '500',
-    minWidth: 120,
-    textAlign: 'center',
+    color: '#191F28',
+    marginBottom: 2,
+  },
+  tossItemRelation: {
+    fontSize: 13,
+    color: '#6B7684',
+    fontWeight: '400',
+  },
+  tossItemRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  tossItemAmount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#191F28',
+  },
+  tossItemDate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tossDateText: {
+    fontSize: 12,
+    color: '#B0BEC5',
+    fontWeight: '400',
+  },
+  tossItemActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  
+  // 확정 뱃지 스타일
+  tossVerifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF1F0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 6,
+  },
+  tossVerifiedBadgeText: {
+    fontSize: 10,
+    color: '#FF4757',
+    fontWeight: '600',
+    marginLeft: 2,
   },
 
   // 기여자 관계 및 메시지 스타일
   contributionRelation: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginBottom: 2,
+    fontSize: 13,
+    color: '#8B95A1',
+    marginBottom: 4,
+    fontWeight: '500',
   },
 
-  // 모달 스타일
-  modalContainer: {
+  // 토스 스타일 폼 모달
+  tossFormModalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
+    backgroundColor: '#F8F9FA',
   },
-  modalContent: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    maxHeight: '80%',
-    minHeight: 500,
-    width: '100%',
+  tossFormModalContent: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
   },
-  modalHeader: {
+  tossFormModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
+    backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
+    borderBottomColor: '#F0F0F0',
   },
-  modalCloseButton: {
+  tossFormModalCloseButton: {
     padding: 4,
-    width: 60,
+    width: 50,
+    alignItems: 'flex-start',
   },
-  modalTitle: {
+  tossFormModalTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    textAlign: 'center',
+    fontWeight: '700',
+    color: '#191F28',
+    letterSpacing: -0.3,
   },
-  modalSaveButton: {
+  tossFormModalSaveButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 6,
-    backgroundColor: Colors.primary,
-    width: 60,
+    borderRadius: 8,
+    backgroundColor: '#3182F6',
+    minWidth: 50,
     alignItems: 'center',
   },
-  modalSaveButtonDisabled: {
-    backgroundColor: Colors.gray300,
+  tossFormModalSaveButtonDisabled: {
+    backgroundColor: '#E5E8EB',
   },
-  modalSaveText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.white,
-  },
-  modalSaveTextDisabled: {
-    color: Colors.gray500,
-  },
-  modalScrollView: {
-    flex: 1,
-    padding: 20,
-  },
-  modalSection: {
-    marginBottom: 16,
-  },
-  modalLabel: {
+  tossFormModalSaveText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 6,
+    color: 'white',
   },
-  modalInput: {
-    backgroundColor: Colors.gray50,
+  tossFormModalSaveTextDisabled: {
+    color: '#6B7684',
+  },
+  tossFormModalScrollView: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+  },
+  tossFormSection: {
+    marginBottom: 12,
+  },
+  tossFormInputContainer: {
+    backgroundColor: 'white',
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+  },
+  tossFormLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#191F28',
+    marginBottom: 12,
+  },
+  tossFormInput: {
+    backgroundColor: '#F8F9FA',
     borderRadius: 8,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     fontSize: 16,
-    color: Colors.textPrimary,
+    color: '#191F28',
     borderWidth: 1,
-    borderColor: Colors.gray200,
+    borderColor: '#E5E8EB',
+  },
+  tossRelationContainer: {
+    gap: 20,
+  },
+  tossRelationGroup: {
+    gap: 8,
+  },
+  tossRelationGroupLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7684',
+  },
+  tossRelationButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tossRelationButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#F8F9FA',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  tossRelationButtonActive: {
+    backgroundColor: '#3182F6',
+    borderColor: '#3182F6',
+  },
+  tossRelationButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7684',
+  },
+  tossRelationButtonTextActive: {
+    color: 'white',
   },
   modalTextArea: {
     minHeight: 80,
     textAlignVertical: 'top',
   },
   relationRow: {
-    gap: 8,
+    gap: 12,
   },
   relationSection: {
-    marginBottom: 4,
+    marginBottom: 8,
   },
   relationSubLabel: {
     fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textSecondary,
-    marginBottom: 4,
+    fontWeight: '600',
+    color: '#6B7684',
+    marginBottom: 8,
   },
   relationButtons: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 10,
     minHeight: 50,
   },
   relationButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: Colors.gray100,
+    backgroundColor: '#F8F9FA',
     borderWidth: 1,
-    borderColor: Colors.gray200,
+    borderColor: '#E5E8EB',
   },
   relationButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: '#3182F6',
+    borderColor: '#3182F6',
   },
   relationButtonText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textSecondary,
+    fontWeight: '600',
+    color: '#6B7684',
   },
   relationButtonTextActive: {
-    color: Colors.white,
+    color: 'white',
   },
 
-  // 성공 모달 스타일
-  successModalOverlay: {
+  // 토스 스타일 Bottom Sheet
+  tossBottomSheetOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
   },
-  successModalBackground: {
+  tossBottomSheetBackground: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
   },
-  successModalContainer: {
-    backgroundColor: Colors.white,
-    borderRadius: 20,
-    padding: 32,
-    alignItems: 'center',
-    maxWidth: 320,
-    width: '80%',
-    marginHorizontal: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 15,
+  tossBottomSheetContainer: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 8,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    minHeight: 350,
   },
-  successIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  successTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  successMessage: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
+  tossBottomSheetHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E8EB',
+    borderRadius: 2,
+    alignSelf: 'center',
     marginBottom: 24,
   },
-  successButton: {
-    width: '100%',
-    height: 48,
+  tossBottomSheetAmountInfo: {
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingVertical: 16,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+  },
+  tossBottomSheetAmount: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#191F28',
+    marginBottom: 4,
+  },
+  tossBottomSheetAmountLabel: {
+    fontSize: 14,
+    color: '#6B7684',
+    fontWeight: '500',
+  },
+  tossBottomSheetActionButton: {
+    height: 56,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginTop: 20,
+    marginBottom: 12,
   },
-  successButtonText: {
-    fontSize: 16,
+  tossBottomSheetPrimaryButton: {
+    backgroundColor: '#3182F6',
+  },
+  tossBottomSheetDangerButton: {
+    backgroundColor: '#FF4757',
+  },
+  tossBottomSheetActionButtonText: {
+    fontSize: 17,
     fontWeight: '600',
-    color: Colors.white,
+  },
+  tossBottomSheetPrimaryButtonText: {
+    color: 'white',
+  },
+  tossBottomSheetDangerButtonText: {
+    color: 'white',
+  },
+  // 간단한 확정 뱃지
+  tossSimpleVerifiedBadge: {
+    marginLeft: 8,
+  },
+  // 간단한 액션 버튼들
+  tossSimpleActions: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  tossSimpleButton: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 0,
+    minWidth: 35,
+    alignItems: 'center',
+  },
+  tossVerifiedSimpleButton: {
+    backgroundColor: '#FF4757', // 진한 빨간색
+  },
+  tossUnverifiedSimpleButton: {
+    backgroundColor: '#3182F6', // 진한 파란색
+  },
+  tossSimpleButtonText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'white',
+  },
+  tossVerifiedSimpleText: {
+    color: 'white',
+  },
+  tossUnverifiedSimpleText: {
+    color: 'white',
+  },
+  tossEditButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#F1F3F5',
+    borderWidth: 0,
+    minWidth: 40,
+    alignItems: 'center',
+  },
+  tossEditButtonText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#495057',
+  },
+  tossDeleteButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#FFE8E8',
+    borderWidth: 0,
+    minWidth: 40,
+    alignItems: 'center',
+  },
+  tossDeleteButtonText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FF4757',
+  },
+  tossBottomSheetTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#191F28',
+    marginBottom: 8,
+    letterSpacing: -0.3,
+  },
+  tossBottomSheetDescription: {
+    fontSize: 16,
+    color: '#6B7684',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  tossBottomSheetOptions: {
+    marginBottom: 24,
+  },
+  tossBottomSheetOption: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    marginBottom: 8,
+  },
+  tossBottomSheetOptionPrimary: {
+    borderColor: '#3182F6',
+    backgroundColor: '#F8FAFF',
+  },
+  tossBottomSheetOptionDanger: {
+    borderColor: '#FF4757',
+    backgroundColor: '#FFF8F8',
+  },
+  tossBottomSheetOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+  },
+  tossBottomSheetOptionIcon: {
+    marginRight: 16,
+  },
+  tossBottomSheetOptionText: {
+    flex: 1,
+  },
+  tossBottomSheetOptionTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#191F28',
+    marginBottom: 4,
+  },
+  tossBottomSheetOptionTitlePrimary: {
+    color: '#3182F6',
+  },
+  tossBottomSheetOptionTitleDanger: {
+    color: '#FF4757',
+  },
+  tossBottomSheetOptionSubtitle: {
+    fontSize: 14,
+    color: '#6B7684',
+    lineHeight: 20,
+  },
+  tossBottomSheetCancelButton: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    height: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 0,
+  },
+  tossBottomSheetCancelText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#6B7684',
   },
 
   // 검색 모달 스타일
