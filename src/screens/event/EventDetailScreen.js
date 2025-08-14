@@ -546,8 +546,8 @@ export default function EventDetailScreen({ navigation, route }) {
     // 소수점 제거를 위해 Math.round 적용
     const roundedAmount = Math.round(amount);
     
-    // 만원 단위로 표시 (천만원 이상일 경우)
-    if (roundedAmount >= 10000000) {
+    // 만원 단위로 표시 (백만원 이상일 경우)
+    if (roundedAmount >= 1000000) {
       const man = Math.floor(roundedAmount / 10000);
       return new Intl.NumberFormat('ko-KR').format(man) + '만원';
     }

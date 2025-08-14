@@ -9,12 +9,14 @@ import {
   ScrollView,
   RefreshControl,
   Alert,
+  Image,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../../styles/constants';
 import { getUserEvents, getEventStatistics, deleteEvent, getEventContributions } from '../../lib/supabaseHelper';
+import { supabase } from '../../lib/supabase';
 
 export default function MyEventsScreen({ navigation, userInfo, session, isAuthenticated }) {
   const [activeTab, setActiveTab] = useState('hosted'); // hosted, participated
@@ -122,9 +124,73 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
 
   const loadParticipatedEvents = async () => {
     try {
-      // TODO: 참여한 경조사 데이터 로직 구현 필요
-      // 현재는 임시로 빈 배열 설정
-      setParticipatedEvents([]);
+      // 현재 사용자가 부조한 경조사들을 가져오기
+      // contributions 테이블에서 현재 사용자의 기여 내역을 조회하고
+      // 해당 이벤트들의 정보를 가져온다
+      
+      if (!userInfo || !userInfo.name) {
+        console.log('🔍 참여 이벤트 로딩 - 사용자 정보 없음');
+        setParticipatedEvents([]);
+        return;
+      }
+
+      console.log('🔍 참여 이벤트 로딩 시작 - 사용자:', userInfo.name);
+
+      // 현재 사용자 이름으로 contributions 테이블에서 기여 내역 조회
+      const { data: contributions, error: contributionsError } = await supabase
+        .from('contributions')
+        .select(`
+          *,
+          events (
+            *
+          )
+        `)
+        .eq('contributor_name', userInfo.name)
+        .order('created_at', { ascending: false });
+
+      if (contributionsError) {
+        console.error('🔴 참여 이벤트 조회 에러:', contributionsError);
+        setParticipatedEvents([]);
+        return;
+      }
+
+      console.log('🔍 기여 내역 조회 결과:', {
+        count: contributions?.length || 0,
+        contributions: contributions
+      });
+
+      // 중복 제거 및 이벤트 정보 추출
+      const uniqueEvents = new Map();
+      
+      (contributions || []).forEach(contribution => {
+        if (contribution.events) {
+          const event = contribution.events;
+          const eventId = event.id;
+          
+          // 이미 추가된 이벤트가 아니면 추가
+          if (!uniqueEvents.has(eventId)) {
+            uniqueEvents.set(eventId, {
+              ...event,
+              // 참여 정보 추가
+              participationInfo: {
+                contributedAmount: contribution.amount,
+                contributionDate: contribution.created_at,
+                relation: contribution.relation_to,
+                message: contribution.notes
+              }
+            });
+          }
+        }
+      });
+
+      const participatedEventsArray = Array.from(uniqueEvents.values());
+      
+      console.log('✅ 참여 이벤트 로딩 완료:', {
+        count: participatedEventsArray.length,
+        events: participatedEventsArray.map(e => ({ id: e.id, name: e.event_name }))
+      });
+
+      setParticipatedEvents(participatedEventsArray);
     } catch (error) {
       console.error('참여 이벤트 로딩 오류:', error);
       setParticipatedEvents([]);
@@ -258,23 +324,33 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
 
   const renderParticipatedEvents = () => (
     <View style={styles.eventsList}>
-      <View style={styles.emptyState}>
-        <Ionicons name="gift-outline" size={64} color={Colors.gray300} />
-        <Text style={styles.emptyTitle}>참여한 경조사가 없어요</Text>
-        <Text style={styles.emptySubtitle}>
-          다른 분의 경조사에 참여하여 부조금을 기록해보세요
-        </Text>
-        <TouchableOpacity 
-          style={styles.addParticipationButton}
-          onPress={() => {
-            // TODO: 참여 경조사 추가 화면으로 이동
-            Alert.alert('준비중', '참여 경조사 추가 기능을 준비중입니다.');
-          }}
-        >
-          <Ionicons name="add" size={20} color={Colors.white} />
-          <Text style={styles.addParticipationText}>참여 기록 추가</Text>
-        </TouchableOpacity>
-      </View>
+      {participatedEvents.length > 0 ? (
+        participatedEvents.map((event) => (
+          <ParticipatedEventCard
+            key={event.id}
+            event={event}
+            onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
+          />
+        ))
+      ) : (
+        <View style={styles.emptyState}>
+          <Ionicons name="gift-outline" size={64} color={Colors.gray300} />
+          <Text style={styles.emptyTitle}>참여한 경조사가 없어요</Text>
+          <Text style={styles.emptySubtitle}>
+            다른 분의 경조사에 참여하여 부조금을 기록해보세요
+          </Text>
+          <TouchableOpacity 
+            style={styles.addParticipationButton}
+            onPress={() => {
+              // TODO: 참여 경조사 추가 화면으로 이동
+              Alert.alert('준비중', '참여 경조사 추가 기능을 준비중입니다.');
+            }}
+          >
+            <Ionicons name="add" size={20} color={Colors.white} />
+            <Text style={styles.addParticipationText}>참여 기록 추가</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 
@@ -365,6 +441,13 @@ const HostedEventCard = ({ event, onPress, onDelete }) => {
 
   const formatAmount = (amount) => {
     if (!amount || amount === 0) return '0원';
+    
+    // 백만원 이상이면 만원 단위로 표시
+    if (amount >= 1000000) {
+      const manWon = Math.floor(amount / 10000);
+      return `${manWon.toLocaleString()}만원`;
+    }
+    
     return `${amount.toLocaleString()}원`;
   };
 
@@ -376,15 +459,37 @@ const HostedEventCard = ({ event, onPress, onDelete }) => {
       <View style={styles.eventHeader}>
         <View style={styles.eventIconContainer}>
           <View style={[styles.eventIcon, { backgroundColor: getEventColor() }]}>
-            <Ionicons name={getEventIcon()} size={20} color={Colors.white} />
+            {event.event_type === 'wedding' ? (
+              <Image 
+                source={require('../../../assets/images/Wedding.png')}
+                style={styles.eventIconImage}
+                resizeMode="contain"
+              />
+            ) : event.event_type === 'funeral' ? (
+              <Image 
+                source={require('../../../assets/images/Funeral.png')}
+                style={styles.eventIconImage}
+                resizeMode="contain"
+              />
+            ) : (
+              <Ionicons name={getEventIcon()} size={20} color={Colors.white} />
+            )}
           </View>
           <View style={styles.eventBasicInfo}>
             <Text style={styles.eventTitle} numberOfLines={1}>
               {event.event_name}
             </Text>
-            <Text style={styles.eventDate}>
-              {formatDate(event.event_date)}
-            </Text>
+            <View style={styles.eventSubInfo}>
+              <Text style={styles.eventType}>
+                {event.event_type === 'wedding' ? '결혼식' : 
+                 event.event_type === 'funeral' ? '장례식' : 
+                 event.event_type === 'birthday' ? '생일' : '기타'}
+              </Text>
+              <Text style={styles.eventTypeDivider}>·</Text>
+              <Text style={styles.eventDate}>
+                {formatDate(event.event_date)}
+              </Text>
+            </View>
           </View>
         </View>
         
@@ -419,7 +524,7 @@ const HostedEventCard = ({ event, onPress, onDelete }) => {
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{formatAmount(stats.averageAmount)}</Text>
+          <Text style={styles.statNumber}>{formatAmount(Math.round(stats.averageAmount))}</Text>
           <Text style={styles.statLabel}>평균</Text>
         </View>
       </View>
@@ -430,6 +535,133 @@ const HostedEventCard = ({ event, onPress, onDelete }) => {
         </Text>
         <View style={styles.eventFooterRight}>
           <Text style={styles.viewDetailsText}>부조금 상세보기</Text>
+          <Ionicons name="chevron-forward" size={16} color={Colors.gray400} />
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// 참여 이벤트 카드 컴포넌트
+const ParticipatedEventCard = ({ event, onPress }) => {
+  const getEventIcon = () => {
+    switch (event.event_type) {
+      case 'wedding': return 'heart';
+      case 'funeral': return 'flower';
+      case 'birthday': return 'gift';
+      default: return 'calendar';
+    }
+  };
+
+  const getEventColor = () => {
+    switch (event.event_type) {
+      case 'wedding': return Colors.wedding;
+      case 'funeral': return Colors.funeral;
+      case 'birthday': return Colors.celebration;
+      default: return Colors.other;
+    }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return '날짜 미정';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
+  const formatAmount = (amount) => {
+    if (!amount || amount === 0) return '0원';
+    
+    // 백만원 이상이면 만원 단위로 표시
+    if (amount >= 1000000) {
+      const manWon = Math.floor(amount / 10000);
+      return `${manWon.toLocaleString()}만원`;
+    }
+    
+    return `${amount.toLocaleString()}원`;
+  };
+
+  const participationInfo = event.participationInfo || {};
+
+  return (
+    <TouchableOpacity style={styles.participatedEventCard} onPress={onPress}>
+      <View style={styles.eventHeader}>
+        <View style={styles.eventIconContainer}>
+          <View style={[styles.eventIcon, { backgroundColor: getEventColor() }]}>
+            {event.event_type === 'wedding' ? (
+              <Image 
+                source={require('../../../assets/images/Wedding.png')}
+                style={styles.eventIconImage}
+                resizeMode="contain"
+              />
+            ) : event.event_type === 'funeral' ? (
+              <Image 
+                source={require('../../../assets/images/Funeral.png')}
+                style={styles.eventIconImage}
+                resizeMode="contain"
+              />
+            ) : (
+              <Ionicons name={getEventIcon()} size={20} color={Colors.white} />
+            )}
+          </View>
+          <View style={styles.eventBasicInfo}>
+            <Text style={styles.eventTitle} numberOfLines={1}>
+              {event.event_name}
+            </Text>
+            <View style={styles.eventSubInfo}>
+              <Text style={styles.eventType}>
+                {event.event_type === 'wedding' ? '결혼식' : 
+                 event.event_type === 'funeral' ? '장례식' : 
+                 event.event_type === 'birthday' ? '생일' : '기타'}
+              </Text>
+              <Text style={styles.eventTypeDivider}>·</Text>
+              <Text style={styles.eventDate}>
+                {formatDate(event.event_date)}
+              </Text>
+            </View>
+          </View>
+        </View>
+        
+        <View style={styles.participatedBadge}>
+          <Text style={styles.participatedBadgeText}>참여</Text>
+        </View>
+      </View>
+
+      {/* 참여 정보 */}
+      <View style={styles.participationInfoSection}>
+        <View style={styles.participationRow}>
+          <Text style={styles.participationLabel}>내 부조금</Text>
+          <Text style={styles.participationAmount}>
+            {formatAmount(participationInfo.contributedAmount)}
+          </Text>
+        </View>
+        {participationInfo.relation && (
+          <View style={styles.participationRow}>
+            <Text style={styles.participationLabel}>관계</Text>
+            <Text style={styles.participationValue}>
+              {participationInfo.relation}
+            </Text>
+          </View>
+        )}
+        {participationInfo.contributionDate && (
+          <View style={styles.participationRow}>
+            <Text style={styles.participationLabel}>참여 일자</Text>
+            <Text style={styles.participationValue}>
+              {formatDate(participationInfo.contributionDate)}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.eventFooter}>
+        <Text style={styles.eventHost}>
+          주최: {event.main_person_name || '미입력'}
+        </Text>
+        <View style={styles.eventFooterRight}>
+          <Text style={styles.viewDetailsText}>상세보기</Text>
           <Ionicons name="chevron-forward" size={16} color={Colors.gray400} />
         </View>
       </View>
@@ -571,6 +803,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    overflow: 'hidden', // 동그라미 경계를 벗어나는 이미지 잘라내기
+  },
+  eventIconImage: {
+    width: 80,
+    height: 80,
   },
   eventBasicInfo: {
     flex: 1,
@@ -580,6 +817,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textPrimary,
     marginBottom: 4,
+  },
+  eventSubInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  eventType: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '500',
+  },
+  eventTypeDivider: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginHorizontal: 6,
   },
   eventDate: {
     fontSize: 14,
@@ -690,6 +941,57 @@ const styles = StyleSheet.create({
     color: Colors.white,
   },
   
+  // 참여 이벤트 카드
+  participatedEventCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.secondary,
+  },
+  participatedBadge: {
+    backgroundColor: Colors.secondary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  participatedBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.white,
+  },
+  participationInfoSection: {
+    backgroundColor: Colors.gray50,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    gap: 8,
+  },
+  participationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  participationLabel: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  participationAmount: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.secondary,
+  },
+  participationValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.textPrimary,
+  },
+
   // 로딩
   loadingContainer: {
     alignItems: 'center',
