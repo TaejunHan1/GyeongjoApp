@@ -33,6 +33,50 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
     }, [])
   );
 
+  // 디버그: 테스트 데이터 확인/생성
+  const debugCreateTestContribution = async () => {
+    try {
+      console.log('🔍 테스트 개인 일정 생성 중...');
+      
+      if (!userInfo || !userInfo.userId) {
+        console.error('🔴 userInfo가 없거나 userId가 없음:', userInfo);
+        Alert.alert('오류', '사용자 정보를 찾을 수 없습니다.');
+        return;
+      }
+
+      console.log('🔍 테스트 데이터를 생성할 사용자 ID:', userInfo.userId);
+
+      // 테스트 personal_schedule 항목 생성
+      const testPersonalSchedule = {
+        user_id: userInfo.userId,
+        title: '테스트 결혼식',
+        event_type: 'wedding',
+        event_date: '2025-08-30',
+        location: '테스트 웨딩홀',
+        notes: '테스트용 개인 일정입니다',
+        is_reminder_set: false
+      };
+
+      const { data: newSchedule, error: createError } = await supabase
+        .from('personal_schedules')
+        .insert([testPersonalSchedule])
+        .select();
+
+      if (createError) {
+        console.error('🔴 테스트 개인 일정 생성 실패:', createError);
+        Alert.alert('오류', `테스트 데이터 생성 실패: ${createError.message}`);
+      } else {
+        console.log('✅ 테스트 개인 일정 생성 성공:', newSchedule);
+        Alert.alert('성공', '테스트 개인 일정이 생성되었습니다!');
+        // 데이터 새로고침
+        loadParticipatedEvents();
+      }
+    } catch (error) {
+      console.error('🔴 테스트 개인 일정 생성 오류:', error);
+      Alert.alert('오류', `오류 발생: ${error.message}`);
+    }
+  };
+
   const loadAllData = async () => {
     try {
       setLoading(true);
@@ -124,75 +168,95 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
 
   const loadParticipatedEvents = async () => {
     try {
-      // 현재 사용자가 부조한 경조사들을 가져오기
-      // contributions 테이블에서 현재 사용자의 기여 내역을 조회하고
-      // 해당 이벤트들의 정보를 가져온다
-      
-      if (!userInfo || !userInfo.name) {
-        console.log('🔍 참여 이벤트 로딩 - 사용자 정보 없음');
+      console.log('🔍 =================================');
+      console.log('🔍 참여 이벤트 로딩 시작');
+      console.log('🔍 =================================');
+
+      // 1단계: userInfo prop에서 사용자 정보 가져오기 (폰 인증 사용자)
+      if (!userInfo || !userInfo.userId) {
+        console.error('🔴 userInfo가 없거나 userId가 없음:', userInfo);
         setParticipatedEvents([]);
         return;
       }
 
-      console.log('🔍 참여 이벤트 로딩 시작 - 사용자:', userInfo.name);
+      console.log('🔍 현재 사용자 정보:', {
+        userId: userInfo.userId,
+        userName: userInfo.userName,
+        phone: userInfo.phone,
+        isLoggedIn: userInfo.isLoggedIn
+      });
 
-      // 현재 사용자 이름으로 contributions 테이블에서 기여 내역 조회
-      const { data: contributions, error: contributionsError } = await supabase
-        .from('contributions')
-        .select(`
-          *,
-          events (
-            *
-          )
-        `)
-        .eq('contributor_name', userInfo.name)
+      // 2단계: 전체 personal_schedules 테이블 확인 (디버깅용)
+      console.log('🔍 전체 personal_schedules 테이블 조회 중...');
+      const { data: allSchedules, error: allError } = await supabase
+        .from('personal_schedules')
+        .select('*')
+        .limit(10);
+
+      console.log('🔍 전체 personal_schedules 샘플:', {
+        error: allError?.message,
+        count: allSchedules?.length || 0,
+        sample: allSchedules?.slice(0, 3) // 처음 3개만 로그에 출력
+      });
+
+      // 3단계: 현재 사용자의 개인 일정 조회
+      console.log('🔍 사용자 ID로 조회:', userInfo.userId);
+      const { data: personalSchedules, error: schedulesError } = await supabase
+        .from('personal_schedules')
+        .select('*')
+        .eq('user_id', userInfo.userId)
         .order('created_at', { ascending: false });
 
-      if (contributionsError) {
-        console.error('🔴 참여 이벤트 조회 에러:', contributionsError);
+      if (schedulesError) {
+        console.error('🔴 personal_schedules 조회 에러:', schedulesError);
         setParticipatedEvents([]);
         return;
       }
 
-      console.log('🔍 기여 내역 조회 결과:', {
-        count: contributions?.length || 0,
-        contributions: contributions
+      console.log('🔍 개인 일정 조회 결과:', {
+        userId: userInfo.userId,
+        count: personalSchedules?.length || 0,
+        schedules: personalSchedules
       });
 
-      // 중복 제거 및 이벤트 정보 추출
-      const uniqueEvents = new Map();
-      
-      (contributions || []).forEach(contribution => {
-        if (contribution.events) {
-          const event = contribution.events;
-          const eventId = event.id;
-          
-          // 이미 추가된 이벤트가 아니면 추가
-          if (!uniqueEvents.has(eventId)) {
-            uniqueEvents.set(eventId, {
-              ...event,
-              // 참여 정보 추가
-              participationInfo: {
-                contributedAmount: contribution.amount,
-                contributionDate: contribution.created_at,
-                relation: contribution.relation_to,
-                message: contribution.notes
-              }
-            });
-          }
-        }
+      if (!personalSchedules || personalSchedules.length === 0) {
+        console.log('🔍 개인 일정이 없음');
+        setParticipatedEvents([]);
+        return;
+      }
+
+      // 4단계: 데이터 변환
+      const participatedEventsArray = personalSchedules.map(schedule => {
+        return {
+          id: schedule.id,
+          event_name: schedule.title,
+          event_type: schedule.event_type,
+          event_date: schedule.event_date,
+          location: schedule.location,
+          main_person_name: '개인 일정',
+          participationInfo: {
+            contributedAmount: 0,
+            contributionDate: schedule.created_at,
+            relation: '개인 참여',
+            message: schedule.notes
+          },
+          source: 'personal'
+        };
       });
 
-      const participatedEventsArray = Array.from(uniqueEvents.values());
-      
       console.log('✅ 참여 이벤트 로딩 완료:', {
         count: participatedEventsArray.length,
-        events: participatedEventsArray.map(e => ({ id: e.id, name: e.event_name }))
+        events: participatedEventsArray.map(e => ({ 
+          id: e.id, 
+          name: e.event_name,
+          type: e.event_type,
+          date: e.event_date
+        }))
       });
 
       setParticipatedEvents(participatedEventsArray);
     } catch (error) {
-      console.error('참여 이벤트 로딩 오류:', error);
+      console.error('🔴 참여 이벤트 로딩 오류:', error);
       setParticipatedEvents([]);
     }
   };
@@ -339,6 +403,16 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
           <Text style={styles.emptySubtitle}>
             다른 분의 경조사에 참여하여 부조금을 기록해보세요
           </Text>
+          
+          {/* 디버그 버튼 - 개발용 */}
+          <TouchableOpacity 
+            style={[styles.addParticipationButton, { backgroundColor: Colors.error, marginBottom: 12 }]}
+            onPress={debugCreateTestContribution}
+          >
+            <Ionicons name="bug" size={20} color={Colors.white} />
+            <Text style={styles.addParticipationText}>테스트 데이터 생성</Text>
+          </TouchableOpacity>
+          
           <TouchableOpacity 
             style={styles.addParticipationButton}
             onPress={() => {
@@ -632,15 +706,20 @@ const ParticipatedEventCard = ({ event, onPress }) => {
 
       {/* 참여 정보 */}
       <View style={styles.participationInfoSection}>
-        <View style={styles.participationRow}>
-          <Text style={styles.participationLabel}>내 부조금</Text>
-          <Text style={styles.participationAmount}>
-            {formatAmount(participationInfo.contributedAmount)}
-          </Text>
-        </View>
+        {/* 개인 일정이 아닌 경우에만 부조금 표시 */}
+        {event.source !== 'personal' && (
+          <View style={styles.participationRow}>
+            <Text style={styles.participationLabel}>내 부조금</Text>
+            <Text style={styles.participationAmount}>
+              {formatAmount(participationInfo.contributedAmount)}
+            </Text>
+          </View>
+        )}
         {participationInfo.relation && (
           <View style={styles.participationRow}>
-            <Text style={styles.participationLabel}>관계</Text>
+            <Text style={styles.participationLabel}>
+              {event.source === 'personal' ? '일정 타입' : '관계'}
+            </Text>
             <Text style={styles.participationValue}>
               {participationInfo.relation}
             </Text>
@@ -648,9 +727,19 @@ const ParticipatedEventCard = ({ event, onPress }) => {
         )}
         {participationInfo.contributionDate && (
           <View style={styles.participationRow}>
-            <Text style={styles.participationLabel}>참여 일자</Text>
+            <Text style={styles.participationLabel}>
+              {event.source === 'personal' ? '등록 일자' : '참여 일자'}
+            </Text>
             <Text style={styles.participationValue}>
               {formatDate(participationInfo.contributionDate)}
+            </Text>
+          </View>
+        )}
+        {participationInfo.message && (
+          <View style={styles.participationRow}>
+            <Text style={styles.participationLabel}>메모</Text>
+            <Text style={styles.participationValue}>
+              {participationInfo.message}
             </Text>
           </View>
         )}

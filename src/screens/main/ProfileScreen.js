@@ -9,46 +9,50 @@ import {
   ScrollView,
   Alert,
   Share,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../styles/constants';
 import { supabase } from '../../lib/supabase';
 
-export default function ProfileScreen({ navigation }) {
-  const [user, setUser] = useState(null);
+export default function ProfileScreen({ navigation, userInfo, onLogout }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   useEffect(() => {
     loadUserData();
-  }, []);
+  }, [userInfo]);
 
   const loadUserData = async () => {
     try {
       setLoading(true);
       
-      // 현재 사용자 정보 가져오기
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      console.log('🔍 ProfileScreen userInfo:', userInfo);
       
-      if (userError || !user) {
-        console.error('User data error:', userError);
+      // phone authentication 사용자의 경우 userInfo에서 직접 정보 사용
+      if (!userInfo || !userInfo.userId) {
+        console.error('🔴 ProfileScreen: userInfo가 없거나 userId가 없음:', userInfo);
+        setLoading(false);
         return;
       }
 
-      setUser(user);
-
-      // 사용자 프로필 정보 가져오기
+      // 사용자 프로필 정보 가져오기 (users 테이블에서)
       const { data: profileData, error: profileError } = await supabase
         .from('users')
         .select('*')
-        .eq('id', user.id)
+        .eq('id', userInfo.userId)
         .single();
 
       if (profileError && profileError.code !== 'PGRST116') {
         console.error('Profile data error:', profileError);
       } else if (profileData) {
+        console.log('🟢 Profile data loaded:', profileData);
         setProfile(profileData);
+      } else {
+        console.log('🟡 No profile data found, using userInfo');
       }
 
     } catch (error) {
@@ -59,25 +63,31 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      '로그아웃',
-      '정말 로그아웃하시겠어요?',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '로그아웃',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await supabase.auth.signOut();
-            } catch (error) {
-              console.error('Logout error:', error);
-              Alert.alert('오류', '로그아웃 중 오류가 발생했습니다.');
-            }
-          },
-        },
-      ]
-    );
+    setShowLogoutModal(true);
+  };
+
+  const confirmLogout = async () => {
+    try {
+      console.log('🔍 ProfileScreen 로그아웃 시작...');
+      setShowLogoutModal(false);
+      
+      // phone authentication의 경우 onLogout prop 사용
+      if (onLogout) {
+        await onLogout();
+      } else {
+        // 백업용: Supabase auth 로그아웃
+        await supabase.auth.signOut();
+      }
+      
+      console.log('🟢 로그아웃 완료');
+    } catch (error) {
+      console.error('Logout error:', error);
+      Alert.alert('오류', '로그아웃 중 오류가 발생했습니다.');
+    }
+  };
+
+  const cancelLogout = () => {
+    setShowLogoutModal(false);
   };
 
   const handleShareApp = async () => {
@@ -95,10 +105,11 @@ export default function ProfileScreen({ navigation }) {
     Alert.alert('준비중', `${feature} 기능을 준비 중입니다.`);
   };
 
-  const userName = profile?.name || user?.user_metadata?.name || '사용자';
-  const userPhone = profile?.phone || user?.phone?.replace('+82', '0') || user?.email;
+  // phone authentication 사용자 정보 가져오기
+  const userName = profile?.name || userInfo?.userName || '사용자';
+  const userPhone = profile?.phone || userInfo?.phone?.replace('+82', '0') || userInfo?.phone || '미설정';
   const userCarrier = profile?.carrier || '미설정';
-  const joinDate = user?.created_at ? new Date(user.created_at).toLocaleDateString('ko-KR') : '알 수 없음';
+  const joinDate = userInfo?.loginTime ? new Date(userInfo.loginTime).toLocaleDateString('ko-KR') : profile?.created_at ? new Date(profile.created_at).toLocaleDateString('ko-KR') : '알 수 없음';
 
   if (loading) {
     return (
@@ -280,6 +291,53 @@ export default function ProfileScreen({ navigation }) {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* 커스텀 로그아웃 모달 */}
+      <Modal
+        visible={showLogoutModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={cancelLogout}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              {/* 아이콘 */}
+              <View style={styles.modalIcon}>
+                <Ionicons name="log-out-outline" size={32} color={Colors.error} />
+              </View>
+              
+              {/* 제목 */}
+              <Text style={styles.modalTitle}>로그아웃</Text>
+              
+              {/* 메시지 */}
+              <Text style={styles.modalMessage}>
+                정말 로그아웃하시겠어요?{'\n'}
+                다시 로그인하실 때 전화번호 인증이 필요합니다.
+              </Text>
+              
+              {/* 버튼들 */}
+              <View style={styles.modalButtons}>
+                <TouchableOpacity 
+                  style={styles.cancelButton} 
+                  onPress={cancelLogout}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.cancelButtonText}>취소</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.confirmButton} 
+                  onPress={confirmLogout}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.confirmButtonText}>로그아웃</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -531,5 +589,89 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     color: Colors.textSecondary,
+  },
+  
+  // 로그아웃 모달
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContainer: {
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 320,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  modalContent: {
+    paddingTop: 32,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    alignItems: 'center',
+  },
+  modalIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.gray50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: Colors.error,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: Colors.gray100,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  confirmButton: {
+    flex: 1,
+    backgroundColor: Colors.error,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.white,
   },
 });

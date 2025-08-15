@@ -1,410 +1,5 @@
 [
   {
-    "table_name": "guest_book",
-    "column_name": "id",
-    "value": "64f7c94a-cd54-47f4-bf68-1815a6acb423"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "id",
-    "value": "f209eb25-9ee6-40f0-9f5d-b5ca644696e4"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "id",
-    "value": "70c91742-2ee9-46be-9fa7-f4a77907891b"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "event_id",
-    "value": "ddaa48e8-1d3d-42fd-a027-d25179d5036e"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "event_id",
-    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "event_id",
-    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "guest_name",
-    "value": "한태준"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "guest_name",
-    "value": "한태준"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "guest_name",
-    "value": "다다"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "guest_phone",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "guest_phone",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "guest_phone",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "relation_category",
-    "value": "groom_side"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "relation_category",
-    "value": "groom_side"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "relation_category",
-    "value": "신랑측"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "relation_detail",
-    "value": "groom_family"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "relation_detail",
-    "value": "groom_family"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "relation_detail",
-    "value": "친척"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "relation_to_deceased",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "relation_to_deceased",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "relation_to_deceased",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "amount",
-    "value": "300000"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "amount",
-    "value": "200000"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "amount",
-    "value": "10000000"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "amount_type",
-    "value": "money"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "amount_type",
-    "value": "money"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "amount_type",
-    "value": "money"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "payment_method",
-    "value": "cash"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "payment_method",
-    "value": "cash"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "payment_method",
-    "value": "cash"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "message",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "message",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "message",
-    "value": "축하하낟"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "message_type",
-    "value": "congratulation"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "message_type",
-    "value": "congratulation"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "message_type",
-    "value": "congratulation"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "is_public",
-    "value": "true"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "is_public",
-    "value": "true"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "is_public",
-    "value": "true"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "attending",
-    "value": "true"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "attending",
-    "value": "true"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "attending",
-    "value": "true"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "companion_count",
-    "value": "0"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "companion_count",
-    "value": "0"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "companion_count",
-    "value": "0"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "meal_required",
-    "value": "true"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "meal_required",
-    "value": "true"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "meal_required",
-    "value": "true"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "dietary_requirements",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "dietary_requirements",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "dietary_requirements",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "condolence_type",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "condolence_type",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "condolence_type",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "visiting_time",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "visiting_time",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "visiting_time",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "additional_info",
-    "value": "{\"timestamp\": \"2025-08-07T10:18:39.419Z\", \"ip_address\": \"::1\", \"user_agent\": \"Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36\", \"created_via\": \"web\"}"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "additional_info",
-    "value": "{\"timestamp\": \"2025-08-12T09:08:12.596Z\", \"ip_address\": \"::1\", \"user_agent\": \"Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36\", \"created_via\": \"web\"}"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "additional_info",
-    "value": "{}"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "ip_address",
-    "value": "::1/128"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "ip_address",
-    "value": "::1/128"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "ip_address",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "user_agent",
-    "value": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "user_agent",
-    "value": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "user_agent",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "is_verified",
-    "value": "false"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "is_verified",
-    "value": "false"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "is_verified",
-    "value": "false"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "verified_at",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "verified_at",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "verified_at",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "verified_by",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "verified_by",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "verified_by",
-    "value": null
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "created_at",
-    "value": "2025-08-07 10:18:40.531049+00"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "created_at",
-    "value": "2025-08-12 09:08:12.99349+00"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "created_at",
-    "value": "2025-08-13 12:40:23.702+00"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "updated_at",
-    "value": "2025-08-07 10:18:40.531049+00"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "updated_at",
-    "value": "2025-08-12 09:08:12.99349+00"
-  },
-  {
-    "table_name": "guest_book",
-    "column_name": "updated_at",
-    "value": "2025-08-13 12:40:23.89341+00"
-  },
-  {
     "table_name": "relation_types",
     "column_name": "id",
     "value": "1"
@@ -1797,7 +1392,7 @@
   {
     "table_name": "guest_book_stats",
     "column_name": "total_entries",
-    "value": "2"
+    "value": "11"
   },
   {
     "table_name": "guest_book_stats",
@@ -1807,7 +1402,7 @@
   {
     "table_name": "guest_book_stats",
     "column_name": "attending_count",
-    "value": "2"
+    "value": "11"
   },
   {
     "table_name": "guest_book_stats",
@@ -1827,7 +1422,7 @@
   {
     "table_name": "guest_book_stats",
     "column_name": "total_amount",
-    "value": "10200000"
+    "value": "2350000"
   },
   {
     "table_name": "guest_book_stats",
@@ -1837,7 +1432,7 @@
   {
     "table_name": "guest_book_stats",
     "column_name": "avg_amount",
-    "value": "5100000.000000000000"
+    "value": "213636.363636363636"
   },
   {
     "table_name": "guest_book_stats",
@@ -1857,7 +1452,7 @@
   {
     "table_name": "guest_book_stats",
     "column_name": "verified_count",
-    "value": "0"
+    "value": "2"
   },
   {
     "table_name": "guest_book_stats",
@@ -1937,7 +1532,7 @@
   {
     "table_name": "guest_book_stats",
     "column_name": "latest_entry_at",
-    "value": "2025-08-13 12:40:23.702+00"
+    "value": "2025-08-14 02:29:30.805+00"
   },
   {
     "table_name": "guest_book_stats",
@@ -1952,7 +1547,7 @@
   {
     "table_name": "public_guest_messages",
     "column_name": "id",
-    "value": "70c91742-2ee9-46be-9fa7-f4a77907891b"
+    "value": "2e617197-93c1-45a8-b8bd-807743265de2"
   },
   {
     "table_name": "public_guest_messages",
@@ -1962,7 +1557,7 @@
   {
     "table_name": "public_guest_messages",
     "column_name": "guest_name",
-    "value": "다다"
+    "value": "다다ㄷㄷ"
   },
   {
     "table_name": "public_guest_messages",
@@ -2021,6 +1616,16 @@
   },
   {
     "table_name": "guest_book_relation_stats",
+    "column_name": "event_id",
+    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
+  },
+  {
+    "table_name": "guest_book_relation_stats",
+    "column_name": "event_type",
+    "value": "wedding"
+  },
+  {
+    "table_name": "guest_book_relation_stats",
     "column_name": "event_type",
     "value": "wedding"
   },
@@ -2051,6 +1656,11 @@
   },
   {
     "table_name": "guest_book_relation_stats",
+    "column_name": "relation_category",
+    "value": "신랑측"
+  },
+  {
+    "table_name": "guest_book_relation_stats",
     "column_name": "relation_detail",
     "value": "groom_family"
   },
@@ -2058,6 +1668,11 @@
     "table_name": "guest_book_relation_stats",
     "column_name": "relation_detail",
     "value": "groom_family"
+  },
+  {
+    "table_name": "guest_book_relation_stats",
+    "column_name": "relation_detail",
+    "value": "친구"
   },
   {
     "table_name": "guest_book_relation_stats",
@@ -2081,6 +1696,11 @@
   },
   {
     "table_name": "guest_book_relation_stats",
+    "column_name": "display_name",
+    "value": null
+  },
+  {
+    "table_name": "guest_book_relation_stats",
     "column_name": "guest_count",
     "value": "1"
   },
@@ -2088,6 +1708,11 @@
     "table_name": "guest_book_relation_stats",
     "column_name": "guest_count",
     "value": "1"
+  },
+  {
+    "table_name": "guest_book_relation_stats",
+    "column_name": "guest_count",
+    "value": "9"
   },
   {
     "table_name": "guest_book_relation_stats",
@@ -2107,7 +1732,12 @@
   {
     "table_name": "guest_book_relation_stats",
     "column_name": "total_amount",
-    "value": "10000000"
+    "value": "2050000"
+  },
+  {
+    "table_name": "guest_book_relation_stats",
+    "column_name": "total_amount",
+    "value": "100000"
   },
   {
     "table_name": "guest_book_relation_stats",
@@ -2122,7 +1752,12 @@
   {
     "table_name": "guest_book_relation_stats",
     "column_name": "avg_amount",
-    "value": "10000000.000000000000"
+    "value": "227777.777777777778"
+  },
+  {
+    "table_name": "guest_book_relation_stats",
+    "column_name": "avg_amount",
+    "value": "100000.000000000000"
   },
   {
     "table_name": "guest_book_relation_stats",
@@ -2137,7 +1772,1632 @@
   {
     "table_name": "guest_book_relation_stats",
     "column_name": "attending_count",
+    "value": "9"
+  },
+  {
+    "table_name": "guest_book_relation_stats",
+    "column_name": "attending_count",
     "value": "1"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "id",
+    "value": "64f7c94a-cd54-47f4-bf68-1815a6acb423"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "id",
+    "value": "f209eb25-9ee6-40f0-9f5d-b5ca644696e4"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "id",
+    "value": "2e617197-93c1-45a8-b8bd-807743265de2"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "id",
+    "value": "4cb6ff0c-e06e-4905-b9ec-8e1f06662394"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "id",
+    "value": "b228989d-451d-4a61-8170-42d46e0f80cc"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "id",
+    "value": "10186605-0d2e-464d-8996-63dcda6eddc9"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "id",
+    "value": "1a769193-3ea9-40ff-a8f6-e0807ebddf9d"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "id",
+    "value": "805d4c6e-559e-4ea7-abb3-a07b32a6c042"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "id",
+    "value": "c0062bb9-e0f2-4b14-9553-ca0239605937"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "id",
+    "value": "e13f0a69-b77e-4ac6-88a5-2f7d62dc8751"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "id",
+    "value": "456d6125-4348-485b-97a1-454e778b5e76"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "id",
+    "value": "213390f0-5c78-414c-b406-bdc607113cd8"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "event_id",
+    "value": "ddaa48e8-1d3d-42fd-a027-d25179d5036e"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "event_id",
+    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "event_id",
+    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "event_id",
+    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "event_id",
+    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "event_id",
+    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "event_id",
+    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "event_id",
+    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "event_id",
+    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "event_id",
+    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "event_id",
+    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "event_id",
+    "value": "603dfb2e-707b-420b-afc9-406c9775a0ee"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_name",
+    "value": "한태준"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_name",
+    "value": "한태준"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_name",
+    "value": "다다ㄷㄷ"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_name",
+    "value": "몇명"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_name",
+    "value": "인가"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_name",
+    "value": "가"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_name",
+    "value": "나"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_name",
+    "value": "다"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_name",
+    "value": "마"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_name",
+    "value": "라라"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_name",
+    "value": "사"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_name",
+    "value": "바"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_phone",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_phone",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_phone",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_phone",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_phone",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_phone",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_phone",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_phone",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_phone",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_phone",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_phone",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "guest_phone",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_category",
+    "value": "groom_side"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_category",
+    "value": "groom_side"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_category",
+    "value": "신랑측"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_category",
+    "value": "신랑측"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_category",
+    "value": "신랑측"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_category",
+    "value": "신랑측"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_category",
+    "value": "신랑측"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_category",
+    "value": "신랑측"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_category",
+    "value": "신랑측"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_category",
+    "value": "신랑측"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_category",
+    "value": "신랑측"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_category",
+    "value": "신랑측"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_detail",
+    "value": "groom_family"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_detail",
+    "value": "groom_family"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_detail",
+    "value": "친척"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_detail",
+    "value": "친구"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_detail",
+    "value": "친구"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_detail",
+    "value": "친구"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_detail",
+    "value": "친구"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_detail",
+    "value": "친구"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_detail",
+    "value": "친구"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_detail",
+    "value": "친구"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_detail",
+    "value": "친구"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_detail",
+    "value": "친구"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_to_deceased",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_to_deceased",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_to_deceased",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_to_deceased",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_to_deceased",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_to_deceased",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_to_deceased",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_to_deceased",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_to_deceased",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_to_deceased",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_to_deceased",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "relation_to_deceased",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount",
+    "value": "300000"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount",
+    "value": "200000"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount",
+    "value": "100000"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount",
+    "value": "50000"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount",
+    "value": "100000"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount",
+    "value": "500000"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount",
+    "value": "50000"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount",
+    "value": "50000"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount",
+    "value": "100000"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount",
+    "value": "500000"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount",
+    "value": "500000"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount",
+    "value": "200000"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount_type",
+    "value": "money"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount_type",
+    "value": "money"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount_type",
+    "value": "money"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount_type",
+    "value": "money"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount_type",
+    "value": "money"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount_type",
+    "value": "money"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount_type",
+    "value": "money"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount_type",
+    "value": "money"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount_type",
+    "value": "money"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount_type",
+    "value": "money"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount_type",
+    "value": "money"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "amount_type",
+    "value": "money"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "payment_method",
+    "value": "cash"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "payment_method",
+    "value": "cash"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "payment_method",
+    "value": "cash"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "payment_method",
+    "value": "cash"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "payment_method",
+    "value": "cash"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "payment_method",
+    "value": "cash"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "payment_method",
+    "value": "cash"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "payment_method",
+    "value": "cash"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "payment_method",
+    "value": "cash"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "payment_method",
+    "value": "cash"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "payment_method",
+    "value": "cash"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "payment_method",
+    "value": "cash"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message",
+    "value": "축하하낟"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message_type",
+    "value": "congratulation"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message_type",
+    "value": "congratulation"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message_type",
+    "value": "congratulation"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message_type",
+    "value": "congratulation"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message_type",
+    "value": "congratulation"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message_type",
+    "value": "congratulation"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message_type",
+    "value": "congratulation"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message_type",
+    "value": "congratulation"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message_type",
+    "value": "congratulation"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message_type",
+    "value": "congratulation"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message_type",
+    "value": "congratulation"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "message_type",
+    "value": "congratulation"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_public",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_public",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_public",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_public",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_public",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_public",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_public",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_public",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_public",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_public",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_public",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_public",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "attending",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "attending",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "attending",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "attending",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "attending",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "attending",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "attending",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "attending",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "attending",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "attending",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "attending",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "attending",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "companion_count",
+    "value": "0"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "companion_count",
+    "value": "0"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "companion_count",
+    "value": "0"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "companion_count",
+    "value": "0"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "companion_count",
+    "value": "0"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "companion_count",
+    "value": "0"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "companion_count",
+    "value": "0"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "companion_count",
+    "value": "0"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "companion_count",
+    "value": "0"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "companion_count",
+    "value": "0"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "companion_count",
+    "value": "0"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "companion_count",
+    "value": "0"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "meal_required",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "meal_required",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "meal_required",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "meal_required",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "meal_required",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "meal_required",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "meal_required",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "meal_required",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "meal_required",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "meal_required",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "meal_required",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "meal_required",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "dietary_requirements",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "dietary_requirements",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "dietary_requirements",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "dietary_requirements",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "dietary_requirements",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "dietary_requirements",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "dietary_requirements",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "dietary_requirements",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "dietary_requirements",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "dietary_requirements",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "dietary_requirements",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "dietary_requirements",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "condolence_type",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "condolence_type",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "condolence_type",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "condolence_type",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "condolence_type",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "condolence_type",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "condolence_type",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "condolence_type",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "condolence_type",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "condolence_type",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "condolence_type",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "condolence_type",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "visiting_time",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "visiting_time",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "visiting_time",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "visiting_time",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "visiting_time",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "visiting_time",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "visiting_time",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "visiting_time",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "visiting_time",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "visiting_time",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "visiting_time",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "visiting_time",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "additional_info",
+    "value": "{\"timestamp\": \"2025-08-07T10:18:39.419Z\", \"ip_address\": \"::1\", \"user_agent\": \"Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36\", \"created_via\": \"web\"}"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "additional_info",
+    "value": "{\"timestamp\": \"2025-08-12T09:08:12.596Z\", \"ip_address\": \"::1\", \"user_agent\": \"Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36\", \"created_via\": \"web\"}"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "additional_info",
+    "value": "{}"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "additional_info",
+    "value": "{}"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "additional_info",
+    "value": "{}"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "additional_info",
+    "value": "{}"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "additional_info",
+    "value": "{}"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "additional_info",
+    "value": "{}"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "additional_info",
+    "value": "{}"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "additional_info",
+    "value": "{}"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "additional_info",
+    "value": "{}"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "additional_info",
+    "value": "{}"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "ip_address",
+    "value": "::1/128"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "ip_address",
+    "value": "::1/128"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "ip_address",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "ip_address",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "ip_address",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "ip_address",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "ip_address",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "ip_address",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "ip_address",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "ip_address",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "ip_address",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "ip_address",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "user_agent",
+    "value": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "user_agent",
+    "value": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "user_agent",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "user_agent",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "user_agent",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "user_agent",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "user_agent",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "user_agent",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "user_agent",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "user_agent",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "user_agent",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "user_agent",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_verified",
+    "value": "false"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_verified",
+    "value": "false"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_verified",
+    "value": "false"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_verified",
+    "value": "false"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_verified",
+    "value": "false"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_verified",
+    "value": "false"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_verified",
+    "value": "false"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_verified",
+    "value": "false"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_verified",
+    "value": "false"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_verified",
+    "value": "false"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_verified",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "is_verified",
+    "value": "true"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_at",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_at",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_at",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_at",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_at",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_at",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_at",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_at",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_at",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_at",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_at",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_at",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_by",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_by",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_by",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_by",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_by",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_by",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_by",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_by",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_by",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_by",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_by",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "verified_by",
+    "value": null
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "created_at",
+    "value": "2025-08-07 10:18:40.531049+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "created_at",
+    "value": "2025-08-12 09:08:12.99349+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "created_at",
+    "value": "2025-08-13 12:40:23.702+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "created_at",
+    "value": "2025-08-14 02:28:22.971+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "created_at",
+    "value": "2025-08-14 02:28:33.451+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "created_at",
+    "value": "2025-08-14 02:28:46.612+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "created_at",
+    "value": "2025-08-14 02:28:52.717+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "created_at",
+    "value": "2025-08-14 02:28:58.321+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "created_at",
+    "value": "2025-08-14 02:29:15.61+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "created_at",
+    "value": "2025-08-14 02:29:08.883+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "created_at",
+    "value": "2025-08-14 02:29:30.805+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "created_at",
+    "value": "2025-08-14 02:29:22.472+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "updated_at",
+    "value": "2025-08-07 10:18:40.531049+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "updated_at",
+    "value": "2025-08-12 09:08:12.99349+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "updated_at",
+    "value": "2025-08-14 02:27:52.569045+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "updated_at",
+    "value": "2025-08-14 02:28:22.847823+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "updated_at",
+    "value": "2025-08-14 02:28:33.334168+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "updated_at",
+    "value": "2025-08-14 02:28:46.488311+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "updated_at",
+    "value": "2025-08-14 02:28:52.593746+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "updated_at",
+    "value": "2025-08-14 02:28:58.195918+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "updated_at",
+    "value": "2025-08-14 02:29:15.481694+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "updated_at",
+    "value": "2025-08-14 02:30:10.110875+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "updated_at",
+    "value": "2025-08-14 05:02:49.41203+00"
+  },
+  {
+    "table_name": "guest_book",
+    "column_name": "updated_at",
+    "value": "2025-08-14 07:03:19.685269+00"
   },
   {
     "table_name": "users",
@@ -12295,5 +13555,3 @@
     "value": "b3882661-1c87-40c6-9bbf-e979b3f2473c"
   }
 ]
-
-이 내용들 좀 정리좀 해서 줄 수 있어? 너무 양이 많아서 줄인다기보다 모든 데이터들은 그대로 해야 하는데 좀 프롬프트로 적기에 너무 커서 좀 뭔가 줄여서 줄 수 있어?
