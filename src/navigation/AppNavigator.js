@@ -7,7 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 
 import HomeScreen from '../screens/main/HomeScreen';
 import MyEventsScreen from '../screens/main/MyEventsScreen';
-import GuideScreen from '../screens/main/GuideScreen';
+// import GuideScreen from '../screens/main/GuideScreen'; // 기존 스타일
+import GuideScreen from '../screens/main/GuideScreenToss'; // 토스 스타일
 import ProfileScreen from '../screens/main/ProfileScreen';
 import CreateEventScreen from '../screens/event/CreateEventScreen';
 
@@ -37,6 +38,10 @@ import BudgetCalculatorScreen from '../screens/main/guides/host/BudgetCalculator
 import VendorListScreen from '../screens/main/guides/host/VendorListScreen';
 import ChecklistManagerScreen from '../screens/main/guides/host/ChecklistManagerScreen';
 import TimelineScreen from '../screens/main/guides/host/TimelineScreen';
+import HostFAQScreen from '../screens/main/guides/host/HostFAQScreen';
+
+// 🆕 참여자용 FAQ 화면
+import ParticipantFAQScreen from '../screens/main/guides/participant/ParticipantFAQScreen';
 
 import SettingsScreen from '../screens/main/SettingsScreen'; 
 import ContributionSettingsScreen from '../screens/main/ContributionSettingsScreen';
@@ -644,6 +649,37 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
         >
           {(props) => (
             <TimelineScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        {/* 🆕 FAQ 화면들 */}
+        <Stack.Screen 
+          name="HostFAQ" 
+          options={{
+            headerShown: false,
+          }}
+        >
+          {(props) => (
+            <HostFAQScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen 
+          name="ParticipantFAQ" 
+          options={{
+            headerShown: false,
+          }}
+        >
+          {(props) => (
+            <ParticipantFAQScreen 
               {...props} 
               userInfo={userInfo}
               session={session}

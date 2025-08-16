@@ -350,33 +350,6 @@ export default function EtiquetteGuideScreen({ navigation }) {
           {renderSituationGuide()}
         </View>
 
-        {/* 국제 매너 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🌍 국제 매너</Text>
-          <View style={styles.internationalGuide}>
-            <View style={styles.internationalItem}>
-              <Text style={styles.internationalIcon}>🇰🇷</Text>
-              <View style={styles.internationalContent}>
-                <Text style={styles.internationalTitle}>한국식</Text>
-                <Text style={styles.internationalText}>절, 정중한 인사, 연장자 우선</Text>
-              </View>
-            </View>
-            <View style={styles.internationalItem}>
-              <Text style={styles.internationalIcon}>🇺🇸</Text>
-              <View style={styles.internationalContent}>
-                <Text style={styles.internationalTitle}>서양식</Text>
-                <Text style={styles.internationalText}>악수, 허그, 간단한 축하 인사</Text>
-              </View>
-            </View>
-            <View style={styles.internationalItem}>
-              <Text style={styles.internationalIcon}>🤝</Text>
-              <View style={styles.internationalContent}>
-                <Text style={styles.internationalTitle}>다문화</Text>
-                <Text style={styles.internationalText}>상대방 문화에 맞춰 유연하게 대응</Text>
-              </View>
-            </View>
-          </View>
-        </View>
 
         {/* 어린이 동반 시 주의사항 */}
         <View style={styles.section}>
@@ -624,32 +597,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   
-  // 국제 매너
-  internationalGuide: {
-    gap: 12,
-  },
-  internationalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.gray50,
-    borderRadius: 12,
-    padding: 16,
-  },
-  internationalIcon: {
-    fontSize: 24,
-    marginRight: 16,
-  },
-  internationalContent: {},
-  internationalTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 2,
-  },
-  internationalText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
   
   // 어린이 가이드
   childGuide: {

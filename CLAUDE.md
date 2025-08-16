@@ -6,13 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Running the App
 ```bash
-# Start development server
+# Start development server (primary command)
 npm start
 
 # Run on specific platform
 npm run ios      # iOS simulator
-npm run android  # Android emulator
+npm run android  # Android emulator  
 npm run web      # Web browser
+
+# Alternative Expo commands
+npx expo start   # Alternative to npm start
+npx expo start --clear  # Clear cache and start
 ```
 
 ### Building for Production
@@ -25,12 +29,19 @@ npm run build:all      # Both platforms
 # Submit to app stores
 npm run submit:android  # Google Play
 npm run submit:ios      # App Store
+
+# EAS Update (for OTA updates)
+npm run update   # Push updates to existing builds
 ```
 
-### Code Quality
+### Code Quality & Development
 ```bash
-npm run lint  # Run ESLint
-npm test      # Run Jest tests (if configured)
+npm run lint     # Run ESLint
+npm test         # Run Jest tests (if configured)
+
+# Manual testing commands
+npx expo install --fix  # Fix dependency issues
+npx expo doctor        # Check for common issues
 ```
 
 ## Architecture Overview
@@ -42,14 +53,17 @@ npm test      # Run Jest tests (if configured)
 - **AsyncStorage**: Local data persistence for auth state
 
 ### Authentication Flow
-The app uses a dual authentication system:
-1. **Phone Authentication**: SMS OTP via Twilio integration, stores session in AsyncStorage
-2. **OAuth Fallback**: Google/Kakao login via Supabase Auth (currently backup)
+The app uses a phone-first authentication system:
+1. **Primary**: Phone Authentication via SMS OTP using Twilio integration
+2. **Session Management**: Stores auth session in AsyncStorage for persistence
+3. **Backup**: OAuth (Google/Kakao) via Supabase Auth (currently disabled/backup)
 
 Key files:
 - `App.js`: Main auth state management, checks both AsyncStorage and Supabase sessions
-- `src/lib/smsAuth.js`: Twilio SMS verification
-- `src/lib/supabase.js`: Supabase client with phone auth methods
+- `src/lib/smsAuth.js`: Twilio SMS verification logic
+- `src/lib/twilioDirectSms.js`: Direct Twilio SMS sending
+- `src/lib/supabase.js`: Supabase client configuration with phone auth methods
+- `src/screens/auth/`: Authentication screens (Welcome, PhoneAuth, Verification, Register)
 
 ### Database Schema (Supabase PostgreSQL)
 - **users**: User profiles with phone verification status
@@ -89,11 +103,23 @@ Key screens:
 - `ContributionScreen.js`: Guest contribution form
 
 ### Template System
-Located in `src/screens/event/templates/wedding/`:
-- Shared components in `WeddingCommonComponents.js`
-- Style utilities in `WeddingStyles.js` and `WeddingUtils.js`
-- Each template is a self-contained component with unique styling
-- Templates: Classic, Modern, Garden, Luxury, Vintage + Funeral template
+Wedding templates located in `src/screens/event/templates/wedding/`:
+- **ElegantGardenTemplate.js**: Garden theme with natural elements
+- **KoreanElegantTemplate.js**: Classic Korean traditional style
+- **ModernMinimalTemplate.js**: Clean, minimal modern design
+- **RomanticPinkTemplate.js**: Romantic pink/rose themed design
+- **VintageAppTemplate.js**: Vintage/retro styled template
+- **WeddingCommonComponents.js**: Shared components across templates
+- **WeddingStyles.js** & **WeddingUtils.js**: Style utilities and helpers
+
+Funeral templates:
+- **FuneralTemplatePreview.js**: Solemn memorial template with appropriate styling
+
+Template system features:
+- Each template is self-contained with unique styling
+- Image slideshow support with placeholder fallback
+- QR code integration for contribution collection
+- Responsive design for tablet display mode
 
 ### Supabase Configuration
 - URL: `https://ofshqvrldcesvjtredxo.supabase.co`
@@ -103,24 +129,56 @@ Located in `src/screens/event/templates/wedding/`:
 ## Important Notes
 
 ### Current Development Status
-- Phone authentication is primary, OAuth is backup
-- Image upload system needs Supabase Storage integration
-- QR code links point to web contribution page (needs separate web app)
-- Real-time contribution updates via Supabase subscriptions
+- Phone authentication is primary, OAuth is backup/disabled
+- Five wedding templates + one funeral template fully implemented
+- QR code generation works, but links point to web app (needs separate deployment)
+- Real-time contribution updates via Supabase subscriptions (needs RLS policy setup)
+- Image upload UI exists but needs Supabase Storage integration
 
-### Critical TODOs
-1. **Enable RLS policies** in Supabase dashboard for events and contributions tables
-2. **Configure Storage bucket** for event image uploads
-3. **Deploy web contribution page** for QR code scanning
-4. **Test payment flow** end-to-end
+### Critical Setup Requirements
+1. **Enable RLS policies** in Supabase dashboard:
+   ```sql
+   -- Enable RLS on tables
+   ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+   ALTER TABLE contributions ENABLE ROW LEVEL SECURITY;
+   
+   -- Create policies for events
+   CREATE POLICY "Users can manage their own events" ON events
+   FOR ALL USING (auth.uid() = user_id);
+   
+   -- Create policies for contributions
+   CREATE POLICY "Anyone can view contributions" ON contributions
+   FOR SELECT USING (true);
+   CREATE POLICY "Anyone can insert contributions" ON contributions
+   FOR INSERT WITH CHECK (true);
+   ```
 
-### Environment Variables
-Store sensitive keys in `.env` or use Expo's secure store:
-- Supabase URL and anon key (currently hardcoded in `supabase.js`)
-- Twilio credentials for SMS (in `twilioDirectSms.js`)
+2. **Configure Supabase Storage bucket** for event images:
+   ```sql
+   -- Create storage bucket
+   INSERT INTO storage.buckets (id, name, public) 
+   VALUES ('event-images', 'event-images', true);
+   ```
 
-### Testing Approach
-- Use Expo Go app for rapid development testing
-- Test on both iOS and Android devices/simulators
-- Verify phone auth flow with real phone numbers
-- Test all 5 wedding templates and funeral template rendering
+3. **Environment Variables** (currently hardcoded in source):
+   - Supabase URL and anon key (in `src/lib/supabase.js`)
+   - Twilio credentials (in `src/lib/twilioDirectSms.js`)
+
+### Known Issues
+- **RLS Policies**: Events/contributions operations fail without proper RLS setup
+- **Image Upload**: UI exists but storage integration incomplete
+- **Web QR Page**: QR codes generate but need separate web app deployment
+- **Template Selection**: CreateEventScreen template selection needs database integration
+
+### Testing Workflow
+1. Use Expo Go app for rapid testing during development
+2. Test phone auth flow with real phone numbers (Twilio sandbox limitations)
+3. Test all template rendering in EventDisplayScreen
+4. Verify QR code generation (note: web endpoint doesn't exist yet)
+5. Test contribution flow end-to-end once RLS policies are enabled
+
+### DeepSeek AI Integration
+The app includes AI-powered features via DeepSeek service:
+- **File**: `src/lib/deepseekService.js`
+- **Features**: Contribution analysis, event insights, budget recommendations
+- **Usage**: Integrated in guide screens and budget calculator

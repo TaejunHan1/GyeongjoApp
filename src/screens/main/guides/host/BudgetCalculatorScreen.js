@@ -11,10 +11,12 @@ import {
   Alert,
   Dimensions,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../../../styles/constants';
+import { DeepSeekService } from '../../../../lib/deepseekService';
 
 const { width } = Dimensions.get('window');
 
@@ -25,6 +27,12 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
   const [totalBudget, setTotalBudget] = useState('3000');
   const [budgetItems, setBudgetItems] = useState({});
   const [showAIRecommendation, setShowAIRecommendation] = useState(false);
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [aiInsights, setAiInsights] = useState([]);
+  const [aiConfidence, setAiConfidence] = useState(0);
+  const [location, setLocation] = useState('seoul');
+  const [recommendedVenues, setRecommendedVenues] = useState([]);
+  const [marketReality, setMarketReality] = useState('');
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -82,89 +90,183 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
     }
   ];
 
-  // 장례식 예산 항목들
+  // 장례식 예산 항목들 (실제 장례식장 이용 기준)
   const funeralBudgetCategories = [
     {
-      id: 'facility',
-      title: '장례식장',
+      id: 'funeral_package',
+      title: '장례식장 패키지',
       items: [
-        { id: 'hall_rental', name: '빈소 사용료', defaultPercent: 20, description: '빈소 3일 사용료' },
-        { id: 'decoration', name: '빈소 장식', defaultPercent: 8, description: '영정사진, 근조화환 등' },
-        { id: 'funeral_supplies', name: '장례용품', defaultPercent: 10, description: '상복, 완장, 관련 용품' },
+        { id: 'basic_package', name: '기본 패키지', defaultPercent: 45, description: '빈소, 장례용품, 지도사, 운구차 포함' },
+        { id: 'additional_service', name: '추가 서비스', defaultPercent: 10, description: '화환, 근조용품, 특별 서비스' },
       ]
     },
     {
-      id: 'services',
-      title: '장례서비스',
+      id: 'burial_cremation',
+      title: '안장/화장',
       items: [
-        { id: 'funeral_director', name: '장례지도사', defaultPercent: 15, description: '장례 진행 및 안내' },
-        { id: 'transportation', name: '운구/차량', defaultPercent: 8, description: '영구차, 버스 등' },
-        { id: 'religious', name: '종교의식', defaultPercent: 5, description: '목사, 신부, 스님 예배료' },
+        { id: 'cremation_cost', name: '화장 비용', defaultPercent: 8, description: '화장장 이용료' },
+        { id: 'final_resting', name: '안장지', defaultPercent: 25, description: '묘지/납골당/수목장' },
       ]
     },
     {
-      id: 'burial',
-      title: '매장/화장',
+      id: 'food_reception',
+      title: '음식/접대',
       items: [
-        { id: 'cremation', name: '화장비용', defaultPercent: 12, description: '화장장 사용료' },
-        { id: 'burial_plot', name: '묘지/납골당', defaultPercent: 25, description: '영구 안장지' },
-      ]
-    },
-    {
-      id: 'food_service',
-      title: '접대비용',
-      items: [
-        { id: 'food', name: '조문객 접대', defaultPercent: 15, description: '음식 및 다과비' },
-        { id: 'memorial_meal', name: '상차림', defaultPercent: 8, description: '발인 후 식사비' },
+        { id: 'condolence_food', name: '조문객 음식', defaultPercent: 12, description: '3일간 조문객 식사 및 음료' },
+        { id: 'wake_service', name: '빈소 다과', defaultPercent: 5, description: '차, 커피, 간식류' },
       ]
     },
     {
       id: 'misc',
-      title: '기타',
+      title: '기타 비용',
       items: [
-        { id: 'obituary', name: '부고/광고', defaultPercent: 3, description: '부고장 및 신문광고' },
-        { id: 'memorial_items', name: '추모용품', defaultPercent: 2, description: '영정사진, 위패 등' },
-        { id: 'etc', name: '기타비용', defaultPercent: 5, description: '예비비 및 기타' },
+        { id: 'obituary_ads', name: '부고 광고', defaultPercent: 3, description: '신문, 온라인 부고' },
+        { id: 'memorial_photo', name: '영정사진', defaultPercent: 2, description: '영정사진 제작 및 액자' },
+        { id: 'reserve_fund', name: '예비비', defaultPercent: 10, description: '예상치 못한 비용' },
       ]
     }
   ];
 
   const currentCategories = eventType === 'wedding' ? weddingBudgetCategories : funeralBudgetCategories;
 
-  // AI 추천 예산 계산
-  const calculateAIRecommendation = () => {
-    const budget = parseInt(totalBudget) * 10000; // 만원 단위
-    const guests = parseInt(guestCount);
-    const newBudgetItems = {};
+  // DeepSeek AI 예산 계산 (실제 AI 연동)
+  const calculateAIRecommendation = async () => {
+    try {
+      setIsCalculating(true);
+      console.log('🤖 DeepSeek AI 예산 계산 시작...');
 
-    currentCategories.forEach(category => {
-      category.items.forEach(item => {
-        let percentage = item.defaultPercent;
-        
-        // 인원수에 따른 조정
-        if (['meal', 'food', 'gift'].includes(item.id)) {
-          if (guests > 150) percentage *= 1.1;
-          else if (guests < 50) percentage *= 0.9;
-        }
-        
-        // 예산 규모에 따른 조정
-        if (budget > 50000000) { // 5천만원 이상
-          if (['photography', 'videography', 'decoration'].includes(item.id)) {
-            percentage *= 1.2;
-          }
-        } else if (budget < 20000000) { // 2천만원 미만
-          if (['honeymoon', 'accessories', 'etc'].includes(item.id)) {
-            percentage *= 0.8;
-          }
-        }
+      const budget = parseInt(totalBudget) * 10000; // 만원 단위
+      const guests = parseInt(guestCount);
 
-        newBudgetItems[item.id] = Math.round((budget * percentage) / 100);
+      console.log('🔍 DeepSeek AI 계산 파라미터:', {
+        eventType,
+        totalBudget: budget,
+        guestCount: guests,
+        location
       });
-    });
 
-    setBudgetItems(newBudgetItems);
-    setShowAIRecommendation(true);
+      // DeepSeek AI 예산 계산 실행
+      const aiResult = await DeepSeekService.getBudgetRecommendation(
+        eventType,
+        budget,
+        guests,
+        location,
+        '' // 추가 정보
+      );
+      
+      console.log('✅ DeepSeek AI 계산 완료:', {
+        confidence: aiResult.confidence,
+        insightCount: aiResult.insights.length,
+        source: aiResult.metadata?.source,
+        venues: aiResult.recommendedVenues?.length || 0,
+        marketReality: aiResult.marketReality
+      });
+
+      // 추천 업체 및 시장 현실성 설정
+      console.log('🏢 UI에 설정할 업체 정보:', aiResult.recommendedVenues);
+      console.log('📊 UI에 설정할 시장 현실성:', aiResult.marketReality);
+      setRecommendedVenues(aiResult.recommendedVenues || []);
+      setMarketReality(aiResult.marketReality || '');
+
+      // AI 결과를 기존 형식으로 변환
+      const newBudgetItems = {};
+
+      // 기존 하드코딩된 항목들과 매핑
+      if (eventType === 'wedding') {
+        newBudgetItems.hall_rental = Math.round(aiResult.detailed.venue?.hall_rental || 0);
+        newBudgetItems.decoration = Math.round(aiResult.detailed.venue?.decoration || 0);
+        newBudgetItems.lighting_sound = Math.round(aiResult.detailed.venue?.lighting_sound || 0);
+        newBudgetItems.meal = Math.round(aiResult.detailed.food?.meal || 0);
+        newBudgetItems.cake = Math.round(aiResult.detailed.food?.cake || 0);
+        newBudgetItems.dress = Math.round(aiResult.detailed.attire?.dress || 0);
+        newBudgetItems.makeup = Math.round(aiResult.detailed.attire?.makeup || 0);
+        newBudgetItems.accessories = Math.round(aiResult.detailed.attire?.accessories || 0);
+        newBudgetItems.photography = Math.round(aiResult.detailed.photo?.photography || 0);
+        newBudgetItems.videography = Math.round(aiResult.detailed.photo?.videography || 0);
+        newBudgetItems.invitation = Math.round(aiResult.detailed.misc?.invitation || 0);
+        newBudgetItems.gift = Math.round(aiResult.detailed.misc?.gift || 0);
+        newBudgetItems.honeymoon = Math.round(
+          (aiResult.detailed.honeymoon?.travel || 0) + (aiResult.detailed.honeymoon?.accommodation || 0)
+        );
+        newBudgetItems.etc = Math.round(aiResult.detailed.misc?.etc || 0);
+      } else {
+        // 장례식 항목 매핑 (새로운 구조)
+        newBudgetItems.basic_package = Math.round(aiResult.detailed.funeral_package?.basic_package || 0);
+        newBudgetItems.additional_service = Math.round(aiResult.detailed.funeral_package?.additional_service || 0);
+        newBudgetItems.cremation_cost = Math.round(aiResult.detailed.burial_cremation?.cremation_cost || 0);
+        newBudgetItems.final_resting = Math.round(aiResult.detailed.burial_cremation?.final_resting || 0);
+        newBudgetItems.condolence_food = Math.round(aiResult.detailed.food_reception?.condolence_food || 0);
+        newBudgetItems.wake_service = Math.round(aiResult.detailed.food_reception?.wake_service || 0);
+        newBudgetItems.obituary_ads = Math.round(aiResult.detailed.misc?.obituary_ads || 0);
+        newBudgetItems.memorial_photo = Math.round(aiResult.detailed.misc?.memorial_photo || 0);
+        newBudgetItems.reserve_fund = Math.round(aiResult.detailed.misc?.reserve_fund || 0);
+      }
+
+      console.log('🔢 설정할 예산 항목들:', newBudgetItems);
+      setBudgetItems(newBudgetItems);
+      setAiInsights(aiResult.insights);
+      setAiConfidence(aiResult.confidence);
+      setShowAIRecommendation(true);
+
+      // 성공 메시지
+      Alert.alert(
+        '🤖 DeepSeek AI 예산 계산 완료',
+        `신뢰도 ${aiResult.confidence}%로 예산을 계산했습니다.\n${aiResult.insights.length}개의 맞춤 조언도 확인해보세요!`,
+        [{ text: '확인', style: 'default' }]
+      );
+
+    } catch (error) {
+      console.error('🔴 DeepSeek AI 예산 계산 오류:', error);
+      
+      // 에러 종류에 따른 상세 메시지
+      let errorTitle = 'AI 계산 오류';
+      let errorMessage = 'AI 예산 계산에 실패했습니다. 다시 시도해주세요.';
+      
+      if (error.message.includes('Network')) {
+        errorTitle = '인터넷 연결 오류';
+        errorMessage = '인터넷 연결을 확인하고 다시 시도해주세요.';
+      } else if (error.message.includes('API Error')) {
+        errorTitle = 'AI 서비스 오류';
+        errorMessage = 'AI 서비스에 일시적 문제가 있습니다. 잠시 후 다시 시도해주세요.';
+      } else if (error.message.includes('JSON')) {
+        errorTitle = 'AI 응답 처리 오류';
+        errorMessage = 'AI 응답을 처리하는 중 문제가 발생했습니다. 다시 시도해주세요.';
+      }
+      
+      // 에러 시에도 기본 결과는 표시 (fallback이 작동했을 경우)
+      if (error.fallbackResult) {
+        console.log('🔄 기본값 결과 사용:', error.fallbackResult);
+        setBudgetItems(error.fallbackResult.budgetItems || {});
+        setAiInsights(error.fallbackResult.insights || []);
+        setAiConfidence(error.fallbackResult.confidence || 65);
+        setRecommendedVenues(error.fallbackResult.recommendedVenues || []);
+        setMarketReality(error.fallbackResult.marketReality || '정보 부족');
+        setShowAIRecommendation(true);
+      }
+      
+      // 에러 알림
+      Alert.alert(
+        errorTitle,
+        errorMessage,
+        [
+          { text: '확인', style: 'default' },
+          { 
+            text: '다시 시도', 
+            onPress: () => {
+              // 잠시 후 자동 재시도
+              setTimeout(() => {
+                calculateAIRecommendation();
+              }, 1000);
+            },
+            style: 'cancel' 
+          }
+        ]
+      );
+    } finally {
+      setIsCalculating(false);
+    }
   };
+
 
   // 수동 입력 처리
   const updateBudgetItem = (itemId, value) => {
@@ -178,6 +280,14 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
   // 총 계산된 비용
   const totalCalculated = Object.values(budgetItems).reduce((sum, value) => sum + (value || 0), 0);
   const budgetDifference = (parseInt(totalBudget) * 10000) - totalCalculated;
+  
+  // 디버깅용
+  console.log('💰 예산 계산 상태:', {
+    budgetItems,
+    totalCalculated,
+    budgetDifference,
+    totalBudget: parseInt(totalBudget) * 10000
+  });
 
   // 숫자 포맷팅
   const formatNumber = (num) => {
@@ -289,21 +399,329 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
             </View>
           </View>
 
+          {/* 지역 선택 */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>지역</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionScroll}>
+              <View style={styles.optionContainer}>
+                {[
+                  { id: 'seoul', label: '서울' },
+                  { id: 'gyeonggi', label: '경기' },
+                  { id: 'busan', label: '부산' },
+                  { id: 'daegu', label: '대구' },
+                  { id: 'incheon', label: '인천' },
+                  { id: 'gwangju', label: '광주' },
+                  { id: 'daejeon', label: '대전' },
+                  { id: 'ulsan', label: '울산' },
+                  { id: 'jeju', label: '제주' },
+                  { id: 'other', label: '기타' },
+                ].map((region) => (
+                  <TouchableOpacity
+                    key={region.id}
+                    style={[
+                      styles.optionButton,
+                      location === region.id && styles.optionButtonActive
+                    ]}
+                    onPress={() => setLocation(region.id)}
+                  >
+                    <Text style={[
+                      styles.optionButtonText,
+                      location === region.id && styles.optionButtonTextActive
+                    ]}>
+                      {region.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+
+
           <TouchableOpacity 
-            style={styles.aiButton}
+            style={[styles.aiButton, isCalculating && styles.aiButtonDisabled]}
             onPress={calculateAIRecommendation}
+            disabled={isCalculating}
           >
-            <Ionicons name="bulb" size={20} color={Colors.white} />
-            <Text style={styles.aiButtonText}>AI 추천 예산 계산하기</Text>
+            {isCalculating ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <Ionicons name="bulb" size={20} color={Colors.white} />
+            )}
+            <Text style={styles.aiButtonText}>
+              {isCalculating ? 'AI 계산 중...' : 'AI 추천 예산 계산하기'}
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* 예산 결과 */}
         {showAIRecommendation && (
           <View style={styles.resultsSection}>
+            {/* 추천 업체 정보 */}
+            {recommendedVenues.length > 0 && (
+              <View style={styles.venuesCard}>
+                <View style={styles.venuesHeader}>
+                  <View style={styles.venuesIcon}>
+                    <Ionicons name="business" size={20} color="#26C976" />
+                  </View>
+                  <Text style={styles.venuesTitle}>추천 {eventType === 'wedding' ? '웨딩홀' : '장례식장'}</Text>
+                </View>
+                
+                <View style={styles.venuesList}>
+                  {recommendedVenues.map((venue, index) => {
+                    console.log(`🏢 업체 ${index + 1} 렌더링:`, venue);
+                    return (
+                      <View key={index} style={styles.venueItem}>
+                        <View style={styles.venueHeader}>
+                          <View style={styles.venueMainInfo}>
+                            <Text style={styles.venueName}>{venue.name || '업체명 미확인'}</Text>
+                            <Text style={styles.venueLocation}>
+                              📍 {venue.location || '위치 정보 없음'}
+                            </Text>
+                          </View>
+                          {venue.phone && (
+                            <TouchableOpacity 
+                              style={styles.phoneButton}
+                              onPress={() => Alert.alert(
+                                '전화걸기', 
+                                `${venue.name}에 전화하시겠습니까?\n\n📞 ${venue.phone}`,
+                                [
+                                  { text: '취소', style: 'cancel' },
+                                  { text: '전화걸기', onPress: () => console.log('전화걸기:', venue.phone) }
+                                ]
+                              )}
+                            >
+                              <Ionicons name="call" size={16} color={Colors.primary} />
+                              <Text style={styles.phoneText}>{venue.phone}</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        
+                        <View style={styles.venuePriceSection}>
+                          <View style={styles.priceInfo}>
+                            <Text style={styles.venuePrice}>
+                              💰 {venue.price_range || venue.package_price || '가격 정보 확인 필요'}
+                            </Text>
+                            
+                            {/* 🔥 세부 가격 정보 표시 */}
+                            {venue.detailedPrices && Object.keys(venue.detailedPrices).length > 0 && (
+                              <View style={styles.detailedPricesContainer}>
+                                <Text style={styles.detailedPricesTitle}>📋 세부 가격 정보</Text>
+                                <View style={styles.detailedPricesList}>
+                                  {Object.entries(venue.detailedPrices).map(([key, value], index) => (
+                                    <View key={index} style={styles.detailedPriceItem}>
+                                      <Text style={styles.detailedPriceLabel}>• {key}:</Text>
+                                      <Text style={styles.detailedPriceValue}>{value}</Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              </View>
+                            )}
+                          </View>
+                          
+                          {/* 예산 부합도 표시 */}
+                          <View style={styles.budgetCompatibility}>
+                            {(() => {
+                              const userBudget = parseInt(totalBudget) * 10000;
+                              const priceText = venue.price_range || venue.package_price || '';
+                              
+                              // 가격에서 숫자 추출 시도
+                              const priceMatch = priceText.match(/([0-9,]+)/g);
+                              let compatibility = 'unknown';
+                              let compatibilityText = '가격 비교 불가';
+                              let compatibilityColor = Colors.textSecondary;
+                              
+                              if (priceMatch && priceMatch.length > 0) {
+                                const venuePrice = parseInt(priceMatch[0].replace(/,/g, '')) * 10000;
+                                const priceDiff = ((venuePrice - userBudget) / userBudget) * 100;
+                                
+                                if (priceDiff <= -20) {
+                                  compatibility = 'under';
+                                  compatibilityText = '예산 여유 있음';
+                                  compatibilityColor = '#26C976';
+                                } else if (priceDiff <= 10) {
+                                  compatibility = 'match';
+                                  compatibilityText = '예산에 적합';
+                                  compatibilityColor = '#26C976';
+                                } else if (priceDiff <= 30) {
+                                  compatibility = 'over';
+                                  compatibilityText = '예산 약간 초과';
+                                  compatibilityColor = '#FF8A00';
+                                } else {
+                                  compatibility = 'high';
+                                  compatibilityText = '예산 크게 초과';
+                                  compatibilityColor = '#FF6B6B';
+                                }
+                              }
+                              
+                              return (
+                                <View style={[
+                                  styles.compatibilityBadge,
+                                  { backgroundColor: compatibilityColor + '20' }
+                                ]}>
+                                  <Ionicons 
+                                    name={
+                                      compatibility === 'under' ? 'trending-down' :
+                                      compatibility === 'match' ? 'checkmark-circle' :
+                                      compatibility === 'over' ? 'warning' : 'alert-circle'
+                                    }
+                                    size={14} 
+                                    color={compatibilityColor}
+                                  />
+                                  <Text style={[styles.compatibilityText, { color: compatibilityColor }]}>
+                                    {compatibilityText}
+                                  </Text>
+                                </View>
+                              );
+                            })()}
+                          </View>
+                        </View>
+                        
+                        {/* 추가 정보가 있다면 표시 */}
+                        {(venue.specialty || venue.description) && (
+                          <Text style={styles.venueDescription}>
+                            {venue.specialty || venue.description}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* 시장 현실성 평가 - 개선된 버전 */}
+            {marketReality && marketReality !== '정보 부족' && (
+              <View style={styles.marketCard}>
+                <View style={styles.marketHeader}>
+                  <View style={[styles.marketIcon, {
+                    backgroundColor: 
+                      marketReality.includes('적정') || marketReality.includes('적절') ? '#E8F5E8' :
+                      marketReality.includes('높음') || marketReality.includes('부족') || marketReality.includes('초과') ? '#FFE8E8' : '#FFF3E0'
+                  }]}>
+                    <Ionicons 
+                      name={
+                        marketReality.includes('적정') || marketReality.includes('적절') ? 'checkmark-circle' :
+                        marketReality.includes('높음') || marketReality.includes('부족') || marketReality.includes('초과') ? 'alert-circle' : 'warning'
+                      }
+                      size={20} 
+                      color={
+                        marketReality.includes('적정') || marketReality.includes('적절') ? '#26C976' :
+                        marketReality.includes('높음') || marketReality.includes('부족') || marketReality.includes('초과') ? '#FF6B6B' : '#FF8A00'
+                      }
+                    />
+                  </View>
+                  <View style={styles.marketContent}>
+                    <Text style={styles.marketTitle}>💡 예산 vs 시장가격 분석</Text>
+                    <Text style={[styles.marketStatus, {
+                      color: 
+                        marketReality.includes('적정') || marketReality.includes('적절') ? '#26C976' :
+                        marketReality.includes('높음') || marketReality.includes('부족') || marketReality.includes('초과') ? '#FF6B6B' : '#FF8A00'
+                    }]}>
+                      {marketReality}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.marketDescription}>
+                  {marketReality.includes('높음') || marketReality.includes('부족') || marketReality.includes('초과') ? 
+                    `현재 ${location === 'seoul' ? '서울' : location} 지역의 ${eventType === 'wedding' ? '웨딩홀' : '장례식장'} 시장 가격이 설정 예산보다 높습니다. 예산을 늘리거나 더 경제적인 옵션을 고려해보세요.` :
+                    marketReality.includes('낮음') || marketReality.includes('여유') ?
+                    `설정한 예산으로 더 좋은 서비스를 이용할 수 있습니다. ${eventType === 'wedding' ? '추가 장식이나 서비스' : '추가 서비스나 더 좋은 시설'}를 고려해보세요.` :
+                    `설정한 예산이 현재 ${location === 'seoul' ? '서울' : location} 지역의 ${eventType === 'wedding' ? '웨딩홀' : '장례식장'} 시장 가격과 적절합니다.`
+                  }
+                </Text>
+                
+                {/* 구체적인 예산 가이드 추가 */}
+                <View style={styles.budgetGuide}>
+                  <Text style={styles.budgetGuideTitle}>💡 예산 조정 가이드</Text>
+                  <View style={styles.budgetOptions}>
+                    {marketReality.includes('높음') || marketReality.includes('부족') ? (
+                      <>
+                        <Text style={styles.budgetOption}>• 예산 20-30% 증액 고려</Text>
+                        <Text style={styles.budgetOption}>• 비수기(11-2월) 이용으로 20% 절약</Text>
+                        <Text style={styles.budgetOption}>• 주중 이용으로 10-15% 절약</Text>
+                      </>
+                    ) : marketReality.includes('적정') || marketReality.includes('적절') ? (
+                      <>
+                        <Text style={styles.budgetOption}>• 현재 예산으로 충분히 가능</Text>
+                        <Text style={styles.budgetOption}>• 업체 비교견적으로 5-10% 절약</Text>
+                        <Text style={styles.budgetOption}>• 패키지 상품으로 추가 혜택</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={styles.budgetOption}>• 프리미엄 옵션 추가 고려</Text>
+                        <Text style={styles.budgetOption}>• 더 좋은 시설/서비스 선택</Text>
+                        <Text style={styles.budgetOption}>• 추가 장식이나 서비스 업그레이드</Text>
+                      </>
+                    )}
+                  </View>
+                </View>
+              </View>
+            )}
+            {/* AI 신뢰도 및 인사이트 */}
+            {aiConfidence > 0 && (
+              <View style={styles.aiInsightsCard}>
+                <View style={styles.aiInsightsHeader}>
+                  <View style={styles.aiIcon}>
+                    <Ionicons name="bulb" size={20} color="#26C976" />
+                  </View>
+                  <View style={styles.aiHeaderContent}>
+                    <Text style={styles.aiInsightsTitle}>AI 분석 결과</Text>
+                    <Text style={styles.aiConfidenceText}>신뢰도 {aiConfidence}%</Text>
+                  </View>
+                  <View style={styles.confidenceBadge}>
+                    <View style={[
+                      styles.confidenceIndicator,
+                      { 
+                        backgroundColor: aiConfidence >= 80 ? '#26C976' : 
+                                       aiConfidence >= 60 ? '#FFB800' : '#FF6B6B',
+                        width: `${aiConfidence}%`
+                      }
+                    ]} />
+                  </View>
+                </View>
+                
+                {aiInsights.length > 0 && (
+                  <View style={styles.insightsList}>
+                    {aiInsights.map((insight, index) => (
+                      <View key={index} style={styles.insightItem}>
+                        <View style={[
+                          styles.insightIcon,
+                          { backgroundColor: 
+                            insight.type === 'tip' ? '#E8F5E8' :
+                            insight.type === 'warning' ? '#FFF3E0' : '#E3F2FD'
+                          }
+                        ]}>
+                          <Ionicons 
+                            name={
+                              insight.type === 'tip' ? 'bulb' :
+                              insight.type === 'warning' ? 'warning' : 'information-circle'
+                            }
+                            size={16} 
+                            color={
+                              insight.type === 'tip' ? '#26C976' :
+                              insight.type === 'warning' ? '#FF8A00' : '#2196F3'
+                            }
+                          />
+                        </View>
+                        <Text style={styles.insightText}>{insight.message}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
             <View style={styles.summaryCard}>
               <View style={styles.summaryHeader}>
-                <Text style={styles.summaryTitle}>예산 요약</Text>
+                <View>
+                  <Text style={styles.summaryTitle}>예산 요약</Text>
+                  {/* 🔥 실제 가격 반영 여부 표시 */}
+                  {aiInsights.some(insight => insight.message.includes('실제 세부 가격 정보로')) && (
+                    <Text style={styles.realPriceIndicator}>
+                      ✅ 실제 업체 가격 반영
+                    </Text>
+                  )}
+                </View>
                 <View style={[
                   styles.budgetStatus,
                   { backgroundColor: budgetDifference >= 0 ? '#E8F5E8' : '#FFE8E8' }
@@ -543,6 +961,114 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.white,
   },
+  aiButtonDisabled: {
+    opacity: 0.7,
+  },
+  
+  // 옵션 선택
+  optionScroll: {
+    marginTop: 8,
+  },
+  optionContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 20,
+  },
+  optionButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+    backgroundColor: Colors.white,
+  },
+  optionButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  optionButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+  },
+  optionButtonTextActive: {
+    color: Colors.white,
+  },
+  
+  // AI 인사이트
+  aiInsightsCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E8F5E8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  aiInsightsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  aiIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E8F5E8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  aiHeaderContent: {
+    flex: 1,
+  },
+  aiInsightsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  aiConfidenceText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  confidenceBadge: {
+    width: 60,
+    height: 6,
+    backgroundColor: Colors.gray100,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  confidenceIndicator: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  insightsList: {
+    gap: 12,
+  },
+  insightItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  insightIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  insightText: {
+    flex: 1,
+    fontSize: 14,
+    color: Colors.textPrimary,
+    lineHeight: 20,
+  },
   
   // 결과 섹션
   resultsSection: {
@@ -566,6 +1092,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: Colors.textPrimary,
+  },
+  realPriceIndicator: {
+    fontSize: 12,
+    color: '#26C976',
+    fontWeight: '500',
+    marginTop: 2,
   },
   budgetStatus: {
     paddingHorizontal: 12,
@@ -702,5 +1234,266 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
     lineHeight: 20,
+  },
+  
+  // 추천 업체
+  venuesCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E8F5E8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  venuesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  venuesIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E8F5E8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  venuesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  venuesList: {
+    gap: 12,
+  },
+  venueItem: {
+    backgroundColor: Colors.gray50,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.gray100,
+  },
+  venueInfo: {
+    marginBottom: 8,
+  },
+  venueName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  venueLocation: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  venuePrice: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.primary,
+  },
+  phoneButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    alignSelf: 'flex-start',
+    gap: 6,
+  },
+  phoneText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.primary,
+  },
+  
+  // 시장 현실성
+  marketCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.gray100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  marketHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  marketIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  marketContent: {
+    flex: 1,
+  },
+  marketTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  marketStatus: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  marketDescription: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  budgetGuide: {
+    backgroundColor: Colors.gray50,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 12,
+  },
+  budgetGuideTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 12,
+  },
+  budgetOptions: {
+    gap: 6,
+  },
+  budgetOption: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  
+  // 웨딩홀/업체 정보 개선된 스타일
+  venueItem: {
+    backgroundColor: Colors.gray50,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.gray100,
+  },
+  venueHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  venueMainInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  venueName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  venueLocation: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  phoneButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    gap: 6,
+  },
+  phoneText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.primary,
+  },
+  venuePriceSection: {
+    marginBottom: 8,
+  },
+  priceInfo: {
+    marginBottom: 8,
+  },
+  venuePrice: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.primary,
+    marginBottom: 4,
+  },
+  budgetCompatibility: {
+    alignItems: 'flex-start',
+  },
+  compatibilityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  compatibilityText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  venueDescription: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    fontStyle: 'italic',
+  },
+  
+  // 🔥 세부 가격 정보 스타일
+  detailedPricesContainer: {
+    backgroundColor: Colors.white,
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+  },
+  detailedPricesTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 8,
+  },
+  detailedPricesList: {
+    gap: 4,
+  },
+  detailedPriceItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  detailedPriceLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    flex: 1,
+  },
+  detailedPriceValue: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.primary,
+    textAlign: 'right',
   },
 });
