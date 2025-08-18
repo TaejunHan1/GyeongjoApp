@@ -9,6 +9,7 @@ import HomeScreen from '../screens/main/HomeScreen';
 import MyEventsScreen from '../screens/main/MyEventsScreen';
 // import GuideScreen from '../screens/main/GuideScreen'; // 기존 스타일
 import GuideScreen from '../screens/main/GuideScreenToss'; // 토스 스타일
+import BenefitsScreen from '../screens/main/BenefitsScreen'; // 🆕 혜택 화면
 import ProfileScreen from '../screens/main/ProfileScreen';
 import CreateEventScreen from '../screens/event/CreateEventScreen';
 
@@ -71,8 +72,8 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
             iconName = focused ? 'list' : 'list-outline';
           } else if (route.name === 'Guide') {
             iconName = focused ? 'book' : 'book-outline';
-          } else if (route.name === 'Venue') {
-            iconName = focused ? 'business' : 'business-outline';
+          } else if (route.name === 'Benefits') {
+            iconName = focused ? 'gift' : 'gift-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           }
@@ -139,13 +140,13 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
         )}
       </Tab.Screen>
 
-      {/* 🆕 장소/업체 탭 추가 */}
+      {/* 🆕 혜택 탭 추가 */}
       <Tab.Screen 
-        name="Venue" 
-        options={{ tabBarLabel: '장소' }}
+        name="Benefits" 
+        options={{ tabBarLabel: '혜택' }}
       >
         {(props) => (
-          <VenueSearchScreen 
+          <BenefitsScreen 
             {...props} 
             userInfo={userInfo}
             session={session}
@@ -415,19 +416,7 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
         <Stack.Screen 
           name="MannerGuide" 
           options={{
-            headerShown: true,
-            title: '복장 & 매너',
-            headerStyle: {
-              backgroundColor: Colors.white,
-              borderBottomWidth: 1,
-              borderBottomColor: Colors.gray100,
-            },
-            headerTitleStyle: {
-              fontSize: 18,
-              fontWeight: '600',
-              color: Colors.textPrimary,
-            },
-            headerTintColor: Colors.textPrimary,
+            headerShown: false,
           }}
         >
           {(props) => (
