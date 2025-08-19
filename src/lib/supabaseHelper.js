@@ -3,6 +3,151 @@ import { supabase } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
+ * 사용자 구독 정보 조회
+ */
+export const getUserSubscriptionInfo = async (userId = null) => {
+  try {
+    let targetUserId = userId;
+    
+    if (!targetUserId) {
+      const userInfo = await getCurrentUserInfo();
+      if (!userInfo.success) {
+        return { success: false, error: '사용자 인증이 필요합니다.' };
+      }
+      targetUserId = userInfo.user.id;
+    }
+    
+    const { data, error } = await supabase
+      .from('users')
+      .select('subscription_type, max_wedding_events, max_funeral_events, current_wedding_events, current_funeral_events, subscription_start_date, subscription_end_date')
+      .eq('id', targetUserId)
+      .single();
+    
+    if (error) {
+      console.error('❌ 구독 정보 조회 오류:', error);
+      return { success: false, error: error.message };
+    }
+    
+    return {
+      success: true,
+      subscription: {
+        type: data.subscription_type || 'free',
+        maxWeddingEvents: data.max_wedding_events,
+        maxFuneralEvents: data.max_funeral_events,
+        currentWeddingEvents: data.current_wedding_events || 0,
+        currentFuneralEvents: data.current_funeral_events || 0,
+        startDate: data.subscription_start_date,
+        endDate: data.subscription_end_date,
+        isPremium: data.subscription_type === 'premium'
+      }
+    };
+  } catch (error) {
+    console.error('❌ 구독 정보 조회 예외:', error);
+    return { success: false, error: '구독 정보 조회에 실패했습니다.' };
+  }
+};
+
+/**
+ * 이벤트 생성 가능 여부 체크
+ */
+export const checkEventCreationLimit = async (eventType, userId = null) => {
+  try {
+    const subscriptionInfo = await getUserSubscriptionInfo(userId);
+    
+    if (!subscriptionInfo.success) {
+      return subscriptionInfo;
+    }
+    
+    const { subscription } = subscriptionInfo;
+    
+    // 프리미엄 사용자는 제한 없음
+    if (subscription.isPremium) {
+      return { 
+        success: true, 
+        canCreate: true, 
+        reason: 'premium',
+        subscription 
+      };
+    }
+    
+    // 무료 사용자 제한 체크
+    if (eventType === 'wedding') {
+      const canCreate = subscription.currentWeddingEvents < subscription.maxWeddingEvents;
+      return {
+        success: true,
+        canCreate,
+        reason: canCreate ? 'within_limit' : 'limit_exceeded',
+        currentCount: subscription.currentWeddingEvents,
+        maxCount: subscription.maxWeddingEvents,
+        subscription
+      };
+    } else if (eventType === 'funeral') {
+      const canCreate = subscription.currentFuneralEvents < subscription.maxFuneralEvents;
+      return {
+        success: true,
+        canCreate,
+        reason: canCreate ? 'within_limit' : 'limit_exceeded',
+        currentCount: subscription.currentFuneralEvents,
+        maxCount: subscription.maxFuneralEvents,
+        subscription
+      };
+    }
+    
+    return { success: false, error: '지원하지 않는 이벤트 타입입니다.' };
+  } catch (error) {
+    console.error('❌ 이벤트 생성 제한 체크 오류:', error);
+    return { success: false, error: '제한 체크에 실패했습니다.' };
+  }
+};
+
+/**
+ * 사용자 구독 타입 업그레이드
+ */
+export const upgradeUserSubscription = async (userId = null, subscriptionType = 'premium') => {
+  try {
+    let targetUserId = userId;
+    
+    if (!targetUserId) {
+      const userInfo = await getCurrentUserInfo();
+      if (!userInfo.success) {
+        return { success: false, error: '사용자 인증이 필요합니다.' };
+      }
+      targetUserId = userInfo.user.id;
+    }
+    
+    const updateData = {
+      subscription_type: subscriptionType,
+      subscription_start_date: new Date().toISOString(),
+    };
+    
+    // 프리미엄으로 업그레이드 시 제한 해제
+    if (subscriptionType === 'premium') {
+      updateData.max_wedding_events = null;
+      updateData.max_funeral_events = null;
+      updateData.subscription_end_date = null; // 무제한
+    }
+    
+    const { data, error } = await supabase
+      .from('users')
+      .update(updateData)
+      .eq('id', targetUserId)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ 구독 업그레이드 오류:', error);
+      return { success: false, error: error.message };
+    }
+    
+    console.log('✅ 구독 업그레이드 성공:', subscriptionType);
+    return { success: true, data };
+  } catch (error) {
+    console.error('❌ 구독 업그레이드 예외:', error);
+    return { success: false, error: '구독 업그레이드에 실패했습니다.' };
+  }
+};
+
+/**
  * 통합 사용자 정보 가져오기 (AsyncStorage + Supabase Auth 지원)
  */
 export const getCurrentUserInfo = async () => {

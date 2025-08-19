@@ -9,6 +9,7 @@ import {
   ScrollView,
   Dimensions,
   Animated,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -299,19 +300,31 @@ export default function FuneralPrepGuideScreen({ navigation, userInfo, session }
           <View style={styles.relatedServices}>
             <TouchableOpacity 
               style={styles.relatedService}
-              onPress={() => navigation.navigate('BudgetCalculator')}
+              onPress={() => Alert.alert(
+                '준비중',
+                '장례비용 계산기 서비스를 준비중입니다.\n곧 더 나은 서비스로 찾아뵙겠습니다.',
+                [{ text: '확인', style: 'default' }]
+              )}
             >
               <Ionicons name="calculator" size={20} color={Colors.primary} />
               <Text style={styles.relatedServiceText}>장례비용 계산기</Text>
-              <Ionicons name="chevron-forward" size={16} color={Colors.gray400} />
+              <View style={styles.preparingBadge}>
+                <Text style={styles.preparingText}>준비중</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.relatedService}
-              onPress={() => navigation.navigate('VendorList')}
+              onPress={() => Alert.alert(
+                '준비중',
+                '장례 업체 리스트 서비스를 준비중입니다.\n곧 더 나은 서비스로 찾아뵙겠습니다.',
+                [{ text: '확인', style: 'default' }]
+              )}
             >
               <Ionicons name="business" size={20} color={Colors.primary} />
               <Text style={styles.relatedServiceText}>장례 업체 리스트</Text>
-              <Ionicons name="chevron-forward" size={16} color={Colors.gray400} />
+              <View style={styles.preparingBadge}>
+                <Text style={styles.preparingText}>준비중</Text>
+              </View>
             </TouchableOpacity>
           </View>
         </View>
@@ -646,5 +659,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: Colors.textPrimary,
+  },
+  preparingBadge: {
+    backgroundColor: '#FFB800' + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  preparingText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FFB800',
   },
 });

@@ -16,6 +16,7 @@ import {
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
   Platform,
+  Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,7 +33,8 @@ import {
   debugUserInfo,
   getEventGuestBook,
   getMonthlyStatistics,
-  getEventStatistics 
+  getEventStatistics,
+  getUserSubscriptionInfo 
 } from '../../lib/supabaseHelper';
 import Svg, { Rect, Circle, Path, Ellipse, G } from 'react-native-svg';
 
@@ -388,19 +390,23 @@ const EventAddModal = ({ visible, onClose, selectedDate, onAddEvent }) => {
 
 export default function HomeScreen({ navigation, userInfo, session, isAuthenticated }) {
   const [user, setUser] = useState(null);
+  const [userSubscription, setUserSubscription] = useState(null);
   const [events, setEvents] = useState([]);
   const [activeEvents, setActiveEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [selectedTab, setSelectedTab] = useState('active'); // 'active' or 'completed'
   const [calendarDate, setCalendarDate] = useState(new Date()); // 🔥 캘린더 현재 날짜 상태
-  const [showMoreEvents, setShowMoreEvents] = useState(false); // 🔥 더보기 상태
+  const [currentEventPage, setCurrentEventPage] = useState(0); // 🔥 현재 페이지
+  const eventsPerPage = 3; // 페이지당 표시할 이벤트 수
   const [showEventModal, setShowEventModal] = useState(false); // 🔥 일정 추가 모달 상태
   const [selectedDate, setSelectedDate] = useState(new Date()); // 🔥 선택된 날짜
   const [showEventListModal, setShowEventListModal] = useState(false); // 🔥 일정 목록 모달 상태
   const [selectedDateEvents, setSelectedDateEvents] = useState([]); // 🔥 선택된 날짜의 일정들
   const [showTossConfirmModal, setShowTossConfirmModal] = useState(false); // 🔥 토스 스타일 확인 모달
   const [showTossSuccessModal, setShowTossSuccessModal] = useState(false); // 🔥 토스 스타일 성공 모달
+  const [showPremiumModal, setShowPremiumModal] = useState(false); // 🔥 프리미엄 업그레이드 모달
+  const [premiumModalType, setPremiumModalType] = useState(''); // 'wedding' or 'funeral'
   const [monthlyStats, setMonthlyStats] = useState({
     totalEvents: 0,
     monthlyEvents: 0,
@@ -590,6 +596,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           phone: userInfo.phone,
           auth_method: 'phone'
         });
+        
+        // 구독 정보 로드
+        await loadSubscriptionInfo(userInfo.userId);
         return;
       }
       
@@ -600,6 +609,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           email: session.user.email
         });
         setUser(session.user);
+        
+        // 구독 정보 로드
+        await loadSubscriptionInfo(session.user.id);
         return;
       }
       
@@ -619,6 +631,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           phone: parsedUserInfo.phone,
           auth_method: 'phone'
         });
+        
+        // 구독 정보 로드
+        await loadSubscriptionInfo(parsedUserInfo.userId);
         return;
       }
       
@@ -630,12 +645,61 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           email: user.email
         });
         setUser(user);
+        
+        // 구독 정보 로드
+        await loadSubscriptionInfo(user.id);
       } else {
         console.log('❌ 사용자 정보 없음');
       }
       
     } catch (error) {
       console.error('❌ 사용자 정보 로드 오류:', error);
+    }
+  };
+
+  // 🔥 구독 정보 로드 함수
+  const loadSubscriptionInfo = async (userId) => {
+    try {
+      console.log('💳 구독 정보 로드 시작:', userId);
+      const result = await getUserSubscriptionInfo(userId);
+      console.log('💳 구독 정보 로드 완료:', result);
+      
+      // subscription 객체 추출 및 필드명 변환
+      const subscriptionInfo = result?.subscription ? {
+        subscription_type: result.subscription.type || 'free',
+        max_wedding_events: result.subscription.maxWeddingEvents || 1,
+        max_funeral_events: result.subscription.maxFuneralEvents || 1,
+        current_wedding_events: result.subscription.currentWeddingEvents || 0,
+        current_funeral_events: result.subscription.currentFuneralEvents || 0
+      } : {
+        subscription_type: 'free',
+        max_wedding_events: 1,
+        max_funeral_events: 1,
+        current_wedding_events: 0,
+        current_funeral_events: 0
+      };
+      
+      console.log('💳 이벤트 제한 상태:', {
+        type: subscriptionInfo.subscription_type,
+        wedding: `${subscriptionInfo.current_wedding_events}/${subscriptionInfo.max_wedding_events}`,
+        funeral: `${subscriptionInfo.current_funeral_events}/${subscriptionInfo.max_funeral_events}`,
+        weddingDisabled: subscriptionInfo.subscription_type === 'free' && 
+          subscriptionInfo.current_wedding_events >= subscriptionInfo.max_wedding_events,
+        funeralDisabled: subscriptionInfo.subscription_type === 'free' && 
+          subscriptionInfo.current_funeral_events >= subscriptionInfo.max_funeral_events
+      });
+      
+      setUserSubscription(subscriptionInfo);
+    } catch (error) {
+      console.error('❌ 구독 정보 로드 오류:', error);
+      // 기본값 설정
+      setUserSubscription({
+        subscription_type: 'free',
+        max_wedding_events: 1,
+        max_funeral_events: 1,
+        current_wedding_events: 0,
+        current_funeral_events: 0
+      });
     }
   };
 
@@ -763,8 +827,21 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   };
 
 
-  // 🔥 수정된 빠른 시작 버튼 핸들러
-  const handleQuickStart = (eventType) => {
+  // 🔥 수정된 빠른 시작 버튼 핸들러 - 구독 제한 체크 포함
+  const handleQuickStart = async (eventType) => {
+    // 구독 제한 체크
+    const userId = user?.id;
+    if (userId && userSubscription) {
+      const { checkEventCreationLimit } = require('../../lib/supabaseHelper');
+      const canCreate = await checkEventCreationLimit(eventType, userId);
+      
+      if (!canCreate) {
+        setPremiumModalType(eventType);
+        setShowPremiumModal(true);
+        return;
+      }
+    }
+
     if (eventType === 'wedding') {
       // 🆕 결혼식은 전용 스크린으로
       navigation.navigate('CreateWedding');
@@ -1111,6 +1188,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     // Statistics 스크린이 없으므로 MyEvents로 이동
     navigation.navigate('MyEvents', { initialTab: 'statistics' });
   };
+  
 
   const currentSlideData = slides[currentSlide];
   
@@ -1172,9 +1250,24 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       {/* 헤더 */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>정담</Text>
+          <View style={styles.headerTop}>
+            <Text style={styles.headerTitle}>정담</Text>
+            {userSubscription && (
+              <View style={[
+                styles.headerBadge,
+                { backgroundColor: userSubscription.subscription_type === 'premium' ? '#FF6B6B' : '#95A5A6' }
+              ]}>
+                <Text style={styles.headerBadgeText}>
+                  {userSubscription.subscription_type === 'premium' ? 'PREMIUM' : 'FREE'}
+                </Text>
+              </View>
+            )}
+          </View>
           <Text style={styles.headerSubtitle}>
-            {userName}님 안녕하세요!
+            {userSubscription?.subscription_type === 'premium' 
+              ? `${userName}님, 프리미엄을 이용중입니다! 🎉`
+              : `${userName}님 안녕하세요!`
+            }
           </Text>
         </View>
       </View>
@@ -1216,6 +1309,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             <TouchableOpacity 
               style={styles.quickItem}
               onPress={() => handleQuickStart('wedding')}
+              disabled={
+                userSubscription?.subscription_type === 'free' && 
+                userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events
+              }
             >
               <View style={styles.quickIcon}>
                 <WeddingIcon />
@@ -1223,10 +1320,25 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               <Text style={styles.quickTitle}>청첩장</Text>
               <Text style={styles.quickSubtitle}>행복한 결혼 소식을 전해보세요</Text>
               <TouchableOpacity 
-                style={[styles.quickButton, { backgroundColor: Colors.wedding }]}
+                style={[
+                  styles.quickButton, 
+                  { 
+                    backgroundColor: userSubscription?.subscription_type === 'free' && 
+                    userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events 
+                    ? '#BDC3C7' : Colors.wedding 
+                  }
+                ]}
                 onPress={() => handleQuickStart('wedding')}
+                disabled={
+                  userSubscription?.subscription_type === 'free' && 
+                  userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events
+                }
               >
-                <Text style={styles.quickButtonText}>만들기</Text>
+                <Text style={styles.quickButtonText}>
+                  {userSubscription?.subscription_type === 'free' && 
+                   userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events 
+                   ? '제한됨' : '만들기'}
+                </Text>
               </TouchableOpacity>
               <View style={styles.quickTypeIndicator}>
                 <Text style={styles.quickTypeText}>경사</Text>
@@ -1236,6 +1348,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             <TouchableOpacity 
               style={styles.quickItem}
               onPress={() => handleQuickStart('funeral')}
+              disabled={
+                userSubscription?.subscription_type === 'free' && 
+                userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events
+              }
             >
               <View style={styles.quickIcon}>
                 <FuneralIcon />
@@ -1243,10 +1359,25 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               <Text style={styles.quickTitle}>부고장</Text>
               <Text style={styles.quickSubtitle}>슬픈 소식을 정중하게 전달하세요</Text>
               <TouchableOpacity 
-                style={[styles.quickButton, { backgroundColor: Colors.funeral }]}
+                style={[
+                  styles.quickButton, 
+                  { 
+                    backgroundColor: userSubscription?.subscription_type === 'free' && 
+                    userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events 
+                    ? '#BDC3C7' : Colors.funeral 
+                  }
+                ]}
                 onPress={() => handleQuickStart('funeral')}
+                disabled={
+                  userSubscription?.subscription_type === 'free' && 
+                  userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events
+                }
               >
-                <Text style={styles.quickButtonText}>만들기</Text>
+                <Text style={styles.quickButtonText}>
+                  {userSubscription?.subscription_type === 'free' && 
+                   userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events 
+                   ? '제한됨' : '만들기'}
+                </Text>
               </TouchableOpacity>
               <View style={[styles.quickTypeIndicator, { backgroundColor: Colors.funeral }]}>
                 <Text style={[styles.quickTypeText, { color: Colors.white }]}>조사</Text>
@@ -1470,10 +1601,16 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                 );
               }
               
+              // 페이지네이션 계산
+              const totalPages = Math.ceil(participantEvents.length / eventsPerPage);
+              const startIndex = currentEventPage * eventsPerPage;
+              const endIndex = Math.min(startIndex + eventsPerPage, participantEvents.length);
+              const currentPageEvents = participantEvents.slice(startIndex, endIndex);
+              
               return (
                 <View style={styles.ticketsList}>
-                  {/* 🔥 참여자 일정만 표시 */}
-                  {participantEvents.slice(0, showMoreEvents ? 5 : 3).map((event, index) => (
+                  {/* 🔥 현재 페이지의 이벤트만 표시 */}
+                  {currentPageEvents.map((event, index) => (
                         <TouchableOpacity
                           key={event.id}
                           style={[
@@ -1530,21 +1667,54 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                         </TouchableOpacity>
                       ))}
                   
-                  {/* 더보기 버튼 */}
-                  {participantEvents.length > 3 && (
-                    <TouchableOpacity 
-                      style={styles.showMoreButton}
-                      onPress={() => setShowMoreEvents(!showMoreEvents)}
-                    >
-                      <Text style={styles.showMoreButtonText}>
-                        {showMoreEvents ? '간단히 보기' : `더보기 (${participantEvents.length - 3}개)`}
-                      </Text>
-                      <Ionicons 
-                        name={showMoreEvents ? "chevron-up" : "chevron-down"} 
-                        size={16} 
-                        color={Colors.primary} 
-                      />
-                    </TouchableOpacity>
+                  {/* 페이지네이션 컨트롤 */}
+                  {totalPages > 1 && (
+                    <View style={styles.paginationContainer}>
+                      <TouchableOpacity 
+                        style={[styles.paginationButton, currentEventPage === 0 && styles.paginationButtonDisabled]}
+                        onPress={() => {
+                          if (currentEventPage > 0) {
+                            setCurrentEventPage(currentEventPage - 1);
+                          }
+                        }}
+                        disabled={currentEventPage === 0}
+                      >
+                        <Ionicons 
+                          name="chevron-back" 
+                          size={20} 
+                          color={currentEventPage === 0 ? Colors.gray300 : Colors.primary} 
+                        />
+                      </TouchableOpacity>
+                      
+                      <View style={styles.paginationDots}>
+                        {[...Array(totalPages)].map((_, index) => (
+                          <TouchableOpacity
+                            key={index}
+                            style={[
+                              styles.paginationDot,
+                              index === currentEventPage && styles.paginationDotActive
+                            ]}
+                            onPress={() => setCurrentEventPage(index)}
+                          />
+                        ))}
+                      </View>
+                      
+                      <TouchableOpacity 
+                        style={[styles.paginationButton, currentEventPage === totalPages - 1 && styles.paginationButtonDisabled]}
+                        onPress={() => {
+                          if (currentEventPage < totalPages - 1) {
+                            setCurrentEventPage(currentEventPage + 1);
+                          }
+                        }}
+                        disabled={currentEventPage === totalPages - 1}
+                      >
+                        <Ionicons 
+                          name="chevron-forward" 
+                          size={20} 
+                          color={currentEventPage === totalPages - 1 ? Colors.gray300 : Colors.primary} 
+                        />
+                      </TouchableOpacity>
+                    </View>
                   )}
                 </View>
               );
@@ -1870,6 +2040,94 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           </Animated.View>
         </Animated.View>
       </Modal>
+
+      {/* 🔥 프리미엄 업그레이드 모달 */}
+      <Modal
+        visible={showPremiumModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowPremiumModal(false)}
+      >
+        <View style={styles.premiumModalOverlay}>
+          <View style={styles.premiumModalContainer}>
+            {/* 헤더 */}
+            <View style={styles.premiumModalHeader}>
+              <View style={styles.premiumBadge}>
+                <Ionicons name="crown" size={20} color="#FFD700" />
+                <Text style={styles.premiumBadgeText}>PREMIUM</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.premiumCloseButton}
+                onPress={() => setShowPremiumModal(false)}
+              >
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {/* 메인 콘텐츠 */}
+            <View style={styles.premiumModalContent}>
+              <Text style={styles.premiumModalTitle}>
+                {premiumModalType === 'wedding' ? '청첩장' : '부고장'} 무제한 생성
+              </Text>
+              <Text style={styles.premiumModalSubtitle}>
+                프리미엄 플랜으로 업그레이드하고 제한 없이 이용하세요
+              </Text>
+
+              {/* 기능 리스트 */}
+              <View style={styles.premiumFeatureList}>
+                <View style={styles.premiumFeatureItem}>
+                  <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                  <Text style={styles.premiumFeatureText}>무제한 경조사 생성</Text>
+                </View>
+                <View style={styles.premiumFeatureItem}>
+                  <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                  <Text style={styles.premiumFeatureText}>프리미엄 템플릿 이용</Text>
+                </View>
+                <View style={styles.premiumFeatureItem}>
+                  <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                  <Text style={styles.premiumFeatureText}>고급 통계 및 분석</Text>
+                </View>
+                <View style={styles.premiumFeatureItem}>
+                  <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                  <Text style={styles.premiumFeatureText}>우선 고객 지원</Text>
+                </View>
+              </View>
+
+              {/* 현재 제한 표시 */}
+              <View style={styles.premiumCurrentLimit}>
+                <Ionicons name="information-circle-outline" size={16} color="#FF9800" />
+                <Text style={styles.premiumLimitText}>
+                  무료 플랜: {premiumModalType === 'wedding' ? '결혼식' : '장례식'} 1개 제한
+                </Text>
+              </View>
+            </View>
+
+            {/* 버튼 영역 */}
+            <View style={styles.premiumModalButtons}>
+              <TouchableOpacity
+                style={styles.premiumCancelButton}
+                onPress={() => setShowPremiumModal(false)}
+              >
+                <Text style={styles.premiumCancelText}>나중에</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.premiumUpgradeButton}
+                onPress={() => {
+                  setShowPremiumModal(false);
+                  // TODO: 프리미엄 업그레이드 페이지로 이동 또는 웹뷰 열기
+                  Alert.alert('준비 중', '프리미엄 업그레이드 기능을 준비 중입니다.\n곧 더 나은 서비스로 찾아뵙겠습니다!');
+                }}
+              >
+                <View style={styles.premiumUpgradeContent}>
+                  <Ionicons name="crown" size={16} color="#FFFFFF" />
+                  <Text style={styles.premiumUpgradeText}>프리미엄 시작하기</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1935,17 +2193,33 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
   },
   headerLeft: {},
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: '700',
     color: Colors.textPrimary,
+  },
+  headerBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  headerBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
   headerSubtitle: {
     fontSize: 14,
     color: Colors.textSecondary,
     marginTop: 2,
   },
-  
+
   // 콘텐츠
   content: {
     flex: 1,
@@ -2634,23 +2908,44 @@ const styles = StyleSheet.create({
   },
   
   
-  // 더보기 버튼 스타일
-  showMoreButton: {
+  // 페이지네이션 스타일
+  paginationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: Colors.primary + '08',
-    borderRadius: 8,
-    marginTop: 12,
-    gap: 6,
+    paddingVertical: 16,
+    gap: 16,
   },
   
-  showMoreButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.primary,
+  paginationButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.gray100,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  
+  paginationButtonDisabled: {
+    opacity: 0.3,
+  },
+  
+  paginationDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  
+  paginationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.gray300,
+  },
+  
+  paginationDotActive: {
+    width: 24,
+    backgroundColor: Colors.primary,
   },
   
   // 🔥 모달 스타일
@@ -3244,6 +3539,164 @@ const styles = StyleSheet.create({
     color: Colors.gray600,
     textAlign: 'center',
     marginBottom: 20,
+  },
+
+  // 🔥 프리미엄 모달 스타일
+  premiumModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+
+  premiumModalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 380,
+    paddingBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 25,
+  },
+
+  premiumModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+  },
+
+  premiumBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF8E1',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+  },
+
+  premiumBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#F57C00',
+    letterSpacing: 0.5,
+  },
+
+  premiumCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  premiumModalContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+  },
+
+  premiumModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+
+  premiumModalSubtitle: {
+    fontSize: 15,
+    color: '#666666',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 28,
+  },
+
+  premiumFeatureList: {
+    gap: 16,
+    marginBottom: 24,
+  },
+
+  premiumFeatureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  premiumFeatureText: {
+    fontSize: 15,
+    color: '#333333',
+    fontWeight: '500',
+  },
+
+  premiumCurrentLimit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 8,
+  },
+
+  premiumLimitText: {
+    fontSize: 13,
+    color: '#F57C00',
+    fontWeight: '500',
+  },
+
+  premiumModalButtons: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+
+  premiumCancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+
+  premiumCancelText: {
+    fontSize: 15,
+    color: '#666666',
+    fontWeight: '600',
+  },
+
+  premiumUpgradeButton: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#FF6B6B',
+    alignItems: 'center',
+    shadowColor: '#FF6B6B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+
+  premiumUpgradeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  premiumUpgradeText: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
 
 });
