@@ -10,8 +10,12 @@ import {
   Animated,
   StatusBar,
   Alert,
+  Modal,
+  Share,
+  Clipboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import QRCode from 'react-native-qrcode-svg';
 import { Colors } from '../../styles/constants';
 import { getEventDetail, getEventMessages, createEventMessage } from '../../lib/supabaseHelper';
 import WeddingTemplatePreview from './templates/WeddingTemplatePreview';
@@ -33,6 +37,7 @@ export default function EventDisplayScreen({ navigation, route }) {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [eventMessages, setEventMessages] = useState([]); // 🔥 메시지 state 추가
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false); // 🔥 QR 모달 state 추가
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -313,18 +318,47 @@ export default function EventDisplayScreen({ navigation, route }) {
     };
   };
 
-  // 🔥 부조하기 버튼 핸들러 - QR코드 화면으로 연결
+  // 🔥 부조하기 버튼 핸들러 - QR코드 모달 표시
   const handleContribute = () => {
     if (isPreviewMode) {
       Alert.alert('알림', '미리보기 모드입니다. 실제 부조는 완성된 경조사에서 가능합니다.');
       return;
     }
     
-    // QR코드 화면으로 이동
-    navigation.navigate('QRCode', {
-      eventId: event.id,
-      eventName: event.event_name
-    });
+    // QR코드 모달 표시
+    setShowQRModal(true);
+  };
+
+  // 🔥 QR 코드 관련 함수들
+  const getQRValue = () => {
+    if (!event) return '';
+    const WEB_BASE_URL = 'https://jeongdam.com'; // 실제 도메인으로 변경 필요
+    return `${WEB_BASE_URL}/contribute/${event.id}`;
+  };
+
+  const handleQRShare = async () => {
+    try {
+      const qrValue = getQRValue();
+      const shareContent = {
+        message: `${event?.event_name} 부조하기\n\n아래 링크를 클릭하거나 QR 코드를 스캔해서 간편하게 부조하세요!\n\n${qrValue}`,
+        title: `${event?.event_name} 부조하기`,
+        url: qrValue,
+      };
+      
+      await Share.share(shareContent);
+    } catch (error) {
+      console.error('Share error:', error);
+    }
+  };
+
+  const handleQRCopyLink = async () => {
+    try {
+      const qrValue = getQRValue();
+      await Clipboard.setString(qrValue);
+      Alert.alert('복사 완료', '링크가 클립보드에 복사되었습니다.');
+    } catch (error) {
+      Alert.alert('오류', '링크 복사에 실패했습니다.');
+    }
   };
 
   // 🔥 메시지 제출 핸들러 수정 - 실제 DB 저장
@@ -445,6 +479,77 @@ export default function EventDisplayScreen({ navigation, route }) {
         </TouchableOpacity>
       )}
       
+      {/* 🔥 QR 코드 모달 */}
+      <Modal
+        visible={showQRModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowQRModal(false)}
+      >
+        <View style={styles.qrModalContainer}>
+          <View style={styles.qrModalContent}>
+            {/* 모달 헤더 */}
+            <View style={styles.qrModalHeader}>
+              <Text style={styles.qrModalTitle}>부조 참여 QR</Text>
+              <TouchableOpacity 
+                style={styles.qrModalCloseButton}
+                onPress={() => setShowQRModal(false)}
+              >
+                <Ionicons name="close" size={24} color={Colors.gray400} />
+              </TouchableOpacity>
+            </View>
+            
+            {/* 이벤트 정보 */}
+            <View style={styles.qrEventInfo}>
+              <Ionicons 
+                name={getEventType() === 'funeral' ? 'flower' : 'heart'} 
+                size={20} 
+                color={getEventType() === 'funeral' ? Colors.gray600 : Colors.primary} 
+              />
+              <Text style={styles.qrEventName}>
+                {event?.event_name || '경조사'}
+              </Text>
+            </View>
+            
+            {/* QR 코드 */}
+            <View style={styles.qrCodeContainer}>
+              <QRCode
+                value={getQRValue()}
+                size={Math.min(width - 120, 250)}
+                backgroundColor="white"
+                color="black"
+                logo={undefined}
+              />
+            </View>
+            
+            {/* 안내 텍스트 */}
+            <Text style={styles.qrInstructionText}>
+              QR 코드를 스캔하거나 링크를 공유하여{'\n'}
+              손님들이 간편하게 부조할 수 있습니다
+            </Text>
+            
+            {/* 액션 버튼들 */}
+            <View style={styles.qrActionButtons}>
+              <TouchableOpacity 
+                style={styles.qrActionButton}
+                onPress={handleQRCopyLink}
+              >
+                <Ionicons name="copy" size={20} color={Colors.primary} />
+                <Text style={styles.qrActionButtonText}>링크 복사</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.qrActionButton}
+                onPress={handleQRShare}
+              >
+                <Ionicons name="share" size={20} color={Colors.primary} />
+                <Text style={styles.qrActionButtonText}>공유하기</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      
       {(showExitButton || isPreviewMode) && (
         <TouchableOpacity 
           style={styles.exitButton}
@@ -560,5 +665,100 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.white,
     fontWeight: '600',
+  },
+  
+  // 🔥 QR 코드 모달 스타일
+  qrModalContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  qrModalContent: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 8,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    maxHeight: height * 0.85,
+  },
+  qrModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray100,
+    marginBottom: 20,
+  },
+  qrModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  qrModalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.gray50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrEventInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 30,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: Colors.gray50,
+    borderRadius: 12,
+  },
+  qrEventName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  qrCodeContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
+    paddingVertical: 24,
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  qrInstructionText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 30,
+    paddingHorizontal: 16,
+  },
+  qrActionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  qrActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    backgroundColor: Colors.gray50,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+  },
+  qrActionButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.primary,
   },
 });
