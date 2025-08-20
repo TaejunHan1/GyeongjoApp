@@ -22,3 +22,7 @@ web-build/
 .env.development.local
 .env.test.local
 .env.production.local.env
+
+# Native build folders (Prebuild/CNG)
+/android
+/ios

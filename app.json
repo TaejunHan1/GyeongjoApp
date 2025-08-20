@@ -21,7 +21,9 @@
         "CFBundleURLTypes": [
           {
             "CFBundleURLName": "gyeongjoapp",
-            "CFBundleURLSchemes": ["gyeongjoapp"]
+            "CFBundleURLSchemes": [
+              "gyeongjoapp"
+            ]
           }
         ]
       }
@@ -41,13 +43,21 @@
               "scheme": "gyeongjoapp"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "gyeongjoapp"
+    "scheme": "gyeongjoapp",
+    "extra": {
+      "eas": {
+        "projectId": "6e007e44-78af-48b5-b36e-ab75a54ab3fa"
+      }
+    }
   }
 }

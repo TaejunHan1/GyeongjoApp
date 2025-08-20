@@ -1,4 +1,4 @@
-// src/components/DaumPostcode.js - react-native-daum-postcode 라이브러리 사용
+// src/components/DaumPostcode.js - 임시 WebView 기반 구현
 import React from 'react';
 import {
   View,
@@ -7,44 +7,41 @@ import {
   TouchableOpacity,
   Text,
   SafeAreaView,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Postcode from 'react-native-daum-postcode';
+// import Postcode from '@actbase/react-daum-postcode';
 
 const DaumPostcode = ({ visible, onComplete, onClose }) => {
+  const [manualAddress, setManualAddress] = React.useState('');
+  const [manualZonecode, setManualZonecode] = React.useState('');
   
-  const handleAddressSelected = (data) => {
-    console.log('🎯🎯🎯 주소 선택 완료!');
-    console.log('📋 받은 주소 데이터:', JSON.stringify(data, null, 2));
+  const handleManualInput = () => {
+    if (!manualAddress || !manualZonecode) {
+      Alert.alert('알림', '주소와 우편번호를 모두 입력해주세요.');
+      return;
+    }
     
-    // react-native-daum-postcode에서 제공하는 데이터 구조
+    // 수동 입력된 주소 데이터 구조
     const addressData = {
-      address: data.address || '',                    // 지번 주소
-      roadAddress: data.roadAddress || '',           // 도로명 주소  
-      jibunAddress: data.jibunAddress || '',         // 지번 주소
-      zonecode: data.zonecode || '',                 // 우편번호 (5자리)
-      buildingName: data.buildingName || '',         // 건물명
-      bname: data.bname || '',                       // 법정동명
-      sido: data.sido || '',                         // 시도
-      sigungu: data.sigungu || '',                   // 시군구
-      roadname: data.roadname || '',                 // 도로명
-      buildingCode: data.buildingCode || '',         // 건물관리번호
-      apartment: data.apartment || '',               // 공동주택 여부
+      address: manualAddress,
+      roadAddress: manualAddress,
+      jibunAddress: manualAddress,
+      zonecode: manualZonecode,
+      buildingName: '',
+      bname: '',
+      sido: '',
+      sigungu: '',
+      roadname: '',
+      buildingCode: '',
+      apartment: '',
     };
     
-    console.log('✅ 정리된 주소 데이터:', addressData);
-    console.log('🔄 onComplete 함수 호출...');
-    
-    try {
-      onComplete(addressData);
-      console.log('✅ onComplete 호출 성공!');
-    } catch (error) {
-      console.error('❌ onComplete 호출 실패:', error);
-    }
-  };
-
-  const handleError = (error) => {
-    console.error('❌ Postcode 오류:', error);
+    onComplete(addressData);
+    setManualAddress('');
+    setManualZonecode('');
+    onClose();
   };
 
   return (
@@ -71,18 +68,39 @@ const DaumPostcode = ({ visible, onComplete, onClose }) => {
           </Text>
         </View>
         
-        {/* Daum Postcode 컴포넌트 */}
+        {/* 임시 수동 입력 폼 */}
         <View style={styles.postcodeContainer}>
-          <Postcode
-            style={styles.postcode}
-            jsOptions={{
-              hideMapBtn: true,           // 지도 버튼 숨기기
-              hideEngBtn: true,           // 영문 버튼 숨기기
-              alwaysShowEngAddr: false,   // 영문 주소 항상 표시 안함
-            }}
-            onSelected={handleAddressSelected}
-            onError={handleError}
-          />
+          <View style={styles.manualInputContainer}>
+            <Text style={styles.inputLabel}>우편번호</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="12345"
+              value={manualZonecode}
+              onChangeText={setManualZonecode}
+              keyboardType="number-pad"
+              maxLength={5}
+            />
+            
+            <Text style={styles.inputLabel}>주소</Text>
+            <TextInput
+              style={[styles.input, styles.addressInput]}
+              placeholder="주소를 입력하세요"
+              value={manualAddress}
+              onChangeText={setManualAddress}
+              multiline
+            />
+            
+            <TouchableOpacity 
+              style={styles.submitButton}
+              onPress={handleManualInput}
+            >
+              <Text style={styles.submitButtonText}>주소 입력 완료</Text>
+            </TouchableOpacity>
+            
+            <Text style={styles.temporaryNotice}>
+              ※ 임시로 수동 입력 방식을 사용합니다.
+            </Text>
+          </View>
         </View>
       </SafeAreaView>
     </Modal>
@@ -138,6 +156,47 @@ const styles = StyleSheet.create({
   },
   postcode: {
     flex: 1,
+  },
+  manualInputContainer: {
+    padding: 20,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#191f28',
+    marginBottom: 8,
+    marginTop: 16,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#e1e5e9',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    backgroundColor: '#f8f9fa',
+  },
+  addressInput: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  submitButton: {
+    backgroundColor: '#0064ff',
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  submitButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  temporaryNotice: {
+    fontSize: 12,
+    color: '#8B95A1',
+    textAlign: 'center',
+    marginTop: 16,
   },
 });
 
