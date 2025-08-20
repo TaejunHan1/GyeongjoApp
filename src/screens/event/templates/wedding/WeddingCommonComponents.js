@@ -413,6 +413,14 @@ export const MainPhotoSlideshow = ({ images = [], style, onImagePress, template 
           source={mainImages[currentIndex] || mainImages[0] || defaultImages[0]}
           style={styles.mainPhotoImage}
           resizeMode="cover"
+          onError={(error) => {
+            console.log('❌ 메인 이미지 로딩 에러:', error.nativeEvent.error);
+            console.log('🔍 실패한 이미지:', mainImages[currentIndex]);
+          }}
+          onLoad={() => {
+            console.log('✅ 메인 이미지 로딩 성공:', currentIndex);
+          }}
+          defaultSource={defaultImages[0]}
         />
       </Animated.View>
       

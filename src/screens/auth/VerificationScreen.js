@@ -13,11 +13,13 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../../styles/constants';
 import { 
   verifyPhoneCode, 
   sendSmsVerification, 
-  createPhoneUserProfile 
+  createPhoneUserProfile,
+  findUserByPhone
 } from '../../lib/smsAuth';
 
 export default function VerificationScreen({ navigation, route }) {
@@ -26,7 +28,9 @@ export default function VerificationScreen({ navigation, route }) {
     originalPhone, 
     carrier, 
     name, 
-    isSignUp 
+    isSignUp,
+    setUserInfo,
+    setIsAuthenticated
   } = route.params;
 
   const [code, setCode] = useState(['', '', '', '', '', '']);
@@ -112,10 +116,60 @@ export default function VerificationScreen({ navigation, route }) {
             carrier,
             name,
             verificationComplete: true,
+            setUserInfo,
+            setIsAuthenticated,
           });
         } else {
-          // 로그인 완료 처리
-          Alert.alert('로그인 완료', '로그인되었습니다!');
+          // 기존 사용자 로그인 - AsyncStorage에 정보 저장
+          try {
+            console.log('🔍 Finding existing user profile...');
+            const userProfile = await findUserByPhone(phoneNumber);
+            
+            if (userProfile.success && userProfile.exists) {
+              const user = userProfile.user;
+              const userInfo = {
+                userId: user.id,
+                userName: user.name || name,
+                userPhone: originalPhone,
+                carrier: user.carrier || carrier?.name,
+                authMethod: 'phone',
+                loginAt: new Date().toISOString(),
+              };
+              
+              await AsyncStorage.setItem('userInfo', JSON.stringify(userInfo));
+              await AsyncStorage.setItem('isLoggedIn', 'true');
+              console.log('🟢 Existing user login info saved to AsyncStorage:', userInfo);
+              
+              Alert.alert('로그인 완료', '로그인되었습니다!', [
+                {
+                  text: '확인',
+                  onPress: () => {
+                    console.log('✅ 로그인 완료 - AsyncStorage 업데이트됨');
+                    // 상위 App.js의 상태를 직접 업데이트하여 즉시 앱으로 진입
+                    if (setUserInfo && setIsAuthenticated) {
+                      setUserInfo(userInfo);
+                      setIsAuthenticated(true);
+                      console.log('🔄 상위 컴포넌트 상태 업데이트 완료 (기존 사용자)');
+                    }
+                  }
+                }
+              ]);
+            } else {
+              // 사용자 프로필이 없다면 회원가입으로 이동
+              navigation.navigate('Register', {
+                phoneNumber,
+                originalPhone,
+                carrier,
+                name,
+                verificationComplete: true,
+                setUserInfo,
+                setIsAuthenticated,
+              });
+            }
+          } catch (error) {
+            console.error('🔴 Login AsyncStorage error:', error);
+            Alert.alert('오류', '로그인 정보 저장에 실패했습니다.');
+          }
         }
         
       } else {

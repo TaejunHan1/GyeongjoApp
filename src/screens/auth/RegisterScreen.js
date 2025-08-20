@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../../styles/constants';
 import { supabase } from '../../lib/supabase';
 import { createPhoneUserProfile } from '../../lib/smsAuth';
@@ -20,7 +21,9 @@ export default function RegisterScreen({ navigation, route }) {
     originalPhone, 
     carrier, 
     name,
-    verificationComplete 
+    verificationComplete,
+    setUserInfo,
+    setIsAuthenticated
   } = route.params;
 
   const [isLoading, setIsLoading] = useState(false);
@@ -53,19 +56,44 @@ export default function RegisterScreen({ navigation, route }) {
 
       if (profileResult.success) {
         console.log('🟢 Profile created successfully');
-        Alert.alert(
-          '가입 완료!',
-          `${name}님, 정담에 오신 것을 환영합니다!`,
-          [
-            {
-              text: '시작하기',
-              onPress: () => {
-                // 회원가입 완료 후 자동으로 홈으로 이동됨 (Auth state에 의해)
-                console.log('🟢 Registration complete, navigating to home');
+        
+        // AsyncStorage에 사용자 정보 저장 (핸드폰 인증 사용자)
+        const userInfo = {
+          userId: user.id,
+          userName: name,
+          userPhone: originalPhone,
+          carrier: carrier?.name,
+          authMethod: 'phone',
+          createdAt: new Date().toISOString(),
+        };
+        
+        try {
+          await AsyncStorage.setItem('userInfo', JSON.stringify(userInfo));
+          await AsyncStorage.setItem('isLoggedIn', 'true');
+          console.log('🟢 User info saved to AsyncStorage:', userInfo);
+          
+          Alert.alert(
+            '가입 완료!',
+            `${name}님, 정담에 오신 것을 환영합니다!`,
+            [
+              {
+                text: '정담 시작하기',
+                onPress: () => {
+                  console.log('🟢 Registration complete, AsyncStorage updated');
+                  // 상위 App.js의 상태를 직접 업데이트하여 즉시 앱으로 진입
+                  if (setUserInfo && setIsAuthenticated) {
+                    setUserInfo(userInfo);
+                    setIsAuthenticated(true);
+                    console.log('🔄 상위 컴포넌트 상태 업데이트 완료');
+                  }
+                }
               }
-            }
-          ]
-        );
+            ]
+          );
+        } catch (storageError) {
+          console.error('🔴 AsyncStorage save error:', storageError);
+          Alert.alert('오류', '로그인 정보 저장에 실패했습니다.');
+        }
       } else {
         Alert.alert('오류', '프로필 생성에 실패했습니다.');
       }

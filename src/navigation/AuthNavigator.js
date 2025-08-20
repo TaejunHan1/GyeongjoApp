@@ -11,7 +11,7 @@ import LoginScreen from '../screens/auth/LoginScreen';
 
 const Stack = createStackNavigator();
 
-export default function AuthNavigator() {
+export default function AuthNavigator({ setUserInfo, setIsAuthenticated }) {
   return (
     <NavigationContainer>
       <Stack.Navigator
@@ -34,9 +34,21 @@ export default function AuthNavigator() {
         }}
       >
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
-        <Stack.Screen name="PhoneAuth" component={PhoneAuthScreen} />
-        <Stack.Screen name="Verification" component={VerificationScreen} />
-        <Stack.Screen name="Register" component={RegisterScreen} />
+        <Stack.Screen 
+          name="PhoneAuth" 
+          component={PhoneAuthScreen}
+          initialParams={{ setUserInfo, setIsAuthenticated }}
+        />
+        <Stack.Screen 
+          name="Verification" 
+          component={VerificationScreen}
+          initialParams={{ setUserInfo, setIsAuthenticated }}
+        />
+        <Stack.Screen 
+          name="Register" 
+          component={RegisterScreen}
+          initialParams={{ setUserInfo, setIsAuthenticated }}
+        />
         <Stack.Screen name="Login" component={LoginScreen} />
       </Stack.Navigator>
     </NavigationContainer>

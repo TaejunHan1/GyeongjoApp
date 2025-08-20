@@ -1158,6 +1158,18 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         })
       });
       
+      // 🔍 이미지 URL 디버깅 정보 추가
+      console.log('🖼️ EventDisplay로 전달되는 이미지 정보:', {
+        eventId: event.id,
+        eventImageUrls: event.image_urls?.length || 0,
+        finalCategorizedImages: {
+          main: finalCategorizedImages?.main?.length || 0,
+          gallery: finalCategorizedImages?.gallery?.length || 0,
+          all: finalCategorizedImages?.all?.length || 0
+        },
+        sampleImageUrl: event.image_urls?.[0]?.substring(0, 100) + '...' || 'None'
+      });
+
       navigation.navigate('EventDisplay', { 
         eventId: event.id,
         templateStyle: templateStyle,

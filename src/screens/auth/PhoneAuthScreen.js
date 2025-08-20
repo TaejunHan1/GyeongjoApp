@@ -110,7 +110,7 @@ const CustomModal = ({ visible, onClose, title, message, buttons }) => {
 export default function PhoneAuthScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { isSignUp: initialIsSignUp = true } = route.params || {};
+  const { isSignUp: initialIsSignUp = true, setUserInfo, setIsAuthenticated } = route.params || {};
 
   const [isSignUp, setIsSignUp] = useState(initialIsSignUp);
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -530,20 +530,23 @@ export default function PhoneAuthScreen() {
           text: '정담 시작하기', 
           primary: true, 
           onPress: () => {
-            console.log('✅ 로그인 완료 - 앱 재시작 또는 홈으로 이동');
+            console.log('✅ 로그인 완료 - 앱으로 진입');
             
-            // 1. 먼저 모든 Auth 스택을 리셋하고 Welcome으로 돌아감
-            // App.js가 AsyncStorage 변화를 감지해서 자동으로 AppNavigator로 전환할 것임
-            try {
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Welcome' }] // AuthNavigator 내의 Welcome 화면으로
-              });
-              console.log('✅ Welcome 화면으로 리셋 완료');
-            } catch (resetError) {
-              console.log('⚠️ Welcome 리셋 실패, goBack 시도:', resetError);
-              // 리셋이 안되면 단순히 뒤로가기
-              navigation.goBack();
+            // 상위 App.js의 상태를 직접 업데이트하여 즉시 앱으로 진입
+            if (setUserInfo && setIsAuthenticated) {
+              const storedUserInfo = {
+                userId: userId,
+                userName: userName,
+                userPhone: formattedPhone,
+                carrier: null, // PhoneAuthScreen에서는 carrier 정보가 없음
+                authMethod: 'phone',
+                loginAt: new Date().toISOString(),
+              };
+              setUserInfo(storedUserInfo);
+              setIsAuthenticated(true);
+              console.log('🔄 상위 컴포넌트 상태 업데이트 완료 (PhoneAuth)');
+            } else {
+              console.log('⚠️ setUserInfo 또는 setIsAuthenticated props가 없음 - App.js 주기적 체크에 의존');
             }
           }
         }]

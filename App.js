@@ -32,6 +32,13 @@ export default function App() {
         setUserInfo(parsedUserInfo);
         setIsAuthenticated(true);
         return parsedUserInfo; // userInfo 반환
+      } else {
+        // AsyncStorage에 로그인 정보가 없으면 인증되지 않은 상태로 설정
+        if (isAuthenticated) {
+          console.log('❌ AsyncStorage 로그인 정보 없음 - 로그아웃 상태로 변경');
+          setUserInfo(null);
+          setIsAuthenticated(false);
+        }
       }
       
       return null;
@@ -43,106 +50,121 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
+    let authCheckInterval;
 
     // 앱 시작 시 인증 상태 확인
     const initializeAuth = async () => {
       try {
         // 1. 먼저 AsyncStorage 체크 (폰 인증 사용자)
-        const asyncAuthResult = await checkAsyncStorageAuth();
+        const asyncStorageUser = await checkAsyncStorageAuth();
         
-        if (asyncAuthResult && mounted) {
-          console.log('🟢 AsyncStorage 인증 성공');
+        if (asyncStorageUser && mounted) {
+          console.log('✅ 폰 인증 사용자 로그인 유지:', asyncStorageUser.userName);
           setLoading(false);
-          return;
+          return; // 폰 인증 사용자는 여기서 종료
         }
+
+        // 2. AsyncStorage에 없으면 Supabase 세션 체크 (OAuth 사용자)
+        const { data: { session } } = await supabase.auth.getSession();
         
-        // 2. AsyncStorage에 없으면 Supabase Auth 체크 (기존 OAuth 사용자)
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (mounted) {
-          if (session?.user) {
-            console.log('🟢 Supabase Auth 로그인:', session.user.phone || session.user.email);
-            setSession(session);
-            setIsAuthenticated(true);
-          } else {
-            console.log('🔴 인증되지 않은 사용자');
-            setIsAuthenticated(false);
-          }
-          setLoading(false);
+        if (session && mounted) {
+          console.log('✅ Supabase OAuth 세션 확인:', session.user.email);
+          setSession(session);
+          setIsAuthenticated(true);
+        } else {
+          console.log('❌ 로그인 필요 - 인증 화면으로 이동');
+          setIsAuthenticated(false);
         }
       } catch (error) {
-        console.error('🔴 초기화 오류:', error);
+        console.error('초기화 오류:', error);
+        setIsAuthenticated(false);
+      } finally {
         if (mounted) {
-          setIsAuthenticated(false);
           setLoading(false);
+        }
+      }
+    };
+
+    // 정기적으로 AsyncStorage 체크 (인증 상태 변경 감지)
+    const checkAuthPeriodically = async () => {
+      if (!loading && mounted) {
+        const storedUserInfo = await AsyncStorage.getItem('userInfo');
+        const isLoggedIn = await AsyncStorage.getItem('isLoggedIn');
+        
+        // 현재 상태와 AsyncStorage 상태 비교
+        const shouldBeAuthenticated = isLoggedIn === 'true' && storedUserInfo;
+        
+        if (shouldBeAuthenticated && !isAuthenticated) {
+          // 로그인 상태로 변경
+          const parsedUserInfo = JSON.parse(storedUserInfo);
+          console.log('🔄 인증 상태 변경 감지 - 로그인:', parsedUserInfo.userName);
+          setUserInfo(parsedUserInfo);
+          setIsAuthenticated(true);
+        } else if (!shouldBeAuthenticated && isAuthenticated) {
+          // 로그아웃 상태로 변경
+          console.log('🔄 인증 상태 변경 감지 - 로그아웃');
+          setUserInfo(null);
+          setIsAuthenticated(false);
         }
       }
     };
 
     initializeAuth();
+    
+    // 1초마다 AsyncStorage 체크 (인증 상태 변경 감지용)
+    authCheckInterval = setInterval(checkAuthPeriodically, 1000);
 
-    // Supabase Auth 상태 변화 감지 (OAuth 로그인용)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('🟡 Supabase Auth 상태 변화:', event, session?.user?.phone || session?.user?.email || 'No user');
+    // Supabase 인증 상태 변경 감지 (OAuth용)
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (!mounted) return;
         
-        if (mounted) {
-          if (event === 'SIGNED_IN' && session?.user) {
-            setSession(session);
-            setIsAuthenticated(true);
-            setLoading(false);
-          } else if (event === 'SIGNED_OUT') {
-            setSession(null);
-            setIsAuthenticated(false);
-            setLoading(false);
-            
-            // Supabase 로그아웃 시 AsyncStorage도 정리
-            await AsyncStorage.removeItem('userInfo');
-            await AsyncStorage.removeItem('isLoggedIn');
-            setUserInfo(null);
-          }
+        console.log('🔄 Auth 상태 변경:', _event);
+        
+        // 폰 인증 사용자가 있으면 Supabase 이벤트 무시
+        const asyncStorageUser = await checkAsyncStorageAuth();
+        if (asyncStorageUser) {
+          console.log('📱 폰 인증 사용자 우선 - Supabase 이벤트 무시');
+          return;
+        }
+        
+        // OAuth 사용자 처리
+        if (session) {
+          setSession(session);
+          setIsAuthenticated(true);
+        } else {
+          setSession(null);
+          setIsAuthenticated(false);
         }
       }
     );
 
-    // AsyncStorage 변화 감지 (주기적 체크)
-    const asyncStorageInterval = setInterval(async () => {
-      if (!isAuthenticated) {
-        const asyncAuthResult = await checkAsyncStorageAuth();
-        if (asyncAuthResult && mounted && !isAuthenticated) {
-          console.log('🔄 AsyncStorage 변화 감지 - 로그인 상태로 전환');
-          setUserInfo(asyncAuthResult);
-          setIsAuthenticated(true);
-          setLoading(false);
-        }
-      }
-    }, 1000); // 1초마다 체크
-
     return () => {
       mounted = false;
-      subscription.unsubscribe();
-      clearInterval(asyncStorageInterval);
+      if (authCheckInterval) {
+        clearInterval(authCheckInterval);
+      }
+      authListener?.subscription?.unsubscribe();
     };
-  }, [isAuthenticated]);
+  }, []);
 
-  // 로그아웃 함수
+  // 로그아웃 함수 - 자식 컴포넌트에 전달
   const handleLogout = async () => {
     try {
-      // AsyncStorage 정리
-      await AsyncStorage.removeItem('userInfo');
-      await AsyncStorage.removeItem('isLoggedIn');
+      // AsyncStorage 클리어 (폰 인증 사용자)
+      await AsyncStorage.multiRemove(['userInfo', 'isLoggedIn']);
       
-      // Supabase Auth 로그아웃
+      // Supabase 로그아웃 (OAuth 사용자)
       await supabase.auth.signOut();
       
       // 상태 초기화
-      setSession(null);
       setUserInfo(null);
+      setSession(null);
       setIsAuthenticated(false);
       
       console.log('✅ 로그아웃 완료');
     } catch (error) {
-      console.error('❌ 로그아웃 오류:', error);
+      console.error('로그아웃 오류:', error);
     }
   };
 
@@ -152,16 +174,18 @@ export default function App() {
 
   return (
     <>
-      <StatusBar style="dark" />
+      <StatusBar style="auto" />
       {isAuthenticated ? (
         <AppNavigator 
-          session={session} 
-          userInfo={userInfo}
-          isAuthenticated={isAuthenticated}
+          userInfo={userInfo} 
+          session={session}
           onLogout={handleLogout}
         />
       ) : (
-        <AuthNavigator />
+        <AuthNavigator 
+          setUserInfo={setUserInfo}
+          setIsAuthenticated={setIsAuthenticated}
+        />
       )}
     </>
   );

@@ -250,80 +250,48 @@ export const getCalendarDataForDate = (date) => {
   };
 };
 
-// 이미지 URL 검증 함수
+// 이미지 URL 검증 함수 - 모든 URL 허용
 export const isValidImageUrl = (url) => {
-  if (!url || typeof url !== 'string') return false;
-  
-  // Supabase Storage URL 패턴 확인
-  const supabaseUrlPattern = /https:\/\/[^\/]+\.supabase\.co\/storage\/v1\/object\/public\//;
-  const httpPattern = /^https?:\/\//;
-  const filePattern = /^file:\/\//;  // 로컬 파일 경로 패턴 추가
-  
-  return supabaseUrlPattern.test(url) || httpPattern.test(url) || filePattern.test(url);
+  // URL이 문자열이면 모두 허용
+  return url && typeof url === 'string' && url.length > 0;
 };
 
-// 이미지 처리 유틸리티 함수들 - 개선된 버전
+// 이미지 처리 유틸리티 함수들 - 안전한 버전
 export const processImageArray = (images, defaultFallback = []) => {
   if (!images || !Array.isArray(images) || images.length === 0) {
     console.log('⚠️ processImageArray: 이미지 배열이 비어있음, 기본 이미지 사용');
     return defaultFallback;
   }
   
+  console.log('🔍 processImageArray 입력:', images.length, '개 이미지');
+  
   return images.map((img, index) => {
-    // 문자열 URL인 경우
+    console.log(`🔍 이미지 [${index}] 처리:`, typeof img, img);
+    
+    // 문자열 URL인 경우 - 모든 URL 형태 허용
     if (typeof img === 'string') {
-      if (isValidImageUrl(img)) {
-        console.log(`✅ 유효한 이미지 URL [${index}]:`, img.substring(0, 60) + '...');
-        return { 
-          uri: img,
-          headers: {
-            'Accept': 'image/*',
-            'Cache-Control': 'no-cache'
-          }
-        };
-      } else {
-        console.log(`⚠️ 검증 실패 이미지 URL [${index}], 하지만 사용 시도:`, img.substring(0, 60));
-        // 검증 실패해도 일단 사용해보기 (로컬 파일 등)
-        return { 
-          uri: img,
-          headers: {
-            'Accept': 'image/*',
-            'Cache-Control': 'no-cache'
-          }
-        };
-      }
+      console.log(`✅ 문자열 이미지 [${index}] 사용:`, img.substring(0, 50) + '...');
+      return { 
+        uri: img
+      };
     } 
     // 이미 객체 형태인 경우
-    else if (img && img.uri) {
-      if (isValidImageUrl(img.uri)) {
-        console.log(`✅ 유효한 이미지 객체 [${index}]:`, img.uri.substring(0, 60) + '...');
-        return {
-          ...img,
-          headers: {
-            'Accept': 'image/*',
-            'Cache-Control': 'no-cache'
-          }
-        };
-      } else {
-        console.log(`⚠️ 검증 실패 이미지 객체 [${index}], 하지만 사용 시도:`, img.uri.substring(0, 60));
-        // 검증 실패해도 일단 사용해보기 (로컬 파일 등)
-        return {
-          ...img,
-          headers: {
-            'Accept': 'image/*',
-            'Cache-Control': 'no-cache'
-          }
-        };
-      }
+    else if (img && (img.uri || img.publicUrl)) {
+      const uri = img.publicUrl || img.uri;
+      console.log(`✅ 객체 이미지 [${index}] 사용:`, uri.substring(0, 50) + '...');
+      return {
+        uri: uri
+      };
     } 
     // require()된 이미지인 경우
-    else if (typeof img === 'object' && !img.uri) {
-      console.log(`✅ 로컬 이미지 객체 [${index}]`);
+    else if (typeof img === 'object' && !img.uri && !img.publicUrl) {
+      console.log(`✅ require 이미지 [${index}] 사용`);
       return img;
     }
     
-    console.log(`⚠️ 알 수 없는 이미지 형태 [${index}]:`, typeof img);
-    return defaultFallback[0] || require('../../../../../assets/images/aa1.png');
+    // 모든 처리 실패 시 기본 이미지
+    console.log(`⚠️ 처리 실패 [${index}], 기본 이미지 사용:`, typeof img);
+    return defaultFallback[index % defaultFallback.length] || defaultFallback[0] || require('../../../../../assets/images/aa1.png');
   });
 };
 
