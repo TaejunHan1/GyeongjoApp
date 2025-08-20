@@ -219,28 +219,66 @@ export default function EventDisplayScreen({ navigation, route }) {
   };
 
   const getFinalCategorizedImages = () => {
+    console.log('🔍 [IMAGE DEBUG] getFinalCategorizedImages 시작');
+    console.log('🔍 [IMAGE DEBUG] categorizedImages:', categorizedImages);
+    console.log('🔍 [IMAGE DEBUG] event?.image_urls:', event?.image_urls);
+    console.log('🔍 [IMAGE DEBUG] event?.additional_info?.categorized_images:', event?.additional_info?.categorized_images);
+    
     if (categorizedImages && Object.keys(categorizedImages).length > 0) {
+      console.log('✅ [IMAGE DEBUG] route.params의 categorizedImages 사용');
       return categorizedImages;
     }
 
     if (event) {
       if (event.additional_info?.categorized_images) {
+        console.log('✅ [IMAGE DEBUG] additional_info.categorized_images 사용');
         return event.additional_info.categorized_images;
       }
 
       if (event.image_urls && event.image_urls.length > 0) {
+        console.log('✅ [IMAGE DEBUG] event.image_urls 처리 중...');
+        
+        // image_urls 배열의 각 항목 구조 확인
+        event.image_urls.forEach((img, index) => {
+          console.log(`🔍 [IMAGE DEBUG] image_urls[${index}]:`, {
+            type: typeof img,
+            hasUri: !!img.uri,
+            hasPublicUrl: !!img.publicUrl,
+            hasCategory: !!img.category,
+            sample: typeof img === 'string' ? img.substring(0, 100) : img
+          });
+        });
+        
+        // uri 또는 publicUrl을 실제 URL로 변환
+        const normalizedImages = event.image_urls.map(img => {
+          if (typeof img === 'string') {
+            return { uri: img, category: 'all' };
+          }
+          return {
+            uri: img.publicUrl || img.uri || img,
+            category: img.category || 'all'
+          };
+        });
+        
         const processedImages = {
-          main: event.image_urls.filter(img => img.category === 'main'),
-          gallery: event.image_urls.filter(img => img.category === 'gallery'),
-          groom: event.image_urls.filter(img => img.category === 'groom'),
-          bride: event.image_urls.filter(img => img.category === 'bride'),
-          all: event.image_urls
+          main: normalizedImages.filter(img => img.category === 'main'),
+          gallery: normalizedImages.filter(img => img.category === 'gallery'),
+          groom: normalizedImages.filter(img => img.category === 'groom'),
+          bride: normalizedImages.filter(img => img.category === 'bride'),
+          all: normalizedImages
         };
+        
+        console.log('✅ [IMAGE DEBUG] 처리된 이미지:', {
+          main: processedImages.main.length,
+          gallery: processedImages.gallery.length,
+          all: processedImages.all.length
+        });
         
         return processedImages;
       }
     }
 
+    console.log('⚠️ [IMAGE DEBUG] 이미지가 없음 - 빈 객체 반환');
     return {};
   };
 

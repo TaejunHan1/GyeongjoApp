@@ -1098,14 +1098,28 @@ export const createEvent = async (eventData) => {
 
     // 🔥 이미지 처리 - 이미 업로드된 이미지들의 publicUrl 저장
     if (eventData.image_urls && Array.isArray(eventData.image_urls)) {
-      processedEventData.image_urls = eventData.image_urls.map(img => ({
-        uri: img.publicUrl || img.uri, // publicUrl이 있으면 사용, 없으면 기존 uri
-        category: img.category,
-        categoryLabel: img.categoryLabel,
-        id: img.id,
-        storagePath: img.storagePath || null, // storage path 정보 보존
-        publicUrl: img.publicUrl || null
-      }));
+      processedEventData.image_urls = eventData.image_urls.map(img => {
+        // 이미지가 문자열인 경우 (URL)
+        if (typeof img === 'string') {
+          return {
+            uri: img,
+            category: 'all',
+            publicUrl: img
+          };
+        }
+        
+        // 객체인 경우
+        return {
+          uri: img.publicUrl || img.uri, // publicUrl이 있으면 사용, 없으면 기존 uri
+          category: img.category || 'all',
+          categoryLabel: img.categoryLabel,
+          id: img.id,
+          storagePath: img.storagePath || null, // storage path 정보 보존
+          publicUrl: img.publicUrl || img.uri || null
+        };
+      });
+      
+      console.log('🔍 [DB SAVE] 저장할 image_urls:', processedEventData.image_urls);
     }
 
     if (eventData.event_type === 'wedding') {
@@ -1124,6 +1138,48 @@ export const createEvent = async (eventData) => {
         created_via: 'app_v2.3',
         version: '2.3'
       };
+      
+      // 🔥 카테고리별 이미지 정보도 additional_info에 추가
+      if (processedEventData.image_urls && Array.isArray(processedEventData.image_urls)) {
+        const categorizedImages = {
+          main: [],
+          gallery: [],
+          groom: [],
+          bride: [],
+          all: []
+        };
+        
+        processedEventData.image_urls.forEach(img => {
+          const imageData = {
+            uri: img.publicUrl || img.uri,
+            publicUrl: img.publicUrl || img.uri,
+            category: img.category
+          };
+          
+          // 카테고리별로 분류
+          if (img.category === 'main') {
+            categorizedImages.main.push(imageData);
+          } else if (img.category === 'gallery') {
+            categorizedImages.gallery.push(imageData);
+          } else if (img.category === 'groom') {
+            categorizedImages.groom.push(imageData);
+          } else if (img.category === 'bride') {
+            categorizedImages.bride.push(imageData);
+          }
+          
+          // 모든 이미지는 all에도 추가
+          categorizedImages.all.push(imageData);
+        });
+        
+        processedEventData.additional_info.categorized_images = categorizedImages;
+        console.log('🔍 [WEDDING] categorized_images 저장:', {
+          main: categorizedImages.main.length,
+          gallery: categorizedImages.gallery.length,
+          groom: categorizedImages.groom.length,
+          bride: categorizedImages.bride.length,
+          all: categorizedImages.all.length
+        });
+      }
     } else if (eventData.event_type === 'funeral') {
       // 🔥 고인명 체크 - camelCase와 snake_case 모두 지원
       const deceasedName = eventData.deceasedName || eventData.deceased_name;
@@ -1228,6 +1284,40 @@ export const createEvent = async (eventData) => {
         created_via: 'app_v2.3',
         version: '2.3'
       };
+      
+      // 🔥 카테고리별 이미지 정보도 additional_info에 추가 (부고도 동일하게 처리)
+      if (processedEventData.image_urls && Array.isArray(processedEventData.image_urls)) {
+        const categorizedImages = {
+          main: [],
+          gallery: [],
+          all: []
+        };
+        
+        processedEventData.image_urls.forEach(img => {
+          const imageData = {
+            uri: img.publicUrl || img.uri,
+            publicUrl: img.publicUrl || img.uri,
+            category: img.category
+          };
+          
+          // 카테고리별로 분류
+          if (img.category === 'main') {
+            categorizedImages.main.push(imageData);
+          } else if (img.category === 'gallery') {
+            categorizedImages.gallery.push(imageData);
+          }
+          
+          // 모든 이미지는 all에도 추가
+          categorizedImages.all.push(imageData);
+        });
+        
+        processedEventData.additional_info.categorized_images = categorizedImages;
+        console.log('🔍 [FUNERAL] categorized_images 저장:', {
+          main: categorizedImages.main.length,
+          gallery: categorizedImages.gallery.length,
+          all: categorizedImages.all.length
+        });
+      }
     }
 
     console.log('🔍 최종 전송할 데이터 키들:', Object.keys(processedEventData));

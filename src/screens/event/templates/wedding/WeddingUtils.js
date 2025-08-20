@@ -250,29 +250,109 @@ export const getCalendarDataForDate = (date) => {
   };
 };
 
-// 이미지 처리 유틸리티 함수들
+// 이미지 URL 검증 함수
+export const isValidImageUrl = (url) => {
+  if (!url || typeof url !== 'string') return false;
+  
+  // Supabase Storage URL 패턴 확인
+  const supabaseUrlPattern = /https:\/\/[^\/]+\.supabase\.co\/storage\/v1\/object\/public\//;
+  const httpPattern = /^https?:\/\//;
+  const filePattern = /^file:\/\//;  // 로컬 파일 경로 패턴 추가
+  
+  return supabaseUrlPattern.test(url) || httpPattern.test(url) || filePattern.test(url);
+};
+
+// 이미지 처리 유틸리티 함수들 - 개선된 버전
 export const processImageArray = (images, defaultFallback = []) => {
   if (!images || !Array.isArray(images) || images.length === 0) {
+    console.log('⚠️ processImageArray: 이미지 배열이 비어있음, 기본 이미지 사용');
     return defaultFallback;
   }
   
-  return images.map(img => {
+  return images.map((img, index) => {
+    // 문자열 URL인 경우
     if (typeof img === 'string') {
-      return { uri: img };
-    } else if (img && img.uri) {
+      if (isValidImageUrl(img)) {
+        console.log(`✅ 유효한 이미지 URL [${index}]:`, img.substring(0, 60) + '...');
+        return { 
+          uri: img,
+          headers: {
+            'Accept': 'image/*',
+            'Cache-Control': 'no-cache'
+          }
+        };
+      } else {
+        console.log(`⚠️ 검증 실패 이미지 URL [${index}], 하지만 사용 시도:`, img.substring(0, 60));
+        // 검증 실패해도 일단 사용해보기 (로컬 파일 등)
+        return { 
+          uri: img,
+          headers: {
+            'Accept': 'image/*',
+            'Cache-Control': 'no-cache'
+          }
+        };
+      }
+    } 
+    // 이미 객체 형태인 경우
+    else if (img && img.uri) {
+      if (isValidImageUrl(img.uri)) {
+        console.log(`✅ 유효한 이미지 객체 [${index}]:`, img.uri.substring(0, 60) + '...');
+        return {
+          ...img,
+          headers: {
+            'Accept': 'image/*',
+            'Cache-Control': 'no-cache'
+          }
+        };
+      } else {
+        console.log(`⚠️ 검증 실패 이미지 객체 [${index}], 하지만 사용 시도:`, img.uri.substring(0, 60));
+        // 검증 실패해도 일단 사용해보기 (로컬 파일 등)
+        return {
+          ...img,
+          headers: {
+            'Accept': 'image/*',
+            'Cache-Control': 'no-cache'
+          }
+        };
+      }
+    } 
+    // require()된 이미지인 경우
+    else if (typeof img === 'object' && !img.uri) {
+      console.log(`✅ 로컬 이미지 객체 [${index}]`);
       return img;
-    } else if (typeof img === 'object' && !img.uri) {
-      return img; // 이미 require()된 이미지
     }
+    
+    console.log(`⚠️ 알 수 없는 이미지 형태 [${index}]:`, typeof img);
     return defaultFallback[0] || require('../../../../../assets/images/aa1.png');
   });
 };
 
-// 카테고리별 이미지 안전하게 가져오기
+// 카테고리별 이미지 안전하게 가져오기 - 개선된 버전
 export const getCategorizedImagesSafe = (categorizedImages, userImages = []) => {
+  console.log('🔍 getCategorizedImagesSafe 호출됨:', {
+    hasCategorizedImages: !!categorizedImages,
+    categorizedImagesType: typeof categorizedImages,
+    userImagesLength: userImages?.length || 0
+  });
 
   // categorizedImages가 이미 객체 형태로 전달된 경우
   if (categorizedImages && typeof categorizedImages === 'object') {
+    console.log('📸 카테고리별 이미지 처리 중:', {
+      main: categorizedImages.main?.length || 0,
+      gallery: categorizedImages.gallery?.length || 0,
+      groom: categorizedImages.groom?.length || 0,
+      bride: categorizedImages.bride?.length || 0,
+      all: categorizedImages.all?.length || 0
+    });
+    
+    // 실제 이미지 URI 샘플 출력
+    if (categorizedImages.main && categorizedImages.main.length > 0) {
+      console.log('🔍 [SAMPLE] main[0]:', categorizedImages.main[0]);
+    }
+    if (categorizedImages.all && categorizedImages.all.length > 0) {
+      console.log('🔍 [SAMPLE] all[0]:', categorizedImages.all[0]);
+    }
+    
     const safe = {
       main: processImageArray(categorizedImages.main, defaultImages.slice(0, 5)),
       gallery: processImageArray(categorizedImages.gallery, defaultImages.slice(5, 15)),
@@ -280,6 +360,14 @@ export const getCategorizedImagesSafe = (categorizedImages, userImages = []) => 
       bride: processImageArray(categorizedImages.bride, [defaultImages[1]]),
       all: processImageArray(categorizedImages.all || userImages, defaultImages)
     };
+    
+    console.log('✅ 처리된 카테고리별 이미지:', {
+      main: safe.main?.length || 0,
+      gallery: safe.gallery?.length || 0,
+      groom: safe.groom?.length || 0,
+      bride: safe.bride?.length || 0,
+      all: safe.all?.length || 0
+    });
     
     return safe;
   }
