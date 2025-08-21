@@ -610,7 +610,7 @@ const VintageAppTemplate = ({ eventData = {}, categorizedImages = {} }) => {
           </Animated.View>
         </LinearGradient>
 
-        {/* 부조하기 & 공유 섹션 */}
+        {/* 청첩장 공유하기 섹션 */}
         <LinearGradient 
           colors={['#6c5ce7', '#5f3dc4']} 
           style={styles.app_shareSection}
@@ -634,37 +634,12 @@ const VintageAppTemplate = ({ eventData = {}, categorizedImages = {} }) => {
               }
             ]}
           >
-            <Text style={styles.app_shareTitle}>마음을 전해주세요</Text>
+            <Text style={styles.app_shareTitle}>청첩장을 공유해주세요</Text>
             <Text style={styles.app_shareSubtitle}>
-              소중한 분들의 축복과 마음이 큰 힘이 됩니다
+              소중한 분들과 함께 이 기쁨을 나누고 싶습니다
             </Text>
             
-            {/* 부조하기 버튼 */}
-            <Animated.View
-              style={[
-                {
-                  transform: [{
-                    scale: (pulseAnim || new Animated.Value(1)).interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [1, 1.05]
-                    })
-                  }]
-                }
-              ]}
-            >
-              <TouchableOpacity 
-                style={styles.app_donationButton}
-                onPress={() => {
-                  // 부조하기 기능 구현 예정
-                  console.log('부조하기 버튼 클릭됨');
-                }}
-              >
-                <Ionicons name="gift" size={20} color="#6c5ce7" style={{ marginRight: 8 }} />
-                <Text style={styles.app_donationButtonText}>부조하기</Text>
-              </TouchableOpacity>
-            </Animated.View>
-
-            {/* 공유하기 버튼 */}
+            {/* 청첩장 공유하기 버튼 */}
             <Animated.View
               style={[
                 {
@@ -687,8 +662,15 @@ const VintageAppTemplate = ({ eventData = {}, categorizedImages = {} }) => {
                     const groomName = eventData.groomName || eventData.groom_name || '신랑';
                     const brideName = eventData.brideName || eventData.bride_name || '신부';
                     
+                    // 템플릿 공유 로직 - 웹 링크로 이동
+                    const WEB_BASE_URL = 'https://jeongdam.com'; // 실제 도메인으로 변경 필요
+                    const eventId = eventData.id || eventData.event_id || 'sample-event';
+                    const templateUrl = `${WEB_BASE_URL}/template/${eventId}?template=vintage`;
+                    
+                    console.log('🔍 공유 링크 생성:', { eventData, eventId, templateUrl });
+                    
                     await Share.share({
-                      message: `${groomName} ♥ ${brideName} 결혼식에 초대합니다!\n${dateStr} ${timeStr}\n${location}`,
+                      message: `${groomName} ♥ ${brideName} 결혼식에 초대합니다!\n\n${dateStr} ${timeStr}\n${location}\n\n모바일 청첩장을 확인하세요:\n${templateUrl}`,
                       title: '모바일 청첩장',
                     });
                   } catch (error) {
@@ -700,36 +682,6 @@ const VintageAppTemplate = ({ eventData = {}, categorizedImages = {} }) => {
                 <Text style={styles.app_shareButtonText}>청첩장 공유하기</Text>
               </TouchableOpacity>
             </Animated.View>
-            
-            <View style={styles.app_socialButtons}>
-              {[
-                { name: 'logo-instagram', label: 'Instagram', color: '#E4405F' },
-                { name: 'logo-facebook', label: 'Facebook', color: '#1877F2' },
-                { name: 'chatbubble-ellipses', label: 'KakaoTalk', color: '#FEE500' }
-              ].map((social, index) => (
-                <Animated.View
-                  key={social.name}
-                  style={[
-                    {
-                      opacity: getSafeAnimValue(fadeAnims, 25 + index),
-                      transform: [{
-                        translateY: getSafeAnimValue(fadeAnims, 25 + index, 0).interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [20, 0]
-                        })
-                      }]
-                    }
-                  ]}
-                >
-                  <TouchableOpacity 
-                    style={[styles.app_socialButton, { backgroundColor: social.color }]}
-                  >
-                    <Ionicons name={social.name} size={18} color="#ffffff" />
-                    <Text style={styles.app_socialButtonText}>{social.label}</Text>
-                  </TouchableOpacity>
-                </Animated.View>
-              ))}
-            </View>
           </Animated.View>
         </LinearGradient>
       </ScrollView>

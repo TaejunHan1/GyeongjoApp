@@ -426,8 +426,15 @@ const ElegantGardenTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
       
       const location = eventData.location || '더 그린하우스 가든홀';
       
+      // 템플릿 공유 로직 - 웹 링크로 이동
+      const WEB_BASE_URL = 'https://jeongdam.com'; // 실제 도메인으로 변경 필요
+      const eventId = eventData.id || eventData.event_id || 'sample-event';
+      const templateUrl = `${WEB_BASE_URL}/template/${eventId}?template=garden`;
+      
+      console.log('🔍 공유 링크 생성:', { eventData, eventId, templateUrl });
+      
       await Share.share({
-        message: `${groomName} ♡ ${brideName}\n${dateStr} ${timeStr}\n${location}\n\n우리의 특별한 날에 초대합니다 🌸`,
+        message: `${groomName} ♡ ${brideName}\n${dateStr} ${timeStr}\n${location}\n\n우리의 특별한 날에 초대합니다 🌸\n\n모바일 청첩장을 확인하세요:\n${templateUrl}`,
         title: 'Wedding Invitation',
       });
     } catch (error) {

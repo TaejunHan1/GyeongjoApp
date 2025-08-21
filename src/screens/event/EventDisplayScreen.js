@@ -159,6 +159,8 @@ export default function EventDisplayScreen({ navigation, route }) {
     if (passedEventData) {
       return {
         ...passedEventData,
+        id: eventId, // 🔥 이벤트 ID 추가
+        event_id: eventId, // 🔥 이벤트 ID 추가 (다른 필드명으로도)
         guestMessages: eventMessages // 🔥 메시지 추가
       };
     }
@@ -168,6 +170,8 @@ export default function EventDisplayScreen({ navigation, route }) {
       
       if (eventType === 'funeral') {
         const funeralData = {
+          id: event.id || eventId, // 🔥 이벤트 ID 추가
+          event_id: event.id || eventId, // 🔥 이벤트 ID 추가
           type: 'funeral',
           deceasedName: event.deceased_name || event.main_person_name,
           deceasedAge: event.deceased_age,
@@ -197,6 +201,8 @@ export default function EventDisplayScreen({ navigation, route }) {
         return funeralData;
       } else {
         return {
+          id: event.id || eventId, // 🔥 이벤트 ID 추가
+          event_id: event.id || eventId, // 🔥 이벤트 ID 추가
           type: event.event_type,
           groomName: event.groom_name,
           brideName: event.bride_name,
@@ -219,6 +225,8 @@ export default function EventDisplayScreen({ navigation, route }) {
     }
 
     return {
+      id: eventId, // 🔥 이벤트 ID 추가
+      event_id: eventId, // 🔥 이벤트 ID 추가
       guestMessages: eventMessages // 🔥 기본값에도 메시지 추가
     };
   };
@@ -515,7 +523,7 @@ export default function EventDisplayScreen({ navigation, route }) {
             <View style={styles.qrCodeContainer}>
               <QRCode
                 value={getQRValue()}
-                size={Math.min(width - 120, 250)}
+                size={Math.min(width - 180, 180)}
                 backgroundColor="white"
                 color="black"
                 logo={undefined}
