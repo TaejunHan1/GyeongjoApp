@@ -468,8 +468,8 @@ TWILIO_MESSAGE_SERVICE_SID=your_twilio_message_service_sid
 
 ## 📞 연락처
 
-- **개발팀**: dev@jeongdam.com
-- **문의사항**: support@jeongdam.com
+- **개발팀**: dev@contribution-web-srgt.vercel.app
+- **문의사항**: support@contribution-web-srgt.vercel.app
 - **버그 리포트**: GitHub Issues
 
 ---
@@ -586,7 +586,7 @@ FOR INSERT WITH CHECK (true);
 ```bash
 # React 웹앱 별도 개발
 1. Next.js 또는 React 웹앱 생성
-2. jeongdam.com/contribute/{eventId} 구현
+2. contribution-web-srgt.vercel.app/contribute/{eventId} 구현
 3. 모바일 최적화된 부조 입력 폼
 4. 실시간 부조 내역 동기화
 ```

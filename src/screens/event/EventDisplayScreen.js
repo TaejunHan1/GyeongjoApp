@@ -340,7 +340,7 @@ export default function EventDisplayScreen({ navigation, route }) {
   // 🔥 QR 코드 관련 함수들
   const getQRValue = () => {
     if (!event) return '';
-    const WEB_BASE_URL = 'https://jeongdam.com'; // 실제 도메인으로 변경 필요
+    const WEB_BASE_URL = 'https://contribution-web-srgt.vercel.app';
     return `${WEB_BASE_URL}/contribute/${event.id}`;
   };
 

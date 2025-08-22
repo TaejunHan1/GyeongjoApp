@@ -22,7 +22,7 @@ const { width } = Dimensions.get('window');
 const QR_SIZE = Math.min(width - 80, 300);
 
 // 실제 배포 시에는 실제 도메인으로 변경해야 함
-const WEB_BASE_URL = 'https://jeongdam.com'; // 또는 실제 웹사이트 URL
+const WEB_BASE_URL = 'https://contribution-web-srgt.vercel.app';
 
 export default function QRCodeScreen({ navigation, route }) {
   const { eventId } = route.params;

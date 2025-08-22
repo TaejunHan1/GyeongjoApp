@@ -527,7 +527,7 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
       const location = eventData.location || '더 플라자 지스텀하우스 22층';
       
       // 템플릿 공유 로직 - 웹 링크로 이동
-      const WEB_BASE_URL = 'https://jeongdam.com'; // 실제 도메인으로 변경 필요
+      const WEB_BASE_URL = 'https://contribution-web-srgt.vercel.app';
       const eventId = eventData.id || eventData.event_id || 'sample-event';
       const templateUrl = `${WEB_BASE_URL}/template/${eventId}?template=romantic`;
       
