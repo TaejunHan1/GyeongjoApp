@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { Colors } from '../../styles/constants';
 import { getEventDetail, getEventMessages, createEventMessage } from '../../lib/supabaseHelper';
+import { syncEventToWeb } from '../../lib/webSync';
 import WeddingTemplatePreview from './templates/WeddingTemplatePreview';
 import FuneralTemplatePreview from './templates/FuneralTemplatePreview';
 
@@ -83,6 +84,17 @@ export default function EventDisplayScreen({ navigation, route }) {
         });
         
         setEvent(result.data);
+        
+        // 🔥 웹 데이터베이스에 동기화 (백그라운드에서 실행)
+        syncEventToWeb(result.data).then((syncResult) => {
+          if (syncResult.success) {
+            console.log('✅ 웹 동기화 성공');
+          } else {
+            console.warn('⚠️ 웹 동기화 실패:', syncResult.error);
+          }
+        }).catch((error) => {
+          console.warn('⚠️ 웹 동기화 예외:', error);
+        });
       } else {
         console.error('❌ 이벤트 로딩 실패:', result.error);
         Alert.alert('오류', '경조사를 불러올 수 없습니다.');
