@@ -1512,8 +1512,8 @@ export const getEventDetail = async (eventId) => {
       throw error;
     }
 
-    // 🔥 guest_book_stats에서 통계 정보도 가져오기
-    const { data: stats } = await supabase
+    // 🔥 guest_book_stats에서 통계 정보도 가져오기 (테이블이 없으면 기본값 사용)
+    const { data: stats, error: statsError } = await supabase
       .from('guest_book_stats')
       .select('*')
       .eq('event_id', eventId)
@@ -1531,6 +1531,20 @@ export const getEventDetail = async (eventId) => {
         brideSideAmount: stats.bride_side_amount || 0,
         groomSideCount: stats.groom_side_count || 0,
         brideSideCount: stats.bride_side_count || 0,
+      };
+    } else if (statsError?.code === '42P01') {
+      // guest_book_stats 테이블이 없으면 기본 통계 제공
+      console.log('⚠️ guest_book_stats 뷰가 없음. 기본 통계를 제공합니다.');
+      data.statistics = {
+        totalAmount: 0,
+        totalEntries: 0,
+        attendingCount: 0,
+        messageCount: 0,
+        verifiedCount: 0,
+        groomSideAmount: 0,
+        brideSideAmount: 0,
+        groomSideCount: 0,
+        brideSideCount: 0,
       };
     }
 
@@ -1760,52 +1774,148 @@ export const getEventGuestBook = async (eventId) => {
 /**
  * 이벤트 통계 조회 (guest_book_stats 뷰 사용)
  */
-export const getEventStatistics = async (eventId) => {
+// 간단한 Supabase 연결 테스트
+export const testSupabaseConnection = async () => {
+  console.log('🔥🔥🔥 Supabase 연결 테스트 시작');
+  
   try {
-    // guest_book_stats 뷰에서 통계 가져오기
-    const { data: stats, error } = await supabase
-      .from('guest_book_stats')
-      .select('*')
-      .eq('event_id', eventId)
-      .single();
-
-    if (error && error.code !== 'PGRST116') { // 데이터 없음 에러는 무시
-      console.error('❌ 통계 조회 오류:', error);
-      throw error;
+    // 1. guest_book 테이블 존재 여부 확인
+    const { data, error, count } = await supabase
+      .from('guest_book')
+      .select('*', { count: 'exact' })
+      .limit(5);
+    
+    console.log('🔥🔥🔥 guest_book 테이블 결과:', { data, error, count });
+    
+    if (error) {
+      console.error('🔥🔥🔥 guest_book 테이블 에러:', error);
+      return;
     }
 
-    // 관계별 통계도 가져오기
-    const { data: relationStats } = await supabase
-      .from('guest_book_relation_stats')
+    // 2. 특정 event_id 조회 테스트
+    const testEventId = 'ddaa48e8-1d3d-42fd-a027-d25179d5036e';
+    const { data: specificData, error: specificError } = await supabase
+      .from('guest_book')
+      .select('*')
+      .eq('event_id', testEventId);
+    
+    console.log('🔥🔥🔥 특정 event_id 결과:', { 
+      testEventId, 
+      count: specificData?.length || 0,
+      data: specificData,
+      error: specificError 
+    });
+
+  } catch (err) {
+    console.error('🔥🔥🔥 연결 테스트 예외:', err);
+  }
+};
+
+export const getEventStatistics = async (eventId) => {
+  console.log(`🔥🔥🔥 getEventStatistics 시작. event_id: ${eventId} (${typeof eventId})`);
+  
+  try {
+    // 1단계: 전체 guest_book 데이터 확인 (RLS 문제 확인용)
+    const { data: allEntries, error: allError } = await supabase
+      .from('guest_book')
+      .select('event_id, amount, attending')
+      .limit(5);
+    
+    console.log(`🔥🔥🔥 전체 guest_book 샘플:`, { 
+      count: allEntries?.length || 0,
+      data: allEntries,
+      error: allError
+    });
+
+    // 2단계: 현재 사용자 정보 확인
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    console.log(`🔥🔥🔥 현재 사용자:`, { 
+      userId: user?.id, 
+      email: user?.email, 
+      phone: user?.phone,
+      error: userError
+    });
+
+    // 3단계: 특정 event_id로 조회
+    const { data: entries, error } = await supabase
+      .from('guest_book')
       .select('*')
       .eq('event_id', eventId);
 
-    console.log('✅ 이벤트 통계 조회 완료');
-    
+    console.log(`🔥🔥🔥 특정 event_id 조회 결과:`, { 
+      eventId, 
+      entriesCount: entries?.length || 0, 
+      entries: entries,
+      error 
+    });
+
+    // 4단계: 알려진 event_id로 테스트
+    const { data: testEntries, error: testError } = await supabase
+      .from('guest_book')
+      .select('*')
+      .eq('event_id', 'ddaa48e8-1d3d-42fd-a027-d25179d5036e');
+
+    console.log(`🔥🔥🔥 테스트 event_id 조회 결과:`, { 
+      testEventId: 'ddaa48e8-1d3d-42fd-a027-d25179d5036e',
+      count: testEntries?.length || 0, 
+      data: testEntries,
+      error: testError 
+    });
+
+    if (error) {
+      console.error('🔥🔥🔥 guest_book 조회 에러:', error);
+      return {
+        success: true,
+        data: {
+          totalContributions: 0,
+          totalAmount: 0,
+          attendingCount: 0,
+          averageAmount: 0,
+          relationStats: []
+        }
+      };
+    }
+
+    if (!entries || entries.length === 0) {
+      console.log('🔥🔥🔥 guest_book에 데이터 없음 - RLS 정책 문제일 수 있음');
+      return {
+        success: true,
+        data: {
+          totalContributions: 0,
+          totalAmount: 0,
+          attendingCount: 0,
+          averageAmount: 0,
+          relationStats: []
+        }
+      };
+    }
+
+    // 통계 계산
+    const totalAmount = entries.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
+    const attendingCount = entries.filter(entry => entry.attending === true).length;
+
+    console.log(`🔥🔥🔥 최종 계산 결과:`, {
+      totalEntries: entries.length,
+      totalAmount,
+      attendingCount
+    });
+
     return {
       success: true,
       data: {
-        totalContributions: stats?.total_entries || 0,
-        totalAmount: stats?.total_amount || 0,
-        verifiedCount: stats?.verified_count || 0,
-        attendingCount: stats?.attending_count || 0,
-        messageCount: stats?.message_count || 0,
-        averageAmount: stats?.avg_amount || 0,
-        // 결혼식 전용
-        groomSideAmount: stats?.groom_side_amount || 0,
-        brideSideAmount: stats?.bride_side_amount || 0,
-        groomSideCount: stats?.groom_side_count || 0,
-        brideSideCount: stats?.bride_side_count || 0,
-        // 관계별 통계
-        relationStats: relationStats || []
+        totalContributions: entries.length,
+        totalAmount: totalAmount,
+        attendingCount: attendingCount,
+        averageAmount: entries.length > 0 ? Math.round(totalAmount / entries.length) : 0,
+        relationStats: []
       }
     };
 
   } catch (error) {
-    console.error('❌ getEventStatistics error:', error);
+    console.error('🔥🔥🔥 getEventStatistics 예외:', error);
     return {
       success: false,
-      error: error.message || '통계 조회에 실패했습니다.'
+      error: error.message
     };
   }
 };
@@ -2051,17 +2161,33 @@ export const getMonthlyStatistics = async (userId) => {
     for (const event of events) {
       console.log(`📊 이벤트 ${event.event_name} 통계 조회 중...`);
       
-      // 🔥 전체 통계 - guest_book_stats 뷰 사용
+      // 🔥 전체 통계 - guest_book_stats 뷰 사용 (없으면 contributions 테이블에서 직접 계산)
       const { data: eventStats, error: statsError } = await supabase
         .from('guest_book_stats')
         .select('*')
         .eq('event_id', event.id)
         .single();
 
+      let eventTotal = 0;
+      let eventCount = 0;
+
       if (!statsError && eventStats) {
-        const eventTotal = eventStats.total_amount || 0;
-        const eventCount = eventStats.total_entries || 0;
+        eventTotal = eventStats.total_amount || 0;
+        eventCount = eventStats.total_entries || 0;
+      } else if (statsError?.code === '42P01') {
+        // guest_book_stats 테이블이 없으면 guest_book에서 직접 계산
+        const { data: guestBookEntries } = await supabase
+          .from('guest_book')
+          .select('amount, attending')
+          .eq('event_id', event.id);
         
+        if (guestBookEntries) {
+          eventTotal = guestBookEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+          eventCount = guestBookEntries.length;
+        }
+      }
+
+      if (eventTotal > 0 || eventCount > 0) {
         stats.totalReceivedAmount += eventTotal;
         stats.totalEntries += eventCount;
         

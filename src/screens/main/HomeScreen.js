@@ -34,7 +34,8 @@ import {
   getEventGuestBook,
   getMonthlyStatistics,
   getEventStatistics,
-  getUserSubscriptionInfo 
+  getUserSubscriptionInfo,
+  testSupabaseConnection 
 } from '../../lib/supabaseHelper';
 import Svg, { Rect, Circle, Path, Ellipse, G } from 'react-native-svg';
 
@@ -443,7 +444,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const successModalScale = useRef(new Animated.Value(0)).current;
   const successModalOpacity = useRef(new Animated.Value(0)).current;
 
-  // Props 확인 로그
+  // Props 확인 로그 & 데이터베이스 테스트
   useEffect(() => {
     console.log('🏠 HomeScreen props:', { 
       hasUserInfo: !!userInfo, 
@@ -451,6 +452,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       isAuthenticated,
       userInfo: userInfo ? { userId: userInfo.userId, userName: userInfo.userName } : null
     });
+    
+    // Supabase 연결 테스트
+    if (isAuthenticated) {
+      console.log('🚨 Supabase 연결 테스트 실행');
+      testSupabaseConnection();
+    }
   }, [userInfo, session, isAuthenticated]);
 
   // 슬라이드 데이터 - 경조사 종류별로 구성
@@ -747,9 +754,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         const eventsWithStats = await Promise.all(
           (result.data || []).map(async (event) => {
             try {
+              console.log(`🚨🚨🚨 이벤트 ${event.event_name}(${event.id}) 통계 조회 시작 🚨🚨🚨`);
+              console.log(`🚨🚨🚨 전달할 event.id:`, event.id, `타입:`, typeof event.id);
               const statsResult = await getEventStatistics(event.id);
+              console.log(`🚨🚨🚨 ${event.event_name} 통계 결과:`, statsResult);
               if (statsResult.success) {
-                return {
+                const eventWithStats = {
                   ...event,
                   total_contributions: statsResult.data.totalContributions,
                   total_amount: statsResult.data.totalAmount,
@@ -757,6 +767,8 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                   attending_count: statsResult.data.attendingCount,
                   average_amount: statsResult.data.averageAmount
                 };
+                console.log(`✅ 이벤트 통계 적용:`, eventWithStats);
+                return eventWithStats;
               }
             } catch (error) {
               console.error(`❌ 이벤트 ${event.id} 통계 로드 실패:`, error);
