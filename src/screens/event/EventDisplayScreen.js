@@ -43,20 +43,13 @@ export default function EventDisplayScreen({ navigation, route }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    console.log('🎭 EventDisplayScreen 시작 - 파라미터:', {
-      eventId,
-      templateStyle,
-      hasCategorizedImages: !!categorizedImages,
-      hasPassedEventData: !!passedEventData,
-    });
-
     if (eventId === 'preview' && passedEventData) {
       setIsPreviewMode(true);
       setEvent(passedEventData);
       setLoading(false);
     } else {
       loadEventData();
-      loadEventMessages(); // 🔥 메시지 로드 추가
+      loadEventMessages();
     }
     
     startAnimations();
@@ -73,35 +66,18 @@ export default function EventDisplayScreen({ navigation, route }) {
   const loadEventData = async () => {
     try {
       setLoading(true);
-      console.log('🔄 DB에서 이벤트 데이터 로드 시작:', eventId);
-      
       const result = await getEventDetail(eventId);
       
       if (result.success) {
-        console.log('✅ DB 데이터 로드 성공:', {
-          eventName: result.data.event_name,
-          eventType: result.data.event_type,
-        });
-        
         setEvent(result.data);
         
-        // 🔥 웹 데이터베이스에 동기화 (백그라운드에서 실행)
-        syncEventToWeb(result.data).then((syncResult) => {
-          if (syncResult.success) {
-            console.log('✅ 웹 동기화 성공');
-          } else {
-            console.warn('⚠️ 웹 동기화 실패:', syncResult.error);
-          }
-        }).catch((error) => {
-          console.warn('⚠️ 웹 동기화 예외:', error);
-        });
+        // 웹 데이터베이스에 동기화 (백그라운드에서 실행)
+        syncEventToWeb(result.data).catch(() => {});
       } else {
-        console.error('❌ 이벤트 로딩 실패:', result.error);
         Alert.alert('오류', '경조사를 불러올 수 없습니다.');
         navigation.goBack();
       }
     } catch (error) {
-      console.error('❌ 이벤트 로딩 예외:', error);
       Alert.alert('오류', '경조사를 불러오는 중 문제가 발생했습니다.');
       navigation.goBack();
     } finally {
@@ -168,17 +144,12 @@ export default function EventDisplayScreen({ navigation, route }) {
   };
 
   const getFinalEventData = () => {
-    console.log('🔥 [EventDisplay] getFinalEventData 시작');
-    console.log('🔥 [EventDisplay] passedEventData:', passedEventData);
-    console.log('🔥 [EventDisplay] event:', event);
-    
     if (passedEventData) {
-      console.log('🔥 [EventDisplay] passedEventData 사용');
       return {
         ...passedEventData,
-        id: eventId, // 🔥 이벤트 ID 추가
-        event_id: eventId, // 🔥 이벤트 ID 추가 (다른 필드명으로도)
-        guestMessages: eventMessages // 🔥 메시지 추가
+        id: eventId,
+        event_id: eventId,
+        guestMessages: eventMessages
       };
     }
 
@@ -217,12 +188,9 @@ export default function EventDisplayScreen({ navigation, route }) {
 
         return funeralData;
       } else {
-        console.log('🔥 [EventDisplay] 결혼식 데이터 생성 중');
-        console.log('🔥 [EventDisplay] event.additional_info:', event.additional_info);
-        
         const weddingData = {
-          id: event.id || eventId, // 🔥 이벤트 ID 추가
-          event_id: event.id || eventId, // 🔥 이벤트 ID 추가
+          id: event.id || eventId,
+          event_id: event.id || eventId,
           type: event.event_type,
           groomName: event.groom_name,
           brideName: event.bride_name,
@@ -239,12 +207,9 @@ export default function EventDisplayScreen({ navigation, route }) {
           brideMotherName: event.bride_mother_name,
           groomContact: event.groom_contact,
           brideContact: event.bride_contact,
-          guestMessages: eventMessages, // 🔥 메시지 추가
-          additional_info: event.additional_info // 🔥 추가 정보 포함 (계좌번호 등)
+          guestMessages: eventMessages,
+          additional_info: event.additional_info
         };
-
-        console.log('🔥 [EventDisplay] 생성된 weddingData:', weddingData);
-        console.log('🔥 [EventDisplay] weddingData.additional_info:', weddingData.additional_info);
 
         return weddingData;
       }

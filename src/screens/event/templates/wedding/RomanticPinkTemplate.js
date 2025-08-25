@@ -327,39 +327,14 @@ const CustomOpeningOverlay = ({ visible }) => {
 };
 
 const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {} }) => {
-  // 전체 eventData 구조 확인
-  console.log('🔍 [DEBUG] 전체 eventData:', eventData);
-  console.log('🔍 [DEBUG] eventData.additional_info:', eventData.additional_info);
-  
-  // additional_info가 문자열인지 객체인지 확인 및 강제 파싱
+  // additional_info가 문자열인지 객체인지 확인 및 파싱
   if (typeof eventData.additional_info === 'string') {
-    console.log('⚠️ additional_info가 문자열입니다. 파싱 시도...');
-    console.log('📄 원본 문자열:', eventData.additional_info);
     try {
-      const parsed = JSON.parse(eventData.additional_info);
-      console.log('✅ 파싱된 additional_info:', parsed);
-      eventData.additional_info = parsed;
+      eventData.additional_info = JSON.parse(eventData.additional_info);
     } catch (e) {
-      console.error('❌ additional_info 파싱 실패:', e);
-      console.error('❌ 파싱 실패한 문자열:', eventData.additional_info);
+      eventData.additional_info = {};
     }
-  } else if (eventData.additional_info && typeof eventData.additional_info === 'object') {
-    console.log('✅ additional_info가 이미 객체입니다:', eventData.additional_info);
-  } else {
-    console.log('❌ additional_info가 없거나 잘못된 형태입니다:', eventData.additional_info);
-    console.log('❌ eventData 전체:', eventData);
   }
-  
-  console.log('🔍 [DEBUG] EventData 전체 구조:', eventData);
-  console.log('🔍 [DEBUG] additional_info:', eventData.additional_info);
-  console.log('🔍 [DEBUG] 계좌번호 확인:', {
-    groom: eventData.additional_info?.groom_account_number,
-    bride: eventData.additional_info?.bride_account_number,
-    groomFather: eventData.additional_info?.groom_father_account_number,
-    groomMother: eventData.additional_info?.groom_mother_account_number,
-    brideFather: eventData.additional_info?.bride_father_account_number,
-    brideMother: eventData.additional_info?.bride_mother_account_number,
-  });
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showOpening, setShowOpening] = useState(true);
@@ -1088,7 +1063,7 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
               <Ionicons name="gift" size={32} color="#D4A574" />
             </View>
             <View style={styles.romantic_giftTitleContainer}>
-              <Text style={styles.romantic_giftTitle}>축하금 전달</Text>
+              <Text style={styles.romantic_giftTitle}>축의금 전달</Text>
               <Text style={styles.romantic_giftSubtitle}>따뜻한 마음을 함께 나누어주세요</Text>
             </View>
           </View>
@@ -1100,28 +1075,7 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
             </Text>
           </View>
           
-          {/* 디버그 정보 표시 */}
-          <View style={{backgroundColor: '#f0f0f0', padding: 10, marginVertical: 10, borderRadius: 8}}>
-            <Text style={{fontSize: 12, color: '#666'}}>
-              디버그: additional_info 존재 여부: {eventData.additional_info ? 'YES' : 'NO'}
-            </Text>
-            <Text style={{fontSize: 12, color: '#666'}}>
-              신랑 계좌: {eventData.additional_info?.groom_account_number || 'NONE'}
-            </Text>
-            <Text style={{fontSize: 12, color: '#666'}}>
-              신부 계좌: {eventData.additional_info?.bride_account_number || 'NONE'}
-            </Text>
-          </View>
-          
           {/* 신랑측 계좌 */}
-          {console.log('🎆 신랑측 계좌 표시 조건:', {
-            groom: eventData.additional_info?.groom_account_number,
-            groomFather: eventData.additional_info?.groom_father_account_number,
-            groomMother: eventData.additional_info?.groom_mother_account_number,
-            showSection: !!(eventData.additional_info?.groom_account_number || 
-              eventData.additional_info?.groom_father_account_number || 
-              eventData.additional_info?.groom_mother_account_number)
-          })}
           {(eventData.additional_info?.groom_account_number || 
             eventData.additional_info?.groom_father_account_number || 
             eventData.additional_info?.groom_mother_account_number) && (
