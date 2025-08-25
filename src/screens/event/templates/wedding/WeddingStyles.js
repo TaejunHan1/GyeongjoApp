@@ -862,6 +862,102 @@ const styles = StyleSheet.create({
     marginBottom: 50,
   },
   
+  // 계좌번호 섹션
+  romantic_accountSection: {
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    backgroundColor: '#FFF5F5',
+    borderTopWidth: 1,
+    borderTopColor: '#E8E4E0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E4E0',
+  },
+  romantic_accountTitle: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: '#8B6F47',
+    textAlign: 'center',
+    marginBottom: 12,
+    fontFamily: 'System',
+  },
+  romantic_accountSubtitle: {
+    fontSize: 16,
+    color: '#9B8D82',
+    textAlign: 'center',
+    marginBottom: 30,
+    lineHeight: 24,
+    fontFamily: 'System',
+  },
+  romantic_accountCard: {
+    marginBottom: 15,
+    borderRadius: 15,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 3,
+    backgroundColor: 'white',
+    maxWidth: 400,
+    alignSelf: 'center',
+    width: '100%',
+  },
+  romantic_accountHeader: {
+    overflow: 'hidden',
+  },
+  romantic_accountHeaderGradient: {
+    padding: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  romantic_accountHeaderGradient: {
+    padding: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  romantic_accountHeaderText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '500',
+    fontFamily: 'System',
+  },
+  romantic_accountArrow: {
+    color: 'white',
+    fontSize: 18,
+  },
+  romantic_accountContent: {
+    backgroundColor: 'white',
+    padding: 25,
+  },
+  romantic_accountItem: {
+    marginBottom: 20,
+  },
+  romantic_accountName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#8B6F47',
+    marginBottom: 8,
+    fontFamily: 'System',
+  },
+  romantic_accountNumber: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F6F4',
+    padding: 15,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8E4E0',
+  },
+  romantic_accountNumberText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#8B6F47',
+    fontWeight: '500',
+    fontFamily: 'System',
+  },
+  
   // 공유 섹션
   romantic_shareSection: {
     paddingVertical: 30,
@@ -2511,6 +2607,176 @@ romantic_coupleCardFull: {
   elevation: 5,
   alignItems: 'center',
 },
+
+  // =================================================================
+  // 새로운 축하금 안내 디자인 스타일
+  // =================================================================
+  romantic_giftSection: {
+    backgroundColor: 'white',
+    marginHorizontal: 20,
+    marginVertical: 20,
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  romantic_giftHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  romantic_giftIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FFF8F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+    shadowColor: '#D4A574',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  romantic_giftTitleContainer: {
+    flex: 1,
+  },
+  romantic_giftTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#8B5A3C',
+    marginBottom: 4,
+    letterSpacing: -0.5,
+  },
+  romantic_giftSubtitle: {
+    fontSize: 14,
+    color: '#A67B5B',
+    fontWeight: '500',
+  },
+  romantic_giftDescription: {
+    backgroundColor: '#FFF8F4',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#F0E6D8',
+  },
+  romantic_giftDescriptionText: {
+    fontSize: 15,
+    color: '#8B5A3C',
+    textAlign: 'center',
+    lineHeight: 22,
+    fontWeight: '500',
+  },
+  
+  // 계좌 카드 스타일
+  romantic_giftCard: {
+    backgroundColor: '#FEFEFE',
+    borderRadius: 16,
+    marginBottom: 16,
+    shadowColor: '#D4A574',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#F5F0EA',
+  },
+  romantic_giftCardHeader: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    overflow: 'hidden',
+  },
+  romantic_giftCardHeaderGradient: {
+    padding: 16,
+  },
+  romantic_giftCardHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  romantic_giftCardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  romantic_giftCardHeaderText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#D4A574',
+    marginLeft: 8,
+    letterSpacing: -0.3,
+  },
+  romantic_giftCardContent: {
+    padding: 20,
+    paddingTop: 16,
+  },
+  
+  // 계좌 아이템 스타일
+  romantic_giftAccountItem: {
+    marginBottom: 20,
+    borderRadius: 12,
+    backgroundColor: '#FDFBF8',
+    borderWidth: 1,
+    borderColor: '#F0E8DC',
+  },
+  romantic_giftAccountHeader: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0E8DC',
+  },
+  romantic_giftAccountName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#8B5A3C',
+    textAlign: 'center',
+  },
+  romantic_giftAccountInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+  },
+  romantic_giftAccountDetails: {
+    flex: 1,
+  },
+  romantic_giftBankName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#A67B5B',
+    marginBottom: 4,
+    letterSpacing: -0.2,
+  },
+  romantic_giftAccountNumber: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#5D4037',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    letterSpacing: 0.5,
+  },
+  romantic_giftCopyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF8F4',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#F0E6D8',
+  },
+  romantic_giftCopyText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D4A574',
+    marginLeft: 4,
+    letterSpacing: -0.1,
+  },
   
 });
 

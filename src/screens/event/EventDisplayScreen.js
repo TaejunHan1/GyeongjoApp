@@ -168,7 +168,12 @@ export default function EventDisplayScreen({ navigation, route }) {
   };
 
   const getFinalEventData = () => {
+    console.log('🔥 [EventDisplay] getFinalEventData 시작');
+    console.log('🔥 [EventDisplay] passedEventData:', passedEventData);
+    console.log('🔥 [EventDisplay] event:', event);
+    
     if (passedEventData) {
+      console.log('🔥 [EventDisplay] passedEventData 사용');
       return {
         ...passedEventData,
         id: eventId, // 🔥 이벤트 ID 추가
@@ -212,7 +217,10 @@ export default function EventDisplayScreen({ navigation, route }) {
 
         return funeralData;
       } else {
-        return {
+        console.log('🔥 [EventDisplay] 결혼식 데이터 생성 중');
+        console.log('🔥 [EventDisplay] event.additional_info:', event.additional_info);
+        
+        const weddingData = {
           id: event.id || eventId, // 🔥 이벤트 ID 추가
           event_id: event.id || eventId, // 🔥 이벤트 ID 추가
           type: event.event_type,
@@ -231,8 +239,14 @@ export default function EventDisplayScreen({ navigation, route }) {
           brideMotherName: event.bride_mother_name,
           groomContact: event.groom_contact,
           brideContact: event.bride_contact,
-          guestMessages: eventMessages // 🔥 메시지 추가
+          guestMessages: eventMessages, // 🔥 메시지 추가
+          additional_info: event.additional_info // 🔥 추가 정보 포함 (계좌번호 등)
         };
+
+        console.log('🔥 [EventDisplay] 생성된 weddingData:', weddingData);
+        console.log('🔥 [EventDisplay] weddingData.additional_info:', weddingData.additional_info);
+
+        return weddingData;
       }
     }
 

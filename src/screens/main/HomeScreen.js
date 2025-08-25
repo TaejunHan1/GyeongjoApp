@@ -1144,6 +1144,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           brideFatherContact: additionalInfo.bride_father_contact,
           brideMotherContact: additionalInfo.bride_mother_contact,
           receptionTime: additionalInfo.reception_time,
+          
+          // 🔥 추가 정보 전체 포함 (계좌번호 등)
+          additional_info: additionalInfo,
         };
       }
       

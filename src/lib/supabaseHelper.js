@@ -1550,6 +1550,18 @@ export const getEventDetail = async (eventId) => {
 
     console.log('✅ 이벤트 상세 조회 완료:', eventId);
     
+    // 🔥 additional_info JSON 파싱 처리
+    if (data.additional_info && typeof data.additional_info === 'string') {
+      console.log('⚠️ additional_info가 문자열로 저장됨. 파싱 시도:', data.additional_info.substring(0, 100) + '...');
+      try {
+        data.additional_info = JSON.parse(data.additional_info);
+        console.log('✅ additional_info 파싱 성공');
+      } catch (e) {
+        console.error('❌ additional_info 파싱 실패:', e);
+        data.additional_info = {};
+      }
+    }
+    
     // 추가 정보 처리
     if (data.event_type === 'wedding') {
       if (data.additional_info?.reception_time) {

@@ -366,6 +366,22 @@ export default function CreateWeddingScreen({ navigation, route }) {
     groomMotherContact: '',
     brideFatherContact: '',
     brideMotherContact: '',
+    
+    // 계좌번호 필드
+    groomAccountNumber: '',
+    brideAccountNumber: '',
+    groomFatherAccountNumber: '',
+    groomMotherAccountNumber: '',
+    brideFatherAccountNumber: '',
+    brideMotherAccountNumber: '',
+    
+    // 은행명 필드
+    groomBankName: '',
+    brideBankName: '',
+    groomFatherBankName: '',
+    groomMotherBankName: '',
+    brideFatherBankName: '',
+    brideMotherBankName: '',
     ceremonyTime: null,
     receptionTime: null,
     customMessage: '',
@@ -953,6 +969,22 @@ export default function CreateWeddingScreen({ navigation, route }) {
         reception_time: eventData.receptionTime && eventData.receptionTime instanceof Date && !isNaN(eventData.receptionTime.getTime()) ? 
           eventData.receptionTime.toTimeString().split(' ')[0] : null,
       };
+      
+      // 계좌번호 및 은행명 정보
+      const accountInfo = {
+        groom_account_number: eventData.groomAccountNumber?.trim() || null,
+        bride_account_number: eventData.brideAccountNumber?.trim() || null,
+        groom_father_account_number: eventData.groomFatherAccountNumber?.trim() || null,
+        groom_mother_account_number: eventData.groomMotherAccountNumber?.trim() || null,
+        bride_father_account_number: eventData.brideFatherAccountNumber?.trim() || null,
+        bride_mother_account_number: eventData.brideMotherAccountNumber?.trim() || null,
+        groom_bank_name: eventData.groomBankName?.trim() || null,
+        bride_bank_name: eventData.brideBankName?.trim() || null,
+        groom_father_bank_name: eventData.groomFatherBankName?.trim() || null,
+        groom_mother_bank_name: eventData.groomMotherBankName?.trim() || null,
+        bride_father_bank_name: eventData.brideFatherBankName?.trim() || null,
+        bride_mother_bank_name: eventData.brideMotherBankName?.trim() || null,
+      };
 
       let formattedEventData = {
         event_type: 'wedding', // 🔥 고정
@@ -995,6 +1027,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
         parking_info: eventData.parkingInfo.trim() || null,
         additional_info: {
           ...parentsContactInfo,
+          ...accountInfo,
           categorized_images: categorizedImages,
           message_settings: eventData.messageSettings,
         }
@@ -1126,6 +1159,62 @@ export default function CreateWeddingScreen({ navigation, route }) {
           />
         </View>
       </View>
+      
+      {/* 계좌번호 섹션 */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>계좌번호</Text>
+        <Text style={styles.sectionSubtitle}>축하금을 받을 계좌번호예요 (선택사항)</Text>
+      </View>
+      
+      <View style={styles.formRow}>
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>신랑 은행명</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="은행명 입력"
+            value={eventData.groomBankName}
+            onChangeText={(text) => setEventData({ ...eventData, groomBankName: text })}
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+        
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>신랑 계좌번호</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="계좌번호 입력"
+            value={eventData.groomAccountNumber}
+            onChangeText={(text) => setEventData({ ...eventData, groomAccountNumber: text })}
+            keyboardType="numeric"
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+      </View>
+      
+      <View style={styles.formRow}>
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>신부 은행명</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="은행명 입력"
+            value={eventData.brideBankName}
+            onChangeText={(text) => setEventData({ ...eventData, brideBankName: text })}
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+        
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>신부 계좌번호</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="계좌번호 입력"
+            value={eventData.brideAccountNumber}
+            onChangeText={(text) => setEventData({ ...eventData, brideAccountNumber: text })}
+            keyboardType="numeric"
+            placeholderTextColor={TossColors.textTertiary}
+          />
+        </View>
+      </View>
     </Animated.View>
   );
 
@@ -1189,6 +1278,56 @@ export default function CreateWeddingScreen({ navigation, route }) {
             />
           </View>
         </View>
+        
+        {/* 신랑측 은행명 */}
+        <View style={styles.formRow}>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>아버님 은행명</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="은행명 입력 (선택사항)"
+              value={eventData.groomFatherBankName}
+              onChangeText={(text) => setEventData({ ...eventData, groomFatherBankName: text })}
+              placeholderTextColor={TossColors.textTertiary}
+            />
+          </View>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>어머님 은행명</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="은행명 입력 (선택사항)"
+              value={eventData.groomMotherBankName}
+              onChangeText={(text) => setEventData({ ...eventData, groomMotherBankName: text })}
+              placeholderTextColor={TossColors.textTertiary}
+            />
+          </View>
+        </View>
+        
+        {/* 신랑측 계좌번호 */}
+        <View style={styles.formRow}>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>아버님 계좌번호</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="계좌번호 입력 (선택사항)"
+              value={eventData.groomFatherAccountNumber}
+              onChangeText={(text) => setEventData({ ...eventData, groomFatherAccountNumber: text })}
+              keyboardType="numeric"
+              placeholderTextColor={TossColors.textTertiary}
+            />
+          </View>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>어머님 계좌번호</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="계좌번호 입력 (선택사항)"
+              value={eventData.groomMotherAccountNumber}
+              onChangeText={(text) => setEventData({ ...eventData, groomMotherAccountNumber: text })}
+              keyboardType="numeric"
+              placeholderTextColor={TossColors.textTertiary}
+            />
+          </View>
+        </View>
       </View>
 
       <View style={styles.parentsSection}>
@@ -1235,6 +1374,56 @@ export default function CreateWeddingScreen({ navigation, route }) {
               value={eventData.brideMotherContact}
               onChangeText={(text) => handleContactChange(text, 'brideMotherContact')}
               keyboardType="phone-pad"
+              placeholderTextColor={TossColors.textTertiary}
+            />
+          </View>
+        </View>
+        
+        {/* 신부측 은행명 */}
+        <View style={styles.formRow}>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>아버님 은행명</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="은행명 입력 (선택사항)"
+              value={eventData.brideFatherBankName}
+              onChangeText={(text) => setEventData({ ...eventData, brideFatherBankName: text })}
+              placeholderTextColor={TossColors.textTertiary}
+            />
+          </View>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>어머님 은행명</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="은행명 입력 (선택사항)"
+              value={eventData.brideMotherBankName}
+              onChangeText={(text) => setEventData({ ...eventData, brideMotherBankName: text })}
+              placeholderTextColor={TossColors.textTertiary}
+            />
+          </View>
+        </View>
+        
+        {/* 신부측 계좌번호 */}
+        <View style={styles.formRow}>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>아버님 계좌번호</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="계좌번호 입력 (선택사항)"
+              value={eventData.brideFatherAccountNumber}
+              onChangeText={(text) => setEventData({ ...eventData, brideFatherAccountNumber: text })}
+              keyboardType="numeric"
+              placeholderTextColor={TossColors.textTertiary}
+            />
+          </View>
+          <View style={styles.inputWrapper}>
+            <Text style={styles.inputLabel}>어머님 계좌번호</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="계좌번호 입력 (선택사항)"
+              value={eventData.brideMotherAccountNumber}
+              onChangeText={(text) => setEventData({ ...eventData, brideMotherAccountNumber: text })}
+              keyboardType="numeric"
               placeholderTextColor={TossColors.textTertiary}
             />
           </View>
@@ -1940,7 +2129,23 @@ export default function CreateWeddingScreen({ navigation, route }) {
             {previewTemplate && (
               <WeddingTemplatePreview
                 template={previewTemplate}
-                eventData={eventData}
+                eventData={{
+                  ...eventData,
+                  additional_info: {
+                    groom_account_number: eventData.groomAccountNumber,
+                    bride_account_number: eventData.brideAccountNumber,
+                    groom_father_account_number: eventData.groomFatherAccountNumber,
+                    groom_mother_account_number: eventData.groomMotherAccountNumber,
+                    bride_father_account_number: eventData.brideFatherAccountNumber,
+                    bride_mother_account_number: eventData.brideMotherAccountNumber,
+                    groom_bank_name: eventData.groomBankName,
+                    bride_bank_name: eventData.brideBankName,
+                    groom_father_bank_name: eventData.groomFatherBankName,
+                    groom_mother_bank_name: eventData.groomMotherBankName,
+                    bride_father_bank_name: eventData.brideFatherBankName,
+                    bride_mother_bank_name: eventData.brideMotherBankName,
+                  }
+                }}
                 userImages={eventData.images}
                 categorizedImages={getCategorizedImages()}
                 allowMessages={eventData.allowMessages}
