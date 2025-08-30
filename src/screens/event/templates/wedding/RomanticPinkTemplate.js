@@ -340,7 +340,7 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
   const [showOpening, setShowOpening] = useState(true);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [galleryScrollIndex, setGalleryScrollIndex] = useState(0);
-  const [activeAccountToggle, setActiveAccountToggle] = useState(null);
+  const [activeAccountToggle, setActiveAccountToggle] = useState('groom');
   const [showDateAnimation, setShowDateAnimation] = useState(false);
   const [dateSectionY, setDateSectionY] = useState(0);
   const [randomGreeting, setRandomGreeting] = useState(null);
@@ -1050,7 +1050,7 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
           </TouchableOpacity>
         </Animated.View>
 
-        {/* 축하금 안내 섹션 - 새로운 디자인 (항상 표시) */}
+        {/* 축하금 안내 섹션 - 웹 버전 스타일 적용 */}
         <Animated.View style={[
           styles.romantic_giftSection,
           {
@@ -1059,225 +1059,186 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
           }
         ]}>
           <View style={styles.romantic_giftHeader}>
-            <View style={styles.romantic_giftIconContainer}>
-              <Ionicons name="gift" size={32} color="#D4A574" />
-            </View>
-            <View style={styles.romantic_giftTitleContainer}>
-              <Text style={styles.romantic_giftTitle}>축의금 전달</Text>
-              <Text style={styles.romantic_giftSubtitle}>따뜻한 마음을 함께 나누어주세요</Text>
-            </View>
+            <Text style={styles.romantic_giftTitle}>축의금 전달</Text>
+            <Text style={styles.romantic_giftSubtitle}>따뜻한 마음을 함께 나누어주세요</Text>
           </View>
           
           <View style={styles.romantic_giftDescription}>
             <Text style={styles.romantic_giftDescriptionText}>
-              참석하지 못하더라도 축하의 마음은{'\n'}
-              이렇게 전할 수 있어요 💝
+              축복의 마음을 담은 소중한 마음,{'\n'}
+              이렇게 전할 수 있어요
             </Text>
           </View>
-          
-          {/* 신랑측 계좌 */}
-          {(eventData.additional_info?.groom_account_number || 
-            eventData.additional_info?.groom_father_account_number || 
-            eventData.additional_info?.groom_mother_account_number) && (
-            <View style={styles.romantic_giftCard}>
+
+          {/* 토글 버튼 */}
+          <View style={styles.romantic_toggleContainer}>
+            <View style={styles.romantic_toggleButtons}>
               <TouchableOpacity 
-                style={styles.romantic_giftCardHeader}
+                style={[
+                  styles.romantic_toggleButton, 
+                  activeAccountToggle === 'groom' && styles.romantic_toggleButtonActive
+                ]}
                 onPress={() => handleAccountToggle('groom')}
               >
-                <LinearGradient
-                  colors={['#F8F0E8', '#F0E6D8']}
-                  style={styles.romantic_giftCardHeaderGradient}
-                >
-                  <View style={styles.romantic_giftCardHeaderContent}>
-                    <View style={styles.romantic_giftCardHeaderLeft}>
-                      <Ionicons name="person" size={20} color="#D4A574" />
-                      <Text style={styles.romantic_giftCardHeaderText}>신랑측</Text>
-                    </View>
-                    <Ionicons 
-                      name={activeAccountToggle === 'groom' ? 'chevron-up' : 'chevron-down'} 
-                      size={20} 
-                      color="#D4A574" 
-                    />
-                  </View>
-                </LinearGradient>
+                <Text style={[
+                  styles.romantic_toggleButtonText,
+                  activeAccountToggle === 'groom' && styles.romantic_toggleButtonTextActive
+                ]}>신랑측</Text>
               </TouchableOpacity>
-              
-              {activeAccountToggle === 'groom' && (
-                <View style={styles.romantic_giftCardContent}>
+              <TouchableOpacity 
+                style={[
+                  styles.romantic_toggleButton, 
+                  activeAccountToggle === 'bride' && styles.romantic_toggleButtonActive
+                ]}
+                onPress={() => handleAccountToggle('bride')}
+              >
+                <Text style={[
+                  styles.romantic_toggleButtonText,
+                  activeAccountToggle === 'bride' && styles.romantic_toggleButtonTextActive
+                ]}>신부측</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          
+          <View style={styles.romantic_accountsContainer}>
+            {/* 신랑측 계좌 */}
+            {activeAccountToggle === 'groom' && (eventData.additional_info?.groom_account_number || 
+              eventData.additional_info?.groom_father_account_number || 
+              eventData.additional_info?.groom_mother_account_number) && (
+              <View style={styles.romantic_accountGroup}>
+                <View style={styles.romantic_accountCards}>
                   {eventData.additional_info?.groom_account_number && (
-                    <View style={styles.romantic_giftAccountItem}>
-                      <View style={styles.romantic_giftAccountHeader}>
-                        <Text style={styles.romantic_giftAccountName}>
+                    <TouchableOpacity 
+                      style={styles.romantic_accountCard}
+                      onPress={() => copyAccount(eventData.additional_info.groom_account_number)}
+                    >
+                      <View style={styles.romantic_accountInfo}>
+                        <Text style={styles.romantic_accountName}>
                           {eventData.groomName || eventData.groom_name || '신랑'}
                         </Text>
+                        <View style={styles.romantic_bankInfo}>
+                          <Text style={styles.romantic_bankName}>{eventData.additional_info.groom_bank_name || '은행'}</Text>
+                          <Text style={styles.romantic_accountNumber}>{eventData.additional_info.groom_account_number}</Text>
+                        </View>
                       </View>
-                      <TouchableOpacity 
-                        style={styles.romantic_giftAccountInfo}
-                        onPress={() => copyAccount(eventData.additional_info.groom_account_number)}
-                      >
-                        <View style={styles.romantic_giftAccountDetails}>
-                          <Text style={styles.romantic_giftBankName}>{eventData.additional_info.groom_bank_name || '은행'}</Text>
-                          <Text style={styles.romantic_giftAccountNumber}>{eventData.additional_info.groom_account_number}</Text>
-                        </View>
-                        <View style={styles.romantic_giftCopyButton}>
-                          <Ionicons name="copy-outline" size={16} color="#D4A574" />
-                          <Text style={styles.romantic_giftCopyText}>복사</Text>
-                        </View>
-                      </TouchableOpacity>
-                    </View>
+                      <View style={styles.romantic_copyButton}>
+                        <Text style={styles.romantic_copyIcon}>복사</Text>
+                      </View>
+                    </TouchableOpacity>
                   )}
                   
                   {eventData.additional_info?.groom_father_account_number && (
-                    <View style={styles.romantic_giftAccountItem}>
-                      <View style={styles.romantic_giftAccountHeader}>
-                        <Text style={styles.romantic_giftAccountName}>
+                    <TouchableOpacity 
+                      style={styles.romantic_accountCard}
+                      onPress={() => copyAccount(eventData.additional_info.groom_father_account_number)}
+                    >
+                      <View style={styles.romantic_accountInfo}>
+                        <Text style={styles.romantic_accountName}>
                           {eventData.groomFatherName || eventData.groom_father_name || '신랑'} 아버님
                         </Text>
+                        <View style={styles.romantic_bankInfo}>
+                          <Text style={styles.romantic_bankName}>{eventData.additional_info.groom_father_bank_name || '은행'}</Text>
+                          <Text style={styles.romantic_accountNumber}>{eventData.additional_info.groom_father_account_number}</Text>
+                        </View>
                       </View>
-                      <TouchableOpacity 
-                        style={styles.romantic_giftAccountInfo}
-                        onPress={() => copyAccount(eventData.additional_info.groom_father_account_number)}
-                      >
-                        <View style={styles.romantic_giftAccountDetails}>
-                          <Text style={styles.romantic_giftBankName}>{eventData.additional_info.groom_father_bank_name || '은행'}</Text>
-                          <Text style={styles.romantic_giftAccountNumber}>{eventData.additional_info.groom_father_account_number}</Text>
-                        </View>
-                        <View style={styles.romantic_giftCopyButton}>
-                          <Ionicons name="copy-outline" size={16} color="#D4A574" />
-                          <Text style={styles.romantic_giftCopyText}>복사</Text>
-                        </View>
-                      </TouchableOpacity>
-                    </View>
+                      <View style={styles.romantic_copyButton}>
+                        <Text style={styles.romantic_copyIcon}>복사</Text>
+                      </View>
+                    </TouchableOpacity>
                   )}
                   
                   {eventData.additional_info?.groom_mother_account_number && (
-                    <View style={styles.romantic_giftAccountItem}>
-                      <View style={styles.romantic_giftAccountHeader}>
-                        <Text style={styles.romantic_giftAccountName}>
+                    <TouchableOpacity 
+                      style={styles.romantic_accountCard}
+                      onPress={() => copyAccount(eventData.additional_info.groom_mother_account_number)}
+                    >
+                      <View style={styles.romantic_accountInfo}>
+                        <Text style={styles.romantic_accountName}>
                           {eventData.groomMotherName || eventData.groom_mother_name || '신랑'} 어머님
                         </Text>
+                        <View style={styles.romantic_bankInfo}>
+                          <Text style={styles.romantic_bankName}>{eventData.additional_info.groom_mother_bank_name || '은행'}</Text>
+                          <Text style={styles.romantic_accountNumber}>{eventData.additional_info.groom_mother_account_number}</Text>
+                        </View>
                       </View>
-                      <TouchableOpacity 
-                        style={styles.romantic_giftAccountInfo}
-                        onPress={() => copyAccount(eventData.additional_info.groom_mother_account_number)}
-                      >
-                        <View style={styles.romantic_giftAccountDetails}>
-                          <Text style={styles.romantic_giftBankName}>{eventData.additional_info.groom_mother_bank_name || '은행'}</Text>
-                          <Text style={styles.romantic_giftAccountNumber}>{eventData.additional_info.groom_mother_account_number}</Text>
-                        </View>
-                        <View style={styles.romantic_giftCopyButton}>
-                          <Ionicons name="copy-outline" size={16} color="#D4A574" />
-                          <Text style={styles.romantic_giftCopyText}>복사</Text>
-                        </View>
-                      </TouchableOpacity>
-                    </View>
+                      <View style={styles.romantic_copyButton}>
+                        <Text style={styles.romantic_copyIcon}>복사</Text>
+                      </View>
+                    </TouchableOpacity>
                   )}
                 </View>
-              )}
-            </View>
-          )}
-          
-          {/* 신부측 계좌 */}
-          {(eventData.additional_info?.bride_account_number || 
-            eventData.additional_info?.bride_father_account_number || 
-            eventData.additional_info?.bride_mother_account_number) && (
-            <View style={styles.romantic_giftCard}>
-              <TouchableOpacity 
-                style={styles.romantic_giftCardHeader}
-                onPress={() => handleAccountToggle('bride')}
-              >
-                <LinearGradient
-                  colors={['#FDF1F3', '#F9E8EA']}
-                  style={styles.romantic_giftCardHeaderGradient}
-                >
-                  <View style={styles.romantic_giftCardHeaderContent}>
-                    <View style={styles.romantic_giftCardHeaderLeft}>
-                      <Ionicons name="person" size={20} color="#E8A5A5" />
-                      <Text style={[styles.romantic_giftCardHeaderText, { color: '#E8A5A5' }]}>신부측</Text>
-                    </View>
-                    <Ionicons 
-                      name={activeAccountToggle === 'bride' ? 'chevron-up' : 'chevron-down'} 
-                      size={20} 
-                      color="#E8A5A5" 
-                    />
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-              
-              {activeAccountToggle === 'bride' && (
-                <View style={styles.romantic_giftCardContent}>
+              </View>
+            )}
+            
+            {/* 신부측 계좌 */}
+            {activeAccountToggle === 'bride' && (eventData.additional_info?.bride_account_number || 
+              eventData.additional_info?.bride_father_account_number || 
+              eventData.additional_info?.bride_mother_account_number) && (
+              <View style={styles.romantic_accountGroup}>
+                <View style={styles.romantic_accountCards}>
                   {eventData.additional_info?.bride_account_number && (
-                    <View style={styles.romantic_giftAccountItem}>
-                      <View style={styles.romantic_giftAccountHeader}>
-                        <Text style={styles.romantic_giftAccountName}>
+                    <TouchableOpacity 
+                      style={styles.romantic_accountCard}
+                      onPress={() => copyAccount(eventData.additional_info.bride_account_number)}
+                    >
+                      <View style={styles.romantic_accountInfo}>
+                        <Text style={styles.romantic_accountName}>
                           {eventData.brideName || eventData.bride_name || '신부'}
                         </Text>
+                        <View style={styles.romantic_bankInfo}>
+                          <Text style={styles.romantic_bankName}>{eventData.additional_info.bride_bank_name || '은행'}</Text>
+                          <Text style={styles.romantic_accountNumber}>{eventData.additional_info.bride_account_number}</Text>
+                        </View>
                       </View>
-                      <TouchableOpacity 
-                        style={styles.romantic_giftAccountInfo}
-                        onPress={() => copyAccount(eventData.additional_info.bride_account_number)}
-                      >
-                        <View style={styles.romantic_giftAccountDetails}>
-                          <Text style={styles.romantic_giftBankName}>{eventData.additional_info.bride_bank_name || '은행'}</Text>
-                          <Text style={styles.romantic_giftAccountNumber}>{eventData.additional_info.bride_account_number}</Text>
-                        </View>
-                        <View style={styles.romantic_giftCopyButton}>
-                          <Ionicons name="copy-outline" size={16} color="#E8A5A5" />
-                          <Text style={[styles.romantic_giftCopyText, { color: '#E8A5A5' }]}>복사</Text>
-                        </View>
-                      </TouchableOpacity>
-                    </View>
+                      <View style={styles.romantic_copyButton}>
+                        <Text style={styles.romantic_copyIcon}>복사</Text>
+                      </View>
+                    </TouchableOpacity>
                   )}
                   
                   {eventData.additional_info?.bride_father_account_number && (
-                    <View style={styles.romantic_giftAccountItem}>
-                      <View style={styles.romantic_giftAccountHeader}>
-                        <Text style={styles.romantic_giftAccountName}>
+                    <TouchableOpacity 
+                      style={styles.romantic_accountCard}
+                      onPress={() => copyAccount(eventData.additional_info.bride_father_account_number)}
+                    >
+                      <View style={styles.romantic_accountInfo}>
+                        <Text style={styles.romantic_accountName}>
                           {eventData.brideFatherName || eventData.bride_father_name || '신부'} 아버님
                         </Text>
+                        <View style={styles.romantic_bankInfo}>
+                          <Text style={styles.romantic_bankName}>{eventData.additional_info.bride_father_bank_name || '은행'}</Text>
+                          <Text style={styles.romantic_accountNumber}>{eventData.additional_info.bride_father_account_number}</Text>
+                        </View>
                       </View>
-                      <TouchableOpacity 
-                        style={styles.romantic_giftAccountInfo}
-                        onPress={() => copyAccount(eventData.additional_info.bride_father_account_number)}
-                      >
-                        <View style={styles.romantic_giftAccountDetails}>
-                          <Text style={styles.romantic_giftBankName}>{eventData.additional_info.bride_father_bank_name || '은행'}</Text>
-                          <Text style={styles.romantic_giftAccountNumber}>{eventData.additional_info.bride_father_account_number}</Text>
-                        </View>
-                        <View style={styles.romantic_giftCopyButton}>
-                          <Ionicons name="copy-outline" size={16} color="#E8A5A5" />
-                          <Text style={[styles.romantic_giftCopyText, { color: '#E8A5A5' }]}>복사</Text>
-                        </View>
-                      </TouchableOpacity>
-                    </View>
+                      <View style={styles.romantic_copyButton}>
+                        <Text style={styles.romantic_copyIcon}>복사</Text>
+                      </View>
+                    </TouchableOpacity>
                   )}
                   
                   {eventData.additional_info?.bride_mother_account_number && (
-                    <View style={styles.romantic_giftAccountItem}>
-                      <View style={styles.romantic_giftAccountHeader}>
-                        <Text style={styles.romantic_giftAccountName}>
+                    <TouchableOpacity 
+                      style={styles.romantic_accountCard}
+                      onPress={() => copyAccount(eventData.additional_info.bride_mother_account_number)}
+                    >
+                      <View style={styles.romantic_accountInfo}>
+                        <Text style={styles.romantic_accountName}>
                           {eventData.brideMotherName || eventData.bride_mother_name || '신부'} 어머님
                         </Text>
+                        <View style={styles.romantic_bankInfo}>
+                          <Text style={styles.romantic_bankName}>{eventData.additional_info.bride_mother_bank_name || '은행'}</Text>
+                          <Text style={styles.romantic_accountNumber}>{eventData.additional_info.bride_mother_account_number}</Text>
+                        </View>
                       </View>
-                      <TouchableOpacity 
-                        style={styles.romantic_giftAccountInfo}
-                        onPress={() => copyAccount(eventData.additional_info.bride_mother_account_number)}
-                      >
-                        <View style={styles.romantic_giftAccountDetails}>
-                          <Text style={styles.romantic_giftBankName}>{eventData.additional_info.bride_mother_bank_name || '은행'}</Text>
-                          <Text style={styles.romantic_giftAccountNumber}>{eventData.additional_info.bride_mother_account_number}</Text>
-                        </View>
-                        <View style={styles.romantic_giftCopyButton}>
-                          <Ionicons name="copy-outline" size={16} color="#E8A5A5" />
-                          <Text style={[styles.romantic_giftCopyText, { color: '#E8A5A5' }]}>복사</Text>
-                        </View>
-                      </TouchableOpacity>
-                    </View>
+                      <View style={styles.romantic_copyButton}>
+                        <Text style={styles.romantic_copyIcon}>복사</Text>
+                      </View>
+                    </TouchableOpacity>
                   )}
                 </View>
-              )}
-            </View>
-          )}
+              </View>
+            )}
+          </View>
         </Animated.View>
 
         {/* 공유 섹션 */}

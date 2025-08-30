@@ -2612,21 +2612,13 @@ romantic_coupleCardFull: {
   // 새로운 축하금 안내 디자인 스타일
   // =================================================================
   romantic_giftSection: {
-    backgroundColor: 'white',
-    marginHorizontal: 20,
-    marginVertical: 20,
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    elevation: 8,
+    backgroundColor: '#f8f9fa',
+    padding: 32,
+    margin: 0,
   },
   romantic_giftHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   romantic_giftIconContainer: {
     width: 60,
@@ -2646,31 +2638,31 @@ romantic_coupleCardFull: {
     flex: 1,
   },
   romantic_giftTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
-    color: '#8B5A3C',
-    marginBottom: 4,
+    color: '#191f28',
+    marginBottom: 8,
     letterSpacing: -0.5,
+    textAlign: 'center',
   },
   romantic_giftSubtitle: {
-    fontSize: 14,
-    color: '#A67B5B',
-    fontWeight: '500',
+    fontSize: 16,
+    color: '#8b95a1',
+    fontWeight: '400',
+    margin: 0,
+    textAlign: 'center',
   },
   romantic_giftDescription: {
-    backgroundColor: '#FFF8F4',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#F0E6D8',
+    alignItems: 'center',
+    marginBottom: 32,
   },
   romantic_giftDescriptionText: {
     fontSize: 15,
-    color: '#8B5A3C',
-    textAlign: 'center',
+    color: '#4e5968',
     lineHeight: 22,
-    fontWeight: '500',
+    fontWeight: '400',
+    margin: 0,
+    textAlign: 'center',
   },
   
   // 계좌 카드 스타일
@@ -2776,6 +2768,111 @@ romantic_coupleCardFull: {
     color: '#D4A574',
     marginLeft: 4,
     letterSpacing: -0.1,
+  },
+
+  // 웹 버전 스타일 토글 버튼
+  romantic_toggleContainer: {
+    marginBottom: 30,
+    alignItems: 'center',
+  },
+  romantic_toggleButtons: {
+    flexDirection: 'row',
+    backgroundColor: '#f2f4f6',
+    borderRadius: 12,
+    padding: 4,
+  },
+  romantic_toggleButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 80,
+    backgroundColor: 'transparent',
+  },
+  romantic_toggleButtonActive: {
+    backgroundColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  romantic_toggleButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#8b95a1',
+  },
+  romantic_toggleButtonTextActive: {
+    color: '#191f28',
+  },
+
+  // 웹 버전 스타일 계좌 컨테이너
+  romantic_accountsContainer: {
+    minHeight: 200,
+  },
+  romantic_accountGroup: {
+    marginBottom: 20,
+  },
+  romantic_accountCards: {
+    gap: 12,
+  },
+  romantic_accountCard: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    padding: 24,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  romantic_accountInfo: {
+    flex: 1,
+  },
+  romantic_accountName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 8,
+  },
+  romantic_bankInfo: {
+    marginBottom: 4,
+  },
+  romantic_bankName: {
+    fontSize: 14,
+    color: '#888',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  romantic_accountNumber: {
+    fontSize: 20,
+    color: '#333',
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  romantic_copyButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#3182f6',
+    borderRadius: 8,
+    minWidth: 60,
+    height: 36,
+  },
+  romantic_copyIcon: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'white',
+    letterSpacing: -0.3,
   },
   
 });
