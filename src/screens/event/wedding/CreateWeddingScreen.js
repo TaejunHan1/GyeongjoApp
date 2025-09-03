@@ -388,7 +388,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
     parkingInfo: '',
     
     // 축하메시지 설정
-    allowMessages: false,
+    allowMessages: true,
     messageSettings: {
       placeholder: '축하의 메시지를 남겨주세요.',
       requireLogin: true,
@@ -1594,45 +1594,6 @@ export default function CreateWeddingScreen({ navigation, route }) {
               소중한 메시지 환경을 위해 본인 인증을 진행해요.
             </Text>
           </View>
-
-          <View style={styles.inputWrapper}>
-            <Text style={styles.inputLabel}>메시지 안내문</Text>
-            <TextInput
-              style={[styles.textInput, styles.messageInput]}
-              placeholder="축하의 메시지를 남겨주세요."
-              value={eventData.messageSettings.placeholder}
-              onChangeText={(text) => setEventData({ 
-                ...eventData, 
-                messageSettings: { 
-                  ...eventData.messageSettings, 
-                  placeholder: text 
-                }
-              })}
-              multiline
-              numberOfLines={2}
-              textAlignVertical="top"
-              placeholderTextColor={TossColors.textTertiary}
-            />
-            <Text style={styles.inputHint}>
-              하객들에게 표시될 메시지 입력 안내문이에요
-            </Text>
-          </View>
-
-          <View style={styles.messagePreviewContainer}>
-            <Text style={styles.messagePreviewTitle}>미리보기</Text>
-            <View style={styles.messagePreviewBox}>
-              <View style={styles.messagePreviewHeader}>
-                <Ionicons name="heart" size={16} color={TossColors.primary} />
-                <Text style={styles.messagePreviewHeaderText}>축하 메시지 작성</Text>
-              </View>
-              <Text style={styles.messagePreviewPlaceholder}>
-                {eventData.messageSettings.placeholder || "축하의 메시지를 남겨주세요."}
-              </Text>
-              <View style={styles.messagePreviewButton}>
-                <Text style={styles.messagePreviewButtonText}>메시지 남기기</Text>
-              </View>
-            </View>
-          </View>
         </View>
       )}
 
@@ -1674,6 +1635,18 @@ export default function CreateWeddingScreen({ navigation, route }) {
           textAlignVertical="top"
           placeholderTextColor={TossColors.textTertiary}
         />
+        
+        {/* 인사말 추천 안내 */}
+        {!eventData.customMessage && (
+          <View style={styles.greetingRecommendContainer}>
+            <View style={styles.greetingRecommendContent}>
+              <Ionicons name="information-circle-outline" size={18} color={TossColors.primary} />
+              <Text style={styles.greetingRecommendText}>
+                인사말을 비워두시면 템플릿별 기본 인사말이 자동으로 추가됩니다
+              </Text>
+            </View>
+          </View>
+        )}
       </View>
     </Animated.View>
   );
@@ -1824,104 +1797,86 @@ export default function CreateWeddingScreen({ navigation, route }) {
           })}
         </View>
 
-        {/* 전체 업로드 현황 요약 */}
-        <View style={styles.photoSummaryContainer}>
-          <Text style={styles.photoSummaryTitle}>업로드 현황</Text>
-          <View style={styles.photoSummaryStats}>
-            <Text style={styles.photoSummaryText}>
-              총 {eventData.images.length}장 선택됨
-            </Text>
-            <Text style={styles.photoSummaryDetail}>
-              클라우드 저장: {eventData.images.filter(img => img.publicUrl).length}장 / 
-              대기 중: {eventData.images.filter(img => !img.publicUrl).length}장
-            </Text>
-            <Text style={styles.photoSummaryDetail}>
-              메인 {getCategoryImageCount('main')}/5, 
-              갤러리 {getCategoryImageCount('gallery')}/10, 
-              신랑 {getCategoryImageCount('groom')}/1, 
-              신부 {getCategoryImageCount('bride')}/1
-            </Text>
-          </View>
-        </View>
       </Animated.View>
     );
   };
 
-  const renderMoneyForm = () => {
-    const moneyPresets = getMoneyPresets();
-    
-    return (
-      <Animated.View 
-        style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
-        onLayout={(event) => {
-          sectionPositions.current.money = event.nativeEvent.layout.y;
-        }}
-      >
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>축의금 설정</Text>
-          <Text style={styles.sectionSubtitle}>참석자들이 선택할 수 있는 축의금 금액을 설정해주세요</Text>
-        </View>
-        
-        <View style={styles.moneyPresetContainer}>
-          {moneyPresets.map((preset) => {
-            const isSelected = JSON.stringify(eventData.presetAmounts) === JSON.stringify(preset.amounts);
-            
-            return (
-              <TouchableOpacity
-                key={preset.id}
-                style={[
-                  styles.moneyPresetCard,
-                  isSelected && styles.moneyPresetCardSelected,
-                ]}
-                onPress={() => setEventData({ ...eventData, presetAmounts: preset.amounts })}
-              >
-                <View style={styles.moneyPresetHeader}>
-                  <View style={styles.moneyPresetInfo}>
-                    <Text style={[
-                      styles.moneyPresetLabel,
-                      isSelected && styles.moneyPresetLabelSelected,
-                    ]}>
-                      {preset.label}
-                    </Text>
-                    <Text style={[
-                      styles.moneyPresetDescription,
-                      isSelected && styles.moneyPresetDescriptionSelected,
-                    ]}>
-                      {preset.description}
-                    </Text>
-                  </View>
-                  {isSelected && (
-                    <View style={styles.moneyPresetCheckIcon}>
-                      <Ionicons name="checkmark-circle" size={24} color={TossColors.primary} />
-                    </View>
-                  )}
-                </View>
-                
-                <View style={styles.moneyPresetAmounts}>
-                  {preset.amounts.map((amount, index) => (
-                    <View
-                      key={index}
-                      style={[
-                        styles.moneyAmountChip,
-                        isSelected && styles.moneyAmountChipSelected,
-                      ]}
-                    >
-                      <Text style={[
-                        styles.moneyAmountText,
-                        isSelected && styles.moneyAmountTextSelected,
-                      ]}>
-                        {formatAmount(amount)}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </Animated.View>
-    );
-  };
+  // 축의금 설정 폼 - UI에서는 제거했지만 기본값(일반: [100000, 200000, 300000])이 자동으로 전송됨
+  // const renderMoneyForm = () => {
+  //   const moneyPresets = getMoneyPresets();
+  //   
+  //   return (
+  //     <Animated.View 
+  //       style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+  //       onLayout={(event) => {
+  //         sectionPositions.current.money = event.nativeEvent.layout.y;
+  //       }}
+  //     >
+  //       <View style={styles.sectionHeader}>
+  //         <Text style={styles.sectionTitle}>축의금 설정</Text>
+  //         <Text style={styles.sectionSubtitle}>참석자들이 선택할 수 있는 축의금 금액을 설정해주세요</Text>
+  //       </View>
+  //       
+  //       <View style={styles.moneyPresetContainer}>
+  //         {moneyPresets.map((preset) => {
+  //           const isSelected = JSON.stringify(eventData.presetAmounts) === JSON.stringify(preset.amounts);
+  //           
+  //           return (
+  //             <TouchableOpacity
+  //               key={preset.id}
+  //               style={[
+  //                 styles.moneyPresetCard,
+  //                 isSelected && styles.moneyPresetCardSelected,
+  //               ]}
+  //               onPress={() => setEventData({ ...eventData, presetAmounts: preset.amounts })}
+  //             >
+  //               <View style={styles.moneyPresetHeader}>
+  //                 <View style={styles.moneyPresetInfo}>
+  //                   <Text style={[
+  //                     styles.moneyPresetLabel,
+  //                     isSelected && styles.moneyPresetLabelSelected,
+  //                   ]}>
+  //                     {preset.label}
+  //                   </Text>
+  //                   <Text style={[
+  //                     styles.moneyPresetDescription,
+  //                     isSelected && styles.moneyPresetDescriptionSelected,
+  //                   ]}>
+  //                     {preset.description}
+  //                   </Text>
+  //                 </View>
+  //                 {isSelected && (
+  //                   <View style={styles.moneyPresetCheckIcon}>
+  //                     <Ionicons name="checkmark-circle" size={24} color={TossColors.primary} />
+  //                   </View>
+  //                 )}
+  //               </View>
+  //               
+  //               <View style={styles.moneyPresetAmounts}>
+  //                 {preset.amounts.map((amount, index) => (
+  //                   <View
+  //                     key={index}
+  //                     style={[
+  //                       styles.moneyAmountChip,
+  //                       isSelected && styles.moneyAmountChipSelected,
+  //                     ]}
+  //                   >
+  //                     <Text style={[
+  //                       styles.moneyAmountText,
+  //                       isSelected && styles.moneyAmountTextSelected,
+  //                     ]}>
+  //                       {formatAmount(amount)}
+  //                     </Text>
+  //                   </View>
+  //                 ))}
+  //               </View>
+  //             </TouchableOpacity>
+  //           );
+  //         })}
+  //       </View>
+  //     </Animated.View>
+  //   );
+  // };
 
   const renderTemplateSelection = () => (
     <Animated.View style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
@@ -1999,11 +1954,10 @@ export default function CreateWeddingScreen({ navigation, route }) {
       {renderParentsForm()}
       {renderDateTimeForm()}
       {renderLocationForm()}
-      {renderPhotoUploadForm()}
       {renderWeddingMessageSettingsForm()}
+      {renderPhotoUploadForm()}
       {renderMessageForm()}
       {renderParkingForm()}
-      {renderMoneyForm()}
     </ScrollView>
   );
 
@@ -3192,5 +3146,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: TossColors.background,
+  },
+  
+  // 인사말 추천 스타일
+  greetingRecommendContainer: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: TossColors.primary + '10',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: TossColors.primary + '20',
+  },
+  greetingRecommendContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  greetingRecommendText: {
+    fontSize: 13,
+    color: TossColors.textSecondary,
+    marginLeft: 6,
+    flex: 1,
+    lineHeight: 18,
   },
 });

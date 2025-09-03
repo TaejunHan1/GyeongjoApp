@@ -1622,8 +1622,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               if (!hasEvents) {
                 return (
                   <View style={styles.noEventsContainer}>
-                    <Ionicons name="calendar-outline" size={40} color={Colors.gray300} />
-                    <Text style={styles.noEventsText}>이번 달 참여 예정 일정이 없습니다</Text>
+                    <Ionicons name="calendar-outline" size={48} color={Colors.gray200} />
+                    <Text style={styles.noEventsText}>등록된 일정이 없습니다</Text>
+                    <Text style={styles.noEventsSubText}>새로운 경조사 일정을 추가해보세요</Text>
                   </View>
                 );
               }
@@ -3724,6 +3725,28 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#FFFFFF',
     fontWeight: '700',
+  },
+
+  // 일정 없음 컨테이너 스타일
+  noEventsContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  
+  noEventsText: {
+    fontSize: 16,
+    color: Colors.gray400,
+    fontWeight: '600',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  
+  noEventsSubText: {
+    fontSize: 14,
+    color: Colors.gray300,
+    fontWeight: '400',
   },
 
 });
