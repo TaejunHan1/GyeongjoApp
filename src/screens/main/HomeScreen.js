@@ -468,31 +468,60 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   useEffect(() => {
     const checkNotificationPermission = async () => {
       console.log('🔍 알림 체크 조건:', { isAuthenticated, hasUserInfo: !!userInfo?.userId });
-      if (!userInfo?.userId) return;
+      console.log('🔍 userInfo 전체:', userInfo);
+      if (!userInfo?.userId) {
+        console.log('❌ userId 없음 - 체크 중단');
+        return;
+      }
       
-      // Development Build에서는 항상 알림 모달 표시
-      // canUseNotifications 체크 제거 - Development Build 사용 중
-      console.log('🔔 알림 권한 체크 시작');
+      console.log('🔔 알림 권한 체크 시작 - userId:', userInfo.userId);
 
       try {
-        // 임시: 테스트를 위해 플래그 강제 리셋
-        await AsyncStorage.removeItem('notificationPermissionAsked');
-        console.log('🔄 알림 플래그 리셋 완료');
+        console.log('📡 Supabase 쿼리 시작...');
         
-        // 이미 물어봤는지 확인
-        const hasAsked = await AsyncStorage.getItem('notificationPermissionAsked');
-        console.log('알림 권한 이미 요청됨?:', hasAsked);
+        // Supabase에서 사용자의 알림 설정 확인
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('notification_settings, push_notification_enabled')
+          .eq('id', userInfo.userId)
+          .single();
         
-        if (!hasAsked) {
-          // 2초 후에 모달 표시 (사용자가 앱에 익숙해질 시간)
-          console.log('2초 후 알림 모달 표시 예정');
-          setTimeout(() => {
-            console.log('알림 모달 표시!');
-            setShowNotificationModal(true);
-          }, 2000);
+        console.log('📡 Supabase 쿼리 완료!');
+        console.log('📊 사용자 알림 설정:', userData);
+        console.log('📊 에러:', error);
+        
+        // 백그라운드 알림 허용 여부만 확인
+        const hasBackgroundNotification = userData?.push_notification_enabled === true;
+        
+        console.log('📊 백그라운드 알림 허용 상태:', hasBackgroundNotification);
+        console.log('📊 알림 설정 상세:', {
+          contribution: userData?.notification_settings?.contribution,
+          events: userData?.notification_settings?.events,
+          updates: userData?.notification_settings?.updates,
+          push_notification_enabled: userData?.push_notification_enabled
+        });
+        
+        if (hasBackgroundNotification) {
+          console.log('✅ 백그라운드 알림 이미 허용됨 - 모달 표시 안함');
+          return;
         }
+        
+        console.log('✅ 알림 비활성화 상태 - 모달 표시 예정');
+        // 2초 후에 모달 표시
+        setTimeout(() => {
+          console.log('🔔 알림 모달 표시!');
+          setShowNotificationModal(true);
+        }, 2000);
+        
       } catch (error) {
-        console.error('알림 권한 체크 오류:', error);
+        console.error('❌ 알림 권한 체크 오류:', error);
+        
+        // 에러가 발생해도 모달 표시 (네트워크 문제 등)
+        console.log('⚠️ 에러 발생으로 인한 기본 모달 표시');
+        setTimeout(() => {
+          console.log('🔔 에러 상황 - 알림 모달 표시!');
+          setShowNotificationModal(true);
+        }, 2000);
       }
     };
 

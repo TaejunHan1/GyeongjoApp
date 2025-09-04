@@ -18,63 +18,53 @@ const NotificationPermissionModal = ({ visible, onClose, userId }) => {
       console.log('📱 시스템 알림 권한 상태:', status);
       
       if (status === 'granted') {
-        // 실제 푸시 토큰 받아보기
-        let pushToken = 'polling-mode-' + Date.now();
-        
-        try {
-          console.log('🔍 실제 푸시 토큰 획득 시도...');
-          pushToken = await getExpoPushToken();
-          console.log('✅ 푸시 토큰 설정 완료:', pushToken);
-        } catch (tokenError) {
-          console.error('토큰 획득 실패:', tokenError);
-          pushToken = 'polling-mode-' + Date.now();
-        }
-        
-        // 푸시 토큰과 알림 설정 저장
-        const { error } = await supabase
-          .from('users')
-          .update({ 
-            push_notification_enabled: true,
-            push_token: pushToken,
-            notification_settings: {
-              contribution: true,
-              events: true, 
-              updates: false
-            }
-          })
-          .eq('id', userId);
-
-        if (error) {
-          console.error('알림 설정 저장 오류:', error);
-          Alert.alert('오류', '알림 설정 저장에 실패했습니다.');
-          return;
-        }
-
-        // 로컬 스토리지에도 저장
-        await AsyncStorage.setItem('notificationPermissionAsked', 'true');
-        await AsyncStorage.setItem('notificationEnabled', 'true');
-        
-        // 토큰 타입에 따라 메시지 구분
-        if (pushToken && pushToken.startsWith('ExponentPushToken')) {
-          console.log('✅ Expo 백그라운드 알림 설정 완료');
-          Alert.alert(
-            'Expo 백그라운드 알림 활성화! 🎉', 
-            '새로운 축의금이 전달되면 앱이 백그라운드에 있어도 즉시 알림을 받습니다.\n\n📱 Expo Push 서비스를 통해 알림이 전달됩니다.'
-          );
-        } else if (pushToken && !pushToken.includes('polling-mode') && pushToken.length > 100) {
-          console.log('✅ FCM 백그라운드 알림 설정 완료');
-          Alert.alert(
-            '백그라운드 알림 활성화! 🎉', 
-            '새로운 축의금이 전달되면 앱이 백그라운드에 있어도 즉시 알림을 받습니다.'
-          );
-        } else {
-          console.log('✅ 폴링 모드 알림 설정 완료');
-          Alert.alert(
-            '알림 활성화 완료! 🎉', 
-            '새로운 축의금이 전달되면 앱에서 바로 확인할 수 있습니다.\n\n📱 앱이 실행 중일 때 실시간으로 업데이트됩니다.'
-          );
-        }
+        // 즉시 모달 닫기
         onClose();
+        
+        // 백그라운드에서 나머지 작업 처리
+        setTimeout(async () => {
+          try {
+            // 실제 푸시 토큰 받아보기
+            let pushToken = 'polling-mode-' + Date.now();
+            
+            try {
+              console.log('🔍 실제 푸시 토큰 획득 시도...');
+              pushToken = await getExpoPushToken();
+              console.log('✅ 푸시 토큰 설정 완료:', pushToken);
+            } catch (tokenError) {
+              console.error('토큰 획득 실패:', tokenError);
+              pushToken = 'polling-mode-' + Date.now();
+            }
+            
+            // 푸시 토큰과 알림 설정 저장
+            const { error } = await supabase
+              .from('users')
+              .update({ 
+                push_notification_enabled: true,
+                push_token: pushToken,
+                notification_settings: {
+                  contribution: true,    // 축의금 알림
+                  events: true,         // 이벤트 알림
+                  updates: true         // 업데이트 알림
+                }
+              })
+              .eq('id', userId);
+
+            if (error) {
+              console.error('알림 설정 저장 오류:', error);
+              return;
+            }
+
+            // 로컬 스토리지에도 저장
+            await AsyncStorage.setItem('notificationPermissionAsked', 'true');
+            await AsyncStorage.setItem('notificationEnabled', 'true');
+            
+            console.log('✅ 알림 설정 완료');
+            
+          } catch (bgError) {
+            console.error('백그라운드 알림 처리 오류:', bgError);
+          }
+        }, 100);
         
       } else {
         // 권한 거부됨
@@ -102,11 +92,35 @@ const NotificationPermissionModal = ({ visible, onClose, userId }) => {
 
   const skipNotification = async () => {
     try {
+      console.log('🔕 나중에 선택 - 제한적 알림 설정');
+      
+      // 백그라운드 알림은 비활성화하지만, 앱 내 알림과 업데이트는 허용
+      const { error } = await supabase
+        .from('users')
+        .update({ 
+          push_notification_enabled: false,   // 백그라운드 알림 거부
+          push_token: null,                   // 푸시 토큰 제거
+          notification_settings: {
+            contribution: false,              // 백그라운드 축의금 알림 거부
+            events: true,                    // 앱 내 이벤트 알림 허용
+            updates: true                    // 업데이트 알림 허용
+          }
+        })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('알림 설정 저장 오류:', error);
+      }
+
+      // 로컬 설정
       await AsyncStorage.setItem('notificationPermissionAsked', 'true');
-      await AsyncStorage.setItem('notificationEnabled', 'false');
+      await AsyncStorage.setItem('notificationEnabled', 'partial'); // 부분 허용 표시
+      
+      console.log('✅ 제한적 알림 설정 완료');
       onClose();
     } catch (error) {
       console.error('알림 설정 저장 오류:', error);
+      onClose();
     }
   };
 
@@ -176,105 +190,111 @@ const NotificationPermissionModal = ({ visible, onClose, userId }) => {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 24,
   },
   modal: {
     backgroundColor: '#ffffff',
-    borderRadius: 24,
-    padding: 32,
+    borderRadius: 28,
+    padding: 28,
     alignItems: 'center',
-    maxWidth: 340,
+    maxWidth: 350,
     width: '100%',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.25,
+    shadowRadius: 25,
+    elevation: 15,
   },
   iconContainer: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   iconBackground: {
-    width: 80,
-    height: 80,
-    backgroundColor: '#f0f8ff',
-    borderRadius: 40,
+    width: 72,
+    height: 72,
+    backgroundColor: '#f8faff',
+    borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#3182f6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
+    borderWidth: 2,
+    borderColor: '#e6f0ff',
   },
   icon: {
-    fontSize: 40,
+    fontSize: 36,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#191919',
-    marginBottom: 12,
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1a1a1a',
+    marginBottom: 8,
     textAlign: 'center',
   },
   description: {
     fontSize: 16,
-    color: '#8b95a1',
+    color: '#6b7280',
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
+    lineHeight: 22,
+    marginBottom: 24,
+    fontWeight: '400',
   },
   benefitList: {
     width: '100%',
-    marginBottom: 32,
+    marginBottom: 28,
+    backgroundColor: '#f9fafb',
+    borderRadius: 16,
+    padding: 16,
   },
   benefitItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingHorizontal: 12,
+    marginBottom: 12,
+    paddingHorizontal: 4,
   },
   benefitIcon: {
-    fontSize: 20,
-    marginRight: 16,
-    width: 28,
+    fontSize: 18,
+    marginRight: 12,
+    width: 24,
   },
   benefitText: {
     fontSize: 15,
-    color: '#4b5563',
+    color: '#374151',
     fontWeight: '500',
     flex: 1,
   },
   buttonContainer: {
     width: '100%',
+    gap: 12,
   },
   allowButton: {
     backgroundColor: '#3182f6',
-    paddingVertical: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+    paddingVertical: 18,
+    borderRadius: 16,
     shadowColor: '#3182f6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
   },
   allowButtonText: {
     color: '#ffffff',
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
+    letterSpacing: 0.5,
   },
   skipButton: {
     backgroundColor: 'transparent',
-    paddingVertical: 12,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
   },
   skipButtonText: {
-    color: '#8b95a1',
-    fontSize: 15,
-    fontWeight: '500',
+    color: '#6b7280',
+    fontSize: 16,
+    fontWeight: '600',
     textAlign: 'center',
   },
 });
