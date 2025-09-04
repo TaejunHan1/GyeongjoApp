@@ -34,6 +34,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.jeongdam.gyeongjoapp",
+      "googleServicesFile": "./google-services.json",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -58,6 +59,27 @@
       "eas": {
         "projectId": "6e007e44-78af-48b5-b36e-ab75a54ab3fa"
       }
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "mode": "production",
+          "enableNextNotificationsApi": true,
+          "icon": "./assets/icon.png",
+          "color": "#3182f6"
+        }
+      ]
+    ],
+    "androidNavigationBar": {
+      "visible": "sticky-immersive",
+      "backgroundColor": "#3182f6"
+    },
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#3182f6",
+      "androidMode": "default",
+      "androidCollapsedTitle": "경조사 관리"
     }
   }
 }

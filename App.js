@@ -1,17 +1,55 @@
 // App.js - AsyncStorage와 Supabase Auth 둘 다 체크
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Alert, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { supabase } from './src/lib/supabase';
+import { setupNotificationChannels } from './src/lib/notificationConfig';
+import { canUseNotifications } from './src/lib/developmentCheck';
 import LoadingScreen from './src/screens/LoadingScreen';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import AppNavigator from './src/navigation/AppNavigator';
+
+// Expo 네이티브 알림 초기화
+const initializeNotifications = async () => {
+  try {
+    console.log('🔔 Expo 알림 시스템 초기화...');
+    
+    // Expo 알림 권한 요청
+    const { status } = await Notifications.requestPermissionsAsync();
+    console.log('Expo 알림 권한:', status);
+    
+    return true;
+  } catch (error) {
+    console.error('❌ 알림 초기화 실패:', error);
+    return false;
+  }
+};
+
+// 알림 수신 시 처리 설정
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+    }),
+  });
+} catch (error) {
+  console.log('⚠️ 알림 핸들러 설정 실패 (Expo Go에서는 지원 안함)');
+}
 
 export default function App() {
   const [session, setSession] = useState(null);
   const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  // 알림 리스너 참조
+  const notificationListener = useRef();
+  const responseListener = useRef();
 
   // AsyncStorage에서 사용자 정보 확인
   const checkAsyncStorageAuth = async () => {
@@ -48,6 +86,27 @@ export default function App() {
     }
   };
 
+  // 알림 수신 처리 함수
+  const handleNotificationReceived = (notification) => {
+    console.log('🔔 알림 수신:', notification);
+    
+    // 축의금 알림인 경우
+    if (notification.request.content.data?.type === 'contribution') {
+      console.log('💰 축의금 알림 데이터:', notification.request.content.data);
+    }
+  };
+
+  // 알림 탭 처리 함수
+  const handleNotificationResponse = (response) => {
+    console.log('👆 알림 탭 응답:', response);
+    
+    const data = response.notification.request.content.data;
+    if (data?.type === 'contribution' && data.eventId) {
+      // 필요시 특정 화면으로 네비게이션 처리
+      console.log('축의금 알림 탭 - 이벤트로 이동:', data.eventId);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     let authCheckInterval;
@@ -55,6 +114,16 @@ export default function App() {
     // 앱 시작 시 인증 상태 확인
     const initializeAuth = async () => {
       try {
+        // 알림 시스템 초기화  
+        await initializeNotifications();
+        
+        // 알림 채널 설정 (Android)
+        try {
+          await setupNotificationChannels();
+        } catch (error) {
+          console.log('⚠️ 알림 채널 설정 실패 (Expo Go에서는 지원 안함)');
+        }
+        
         // 1. 먼저 AsyncStorage 체크 (폰 인증 사용자)
         const asyncStorageUser = await checkAsyncStorageAuth();
         
@@ -139,12 +208,29 @@ export default function App() {
       }
     );
 
+    // 푸시 알림 리스너 설정
+    try {
+      notificationListener.current = Notifications.addNotificationReceivedListener(handleNotificationReceived);
+      responseListener.current = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+      console.log('🔔 푸시 알림 리스너 설정 완료');
+    } catch (error) {
+      console.log('⚠️ Expo Go 환경 - 알림 기능 비활성화');
+    }
+
     return () => {
       mounted = false;
       if (authCheckInterval) {
         clearInterval(authCheckInterval);
       }
       authListener?.subscription?.unsubscribe();
+      
+      // 알림 리스너 정리
+      if (notificationListener.current) {
+        Notifications.removeNotificationSubscription(notificationListener.current);
+      }
+      if (responseListener.current) {
+        Notifications.removeNotificationSubscription(responseListener.current);
+      }
     };
   }, []);
 

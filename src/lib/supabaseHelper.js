@@ -1782,7 +1782,7 @@ export const getEventGuestBook = async (eventId) => {
  */
 // 간단한 Supabase 연결 테스트
 export const testSupabaseConnection = async () => {
-  console.log('🔥🔥🔥 Supabase 연결 테스트 시작');
+
   
   try {
     // 1. guest_book 테이블 존재 여부 확인
@@ -1791,7 +1791,6 @@ export const testSupabaseConnection = async () => {
       .select('*', { count: 'exact' })
       .limit(5);
     
-    console.log('🔥🔥🔥 guest_book 테이블 결과:', { data, error, count });
     
     if (error) {
       console.error('🔥🔥🔥 guest_book 테이블 에러:', error);
@@ -1805,12 +1804,7 @@ export const testSupabaseConnection = async () => {
       .select('*')
       .eq('event_id', testEventId);
     
-    console.log('🔥🔥🔥 특정 event_id 결과:', { 
-      testEventId, 
-      count: specificData?.length || 0,
-      data: specificData,
-      error: specificError 
-    });
+   
 
   } catch (err) {
     console.error('🔥🔥🔥 연결 테스트 예외:', err);
@@ -1818,7 +1812,6 @@ export const testSupabaseConnection = async () => {
 };
 
 export const getEventStatistics = async (eventId) => {
-  console.log(`🔥🔥🔥 getEventStatistics 시작. event_id: ${eventId} (${typeof eventId})`);
   
   try {
     // 1단계: 전체 guest_book 데이터 확인 (RLS 문제 확인용)
@@ -1827,20 +1820,10 @@ export const getEventStatistics = async (eventId) => {
       .select('event_id, amount, attending')
       .limit(5);
     
-    console.log(`🔥🔥🔥 전체 guest_book 샘플:`, { 
-      count: allEntries?.length || 0,
-      data: allEntries,
-      error: allError
-    });
-
+   
     // 2단계: 현재 사용자 정보 확인
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    console.log(`🔥🔥🔥 현재 사용자:`, { 
-      userId: user?.id, 
-      email: user?.email, 
-      phone: user?.phone,
-      error: userError
-    });
+  
 
     // 3단계: 특정 event_id로 조회
     const { data: entries, error } = await supabase
@@ -1848,25 +1831,14 @@ export const getEventStatistics = async (eventId) => {
       .select('*')
       .eq('event_id', eventId);
 
-    console.log(`🔥🔥🔥 특정 event_id 조회 결과:`, { 
-      eventId, 
-      entriesCount: entries?.length || 0, 
-      entries: entries,
-      error 
-    });
-
+    
     // 4단계: 알려진 event_id로 테스트
     const { data: testEntries, error: testError } = await supabase
       .from('guest_book')
       .select('*')
       .eq('event_id', 'ddaa48e8-1d3d-42fd-a027-d25179d5036e');
 
-    console.log(`🔥🔥🔥 테스트 event_id 조회 결과:`, { 
-      testEventId: 'ddaa48e8-1d3d-42fd-a027-d25179d5036e',
-      count: testEntries?.length || 0, 
-      data: testEntries,
-      error: testError 
-    });
+   
 
     if (error) {
       console.error('🔥🔥🔥 guest_book 조회 에러:', error);
@@ -1883,7 +1855,6 @@ export const getEventStatistics = async (eventId) => {
     }
 
     if (!entries || entries.length === 0) {
-      console.log('🔥🔥🔥 guest_book에 데이터 없음 - RLS 정책 문제일 수 있음');
       return {
         success: true,
         data: {
@@ -1900,11 +1871,7 @@ export const getEventStatistics = async (eventId) => {
     const totalAmount = entries.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
     const attendingCount = entries.filter(entry => entry.attending === true).length;
 
-    console.log(`🔥🔥🔥 최종 계산 결과:`, {
-      totalEntries: entries.length,
-      totalAmount,
-      attendingCount
-    });
+    
 
     return {
       success: true,
@@ -2094,7 +2061,6 @@ export const getEventContributions = async (eventId) => {
 // 1. supabaseHelper.js - getMonthlyStatistics 함수 수정
 export const getMonthlyStatistics = async (userId) => {
   try {
-    console.log('📊 월별 통계 조회 시작:', userId);
     
     if (!userId) {
       console.error('❌ 사용자 ID 없음');
@@ -2132,7 +2098,6 @@ export const getMonthlyStatistics = async (userId) => {
       throw eventsError;
     }
 
-    console.log('📊 전체 이벤트 수:', events.length);
 
     // 2. 이번 달 생성된 이벤트 필터링
     const monthlyEvents = events.filter(event => {
@@ -2140,7 +2105,6 @@ export const getMonthlyStatistics = async (userId) => {
       return createdDate >= startOfMonth && createdDate <= endOfMonth;
     });
 
-    console.log('📊 이번 달 생성된 이벤트:', monthlyEvents.length);
 
     // 3. 활성 이벤트 수 계산
     const activeEvents = events.filter(event => event.status === 'active');
@@ -2165,7 +2129,6 @@ export const getMonthlyStatistics = async (userId) => {
 
     // 5. 각 이벤트별 guest_book 통계 조회
     for (const event of events) {
-      console.log(`📊 이벤트 ${event.event_name} 통계 조회 중...`);
       
       // 🔥 전체 통계 - guest_book_stats 뷰 사용 (없으면 contributions 테이블에서 직접 계산)
       const { data: eventStats, error: statsError } = await supabase
@@ -2282,12 +2245,7 @@ export const getMonthlyStatistics = async (userId) => {
       }
     };
 
-    console.log('✅ 월별 통계 조회 완료:', {
-      전체: `${stats.totalEntries}건 / ${stats.totalReceivedAmount}원`,
-      이번달: `${stats.monthlyEntries}건 / ${stats.monthlyReceivedAmount}원`,
-      결혼: `${stats.monthlyWeddingAmount}원`,
-      부고: `${stats.monthlyFuneralAmount}원`
-    });
+   
     
     return {
       success: true,
