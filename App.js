@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Toast from 'react-native-toast-message';
 import { supabase } from './src/lib/supabase';
 import LoadingScreen from './src/screens/LoadingScreen';
 import AuthNavigator from './src/navigation/AuthNavigator';
@@ -187,6 +188,7 @@ export default function App() {
           setIsAuthenticated={setIsAuthenticated}
         />
       )}
+      <Toast />
     </>
   );
 }

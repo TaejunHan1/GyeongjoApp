@@ -22,6 +22,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Toast from 'react-native-toast-message';
 import { Colors } from '../../styles/constants';
 import { supabase } from '../../lib/supabase';
 import { 
@@ -38,6 +39,8 @@ import {
   testSupabaseConnection 
 } from '../../lib/supabaseHelper';
 import Svg, { Rect, Circle, Path, Ellipse, G } from 'react-native-svg';
+// import * as Notifications from 'expo-notifications';
+// import NotificationPermissionModal from '../../components/NotificationPermissionModal';
 
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
@@ -400,6 +403,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const [calendarDate, setCalendarDate] = useState(new Date()); // 🔥 캘린더 현재 날짜 상태
   const [currentEventPage, setCurrentEventPage] = useState(0); // 🔥 현재 페이지
   const eventsPerPage = 3; // 페이지당 표시할 이벤트 수
+  
+  // 📱 알림 관련 상태
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [showEventModal, setShowEventModal] = useState(false); // 🔥 일정 추가 모달 상태
   const [selectedDate, setSelectedDate] = useState(new Date()); // 🔥 선택된 날짜
   const [showEventListModal, setShowEventListModal] = useState(false); // 🔥 일정 목록 모달 상태
@@ -519,6 +525,424 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     return () => clearInterval(interval);
   }, [fadeAnim]);
 
+  // 📱 알림 권한 체크 및 설정
+  useEffect(() => {
+    const checkNotificationPermission = async () => {
+      try {
+        // userInfo 확인 및 변환 (userId -> id)
+        const actualUserInfo = userInfo?.userId ? {
+          id: userInfo.userId,
+          name: userInfo.userName
+        } : userInfo;
+        
+        console.log('📱 알림 권한 체크 - userInfo 변환:', { 
+          original: userInfo, 
+          converted: actualUserInfo,
+          hasId: !!actualUserInfo?.id 
+        });
+        
+        if (!actualUserInfo?.id) {
+          console.log('❌ userInfo ID가 없음 - 알림 설정 불가:', {
+            userInfo,
+            actualUserInfo,
+            hasUserId: !!userInfo?.userId,
+            hasId: !!userInfo?.id
+          });
+          return;
+        }
+
+        console.log('📱 DB 알림 설정 조회 시작 - actualUserInfo:', actualUserInfo);
+
+        // 데이터베이스에서 알림 설정 확인
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('push_notification_enabled, notification_settings')
+          .eq('id', actualUserInfo.id)
+          .single();
+
+        if (error) {
+          console.error('❌ 알림 설정 조회 실패:', error);
+          console.log('🧪 에러 발생 시에도 모달 표시 테스트');
+          
+          // 에러가 발생해도 모달을 표시해보자 (테스트용)
+          const permissionAsked = await AsyncStorage.getItem('notificationPermissionAsked');
+          if (!permissionAsked) {
+            console.log('✅ 에러 상황에서도 알림 모달 표시 예정 (2초 후)');
+            setTimeout(() => {
+              console.log('📱 에러 상황 알림 모달 표시 실행');
+              setShowNotificationModal(true);
+            }, 2000);
+          }
+          return;
+        }
+
+        console.log('📱 DB 알림 설정 조회 결과:', userData);
+        
+        // 데이터베이스에서 알림이 비활성화되어 있다면 모달 표시
+        if (userData && userData.push_notification_enabled === false) {
+          const permissionAsked = await AsyncStorage.getItem('notificationPermissionAsked');
+          console.log('📱 AsyncStorage 권한 확인:', { 
+            permissionAsked,
+            shouldShowModal: !permissionAsked 
+          });
+          
+          if (!permissionAsked) {
+            console.log('✅ 알림 모달 표시 예정 (2초 후)');
+            setTimeout(() => {
+              console.log('📱 알림 모달 표시 실행');
+              setShowNotificationModal(true);
+            }, 2000); // 2초 후 모달 표시
+          } else {
+            console.log('❌ 이미 권한 요청함 - 모달 표시하지 않음');
+          }
+        } else {
+          console.log('❌ 알림이 이미 활성화되어 있거나 데이터 없음');
+        }
+      } catch (error) {
+        console.error('❌ 알림 권한 체크 오류:', error);
+      }
+    };
+
+    checkNotificationPermission();
+    
+    // 디버깅을 위해 3초 후 알림 상태 확인
+    setTimeout(() => {
+      debugNotificationStatus();
+    }, 3000);
+  }, [userInfo]);
+
+  // 📱 축의금 실시간 업데이트 리스너
+  useEffect(() => {
+    // userInfo 확인 및 변환
+    const actualUserInfo = userInfo?.userId ? {
+      id: userInfo.userId,
+      name: userInfo.userName
+    } : userInfo;
+    
+    console.log('📱 실시간 리스너 - userInfo 변환:', { 
+      original: userInfo, 
+      converted: actualUserInfo,
+      hasId: !!actualUserInfo?.id,
+      eventsCount: events.length 
+    });
+    
+    if (!actualUserInfo?.id || !events.length) {
+      console.log('📱 리스너 설정 불가:', { 
+        hasUserInfo: !!actualUserInfo?.id, 
+        eventsCount: events.length 
+      });
+      return;
+    }
+
+    const eventIds = events.map(e => e.id).filter(id => id);
+    console.log('📱 축의금 실시간 리스너 설정 시작:', { 
+      userId: actualUserInfo.id, 
+      eventIds,
+      eventsCount: events.length 
+    });
+
+    // Supabase 실시간 구독 설정 - INSERT와 UPDATE 모두 감지
+    const contributionSubscription = supabase
+      .channel('contributions-realtime')
+      .on('postgres_changes', 
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'contributions'
+        }, 
+        (payload) => {
+          console.log('📱 새로운 축의금 INSERT 수신:', {
+            eventId: payload.new.event_id,
+            guestName: payload.new.guest_name,
+            amount: payload.new.amount,
+            myEventIds: eventIds
+          });
+          
+          handleContributionChange('INSERT', payload.new, eventIds);
+        }
+      )
+      .on('postgres_changes', 
+        { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'contributions'
+        }, 
+        (payload) => {
+          console.log('📱 축의금 UPDATE 수신:', {
+            eventId: payload.new.event_id,
+            guestName: payload.new.guest_name,
+            amount: payload.new.amount,
+            oldAmount: payload.old?.amount,
+            myEventIds: eventIds
+          });
+          
+          handleContributionChange('UPDATE', payload.new, eventIds);
+        }
+      )
+      .subscribe((status) => {
+        console.log('📱 리스너 구독 상태:', status);
+      });
+
+    return () => {
+      console.log('📱 축의금 실시간 리스너 정리');
+      supabase.removeChannel(contributionSubscription);
+    };
+  }, [userInfo, events]);
+
+  // 📱 알림 상태 디버깅 함수
+  const debugNotificationStatus = async () => {
+    try {
+      console.log('🔍 알림 상태 디버깅 시작');
+      
+      // userInfo 확인 및 변환
+      const actualUserInfo = userInfo?.userId ? {
+        id: userInfo.userId,
+        name: userInfo.userName
+      } : userInfo;
+      
+      console.log('📱 디버깅 - userInfo 변환:', { 
+        original: userInfo, 
+        converted: actualUserInfo 
+      });
+      
+      // 1. 시스템 알림 권한 확인
+      const { status } = await Notifications.getPermissionsAsync();
+      console.log('📱 시스템 알림 권한:', status);
+      
+      // 2. 푸시 토큰 확인
+      try {
+        const tokenData = await Notifications.getExpoPushTokenAsync({
+          projectId: '6e007e44-78af-48b5-b36e-ab75a54ab3fa',
+        });
+        console.log('📱 현재 푸시 토큰:', tokenData.data);
+      } catch (tokenError) {
+        console.error('❌ 푸시 토큰 조회 실패:', tokenError);
+      }
+      
+      // 3. 데이터베이스 알림 설정 확인
+      if (actualUserInfo?.id) {
+        console.log('📱 DB 알림 설정 조회 시작 - ID:', actualUserInfo.id);
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('push_notification_enabled, push_token, notification_settings')
+          .eq('id', actualUserInfo.id)
+          .single();
+          
+        if (error) {
+          console.error('❌ DB 알림 설정 조회 실패:', error);
+        } else {
+          console.log('📱 DB 알림 설정:', {
+            enabled: userData.push_notification_enabled,
+            hasToken: !!userData.push_token,
+            tokenPreview: userData.push_token?.substring(0, 30) + '...',
+            settings: userData.notification_settings
+          });
+        }
+      }
+      
+      // 4. AsyncStorage 상태 확인
+      const permissionAsked = await AsyncStorage.getItem('notificationPermissionAsked');
+      const permissionGranted = await AsyncStorage.getItem('notificationPermissionGranted');
+      console.log('📱 AsyncStorage 상태:', {
+        permissionAsked,
+        permissionGranted
+      });
+      
+    } catch (error) {
+      console.error('❌ 알림 상태 디버깅 오류:', error);
+    }
+  };
+
+  // 📱 테스트 Toast 알림 함수
+  const testToastNotification = () => {
+    console.log('🧪 테스트 Toast 알림 실행');
+    Toast.show({
+      type: 'success',
+      text1: '🧪 테스트 알림',
+      text2: '테스트용 축의금 알림입니다',
+      position: 'top',
+      visibilityTime: 4000,
+      autoHide: true,
+      topOffset: 60,
+    });
+  };
+
+  // 🧪 테스트용 AsyncStorage 클리어 함수
+  const clearNotificationSettings = async () => {
+    try {
+      await AsyncStorage.multiRemove(['notificationPermissionAsked', 'notificationPermissionGranted']);
+      console.log('🧪 AsyncStorage 알림 설정 클리어 완료');
+      Toast.show({
+        type: 'info',
+        text1: '🧪 설정 초기화',
+        text2: 'AsyncStorage 알림 설정이 초기화되었습니다',
+        position: 'top',
+        visibilityTime: 3000,
+        topOffset: 60,
+      });
+    } catch (error) {
+      console.error('❌ AsyncStorage 클리어 실패:', error);
+    }
+  };
+
+  // 🔧 알림 설정을 false로 변경하고 모달 테스트
+  const disableNotificationsForTest = async () => {
+    try {
+      const actualUserInfo = userInfo?.userId ? {
+        id: userInfo.userId,
+        name: userInfo.userName
+      } : userInfo;
+
+      if (!actualUserInfo?.id) {
+        console.log('❌ userInfo ID가 없음');
+        return;
+      }
+
+      console.log('🧪 알림 설정을 false로 변경 시작');
+
+      // DB 알림 설정을 false로 업데이트
+      const { data, error } = await supabase
+        .from('users')
+        .update({
+          push_notification_enabled: false,
+          notification_settings: {
+            contribution: false,
+            event_reminder: false,
+            app_notifications: false
+          }
+        })
+        .eq('id', actualUserInfo.id)
+        .select();
+
+      if (error) {
+        console.error('❌ 알림 설정 비활성화 실패:', error);
+      } else {
+        console.log('✅ 알림 설정 비활성화 성공:', data);
+        
+        // AsyncStorage도 클리어
+        await AsyncStorage.multiRemove(['notificationPermissionAsked', 'notificationPermissionGranted']);
+        console.log('🧪 AsyncStorage도 클리어 완료');
+        
+        Toast.show({
+          type: 'info',
+          text1: '🧪 알림 비활성화',
+          text2: '알림 설정이 비활성화되었습니다. 앱을 재시작하세요.',
+          position: 'top',
+          visibilityTime: 4000,
+          topOffset: 60,
+        });
+      }
+    } catch (error) {
+      console.error('❌ 알림 비활성화 오류:', error);
+    }
+  };
+
+  // 🔧 테스트용 알림 설정 활성화 함수
+  const enableNotificationsForTest = async () => {
+    try {
+      const actualUserInfo = userInfo?.userId ? {
+        id: userInfo.userId,
+        name: userInfo.userName
+      } : userInfo;
+
+      if (!actualUserInfo?.id) {
+        console.log('❌ userInfo ID가 없음');
+        return;
+      }
+
+      // 푸시 토큰 생성
+      let pushToken = null;
+      try {
+        const tokenData = await Notifications.getExpoPushTokenAsync({
+          projectId: '6e007e44-78af-48b5-b36e-ab75a54ab3fa',
+        });
+        pushToken = tokenData.data;
+      } catch (tokenError) {
+        console.error('❌ 푸시 토큰 생성 실패:', tokenError);
+      }
+
+      // DB 알림 설정 업데이트
+      const { data, error } = await supabase
+        .from('users')
+        .update({
+          push_notification_enabled: true,
+          push_token: pushToken,
+          notification_settings: {
+            contribution: true,
+            event_reminder: true,
+            app_notifications: true
+          }
+        })
+        .eq('id', actualUserInfo.id)
+        .select();
+
+      if (error) {
+        console.error('❌ 알림 설정 업데이트 실패:', error);
+        Toast.show({
+          type: 'error',
+          text1: '❌ 설정 실패',
+          text2: '알림 설정 업데이트에 실패했습니다',
+          position: 'top',
+          visibilityTime: 3000,
+          topOffset: 60,
+        });
+      } else {
+        console.log('✅ 알림 설정 업데이트 성공:', data);
+        Toast.show({
+          type: 'success',
+          text1: '✅ 알림 활성화',
+          text2: '푸시 알림이 활성화되었습니다',
+          position: 'top',
+          visibilityTime: 3000,
+          topOffset: 60,
+        });
+      }
+    } catch (error) {
+      console.error('❌ 알림 활성화 오류:', error);
+    }
+  };
+
+  // 🧪 강제로 모달 표시 테스트
+  const showNotificationModalForTest = () => {
+    console.log('🧪 모달 강제 표시 테스트');
+    setShowNotificationModal(true);
+    Toast.show({
+      type: 'info',
+      text1: '🧪 모달 테스트',
+      text2: '알림 권한 모달을 강제로 표시합니다',
+      position: 'top',
+      visibilityTime: 2000,
+      topOffset: 60,
+    });
+  };
+
+  // 📱 축의금 변경 처리 공통 함수
+  const handleContributionChange = (eventType, contribution, eventIds) => {
+    // 내 이벤트인지 확인
+    if (!eventIds.includes(contribution.event_id)) {
+      console.log('📱 다른 사용자의 이벤트 - 무시');
+      return;
+    }
+    
+    console.log(`✅ 내 이벤트 축의금 ${eventType} 확인 - Toast 표시`);
+    
+    // Toast 알림 표시
+    const actionText = eventType === 'INSERT' ? '전달' : '수정';
+    Toast.show({
+      type: 'success',
+      text1: `💰 축의금 ${actionText}!`,
+      text2: `${contribution.guest_name}님이 ${contribution.amount?.toLocaleString()}원을 ${actionText}했습니다`,
+      position: 'top',
+      visibilityTime: 4000,
+      autoHide: true,
+      topOffset: 60,
+    });
+
+    // 통계 새로고침
+    console.log('📊 통계 새로고침 실행');
+    loadData();
+  };
+
   // 🔥 월별 통계 로드 함수
   const loadMonthlyStatistics = async () => {
     try {
@@ -547,7 +971,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       const result = await getMonthlyStatistics(currentUserId);
       
       if (result.success) {
-        console.log('✅ 월별 통계 로드 성공:', result.data);
         setMonthlyStats(result.data);
       } else {
         console.error('❌ 월별 통계 로드 실패:', result.error);
@@ -754,10 +1177,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         const eventsWithStats = await Promise.all(
           (result.data || []).map(async (event) => {
             try {
-              console.log(`🚨🚨🚨 이벤트 ${event.event_name}(${event.id}) 통계 조회 시작 🚨🚨🚨`);
-              console.log(`🚨🚨🚨 전달할 event.id:`, event.id, `타입:`, typeof event.id);
               const statsResult = await getEventStatistics(event.id);
-              console.log(`🚨🚨🚨 ${event.event_name} 통계 결과:`, statsResult);
               if (statsResult.success) {
                 const eventWithStats = {
                   ...event,
@@ -767,7 +1187,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                   attending_count: statsResult.data.attendingCount,
                   average_amount: statsResult.data.averageAmount
                 };
-                console.log(`✅ 이벤트 통계 적용:`, eventWithStats);
                 return eventWithStats;
               }
             } catch (error) {
@@ -2156,6 +2575,13 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           </View>
         </View>
       </Modal>
+
+      {/* 📱 알림 권한 모달 */}
+      <NotificationPermissionModal
+        visible={showNotificationModal}
+        onClose={() => setShowNotificationModal(false)}
+        userInfo={userInfo}
+      />
     </SafeAreaView>
   );
 }
