@@ -4,7 +4,6 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import HomeScreen from '../screens/main/HomeScreen';
 import MyEventsScreen from '../screens/main/MyEventsScreen';
@@ -60,8 +59,6 @@ const Tab = createBottomTabNavigator();
 
 // 하단 탭 네비게이터 - 4개 탭으로 확장
 function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
-  const insets = useSafeAreaInsets();
-  
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -89,9 +86,9 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
           borderTopWidth: 1,
           borderTopColor: Colors.gray100,
           backgroundColor: Colors.white,
-          paddingBottom: Math.max(insets.bottom, 24),
+          paddingBottom: 20,
           paddingTop: 8,
-          height: 94 + insets.bottom,
+          height: 90,
         },
         tabBarLabelStyle: {
           fontSize: 10,

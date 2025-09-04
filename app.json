@@ -71,6 +71,10 @@
         }
       ]
     ],
+    "androidNavigationBar": {
+      "visible": "sticky-immersive",
+      "backgroundColor": "#3182f6"
+    },
     "notification": {
       "icon": "./assets/icon.png",
       "color": "#3182f6",
