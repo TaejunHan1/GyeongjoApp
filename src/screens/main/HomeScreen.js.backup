@@ -40,6 +40,7 @@ import {
 } from '../../lib/supabaseHelper';
 import Svg, { Rect, Circle, Path, Ellipse, G } from 'react-native-svg';
 import * as Notifications from 'expo-notifications';
+import { AppState } from 'react-native';
 import NotificationPermissionModal from '../../components/NotificationPermissionModal';
 
 const { width } = Dimensions.get('window');
@@ -392,6 +393,17 @@ const EventAddModal = ({ visible, onClose, selectedDate, onAddEvent }) => {
   );
 };
 
+// 📱 알림 채널 설정 (Android)
+if (Platform.OS === 'android') {
+  Notifications.setNotificationChannelAsync('contribution-notifications', {
+    name: '축의금 알림',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#FF231F7C',
+    sound: 'default',
+  });
+}
+
 // 📝 알림 핸들러는 App.js에서 전역으로 설정됨 (백그라운드 알림 지원)
 
 export default function HomeScreen({ navigation, userInfo, session, isAuthenticated }) {
@@ -602,41 +614,34 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
         if (error) {
           console.error('❌ 알림 설정 조회 실패:', error);
-          console.log('🧪 에러 발생 시에도 모달 표시 테스트');
+          console.log('📱 에러 발생 - 기본적으로 모달 표시');
           
-          // 에러가 발생해도 모달을 표시해보자 (테스트용)
-          const permissionAsked = await AsyncStorage.getItem('notificationPermissionAsked');
-          if (!permissionAsked) {
-            console.log('✅ 에러 상황에서도 알림 모달 표시 예정 (2초 후)');
-            setTimeout(() => {
-              console.log('📱 에러 상황 알림 모달 표시 실행');
-              setShowNotificationModal(true);
-            }, 2000);
-          }
+          // DB 조회 에러 시 기본적으로 모달 표시
+          setTimeout(() => {
+            console.log('📱 에러 상황 알림 모달 표시 실행');
+            setShowNotificationModal(true);
+          }, 2000);
           return;
         }
 
         console.log('📱 DB 알림 설정 조회 결과:', userData);
         
-        // 데이터베이스에서 알림이 비활성화되어 있다면 모달 표시
+        // 데이터베이스에서 알림이 비활성화되어 있다면 모달 표시 (매번 체크)
         if (userData && userData.push_notification_enabled === false) {
-          const permissionAsked = await AsyncStorage.getItem('notificationPermissionAsked');
-          console.log('📱 AsyncStorage 권한 확인:', { 
-            permissionAsked,
-            shouldShowModal: !permissionAsked 
-          });
-          
-          if (!permissionAsked) {
-            console.log('✅ 알림 모달 표시 예정 (2초 후)');
-            setTimeout(() => {
-              console.log('📱 알림 모달 표시 실행');
-              setShowNotificationModal(true);
-            }, 2000); // 2초 후 모달 표시
-          } else {
-            console.log('❌ 이미 권한 요청함 - 모달 표시하지 않음');
-          }
+          console.log('📱 알림이 비활성화된 사용자 - 모달 표시 (2초 후)');
+          setTimeout(() => {
+            console.log('📱 알림 모달 표시 실행');
+            setShowNotificationModal(true);
+          }, 2000); // 2초 후 모달 표시
+        } else if (!userData) {
+          // userData가 없는 경우 (새 사용자 등)
+          console.log('📱 사용자 데이터 없음 - 모달 표시 (2초 후)');
+          setTimeout(() => {
+            console.log('📱 새 사용자 알림 모달 표시 실행');
+            setShowNotificationModal(true);
+          }, 2000);
         } else {
-          console.log('❌ 알림이 이미 활성화되어 있거나 데이터 없음');
+          console.log('✅ 알림이 이미 활성화됨:', userData.push_notification_enabled);
         }
       } catch (error) {
         console.error('❌ 알림 권한 체크 오류:', error);
@@ -690,14 +695,28 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       }
     });
 
+    // 앱 상태 변경 감지 (백그라운드에서 포그라운드로 돌아올 때)
+    const handleAppStateChange = (nextAppState) => {
+      console.log('📱 앱 상태 변경:', nextAppState);
+      if (nextAppState === 'active') {
+        // 앱이 포그라운드로 돌아오면 데이터 새로고침
+        console.log('📱 포그라운드 복귀 - 데이터 새로고침');
+        loadEvents();
+        loadMonthlyStatistics();
+      }
+    };
+
+    const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+
     return () => {
       console.log('📱 푸시 알림 리스너 정리');
       Notifications.removeNotificationSubscription(notificationListener);
       Notifications.removeNotificationSubscription(responseListener);
+      appStateSubscription?.remove();
     };
   }, [navigation]);
 
-  // 📱 축의금 실시간 업데이트 리스너
+  // 📱 축의금 실시간 업데이트 리스너 + 폴링
   useEffect(() => {
     // userInfo 확인 및 변환
     const actualUserInfo = userInfo?.userId ? {
@@ -726,6 +745,95 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       eventIds,
       eventsCount: events.length 
     });
+
+    // 🔔 앱이 포그라운드에 있을 때 알림을 받도록 설정
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+
+    // 알림 수신 리스너
+    const notificationListener = Notifications.addNotificationReceivedListener(notification => {
+      console.log('🔔 알림 수신:', notification);
+      
+      // 축의금 관련 알림인지 확인
+      if (notification.request.content.data?.type === 'contribution') {
+        console.log('💰 축의금 알림 수신 - 데이터 새로고침');
+        
+        // 데이터 새로고침
+        loadEvents();
+        loadActiveEvents();
+        loadMonthlyStatistics();
+        
+        // Toast 메시지 표시
+        Toast.show({
+          type: 'success',
+          text1: '💰 새로운 축의금!',
+          text2: notification.request.content.body || '축의금이 전달되었습니다.',
+          position: 'top',
+          visibilityTime: 4000,
+          autoHide: true,
+          topOffset: 60,
+        });
+      }
+    });
+
+    // 📊 앱 내 실시간 토스트 알림 (푸시 설정과 무관하게 항상 활성화)
+    console.log('📊 앱 내 실시간 알림: 5초마다 새로운 축의금 확인 시작');
+    
+    let lastCheckTime = new Date();
+    
+    const pollForNewContributions = async () => {
+      try {
+        console.log('🔍 새로운 축의금 확인 중...');
+        
+        for (const event of events) {
+          const { data: newContributions, error } = await supabase
+            .from('guest_book')
+            .select('*')
+            .eq('event_id', event.id)
+            .gt('updated_at', lastCheckTime.toISOString())
+            .order('updated_at', { ascending: false });
+          
+          if (error) {
+            console.error('축의금 확인 오류:', error);
+            continue;
+          }
+          
+          if (newContributions && newContributions.length > 0) {
+            console.log('💰 새로운 축의금 발견!', newContributions);
+            
+            newContributions.forEach(contribution => {
+              // 즉시 Toast 알림 표시
+              Toast.show({
+                type: 'success',
+                text1: '💰 새로운 축의금!',
+                text2: `${contribution.guest_name}님이 ${contribution.amount?.toLocaleString()}원을 전달했습니다`,
+                position: 'top',
+                visibilityTime: 4000,
+                autoHide: true,
+                topOffset: 60,
+              });
+            });
+            
+            // 데이터 새로고침
+            loadEvents();
+            loadActiveEvents(); 
+            loadMonthlyStatistics();
+          }
+        }
+        
+        lastCheckTime = new Date();
+      } catch (error) {
+        console.error('폴링 오류:', error);
+      }
+    };
+    
+    // 5초마다 새로운 축의금 확인
+    const pollingInterval = setInterval(pollForNewContributions, 5000);
 
     // Supabase 실시간 구독 설정 - 더 간단한 방식으로 시도
     let retryCount = 0;
@@ -769,20 +877,16 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           }, 
           (payload) => {
             console.log('📱 축의금 변경 감지:', {
-              eventType: payload.eventType,
-              event: payload.event,
+              type: payload.eventType,
               eventId: payload.new?.event_id || payload.old?.event_id,
               guestName: payload.new?.guest_name,
               amount: payload.new?.amount,
-              myEventIds: eventIds,
-              fullPayload: payload
+              myEventIds: eventIds
             });
             
             // 내 이벤트인 경우만 처리
             if (eventIds.includes(payload.new?.event_id || payload.old?.event_id)) {
-              // payload.eventType 또는 payload.event 중 존재하는 값 사용
-              const changeType = payload.eventType || payload.event;
-              handleContributionChange(changeType, payload.new || payload.old, eventIds);
+              handleContributionChange(payload.eventType, payload.new || payload.old, eventIds);
             }
           }
         )
@@ -839,6 +943,20 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
     return () => {
       console.log('📱 축의금 실시간 리스너 정리');
+      
+      // 폴링 정리
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        console.log('📊 폴링 인터벌 정리 완료');
+      }
+      
+      // 알림 리스너 정리
+      if (notificationListener) {
+        Notifications.removeNotificationSubscription(notificationListener);
+        console.log('🔔 알림 리스너 정리 완료');
+      }
+      
+      // Supabase 채널 정리
       supabase.removeChannel(contributionSubscription);
     };
   }, [userInfo, events]);
@@ -904,6 +1022,38 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       
     } catch (error) {
       console.error('❌ 알림 상태 디버깅 오류:', error);
+    }
+  };
+
+  // 📱 테스트 푸시 알림 함수
+  const testPushNotification = async () => {
+    try {
+      console.log('📱 테스트 푸시 알림 발송 시작');
+      
+      const { status } = await Notifications.getPermissionsAsync();
+      console.log('📱 알림 권한 상태:', status);
+      
+      if (status !== 'granted') {
+        console.log('❌ 알림 권한이 없습니다');
+        return;
+      }
+
+      const token = await Notifications.getExpoPushTokenAsync();
+      console.log('📱 현재 푸시 토큰:', token.data);
+
+      // 즉시 로컬 알림 발송
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '🧪 테스트 알림',
+          body: '백그라운드 알림 테스트입니다',
+          data: { type: 'test' },
+        },
+        trigger: null, // 즉시 발송
+      });
+
+      console.log('✅ 테스트 알림 발송 완료');
+    } catch (error) {
+      console.error('❌ 테스트 알림 실패:', error);
     }
   };
 
@@ -1072,13 +1222,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   // 📱 축의금 변경 처리 공통 함수
   const handleContributionChange = (eventType, contribution, eventIds) => {
-    console.log('🔔 handleContributionChange 호출됨:', {
-      eventType,
-      contribution,
-      eventIds: eventIds.length,
-      contributionEventId: contribution?.event_id
-    });
-
     // 내 이벤트인지 확인
     if (!eventIds.includes(contribution.event_id)) {
       console.log('📱 다른 사용자의 이벤트 - 무시');
@@ -1088,10 +1231,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     console.log(`✅ 내 이벤트 축의금 ${eventType} 확인 - Toast 표시`);
     
     // Toast 알림 표시
-    const actionText = eventType === 'INSERT' ? '전달' : 
-                      eventType === 'UPDATE' ? '수정' : 
-                      eventType === 'DELETE' ? '삭제' : '변경';
-    
+    const actionText = eventType === 'INSERT' ? '전달' : '수정';
     Toast.show({
       type: 'success',
       text1: `💰 축의금 ${actionText}!`,
@@ -1856,6 +1996,22 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
+      
+      {/* 🧪 개발용 디버그 버튼들 */}
+      <View style={styles.debugButtons}>
+        <TouchableOpacity 
+          style={styles.debugButton} 
+          onPress={testPushNotification}
+        >
+          <Text style={styles.debugButtonText}>🧪 백그라운드 알림 테스트</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.debugButton} 
+          onPress={debugNotificationStatus}
+        >
+          <Text style={styles.debugButtonText}>🔍 알림 상태 확인</Text>
+        </TouchableOpacity>
+      </View>
       
       {/* 헤더 */}
       <View style={styles.header}>
@@ -4337,6 +4493,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.gray300,
     fontWeight: '400',
+  },
+
+  // 🧪 개발용 디버그 버튼 스타일
+  debugButtons: {
+    flexDirection: 'row',
+    padding: 8,
+    backgroundColor: '#f0f0f0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  debugButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  debugButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '500',
   },
 
 });

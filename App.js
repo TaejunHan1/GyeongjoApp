@@ -1,18 +1,70 @@
 // App.js - AsyncStorage와 Supabase Auth 둘 다 체크
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Alert, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import Toast from 'react-native-toast-message';
 import { supabase } from './src/lib/supabase';
 import LoadingScreen from './src/screens/LoadingScreen';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import AppNavigator from './src/navigation/AppNavigator';
 
+// Expo 네이티브 알림 초기화
+const initializeNotifications = async () => {
+  try {
+    console.log('🔔 Expo 알림 시스템 초기화...');
+    
+    // Android 알림 채널 설정
+    if (Platform.OS === 'android') {
+      console.log('📱 Android 기본 알림 채널 설정...');
+      await Notifications.setNotificationChannelAsync('contribution-notifications', {
+        name: '축의금 알림',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+        sound: 'default',
+        enableVibrate: true,
+        showBadge: true,
+      });
+      console.log('✅ Android 기본 알림 채널 설정 완료');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('❌ 알림 초기화 실패:', error);
+    return false;
+  }
+};
+
+// 알림 수신 시 처리 설정 (백그라운드 알림 지원)
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async (notification) => {
+      console.log('🔔 백그라운드 알림 수신:', notification);
+      
+      return {
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      };
+    },
+  });
+  console.log('✅ 백그라운드 알림 핸들러 설정 완료');
+} catch (error) {
+  console.log('⚠️ 알림 핸들러 설정 실패 (Expo Go에서는 지원 안함)');
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  // 알림 리스너 참조
+  const notificationListener = useRef();
+  const responseListener = useRef();
 
   // AsyncStorage에서 사용자 정보 확인
   const checkAsyncStorageAuth = async () => {
@@ -49,6 +101,27 @@ export default function App() {
     }
   };
 
+  // 알림 수신 처리 함수
+  const handleNotificationReceived = (notification) => {
+    console.log('🔔 알림 수신:', notification);
+    
+    // 축의금 알림인 경우
+    if (notification.request.content.data?.type === 'contribution') {
+      console.log('💰 축의금 알림 데이터:', notification.request.content.data);
+    }
+  };
+
+  // 알림 탭 처리 함수
+  const handleNotificationResponse = (response) => {
+    console.log('👆 알림 탭 응답:', response);
+    
+    const data = response.notification.request.content.data;
+    if (data?.type === 'contribution' && data.eventId) {
+      // 필요시 특정 화면으로 네비게이션 처리
+      console.log('축의금 알림 탭 - 이벤트로 이동:', data.eventId);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     let authCheckInterval;
@@ -56,6 +129,9 @@ export default function App() {
     // 앱 시작 시 인증 상태 확인
     const initializeAuth = async () => {
       try {
+        // 알림 시스템 초기화  
+        await initializeNotifications();
+        
         // 1. 먼저 AsyncStorage 체크 (폰 인증 사용자)
         const asyncStorageUser = await checkAsyncStorageAuth();
         
@@ -140,12 +216,29 @@ export default function App() {
       }
     );
 
+    // 푸시 알림 리스너 설정
+    try {
+      notificationListener.current = Notifications.addNotificationReceivedListener(handleNotificationReceived);
+      responseListener.current = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+      console.log('🔔 푸시 알림 리스너 설정 완료');
+    } catch (error) {
+      console.log('⚠️ Expo Go 환경 - 알림 기능 비활성화');
+    }
+
     return () => {
       mounted = false;
       if (authCheckInterval) {
         clearInterval(authCheckInterval);
       }
       authListener?.subscription?.unsubscribe();
+      
+      // 알림 리스너 정리
+      if (notificationListener.current) {
+        Notifications.removeNotificationSubscription(notificationListener.current);
+      }
+      if (responseListener.current) {
+        Notifications.removeNotificationSubscription(responseListener.current);
+      }
     };
   }, []);
 
