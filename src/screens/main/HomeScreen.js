@@ -24,9 +24,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../../styles/constants';
 import { supabase } from '../../lib/supabase';
-import NotificationPermissionModal from '../../components/NotificationPermissionModal';
-import { canUseNotifications } from '../../lib/developmentCheck';
-import * as Notifications from 'expo-notifications';
 import { 
   getUserEvents, 
   getActiveEvents, 
@@ -411,7 +408,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const [showTossSuccessModal, setShowTossSuccessModal] = useState(false); // 🔥 토스 스타일 성공 모달
   const [showPremiumModal, setShowPremiumModal] = useState(false); // 🔥 프리미엄 업그레이드 모달
   const [premiumModalType, setPremiumModalType] = useState(''); // 'wedding' or 'funeral'
-  const [showNotificationModal, setShowNotificationModal] = useState(false); // 🔔 알림 권한 요청 모달
   const [monthlyStats, setMonthlyStats] = useState({
     totalEvents: 0,
     monthlyEvents: 0,
@@ -463,142 +459,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       testSupabaseConnection();
     }
   }, [userInfo, session, isAuthenticated]);
-
-  // 🔔 알림 권한 체크 useEffect
-  useEffect(() => {
-    const checkNotificationPermission = async () => {
-      console.log('🔍 알림 체크 조건:', { isAuthenticated, hasUserInfo: !!userInfo?.userId });
-      if (!userInfo?.userId) return;
-      
-      // Development Build에서는 항상 알림 모달 표시
-      // canUseNotifications 체크 제거 - Development Build 사용 중
-      console.log('🔔 알림 권한 체크 시작');
-
-      try {
-        // 임시: 테스트를 위해 플래그 강제 리셋
-        await AsyncStorage.removeItem('notificationPermissionAsked');
-        console.log('🔄 알림 플래그 리셋 완료');
-        
-        // 이미 물어봤는지 확인
-        const hasAsked = await AsyncStorage.getItem('notificationPermissionAsked');
-        console.log('알림 권한 이미 요청됨?:', hasAsked);
-        
-        if (!hasAsked) {
-          // 2초 후에 모달 표시 (사용자가 앱에 익숙해질 시간)
-          console.log('2초 후 알림 모달 표시 예정');
-          setTimeout(() => {
-            console.log('알림 모달 표시!');
-            setShowNotificationModal(true);
-          }, 2000);
-        }
-      } catch (error) {
-        console.error('알림 권한 체크 오류:', error);
-      }
-    };
-
-    checkNotificationPermission();
-  }, [userInfo]); // isAuthenticated 의존성 제거
-
-  // 🔔 실시간 알림 리스너 설정
-  useEffect(() => {
-    if (!userInfo?.userId || events.length === 0) {
-      console.log('🔔 실시간 구독 건너뜀 - 사용자 정보 또는 이벤트 없음');
-      return;
-    }
-
-    console.log('🔔 실시간 알림 리스너 설정 시작');
-    console.log('📡 구독할 이벤트 IDs:', events.map(e => e.id));
-
-    // 앱이 포그라운드에 있을 때 알림을 받도록 설정
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-      }),
-    });
-
-    // 알림 수신 리스너
-    const notificationListener = Notifications.addNotificationReceivedListener(notification => {
-      console.log('🔔 알림 수신:', notification);
-      
-      // 축의금 관련 알림인지 확인
-      if (notification.request.content.data?.type === 'contribution') {
-        console.log('💰 축의금 알림 수신 - 데이터 새로고침');
-        
-        // 데이터 새로고침
-        loadEvents();
-        loadActiveEvents();
-        loadMonthlyStatistics();
-        
-        Alert.alert(
-          '💰 새로운 축의금!',
-          notification.request.content.body || '축의금이 전달되었습니다.',
-          [{ text: '확인', style: 'default' }]
-        );
-      }
-    });
-
-    // 폴링 방식으로 새로운 축의금 확인 (실시간 대신)
-    console.log('📊 5초마다 새로운 축의금 확인 시작');
-    
-    let lastCheckTime = new Date();
-    
-    const pollForNewContributions = async () => {
-      try {
-        console.log('🔍 새로운 축의금 확인 중...');
-        
-        for (const event of events) {
-          const { data: newContributions, error } = await supabase
-            .from('guest_book')
-            .select('*')
-            .eq('event_id', event.id)
-            .gt('updated_at', lastCheckTime.toISOString())
-            .order('updated_at', { ascending: false });
-          
-          if (error) {
-            console.error('축의금 확인 오류:', error);
-            continue;
-          }
-          
-          if (newContributions && newContributions.length > 0) {
-            console.log('💰 새로운 축의금 발견!', newContributions);
-            
-            newContributions.forEach(contribution => {
-              // 즉시 알림 표시
-              Alert.alert(
-                '💰 새로운 축의금!',
-                `${contribution.guest_name}님이 ${contribution.amount?.toLocaleString()}원을 전달했습니다`,
-                [{ text: '확인', style: 'default' }]
-              );
-            });
-            
-            // 데이터 새로고침
-            loadEvents();
-            loadActiveEvents(); 
-            loadMonthlyStatistics();
-          }
-        }
-        
-        lastCheckTime = new Date();
-      } catch (error) {
-        console.error('폴링 오류:', error);
-      }
-    };
-    
-    // 5초마다 새로운 축의금 확인
-    const pollingInterval = setInterval(pollForNewContributions, 5000);
-
-    return () => {
-      if (notificationListener) {
-        Notifications.removeNotificationSubscription(notificationListener);
-      }
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
-      console.log('🔔 알림 리스너 및 폴링 정리 완료');
-    };
-  }, [userInfo, events]); // events 의존성 추가
 
   // 슬라이드 데이터 - 경조사 종류별로 구성
   const slides = [
@@ -662,6 +522,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   // 🔥 월별 통계 로드 함수
   const loadMonthlyStatistics = async () => {
     try {
+      console.log('📊 월별 통계 로드 시작');
       
       // 현재 사용자 정보 가져오기
       let currentUserId = null;
@@ -686,6 +547,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       const result = await getMonthlyStatistics(currentUserId);
       
       if (result.success) {
+        console.log('✅ 월별 통계 로드 성공:', result.data);
         setMonthlyStats(result.data);
       } else {
         console.error('❌ 월별 통계 로드 실패:', result.error);
@@ -892,10 +754,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         const eventsWithStats = await Promise.all(
           (result.data || []).map(async (event) => {
             try {
-              // console.log(`🚨🚨🚨 이벤트 ${event.event_name}(${event.id}) 통계 조회 시작 🚨🚨🚨`);
-              // console.log(`🚨🚨🚨 전달할 event.id:`, event.id, `타입:`, typeof event.id);
+              console.log(`🚨🚨🚨 이벤트 ${event.event_name}(${event.id}) 통계 조회 시작 🚨🚨🚨`);
+              console.log(`🚨🚨🚨 전달할 event.id:`, event.id, `타입:`, typeof event.id);
               const statsResult = await getEventStatistics(event.id);
-              // console.log(`🚨🚨🚨 ${event.event_name} 통계 결과:`, statsResult);
+              console.log(`🚨🚨🚨 ${event.event_name} 통계 결과:`, statsResult);
               if (statsResult.success) {
                 const eventWithStats = {
                   ...event,
@@ -905,7 +767,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                   attending_count: statsResult.data.attendingCount,
                   average_amount: statsResult.data.averageAmount
                 };
-                // console.log(`✅ 이벤트 통계 적용:`, eventWithStats);
+                console.log(`✅ 이벤트 통계 적용:`, eventWithStats);
                 return eventWithStats;
               }
             } catch (error) {
@@ -2294,13 +2156,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           </View>
         </View>
       </Modal>
-
-      {/* 🔔 알림 권한 요청 모달 */}
-      <NotificationPermissionModal 
-        visible={showNotificationModal}
-        onClose={() => setShowNotificationModal(false)}
-        userId={user?.id}
-      />
     </SafeAreaView>
   );
 }
