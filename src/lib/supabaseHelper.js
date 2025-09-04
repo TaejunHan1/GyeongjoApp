@@ -3,6 +3,51 @@ import { supabase } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
+ * 실시간 연결 상태 테스트
+ */
+export const testRealtimeConnection = async () => {
+  try {
+    console.log('🔄 실시간 연결 테스트 시작...');
+    
+    // 테스트 채널 생성
+    const testChannel = supabase
+      .channel('test-connection')
+      .on('broadcast', { event: 'test' }, (payload) => {
+        console.log('✅ 실시간 메시지 수신:', payload);
+      })
+      .subscribe((status) => {
+        console.log('📡 테스트 채널 상태:', status);
+        
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ 실시간 연결 성공!');
+          
+          // 테스트 메시지 브로드캐스트
+          testChannel.send({
+            type: 'broadcast',
+            event: 'test',
+            payload: { message: '테스트 메시지' }
+          });
+          
+          // 3초 후 채널 정리
+          setTimeout(() => {
+            supabase.removeChannel(testChannel);
+            console.log('🧹 테스트 채널 정리 완료');
+          }, 3000);
+        } else if (status === 'TIMED_OUT') {
+          console.error('❌ 실시간 연결 시간 초과');
+        } else if (status === 'CLOSED') {
+          console.log('📴 테스트 채널 종료');
+        }
+      });
+      
+    return testChannel;
+  } catch (error) {
+    console.error('❌ 실시간 연결 테스트 실패:', error);
+    return null;
+  }
+};
+
+/**
  * 사용자 구독 정보 조회
  */
 export const getUserSubscriptionInfo = async (userId = null) => {

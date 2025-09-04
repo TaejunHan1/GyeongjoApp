@@ -34,6 +34,16 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     detectSessionInUrl: false, // React Native에서는 false로 설정
     flowType: 'pkce',
   },
+  realtime: {
+    params: {
+      eventsPerSecond: 10, // 초당 이벤트 수 제한
+    },
+  },
+  global: {
+    headers: {
+      'x-client-info': 'gyeongjoapp',
+    },
+  },
 });
 
 // ===================================

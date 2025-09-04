@@ -39,8 +39,8 @@ import {
   testSupabaseConnection 
 } from '../../lib/supabaseHelper';
 import Svg, { Rect, Circle, Path, Ellipse, G } from 'react-native-svg';
-// import * as Notifications from 'expo-notifications';
-// import NotificationPermissionModal from '../../components/NotificationPermissionModal';
+import * as Notifications from 'expo-notifications';
+import NotificationPermissionModal from '../../components/NotificationPermissionModal';
 
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
@@ -392,6 +392,15 @@ const EventAddModal = ({ visible, onClose, selectedDate, onAddEvent }) => {
   );
 };
 
+// 📱 푸시 알림 핸들러 설정
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 export default function HomeScreen({ navigation, userInfo, session, isAuthenticated }) {
   const [user, setUser] = useState(null);
   const [userSubscription, setUserSubscription] = useState(null);
@@ -525,6 +534,44 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     return () => clearInterval(interval);
   }, [fadeAnim]);
 
+  // 📡 실시간 연결 테스트 (컴포넌트 마운트 시)
+  useEffect(() => {
+    const testRealtime = async () => {
+      console.log('🔄 Supabase 실시간 연결 테스트 시작...');
+      
+      // 간단한 브로드캐스트 채널로 테스트
+      const testChannel = supabase
+        .channel('test-channel')
+        .on('broadcast', { event: 'test' }, (payload) => {
+          console.log('✅ 브로드캐스트 메시지 수신:', payload);
+        })
+        .subscribe(async (status) => {
+          console.log('📡 테스트 채널 상태:', status);
+          
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ Supabase 실시간 연결 성공!');
+            
+            // 테스트 메시지 전송
+            await testChannel.send({
+              type: 'broadcast',
+              event: 'test',
+              payload: { message: '실시간 연결 테스트' }
+            });
+            
+            // 5초 후 정리
+            setTimeout(() => {
+              supabase.removeChannel(testChannel);
+              console.log('🧹 테스트 채널 정리 완료');
+            }, 5000);
+          } else if (status === 'TIMED_OUT') {
+            console.log('📱 테스트 채널 타임아웃 (정상 - 실제 리스너는 별도)');
+          }
+        });
+    };
+    
+    testRealtime();
+  }, []);
+
   // 📱 알림 권한 체크 및 설정
   useEffect(() => {
     const checkNotificationPermission = async () => {
@@ -611,6 +658,52 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     }, 3000);
   }, [userInfo]);
 
+  // 📱 푸시 알림 수신 리스너
+  useEffect(() => {
+    console.log('📱 푸시 알림 리스너 설정 시작');
+    
+    // 포그라운드에서 알림 수신 시
+    const notificationListener = Notifications.addNotificationReceivedListener(notification => {
+      console.log('📱 포그라운드 알림 수신:', notification);
+      
+      // 축의금 알림인 경우 데이터 새로고침
+      if (notification.request.content.data?.type === 'contribution') {
+        console.log('💰 축의금 알림 감지 - 데이터 새로고침');
+        loadEvents(); // 이벤트 목록 새로고침
+        loadMonthlyStatistics(); // 통계 새로고침
+        
+        // 토스트 메시지 표시
+        Toast.show({
+          type: 'success',
+          text1: '💰 새로운 축의금',
+          text2: notification.request.content.body,
+          position: 'top',
+          visibilityTime: 4000,
+        });
+      }
+    });
+
+    // 알림 클릭 시 응답
+    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('📱 알림 클릭:', response);
+      
+      // 축의금 알림 클릭 시 해당 이벤트로 이동
+      if (response.notification.request.content.data?.type === 'contribution') {
+        const eventId = response.notification.request.content.data.eventId;
+        if (eventId) {
+          // 이벤트 상세 화면으로 이동
+          navigation.navigate('EventDisplay', { eventId });
+        }
+      }
+    });
+
+    return () => {
+      console.log('📱 푸시 알림 리스너 정리');
+      Notifications.removeNotificationSubscription(notificationListener);
+      Notifications.removeNotificationSubscription(responseListener);
+    };
+  }, [navigation]);
+
   // 📱 축의금 실시간 업데이트 리스너
   useEffect(() => {
     // userInfo 확인 및 변환
@@ -641,47 +734,111 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       eventsCount: events.length 
     });
 
-    // Supabase 실시간 구독 설정 - INSERT와 UPDATE 모두 감지
-    const contributionSubscription = supabase
-      .channel('contributions-realtime')
-      .on('postgres_changes', 
-        { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'contributions'
-        }, 
-        (payload) => {
-          console.log('📱 새로운 축의금 INSERT 수신:', {
-            eventId: payload.new.event_id,
-            guestName: payload.new.guest_name,
-            amount: payload.new.amount,
-            myEventIds: eventIds
-          });
-          
-          handleContributionChange('INSERT', payload.new, eventIds);
+    // Supabase 실시간 구독 설정 - 더 간단한 방식으로 시도
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    const setupRealtimeListener = async () => {
+      console.log('📱 실시간 리스너 설정 시작');
+
+      // 익명 인증을 다시 시도 (더 적극적으로)
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.log('📱 기존 세션 없음 - 익명 인증 시도');
+          const { data, error } = await supabase.auth.signInAnonymously();
+          if (error) {
+            console.log('📱 익명 인증 실패:', error.message);
+          } else {
+            console.log('📱 익명 인증 성공');
+          }
+        } else {
+          console.log('📱 기존 인증 세션 사용');
         }
-      )
-      .on('postgres_changes', 
-        { 
-          event: 'UPDATE', 
-          schema: 'public', 
-          table: 'contributions'
-        }, 
-        (payload) => {
-          console.log('📱 축의금 UPDATE 수신:', {
-            eventId: payload.new.event_id,
-            guestName: payload.new.guest_name,
-            amount: payload.new.amount,
-            oldAmount: payload.old?.amount,
-            myEventIds: eventIds
-          });
+      } catch (e) {
+        console.log('📱 인증 시도 실패:', e.message);
+      }
+
+      // 채널 설정 최적화
+      const channelName = `guest-book-realtime-${Date.now()}`;
+      const channel = supabase
+        .channel(channelName, {
+          config: {
+            presence: { key: 'user-id' },
+            broadcast: { self: true }
+          }
+        })
+        .on('postgres_changes', 
+          { 
+            event: '*',
+            schema: 'public', 
+            table: 'guest_book'
+          }, 
+          (payload) => {
+            console.log('📱 축의금 변경 감지:', {
+              type: payload.eventType,
+              eventId: payload.new?.event_id || payload.old?.event_id,
+              guestName: payload.new?.guest_name,
+              amount: payload.new?.amount,
+              myEventIds: eventIds
+            });
+            
+            // 내 이벤트인 경우만 처리
+            if (eventIds.includes(payload.new?.event_id || payload.old?.event_id)) {
+              handleContributionChange(payload.eventType, payload.new || payload.old, eventIds);
+            }
+          }
+        )
+        .subscribe(async (status) => {
+          console.log('📱 리스너 구독 상태:', status);
           
-          handleContributionChange('UPDATE', payload.new, eventIds);
-        }
-      )
-      .subscribe((status) => {
-        console.log('📱 리스너 구독 상태:', status);
-      });
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ 실시간 리스너 연결 성공!');
+            retryCount = 0; // 성공 시 재시도 카운터 리셋
+            
+            // 연결 성공 토스트 (한 번만)
+            if (!window.realtimeConnected) {
+              window.realtimeConnected = true;
+              Toast.show({
+                type: 'success',
+                text1: '✅ 실시간 알림 활성화',
+                text2: '축의금 알림을 실시간으로 받습니다',
+                position: 'bottom',
+                visibilityTime: 2000,
+              });
+            }
+          } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
+            console.log('📱 연결 타임아웃 - 자동 재연결 시도...');
+            
+            // 재시도 로직
+            if (retryCount < maxRetries) {
+              retryCount++;
+              console.log(`🔄 재연결 시도 ${retryCount}/${maxRetries}...`);
+              
+              setTimeout(() => {
+                supabase.removeChannel(channel);
+                setupRealtimeListener(); // 재귀적으로 다시 시도
+              }, 2000 + (retryCount * 1000)); // 2초, 3초, 4초 간격으로 재시도
+            } else {
+              console.error('❌ 최대 재시도 횟수 초과');
+              Toast.show({
+                type: 'error',
+                text1: '⚠️ 실시간 알림 연결 실패',
+                text2: '앱을 재시작해주세요',
+                position: 'top',
+                visibilityTime: 3000,
+              });
+            }
+          }
+        });
+        
+      return channel;
+    };
+    
+    let contributionSubscription;
+    setupRealtimeListener().then(channel => {
+      contributionSubscription = channel;
+    });
 
     return () => {
       console.log('📱 축의금 실시간 리스너 정리');
@@ -940,7 +1097,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
     // 통계 새로고침
     console.log('📊 통계 새로고침 실행');
-    loadData();
+    loadMonthlyStatistics();
   };
 
   // 🔥 월별 통계 로드 함수
