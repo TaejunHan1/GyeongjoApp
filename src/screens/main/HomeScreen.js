@@ -392,7 +392,14 @@ const EventAddModal = ({ visible, onClose, selectedDate, onAddEvent }) => {
   );
 };
 
-// 📝 알림 핸들러는 App.js에서 전역으로 설정됨 (백그라운드 알림 지원)
+// 📱 푸시 알림 핸들러 설정
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 export default function HomeScreen({ navigation, userInfo, session, isAuthenticated }) {
   const [user, setUser] = useState(null);
@@ -769,20 +776,16 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           }, 
           (payload) => {
             console.log('📱 축의금 변경 감지:', {
-              eventType: payload.eventType,
-              event: payload.event,
+              type: payload.eventType,
               eventId: payload.new?.event_id || payload.old?.event_id,
               guestName: payload.new?.guest_name,
               amount: payload.new?.amount,
-              myEventIds: eventIds,
-              fullPayload: payload
+              myEventIds: eventIds
             });
             
             // 내 이벤트인 경우만 처리
             if (eventIds.includes(payload.new?.event_id || payload.old?.event_id)) {
-              // payload.eventType 또는 payload.event 중 존재하는 값 사용
-              const changeType = payload.eventType || payload.event;
-              handleContributionChange(changeType, payload.new || payload.old, eventIds);
+              handleContributionChange(payload.eventType, payload.new || payload.old, eventIds);
             }
           }
         )
@@ -1072,13 +1075,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   // 📱 축의금 변경 처리 공통 함수
   const handleContributionChange = (eventType, contribution, eventIds) => {
-    console.log('🔔 handleContributionChange 호출됨:', {
-      eventType,
-      contribution,
-      eventIds: eventIds.length,
-      contributionEventId: contribution?.event_id
-    });
-
     // 내 이벤트인지 확인
     if (!eventIds.includes(contribution.event_id)) {
       console.log('📱 다른 사용자의 이벤트 - 무시');
@@ -1088,10 +1084,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     console.log(`✅ 내 이벤트 축의금 ${eventType} 확인 - Toast 표시`);
     
     // Toast 알림 표시
-    const actionText = eventType === 'INSERT' ? '전달' : 
-                      eventType === 'UPDATE' ? '수정' : 
-                      eventType === 'DELETE' ? '삭제' : '변경';
-    
+    const actionText = eventType === 'INSERT' ? '전달' : '수정';
     Toast.show({
       type: 'success',
       text1: `💰 축의금 ${actionText}!`,
