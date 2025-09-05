@@ -789,7 +789,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       }
 
       // 채널 설정 최적화
-      const channelName = `guest-book-realtime-${Date.now()}`;
+      const channelName = `contributions-realtime-${Date.now()}`;
       const channel = supabase
         .channel(channelName, {
           config: {
@@ -801,10 +801,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           { 
             event: '*',
             schema: 'public', 
-            table: 'guest_book'
+            table: 'contributions'
           }, 
           (payload) => {
-            console.log('🔥🔥🔥 guest_book 변경 감지 - 실시간 PAYLOAD:', {
+            console.log('🔥🔥🔥 contributions 변경 감지 - 실시간 PAYLOAD:', {
               eventType: payload.eventType,
               event: payload.event,
               table: payload.table,
