@@ -789,7 +789,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       }
 
       // 채널 설정 최적화
-      const channelName = `contributions-realtime-${Date.now()}`;
+      const channelName = `guest-book-realtime-${Date.now()}`;
       const channel = supabase
         .channel(channelName, {
           config: {
@@ -801,10 +801,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           { 
             event: '*',
             schema: 'public', 
-            table: 'contributions'
+            table: 'guest_book'
           }, 
           (payload) => {
-            console.log('🔥🔥🔥 contributions 변경 감지 - 실시간 PAYLOAD:', {
+            console.log('🔥🔥🔥 guest_book 변경 감지 - 실시간 PAYLOAD:', {
               eventType: payload.eventType,
               event: payload.event,
               table: payload.table,
@@ -826,12 +826,21 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               isMyEvent: eventIds.includes(contributionEventId)
             });
             
-            // 일단 모든 변경사항에 대해 테스트 토스트 표시
+            // 무조건 토스트 표시 (테스트)
+            console.log('🚨 무조건 테스트 토스트 표시!');
+            Toast.show({
+              type: 'success',
+              text1: '🔥🔥 실시간 데이터 변경!',
+              text2: `테이블: ${payload.table} | 이벤트: ${changeType}`,
+              position: 'top',
+              visibilityTime: 4000,
+            });
+            
             if (contributionData) {
-              console.log('🚨 테스트 토스트 표시 - 모든 변경사항');
+              console.log('🚨 기여 데이터 토스트 표시');
               Toast.show({
                 type: 'info',
-                text1: '🔥 실시간 변경 감지!',
+                text1: '💰 축의금 알림',
                 text2: `${contributionData.guest_name || '익명'}님 - ${contributionData.amount || 0}원`,
                 position: 'top',
                 visibilityTime: 3000,
