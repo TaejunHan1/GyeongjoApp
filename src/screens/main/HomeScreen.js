@@ -409,6 +409,11 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const [loading, setLoading] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [selectedTab, setSelectedTab] = useState('active'); // 'active' or 'completed'
+  
+  // 🚀 캐싱을 위한 상태들 - 성능 최적화
+  const [lastLoadTime, setLastLoadTime] = useState(0);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const CACHE_DURATION = 30000; // 30초 캐시
   const [calendarDate, setCalendarDate] = useState(new Date()); // 🔥 캘린더 현재 날짜 상태
   const [currentEventPage, setCurrentEventPage] = useState(0); // 🔥 현재 페이지
   const eventsPerPage = 3; // 페이지당 표시할 이벤트 수
@@ -503,15 +508,36 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     },
   ];
 
-  // 화면 포커스 시 데이터 새로고침 - 중복 호출 방지
+  // 화면 포커스 시 데이터 새로고침 - 캐싱과 병렬 로딩으로 성능 최적화
   useFocusEffect(
     React.useCallback(() => {
-      console.log('🏠 화면 포커스 - 데이터 로드 시작');
-      loadUserData();
-      loadEvents();
-      loadActiveEvents();
-      loadMonthlyStatistics(); // 🔥 월별 통계 로드 추가
-    }, [userInfo, session])
+      const now = Date.now();
+      const shouldRefresh = !dataLoaded || (now - lastLoadTime > CACHE_DURATION);
+      
+      if (!shouldRefresh) {
+        console.log('🏠 캐시된 데이터 사용 - 로딩 건너뛰기');
+        return;
+      }
+      
+      console.log('🏠 화면 포커스 - 병렬 데이터 로드 시작 (캐시 만료)');
+      setLoading(true);
+      
+      // 모든 데이터를 병렬로 로드하여 성능 개선
+      Promise.all([
+        loadUserData(),
+        loadEvents(),
+        loadActiveEvents(),
+        loadMonthlyStatistics()
+      ]).then(() => {
+        console.log('🏠 모든 데이터 로드 완료');
+        setLastLoadTime(now);
+        setDataLoaded(true);
+        setLoading(false);
+      }).catch((error) => {
+        console.error('❌ 데이터 로드 중 오류:', error);
+        setLoading(false);
+      });
+    }, [userInfo, session, dataLoaded, lastLoadTime])
   );
 
   // 자동 슬라이드
@@ -719,12 +745,15 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       eventsCount: events.length 
     });
     
-    if (!actualUserInfo?.id || !events.length) {
-      console.log('📱 리스너 설정 불가:', { 
-        hasUserInfo: !!actualUserInfo?.id, 
-        eventsCount: events.length 
-      });
+    // 사용자 정보가 없으면 리스너 설정 불가
+    if (!actualUserInfo?.id) {
+      console.log('📱 리스너 설정 불가 - 사용자 정보 없음');
       return;
+    }
+    
+    // 이벤트가 없어도 일단 리스너는 설정 (나중에 추가될 수 있음)
+    if (!events.length) {
+      console.log('📱 이벤트 없음 - 하지만 리스너는 설정 진행');
     }
 
     const eventIds = events.map(e => e.id).filter(id => id);
@@ -775,17 +804,46 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             table: 'guest_book'
           }, 
           (payload) => {
-            console.log('📱 축의금 변경 감지:', {
-              type: payload.eventType,
-              eventId: payload.new?.event_id || payload.old?.event_id,
-              guestName: payload.new?.guest_name,
-              amount: payload.new?.amount,
-              myEventIds: eventIds
+            console.log('🔥🔥🔥 guest_book 변경 감지 - 실시간 PAYLOAD:', {
+              eventType: payload.eventType,
+              event: payload.event,
+              table: payload.table,
+              schema: payload.schema,
+              timestamp: new Date().toISOString(),
+              fullPayload: payload
             });
             
+            const changeType = payload.eventType || payload.event;
+            const contributionData = payload.new || payload.old;
+            const contributionEventId = contributionData?.event_id;
+            
+            console.log('🎯 축의금 변경 상세 정보:', {
+              changeType,
+              contributionEventId,
+              guestName: contributionData?.guest_name,
+              amount: contributionData?.amount,
+              myEventIds: eventIds,
+              isMyEvent: eventIds.includes(contributionEventId)
+            });
+            
+            // 일단 모든 변경사항에 대해 테스트 토스트 표시
+            if (contributionData) {
+              console.log('🚨 테스트 토스트 표시 - 모든 변경사항');
+              Toast.show({
+                type: 'info',
+                text1: '🔥 실시간 변경 감지!',
+                text2: `${contributionData.guest_name || '익명'}님 - ${contributionData.amount || 0}원`,
+                position: 'top',
+                visibilityTime: 3000,
+              });
+            }
+            
             // 내 이벤트인 경우만 처리
-            if (eventIds.includes(payload.new?.event_id || payload.old?.event_id)) {
-              handleContributionChange(payload.eventType, payload.new || payload.old, eventIds);
+            if (eventIds.includes(contributionEventId)) {
+              console.log('✅✅ 내 이벤트 확인 - handleContributionChange 호출');
+              handleContributionChange(changeType, contributionData, eventIds);
+            } else {
+              console.log('⚠️ 다른 사용자 이벤트 - 무시');
             }
           }
         )
@@ -1075,16 +1133,35 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   // 📱 축의금 변경 처리 공통 함수
   const handleContributionChange = (eventType, contribution, eventIds) => {
+    console.log('🔥🔥 handleContributionChange 호출됨:', {
+      eventType,
+      contribution,
+      contributionEventId: contribution?.event_id,
+      eventIds,
+      eventIdsLength: eventIds.length,
+      timestamp: new Date().toISOString()
+    });
+
     // 내 이벤트인지 확인
     if (!eventIds.includes(contribution.event_id)) {
-      console.log('📱 다른 사용자의 이벤트 - 무시');
+      console.log('📱 다른 사용자의 이벤트 - 무시:', {
+        contributionEventId: contribution.event_id,
+        myEventIds: eventIds
+      });
       return;
     }
     
-    console.log(`✅ 내 이벤트 축의금 ${eventType} 확인 - Toast 표시`);
+    console.log(`✅✅✅ 내 이벤트 축의금 ${eventType} 확인 - Toast 표시 실행!`);
     
     // Toast 알림 표시
     const actionText = eventType === 'INSERT' ? '전달' : '수정';
+    
+    console.log('🎯🎯 Toast.show() 호출 직전:', {
+      actionText,
+      guestName: contribution.guest_name,
+      amount: contribution.amount
+    });
+    
     Toast.show({
       type: 'success',
       text1: `💰 축의금 ${actionText}!`,
@@ -1095,8 +1172,11 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       topOffset: 60,
     });
 
-    // 통계 새로고침
-    console.log('📊 통계 새로고침 실행');
+    console.log('🎯🎯 Toast.show() 호출 완료!');
+
+    // 🚀 캐시 무효화하고 통계 새로고침 (실시간 업데이트)
+    console.log('📊 실시간 축의금 변경 - 캐시 무효화 및 통계 새로고침');
+    setDataLoaded(false); // 캐시 무효화
     loadMonthlyStatistics();
   };
 
