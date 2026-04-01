@@ -787,6 +787,17 @@ const styles = StyleSheet.create({
     shadowRadius: 30,
     elevation: 8,
   },
+  romantic_mapContainerReal: {
+    height: 300,
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginBottom: 40,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 30,
+    elevation: 8,
+  },
   romantic_mapPlaceholder: {
     fontSize: 48,
     marginBottom: 10,

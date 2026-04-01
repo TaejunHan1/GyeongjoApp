@@ -11,6 +11,7 @@ import {
   Share,
   Modal,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -370,7 +371,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 50,
+    paddingTop: Platform.OS === 'ios' ? 8 : 50,
     paddingBottom: 16,
     backgroundColor: Colors.white,
     borderBottomWidth: 1,

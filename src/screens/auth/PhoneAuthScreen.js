@@ -16,6 +16,7 @@ import {
   ScrollView,
   Keyboard,
   ActivityIndicator,
+  InteractionManager,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
@@ -141,7 +142,7 @@ export default function PhoneAuthScreen() {
   const verificationInputRef = useRef(null);
   const nameInputRef = useRef(null);
   
-  // 떠다니는 애니메이션 시작
+  // 떠다니는 애니메이션 시작 - 화면 전환 완료 후 시작
   useEffect(() => {
     const createFloatingAnimation = (animValue, duration, delay = 0) => {
       return Animated.loop(
@@ -161,15 +162,18 @@ export default function PhoneAuthScreen() {
       );
     };
 
-    const animations = [
-      createFloatingAnimation(floatingAnim1, 3000, 0),
-      createFloatingAnimation(floatingAnim2, 4000, 1000),
-      createFloatingAnimation(floatingAnim3, 5000, 2000),
-    ];
-
-    animations.forEach(anim => anim.start());
+    let animations = [];
+    const handle = InteractionManager.runAfterInteractions(() => {
+      animations = [
+        createFloatingAnimation(floatingAnim1, 3000, 0),
+        createFloatingAnimation(floatingAnim2, 4000, 1000),
+        createFloatingAnimation(floatingAnim3, 5000, 2000),
+      ];
+      animations.forEach(anim => anim.start());
+    });
 
     return () => {
+      handle.cancel();
       animations.forEach(anim => anim.stop());
     };
   }, []);
@@ -216,17 +220,18 @@ export default function PhoneAuthScreen() {
     return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7)}`;
   };
 
-  // 실시간 중복 검사 함수
-  const checkPhoneDuplicate = async (formattedPhone) => {
-    if (!isSignUp) return;
-    
+  // 실시간 회원 검사 함수 - 회원가입/로그인 양쪽 모드에서 동작
+  // modeOverride: 모드 전환 직후 호출 시 아직 state가 반영 안 됐을 수 있으므로 직접 전달
+  const checkPhoneDuplicate = async (formattedPhone, modeOverride) => {
+    const currentIsSignUp = modeOverride !== undefined ? modeOverride : isSignUp;
+
     setIsCheckingDuplicate(true);
     setIsDuplicatePhone(false);
     setDuplicateCheckMessage('');
 
     try {
-      console.log('🔍 실시간 중복 검사 시작 (public.users):', formattedPhone);
-      
+      console.log('🔍 실시간 회원 검사 시작:', formattedPhone, '모드:', currentIsSignUp ? '회원가입' : '로그인');
+
       const { data: existingUser, error } = await supabase
         .from('users')
         .select('id, name')
@@ -234,7 +239,7 @@ export default function PhoneAuthScreen() {
         .single();
 
       if (error && error.code !== 'PGRST116') {
-        console.error('중복 검사 오류:', error);
+        console.error('회원 검사 오류:', error);
         setDuplicateCheckMessage('확인 중 오류');
         return;
       }
@@ -242,39 +247,44 @@ export default function PhoneAuthScreen() {
       if (existingUser) {
         console.log('✅ 기존 회원 확인됨:', existingUser);
         setIsDuplicatePhone(true);
-        setDuplicateCheckMessage('가입된 번호');
+        if (currentIsSignUp) {
+          setDuplicateCheckMessage('이미 가입된 번호');
+        } else {
+          setDuplicateCheckMessage('회원 확인됨');
+        }
       } else {
-        console.log('❌ 신규 회원 확인됨');
+        console.log('❌ 미가입 번호 확인됨');
         setIsDuplicatePhone(false);
-        setDuplicateCheckMessage('사용 가능');
+        if (currentIsSignUp) {
+          setDuplicateCheckMessage('사용 가능');
+        } else {
+          setDuplicateCheckMessage('미가입 번호');
+        }
       }
     } catch (error) {
-      console.error('🚨 중복 검사 오류:', error);
+      console.error('🚨 회원 검사 오류:', error);
       setDuplicateCheckMessage('확인 중 오류');
     } finally {
       setIsCheckingDuplicate(false);
     }
   };
 
-  // 핸드폰 번호 입력 처리
+  // 핸드폰 번호 입력 처리 - 회원가입/로그인 양쪽에서 실시간 체크
   const handlePhoneNumberChange = (text) => {
     const formatted = formatPhoneNumber(text);
     setPhoneNumber(formatted);
-    
+
     const numbers = formatted.replace(/[^\d]/g, '');
-    
+
     if (numbers.length < 11) {
       setIsDuplicatePhone(false);
       setDuplicateCheckMessage('');
     }
-    
+
     if (numbers.length === 11) {
       Keyboard.dismiss();
-      
-      if (isSignUp) {
-        const formattedPhone = `+82${numbers.slice(1)}`;
-        checkPhoneDuplicate(formattedPhone);
-      }
+      const formattedPhone = `+82${numbers.slice(1)}`;
+      checkPhoneDuplicate(formattedPhone);
     }
   };
 
@@ -580,18 +590,19 @@ export default function PhoneAuthScreen() {
   const handleModeSwitch = () => {
     const newIsSignUp = !isSignUp;
     setIsSignUp(newIsSignUp);
-    
+
     setIsDuplicatePhone(false);
     setDuplicateCheckMessage('');
-    
-    if (newIsSignUp) {
-      if (phoneNumber.replace(/[^\d]/g, '').length === 11) {
-        const numbers = phoneNumber.replace(/[^\d]/g, '');
-        const formattedPhone = `+82${numbers.slice(1)}`;
-        checkPhoneDuplicate(formattedPhone);
-      }
-    } else {
+
+    if (!newIsSignUp) {
       setName('');
+    }
+
+    // 번호가 이미 입력되어 있으면 새 모드로 재검사
+    const numbers = phoneNumber.replace(/[^\d]/g, '');
+    if (numbers.length === 11) {
+      const formattedPhone = `+82${numbers.slice(1)}`;
+      checkPhoneDuplicate(formattedPhone, newIsSignUp);
     }
   };
 
@@ -602,9 +613,19 @@ export default function PhoneAuthScreen() {
     setName('');
   };
 
+  const handleSwitchToSignUp = () => {
+    setIsSignUp(true);
+    setIsDuplicatePhone(false);
+    setDuplicateCheckMessage('');
+  };
+
   const handleMainButtonPress = () => {
     if (isSignUp && isDuplicatePhone) {
+      // 회원가입인데 이미 가입된 번호 → 로그인으로 전환
       handleSwitchToLogin();
+    } else if (!isSignUp && !isDuplicatePhone && duplicateCheckMessage === '미가입 번호') {
+      // 로그인인데 미가입 번호 → 회원가입으로 전환
+      handleSwitchToSignUp();
     } else {
       handleSendVerification();
     }
@@ -613,6 +634,9 @@ export default function PhoneAuthScreen() {
   const getMainButtonText = () => {
     if (isSignUp && isDuplicatePhone) {
       return '로그인하기';
+    }
+    if (!isSignUp && !isDuplicatePhone && duplicateCheckMessage === '미가입 번호') {
+      return '회원가입하기';
     }
     return '인증번호 받기';
   };
@@ -754,8 +778,8 @@ export default function PhoneAuthScreen() {
               onSubmitEditing={handleMainButtonPress} 
             />
             
-            {/* 중복 검사 상태 표시 - 간단한 텍스트 */}
-            {isSignUp && phoneNumber.replace(/[^\d]/g, '').length === 11 && (
+            {/* 실시간 회원 검사 상태 표시 - 회원가입/로그인 양쪽 */}
+            {phoneNumber.replace(/[^\d]/g, '').length === 11 && (
               <View style={styles.statusContainer}>
                 {isCheckingDuplicate ? (
                   <View style={styles.statusRow}>
@@ -764,14 +788,25 @@ export default function PhoneAuthScreen() {
                   </View>
                 ) : duplicateCheckMessage ? (
                   <View style={styles.statusRow}>
-                    <Ionicons 
-                      name={isDuplicatePhone ? "close-circle" : "checkmark-circle"} 
-                      size={16} 
-                      color={isDuplicatePhone ? '#FF6B6B' : '#20C65A'} 
+                    <Ionicons
+                      name={
+                        isSignUp
+                          ? (isDuplicatePhone ? "close-circle" : "checkmark-circle")
+                          : (isDuplicatePhone ? "checkmark-circle" : "close-circle")
+                      }
+                      size={16}
+                      color={
+                        isSignUp
+                          ? (isDuplicatePhone ? '#FF6B6B' : '#20C65A')
+                          : (isDuplicatePhone ? '#20C65A' : '#FF6B6B')
+                      }
                     />
                     <Text style={[
-                      styles.statusText, 
-                      { color: isDuplicatePhone ? '#FF6B6B' : '#20C65A' }
+                      styles.statusText,
+                      { color: isSignUp
+                          ? (isDuplicatePhone ? '#FF6B6B' : '#20C65A')
+                          : (isDuplicatePhone ? '#20C65A' : '#FF6B6B')
+                      }
                     ]}>
                       {duplicateCheckMessage}
                     </Text>
@@ -986,13 +1021,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white 
   },
   
-  // 헤더 위치 수정 - 상단 시계와 겹치지 않도록
-  header: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    paddingHorizontal: 20, 
-    paddingTop: 35, // iOS/Android 동일
+  // 헤더 - SafeAreaView가 상단 safe area를 처리하므로 paddingTop 최소화
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 8 : 35,
     paddingBottom: 16,
     backgroundColor: Colors.white,
     borderBottomWidth: 1,

@@ -70,9 +70,11 @@ export default function EventDisplayScreen({ navigation, route }) {
       
       if (result.success) {
         setEvent(result.data);
-        
+
         // 웹 데이터베이스에 동기화 (백그라운드에서 실행)
-        syncEventToWeb(result.data).catch(() => {});
+        syncEventToWeb(result.data).catch((err) => {
+          console.log('⚠️ 웹 동기화 실패 (무시됨):', err?.message);
+        });
       } else {
         Alert.alert('오류', '경조사를 불러올 수 없습니다.');
         navigation.goBack();
@@ -550,9 +552,15 @@ export default function EventDisplayScreen({ navigation, route }) {
       </Modal>
       
       {(showExitButton || isPreviewMode) && (
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.exitButton}
-          onPress={() => navigation.goBack()}
+          onPress={() => {
+            if (isPreviewMode) {
+              navigation.goBack();
+            } else {
+              navigation.navigate('MainTabs', { screen: 'Home' });
+            }
+          }}
         >
           <Ionicons name="close" size={20} color="white" />
         </TouchableOpacity>

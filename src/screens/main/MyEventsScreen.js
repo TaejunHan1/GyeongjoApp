@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Alert,
   Image,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,12 +26,19 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hostedFilter, setHostedFilter] = useState('all'); // all, active, completed
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [lastLoadTime, setLastLoadTime] = useState(0);
+  const CACHE_DURATION = 30000; // 30초 캐시
 
-  // 화면 포커스 시 데이터 새로고침
+  // 화면 포커스 시 데이터 새로고침 (캐시 적용)
   useFocusEffect(
     React.useCallback(() => {
+      const now = Date.now();
+      if (dataLoaded && (now - lastLoadTime < CACHE_DURATION)) {
+        return; // 캐시 유효 → 로딩 건너뛰기
+      }
       loadAllData();
-    }, [])
+    }, [dataLoaded, lastLoadTime])
   );
 
   // 디버그: 테스트 데이터 확인/생성
@@ -84,6 +92,8 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
         loadHostedEvents(),
         loadParticipatedEvents()
       ]);
+      setDataLoaded(true);
+      setLastLoadTime(Date.now());
     } catch (error) {
       console.error('전체 데이터 로딩 오류:', error);
     } finally {
@@ -94,14 +104,13 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
   // 날짜 기반으로 이벤트 상태 자동 판별
   const determineEventStatus = (eventDate) => {
     if (!eventDate) return 'active';
-    
+
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // 시간을 00:00:00으로 설정
-    
+    today.setHours(0, 0, 0, 0);
+
     const eventDateObj = new Date(eventDate);
-    eventDateObj.setHours(0, 0, 0, 0); // 시간을 00:00:00으로 설정
-    
-    // 오늘 날짜이거나 미래 날짜면 진행중, 과거 날짜면 완료
+    eventDateObj.setHours(0, 0, 0, 0);
+
     return eventDateObj >= today ? 'active' : 'completed';
   };
 
@@ -114,12 +123,6 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
         const hostedEventsOnly = (result.data || []).filter(event => 
           !event.is_personal_schedule && !event.isPersonalSchedule && event.source !== 'personal'
         );
-        
-        console.log('🔍 필터링 결과:', {
-          전체: result.data?.length || 0,
-          경조사만: hostedEventsOnly.length,
-          개인일정제외됨: (result.data?.length || 0) - hostedEventsOnly.length
-        });
         
         // 통계 정보를 포함한 이벤트 데이터 가져오기
         const eventsWithStats = await Promise.all(
@@ -168,39 +171,11 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
 
   const loadParticipatedEvents = async () => {
     try {
-      console.log('🔍 =================================');
-      console.log('🔍 참여 이벤트 로딩 시작');
-      console.log('🔍 =================================');
-
-      // 1단계: userInfo prop에서 사용자 정보 가져오기 (폰 인증 사용자)
-      if (!userInfo || !userInfo.userId) {
-        console.error('🔴 userInfo가 없거나 userId가 없음:', userInfo);
+      if (!userInfo?.userId) {
         setParticipatedEvents([]);
         return;
       }
 
-      console.log('🔍 현재 사용자 정보:', {
-        userId: userInfo.userId,
-        userName: userInfo.userName,
-        phone: userInfo.phone,
-        isLoggedIn: userInfo.isLoggedIn
-      });
-
-      // 2단계: 전체 personal_schedules 테이블 확인 (디버깅용)
-      console.log('🔍 전체 personal_schedules 테이블 조회 중...');
-      const { data: allSchedules, error: allError } = await supabase
-        .from('personal_schedules')
-        .select('*')
-        .limit(10);
-
-      console.log('🔍 전체 personal_schedules 샘플:', {
-        error: allError?.message,
-        count: allSchedules?.length || 0,
-        sample: allSchedules?.slice(0, 3) // 처음 3개만 로그에 출력
-      });
-
-      // 3단계: 현재 사용자의 개인 일정 조회
-      console.log('🔍 사용자 ID로 조회:', userInfo.userId);
       const { data: personalSchedules, error: schedulesError } = await supabase
         .from('personal_schedules')
         .select('*')
@@ -208,61 +183,42 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
         .order('created_at', { ascending: false });
 
       if (schedulesError) {
-        console.error('🔴 personal_schedules 조회 에러:', schedulesError);
+        console.error('personal_schedules 조회 에러:', schedulesError);
         setParticipatedEvents([]);
         return;
       }
-
-      console.log('🔍 개인 일정 조회 결과:', {
-        userId: userInfo.userId,
-        count: personalSchedules?.length || 0,
-        schedules: personalSchedules
-      });
 
       if (!personalSchedules || personalSchedules.length === 0) {
-        console.log('🔍 개인 일정이 없음');
         setParticipatedEvents([]);
         return;
       }
 
-      // 4단계: 데이터 변환
-      const participatedEventsArray = personalSchedules.map(schedule => {
-        return {
-          id: schedule.id,
-          event_name: schedule.title,
-          event_type: schedule.event_type,
-          event_date: schedule.event_date,
-          location: schedule.location,
-          main_person_name: '개인 일정',
-          participationInfo: {
-            contributedAmount: 0,
-            contributionDate: schedule.created_at,
-            relation: '개인 참여',
-            message: schedule.notes
-          },
-          source: 'personal'
-        };
-      });
-
-      console.log('✅ 참여 이벤트 로딩 완료:', {
-        count: participatedEventsArray.length,
-        events: participatedEventsArray.map(e => ({ 
-          id: e.id, 
-          name: e.event_name,
-          type: e.event_type,
-          date: e.event_date
-        }))
-      });
+      const participatedEventsArray = personalSchedules.map(schedule => ({
+        id: schedule.id,
+        event_name: schedule.title,
+        event_type: schedule.event_type,
+        event_date: schedule.event_date,
+        location: schedule.location,
+        main_person_name: '개인 일정',
+        participationInfo: {
+          contributedAmount: 0,
+          contributionDate: schedule.created_at,
+          relation: '개인 참여',
+          message: schedule.notes
+        },
+        source: 'personal'
+      }));
 
       setParticipatedEvents(participatedEventsArray);
     } catch (error) {
-      console.error('🔴 참여 이벤트 로딩 오류:', error);
+      console.error('참여 이벤트 로딩 오류:', error);
       setParticipatedEvents([]);
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
+    setDataLoaded(false); // 캐시 무효화
     await loadAllData();
     setRefreshing(false);
   };
@@ -767,7 +723,7 @@ const styles = StyleSheet.create({
   // 헤더
   header: {
     paddingHorizontal: 20,
-    paddingTop: 50,
+    paddingTop: Platform.OS === 'ios' ? 8 : 50,
     paddingBottom: 16,
     backgroundColor: Colors.white,
     borderBottomWidth: 1,

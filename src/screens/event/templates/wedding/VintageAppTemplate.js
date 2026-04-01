@@ -1,700 +1,859 @@
-// src/screens/event/templates/wedding/VintageAppTemplate.js
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  Animated,
-  Easing,
-  TouchableOpacity,
-  Image,
-  Linking,
-  Share,
+  View, Text, Image, TouchableOpacity, ScrollView,
+  Animated, StyleSheet, Dimensions, Share, Linking, Modal,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { WebView } from 'react-native-webview';
 import {
-  useCountdown,
   getCategorizedImagesSafe,
-  formatDate,
-  formatTime,
-  getSafeAnimValue,
-  height,
+  useCountdown,
+  formatKoreanDate,
+  formatKoreanTime,
 } from './WeddingUtils';
-import {
-  FallingPetals,
-  FloatingHearts,
-  CountdownDisplay,
-  ImageViewer,
-  MainPhotoSlideshow,
-  PhotoGallery,
-  VintageAppCalendar,
-} from './WeddingCommonComponents';
-import styles from './WeddingStyles';
+import { GuestBookMessages } from './WeddingCommonComponents';
 
-const VintageAppTemplate = ({ eventData = {}, categorizedImages = {} }) => {
-  const [showImageViewer, setShowImageViewer] = useState(false);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  
-  const appLoadAnim = useRef(new Animated.Value(0)).current;
-  const cardAnims = useRef([...Array(25)].map(() => new Animated.Value(0))).current;
-  const sparkleAnims = useRef([...Array(15)].map(() => new Animated.Value(0))).current;
-  const fadeAnims = useRef([...Array(30)].map(() => new Animated.Value(0))).current;
-  const pulseAnim = useRef(new Animated.Value(0)).current;
-  const bounceAnim = useRef(new Animated.Value(0)).current;
+const { width } = Dimensions.get('window');
 
-  // 실시간 카운트다운
+// ── 당근마켓 컬러 팔레트 ──
+const C = {
+  orange: '#FF8A3D',
+  orangeBg: '#FFF1E8',
+  main: '#212124',
+  sub: '#868B94',
+  gray: '#F2F3F6',
+  white: '#FFFFFF',
+  border: '#EBEBED',
+  cardBg: '#FAFAFA',
+};
+
+// ── 기본 캡션 ──
+const defaultCaptions = [
+  '함께라서 좋은 날 ☀️',
+  '웃음이 가득한 하루 😊',
+  '소중한 우리의 기록 📸',
+  '같이 걸어온 길 🌿',
+  '오늘도 사랑해 💕',
+  '둘만의 특별한 순간 ✨',
+  '설레는 매일 🌸',
+  '행복을 담다 🎞️',
+];
+
+// ── 지인 후기 초기 데이터 ──
+const initialReviews = [
+  { name: '김영희', emoji: '❤️', message: '두 분 정말 축하드려요! 행복하게 잘 살아요~', time: '방금 전' },
+  { name: '박철수', emoji: '🎉', message: '결혼 축하해! 정말 잘 어울리는 커플이야', time: '1시간 전' },
+  { name: '이수진', emoji: '💐', message: '예쁜 사랑 오래오래 하세요 ♥', time: '3시간 전' },
+];
+
+// ======================================================================
+export default function VintageAppTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings }) {
+  const insets = useSafeAreaInsets();
+
+  // ── 인트로 ──
+  const [showIntro, setShowIntro] = useState(true);
+  const introOpacity = useRef(new Animated.Value(1)).current;
+  const notifSlide = useRef(new Animated.Value(-80)).current;
+  const notifOpacity = useRef(new Animated.Value(0)).current;
+  const mainOpacity = useRef(new Animated.Value(0.8)).current;
+
+  const [activeAccount, setActiveAccount] = useState(null);
+  const [toast, setToast] = useState({ visible: false, message: '' });
+  const [viewerImage, setViewerImage] = useState(null);
+  const [temperature, setTemperature] = useState(36.5);
+  const [tempReached100, setTempReached100] = useState(false);
+  const [reviews, setReviews] = useState(initialReviews);
+  const [floatingHearts, setFloatingHearts] = useState([]);
+
+  const safeImages = getCategorizedImagesSafe(categorizedImages);
+
+  // ── 이름 ──
+  const groomName = eventData.groomName || eventData.groom_name || '';
+  const brideName = eventData.brideName || eventData.bride_name || '';
+
+  // ── 부모님 ──
+  const groomFather = eventData.groomFatherName || eventData.groom_father_name || '';
+  const groomMother = eventData.groomMotherName || eventData.groom_mother_name || '';
+  const brideFather = eventData.brideFatherName || eventData.bride_father_name || '';
+  const brideMother = eventData.brideMotherName || eventData.bride_mother_name || '';
+
+  // ── 날짜/시간 ──
+  const dateInfo = formatKoreanDate(eventData.date || eventData.event_date);
+  const dateStr = dateInfo?.full || '';
+  const timeStr = formatKoreanTime(eventData.ceremonyTime || eventData.ceremony_time);
+
+  // ── 장소 ──
+  const locName = eventData.hallName || eventData.hall_name || eventData.location || '';
+  const locAddr = eventData.detailedAddress || eventData.detailed_address || eventData.address || '';
+
+  // ── 카운트다운 ──
   const timeLeft = useCountdown(
-    eventData.date || eventData.event_date, 
+    eventData.date || eventData.event_date,
     eventData.ceremonyTime || eventData.ceremony_time
   );
 
-  // 카테고리별 이미지 안전하게 가져오기
-  const safeImages = getCategorizedImagesSafe(categorizedImages);
-  
-  console.log('🔍 [VINTAGE TEMPLATE] 사용할 이미지들:', {
-    main: safeImages.main.length,
-    gallery: safeImages.gallery.length,
-    groom: safeImages.groom.length,
-    bride: safeImages.bride.length
-  });
+  // ── D-day ──
+  const weddingDate = eventData.date || eventData.event_date;
+  let dDayText = '';
+  if (weddingDate) {
+    const diff = Math.ceil((new Date(weddingDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    if (diff > 0) dDayText = `D-${diff}`;
+    else if (diff === 0) dDayText = 'D-Day';
+    else dDayText = `D+${Math.abs(diff)}`;
+  }
+
+  // ── 계좌 정보 ──
+  const ai = eventData.additional_info || {};
+  const accounts = {
+    groom: [
+      ai.groom_account_number && { bank: ai.groom_bank_name || '', number: ai.groom_account_number, name: groomName },
+      ai.groom_father_account_number && { bank: ai.groom_father_bank_name || '', number: ai.groom_father_account_number, name: groomFather ? `${groomFather} \uC544\uBC84\uB2D8` : '\uC544\uBC84\uB2D8' },
+      ai.groom_mother_account_number && { bank: ai.groom_mother_bank_name || '', number: ai.groom_mother_account_number, name: groomMother ? `${groomMother} \uC5B4\uBA38\uB2D8` : '\uC5B4\uBA38\uB2D8' },
+    ].filter(Boolean),
+    bride: [
+      ai.bride_account_number && { bank: ai.bride_bank_name || '', number: ai.bride_account_number, name: brideName },
+      ai.bride_father_account_number && { bank: ai.bride_father_bank_name || '', number: ai.bride_father_account_number, name: brideFather ? `${brideFather} \uC544\uBC84\uB2D8` : '\uC544\uBC84\uB2D8' },
+      ai.bride_mother_account_number && { bank: ai.bride_mother_bank_name || '', number: ai.bride_mother_account_number, name: brideMother ? `${brideMother} \uC5B4\uBA38\uB2D8` : '\uC5B4\uBA38\uB2D8' },
+    ].filter(Boolean),
+  };
+  const hasAnyAccount = accounts.groom.length > 0 || accounts.bride.length > 0;
+
+  // ── 메인 이미지 크로스페이드 슬라이드쇼 ──
+  const mainImages = safeImages.main?.length > 0 ? safeImages.main : (safeImages.all?.length > 0 ? [safeImages.all[0]] : []);
+  const heroAnims = useRef(mainImages.map((_, i) => new Animated.Value(i === 0 ? 1 : 0))).current;
+  const heroIdxRef = useRef(0);
 
   useEffect(() => {
-    // App loading animation
-    Animated.timing(appLoadAnim, {
-      toValue: 1,
-      duration: 2500,
-      useNativeDriver: true,
-      easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
-    }).start();
+    if (mainImages.length <= 1) return;
+    const interval = setInterval(() => {
+      const curr = heroIdxRef.current;
+      const next = (curr + 1) % mainImages.length;
+      Animated.parallel([
+        Animated.timing(heroAnims[curr], { toValue: 0, duration: 1000, useNativeDriver: true }),
+        Animated.timing(heroAnims[next], { toValue: 1, duration: 1000, useNativeDriver: true }),
+      ]).start();
+      heroIdxRef.current = next;
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [mainImages.length]);
 
-    // Pulse animation
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 0,
-          duration: 2000,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        }),
-      ])
-    ).start();
+  // ── 갤러리 이미지 + 랜덤 회전 + 캡션 ──
+  const galleryImages = (safeImages.gallery || safeImages.all || []).map((img, idx) => ({
+    source: img,
+    caption: defaultCaptions[idx % defaultCaptions.length],
+    rotate: (Math.random() * 6 - 3).toFixed(1),
+  }));
 
-    // Bounce animation
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(bounceAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-          easing: Easing.out(Easing.ease),
-        }),
-        Animated.timing(bounceAnim, {
-          toValue: 0,
-          duration: 1000,
-          useNativeDriver: true,
-          easing: Easing.in(Easing.ease),
-        }),
-      ])
-    ).start();
-
-    // Sparkle animations
-    sparkleAnims.forEach((anim, index) => {
-      Animated.loop(
-        Animated.timing(anim, {
-          toValue: 1,
-          duration: 3000 + (index * 200),
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        })
-      ).start();
-    });
-
-    // Card animations
-    cardAnims.forEach((anim, index) => {
-      Animated.timing(anim, {
-        toValue: 1,
-        duration: 800,
-        delay: 1000 + (index * 150),
-        useNativeDriver: true,
-        easing: Easing.bezier(0.68, -0.55, 0.265, 1.55),
-      }).start();
-    });
-
-    // Fade animations
-    fadeAnims.forEach((anim, index) => {
-      Animated.timing(anim, {
-        toValue: 1,
-        duration: 1000,
-        delay: 1500 + (index * 200),
-        useNativeDriver: true,
-        easing: Easing.out(Easing.ease),
-      }).start();
-    });
+  // ── 인트로 시퀀스 ──
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(notifSlide, { toValue: 0, useNativeDriver: true, damping: 18, stiffness: 150 }),
+      Animated.timing(notifOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+    ]).start();
+    const t = setTimeout(() => dismissIntro(), 3000);
+    return () => clearTimeout(t);
   }, []);
 
-  const handleImagePress = (index) => {
-    setCurrentImageIndex(index);
-    setShowImageViewer(true);
+  const dismissIntro = () => {
+    Animated.parallel([
+      Animated.timing(notifSlide, { toValue: -80, duration: 400, useNativeDriver: true }),
+      Animated.timing(notifOpacity, { toValue: 0, duration: 350, useNativeDriver: true }),
+      Animated.timing(introOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+      Animated.timing(mainOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+    ]).start(() => setShowIntro(false));
   };
 
-  return (
-    <View style={styles.app_container}>
-      {/* Simplified Status Bar */}
-      <View style={styles.app_statusBar}>
-        <View style={styles.app_statusLeft} />
-        <View style={styles.app_statusCenter}>
-          <Text style={styles.app_statusTitle}>결혼식</Text>
-        </View>
-        <View style={styles.app_statusRight} />
-      </View>
+  // ── 토스트 ──
+  const toastAnim = useRef(new Animated.Value(0)).current;
+  const showToast = (message) => {
+    setToast({ visible: true, message });
+    Animated.sequence([
+      Animated.timing(toastAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+      Animated.delay(1800),
+      Animated.timing(toastAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
+    ]).start(() => setToast({ visible: false, message: '' }));
+  };
 
-      <ScrollView style={styles.app_scrollContainer} showsVerticalScrollIndicator={false}>
-        {/* Hero Section with Main Photo */}
-        <View style={styles.app_heroSection}>
-          <MainPhotoSlideshow 
-            images={safeImages.main}
-            style={styles.app_mainPhotoContainer}
-            onImagePress={handleImagePress}
-            template="vintage"
-          />
-          
+  const copyToClipboard = async (text) => {
+    try {
+      await Clipboard.setStringAsync(text);
+      showToast('\uACC4\uC88C\uBC88\uD638\uAC00 \uBCF5\uC0AC\uB418\uC5C8\uC5B4\uC694');
+    } catch {
+      showToast('\uBCF5\uC0AC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4');
+    }
+  };
+
+  // ── 사랑 온도 ──
+  const tempBarAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const ratio = Math.min((temperature - 36.5) / (100 - 36.5), 1);
+    Animated.timing(tempBarAnim, {
+      toValue: ratio,
+      duration: 400,
+      useNativeDriver: false,
+    }).start();
+  }, [temperature]);
+
+  const handleTempPress = () => {
+    if (temperature >= 100) return;
+    const next = Math.min(temperature + 0.1, 100);
+    setTemperature(parseFloat(next.toFixed(1)));
+    if (next >= 100 && !tempReached100) {
+      setTempReached100(true);
+      showToast('\uD83C\uDF89 \uC0AC\uB791 \uC628\uB3C4 100\uB3C4 \uB2EC\uC131! \uCD95\uD558\uD569\uB2C8\uB2E4!');
+    }
+    // 떠오르는 하트
+    const id = Date.now();
+    const x = Math.random() * (width - 60) + 10;
+    setFloatingHearts(prev => [...prev, { id, x }]);
+    setTimeout(() => {
+      setFloatingHearts(prev => prev.filter(h => h.id !== id));
+    }, 1500);
+  };
+
+  // ── 아코디언 ──
+  const groomAnim = useRef(new Animated.Value(0)).current;
+  const brideAnim = useRef(new Animated.Value(0)).current;
+
+  const toggleAccount = (side) => {
+    const isOpen = activeAccount === side;
+    const anim = side === 'groom' ? groomAnim : brideAnim;
+    const other = side === 'groom' ? brideAnim : groomAnim;
+    Animated.timing(other, { toValue: 0, duration: 220, useNativeDriver: false }).start();
+    Animated.timing(anim, { toValue: isOpen ? 0 : 1, duration: 260, useNativeDriver: false }).start();
+    setActiveAccount(isOpen ? null : side);
+  };
+
+  const accordionHeight = (anim, count) =>
+    anim.interpolate({ inputRange: [0, 1], outputRange: [0, Math.max(count * 80 + 16, 96)] });
+
+
+  // ── 공유 ──
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `${groomName} & ${brideName}\uC758 \uACB0\uD63C\uC2DD\uC5D0 \uCD08\uB300\uD569\uB2C8\uB2E4! ${dateStr} ${timeStr} ${locName}`,
+      });
+    } catch {
+      showToast('\uACF5\uC720\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4');
+    }
+  };
+
+  // 카카오 좌표 검색
+  const KAKAO_KEY = '8389c9b97fc151fcf5b0f7d994e16f7a';
+  const [mapCoord, setMapCoord] = useState(null);
+
+  useEffect(() => {
+    const query = locAddr || locName;
+    if (!query) return;
+
+    // 1차: 키워드 검색
+    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
+      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
+    })
+      .then(r => r.json())
+      .then(data => {
+        const doc = data.documents?.[0];
+        if (doc) {
+          setMapCoord({ lat: doc.y, lng: doc.x });
+        } else if (locAddr) {
+          // 2차: 주소 검색
+          return fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(locAddr)}`, {
+            headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
+          }).then(r => r.json()).then(d2 => {
+            const doc2 = d2.documents?.[0];
+            if (doc2) setMapCoord({ lat: doc2.y, lng: doc2.x });
+          });
+        }
+      })
+      .catch(() => {});
+  }, [locAddr, locName]);
+
+  return (
+    <View style={[s.root, { paddingBottom: insets.bottom }]}>
+      <Animated.View style={[{ flex: 1 }, { opacity: mainOpacity }]}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+
+        {/* ═══ 1. 히어로 ═══ */}
+        <View style={s.hero}>
+          {mainImages.map((img, i) => (
+            <Animated.Image
+              key={i}
+              source={img}
+              style={[s.heroImage, i > 0 && s.heroImageOverlay, { opacity: heroAnims[i] }]}
+              resizeMode="cover"
+            />
+          ))}
           <LinearGradient
-            colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.6)']}
+            colors={['rgba(80,75,70,0.5)', 'rgba(130,125,120,0.3)', 'rgba(240,237,232,0.8)', 'rgba(245,243,240,0.95)']}
+            locations={[0, 0.5, 0.75, 1]}
             style={StyleSheet.absoluteFill}
           />
-
-          {/* Sparkle effects */}
-          {sparkleAnims.map((anim, index) => (
-            <Animated.Text
-              key={index}
-              style={[
-                styles.app_sparkle,
-                {
-                  left: `${Math.random() * 100}%`,
-                  top: `${Math.random() * 100}%`,
-                  opacity: anim.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [0.3, 1, 0.3]
-                  }),
-                  transform: [{
-                    scale: anim.interpolate({
-                      inputRange: [0, 0.5, 1],
-                      outputRange: [1, 1.5, 1]
-                    })
-                  }, {
-                    rotate: anim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['0deg', '360deg']
-                    })
-                  }]
-                }
-              ]}
-            >
-              ✨
-            </Animated.Text>
-          ))}
-
-          <Animated.View 
-            style={[
-              styles.app_heroContent,
-              {
-                opacity: appLoadAnim,
-                transform: [{
-                  translateY: appLoadAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [100, 0]
-                  })
-                }, {
-                  scale: appLoadAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.9, 1]
-                  })
-                }]
-              }
-            ]}
-          >
-            <Text style={styles.app_heroTitle}>Wedding</Text>
-            <Text style={styles.app_heroSubtitle}>우리의 특별한 날에 함께해주세요</Text>
-            <Text style={styles.app_heroNames}>
-              {eventData.groomName || eventData.groom_name || '민수'} & {eventData.brideName || eventData.bride_name || '예은'}
+          <View style={s.heroContent}>
+            <View style={s.heroBadge}>
+              <Text style={s.heroBadgeText}>저희 결혼합니다 🥕</Text>
+            </View>
+            <Text style={s.heroNames}>
+              {groomName} <Text style={{ color: C.orange }}>♥</Text> {brideName}
             </Text>
-            <Text style={styles.app_heroDate}>
-              {formatDate(eventData.date || eventData.event_date, { 
-                format: 'english',
-                defaultDate: 'November 16, 2024'
-              })} • Saturday {formatTime(eventData.ceremonyTime || eventData.ceremony_time, { defaultTime: '2:00 PM' })}
-            </Text>
-            
-            <Animated.View
-              style={[
-                {
-                  transform: [{
-                    translateY: bounceAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, -5]
-                    })
-                  }]
-                }
-              ]}
-            >
-            </Animated.View>
-          </Animated.View>
-          
-          <Animated.Text 
-            style={[
-              styles.app_scrollHint,
-              {
-                opacity: pulseAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.6, 1]
-                })
-              }
-            ]}
-          >
-            ↓ 아래로 스크롤해주세요
-          </Animated.Text>
+            <Text style={s.heroDate}>{dateStr} {timeStr}</Text>
+          </View>
         </View>
 
-        {/* 카운트다운 & 달력 섹션 추가 */}
-        <LinearGradient 
-          colors={['#6c5ce7', '#5f3dc4']} 
-          style={styles.app_countdownSection}
-        >
-          <Animated.View 
-            style={[
-              styles.app_sectionContent,
-              {
-                opacity: cardAnims[0],
-                transform: [{
-                  translateY: cardAnims[0].interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0]
-                  })
-                }]
-              }
-            ]}
-          >
-            <Text style={styles.app_countdownTitle}>결혼식 D-Day</Text>
-            <Text style={styles.app_countdownSubtitle}>특별한 날까지 남은 시간</Text>
-            
-            <CountdownDisplay 
-              timeLeft={timeLeft}
-              style={styles.app_countdownGrid}
-              textStyle={styles.app_countdownNumber}
-              labelStyle={styles.app_countdownLabel}
-              isExpired={timeLeft.isExpired}
-            />
-
-            {/* 빈티지 앱 달력 추가 */}
-            <VintageAppCalendar 
-              targetDate={eventData.date || eventData.event_date}
-              style={styles.app_calendarSection}
-            />
-          </Animated.View>
-        </LinearGradient>
-
-        {/* 갤러리 섹션 - 갤러리 전용 사진 사용 */}
-        <View style={styles.app_gallerySection}>
-          <Animated.View 
-            style={[
-              styles.app_sectionContent,
-              {
-                opacity: cardAnims[6],
-                transform: [{
-                  translateY: cardAnims[6].interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0]
-                  })
-                }]
-              }
-            ]}
-          >
-            <Text style={styles.app_sectionTitle}>사진 갤러리</Text>
-            <Text style={styles.app_sectionSubtitle}>소중한 추억들을 모아두었습니다</Text>
-            
-            <PhotoGallery 
-              images={safeImages.gallery.slice(0, 6)}
-              style={styles.app_photoGallery}
-              onImagePress={(index) => handleImagePress(safeImages.main.length + index)}
-              autoSlide={false}
-              template="vintage"
-            />
-            
-            {/* 사진 마사지 레이아웃 */}
-            <View style={styles.app_photoMasonry}>
-              <View style={styles.app_photoColumn}>
-                {safeImages.gallery && safeImages.gallery.length > 0 && safeImages.gallery.slice(0, Math.ceil(safeImages.gallery.length / 2)).map((image, index) => (
-                  <Animated.View
-                    key={index}
-                    style={[
-                      {
-                        opacity: getSafeAnimValue(cardAnims, 7 + index),
-                        transform: [{
-                          scale: getSafeAnimValue(cardAnims, 7 + index).interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0.8, 1]
-                          })
-                        }]
-                      }
-                    ]}
-                  >
-                    <TouchableOpacity onPress={() => handleImagePress(safeImages.main.length + index)}>
-                      <Image 
-                        source={image}
-                        style={[
-                          styles.app_photoMasonryItem,
-                          { height: (index % 3 + 1) * 80 + 100 }
-                        ]}
-                        resizeMode="cover"
-                      />
-                    </TouchableOpacity>
-                  </Animated.View>
-                ))}
-              </View>
-              <View style={styles.app_photoColumn}>
-                {safeImages.gallery && safeImages.gallery.length > 0 && safeImages.gallery.slice(Math.ceil(safeImages.gallery.length / 2)).map((image, index) => (
-                  <Animated.View
-                    key={index}
-                    style={[
-                      {
-                        opacity: getSafeAnimValue(cardAnims, 7 + Math.ceil(safeImages.gallery.length / 2) + index),
-                        transform: [{
-                          scale: getSafeAnimValue(cardAnims, 7 + Math.ceil(safeImages.gallery.length / 2) + index).interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0.8, 1]
-                          })
-                        }]
-                      }
-                    ]}
-                  >
-                    <TouchableOpacity onPress={() => handleImagePress(safeImages.main.length + Math.ceil(safeImages.gallery.length / 2) + index)}>
-                      <Image 
-                        source={image}
-                        style={[
-                          styles.app_photoMasonryItem,
-                          { height: ((index + 1) % 3 + 1) * 80 + 100 }
-                        ]}
-                        resizeMode="cover"
-                      />
-                    </TouchableOpacity>
-                  </Animated.View>
-                ))}
-              </View>
+        {/* ═══ 2. 인사말 ═══ */}
+        <View style={s.greetingSection}>
+          <Text style={s.greetingTitle}>초대합니다</Text>
+          <Text style={s.greetingText}>
+            {eventData.customMessage || eventData.custom_message ||
+              '같은 곳을 바라보며 걸어온 두 사람이\n이제 한 길을 같이 걸어가려 합니다.\n\n저희 두 사람의 새로운 시작을\n따뜻한 마음으로 축복해주시면\n더 없는 기쁨으로 간직하겠습니다.'}
+          </Text>
+          {(groomFather || groomMother || brideFather || brideMother) && (
+            <View style={s.parentsBox}>
+              {(groomFather || groomMother) && (
+                <View style={s.parentsRow}>
+                  <Text style={s.parentsNames}>{groomFather}{groomFather && groomMother ? ' · ' : ''}{groomMother}</Text>
+                  <Text style={s.parentsRole}>의 아들</Text>
+                  <Text style={s.parentsChild}>{groomName}</Text>
+                </View>
+              )}
+              {(brideFather || brideMother) && (
+                <View style={[s.parentsRow, { marginTop: 12 }]}>
+                  <Text style={s.parentsNames}>{brideFather}{brideFather && brideMother ? ' · ' : ''}{brideMother}</Text>
+                  <Text style={s.parentsRole}>의 딸</Text>
+                  <Text style={s.parentsChild}>{brideName}</Text>
+                </View>
+              )}
             </View>
-          </Animated.View>
+          )}
         </View>
 
-        {/* 인포 카드 섹션 */}
-        <LinearGradient 
-          colors={['#f8f9fa', '#e9ecef']} 
-          style={styles.app_cardsSection}
-        >
-          <Animated.View 
-            style={[
-              styles.app_sectionContent,
-              {
-                opacity: cardAnims[13],
-                transform: [{
-                  translateY: cardAnims[13].interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0]
-                  })
-                }]
-              }
-            ]}
-          >
-            <Text style={styles.app_sectionTitle}>결혼식 정보</Text>
-            <Text style={styles.app_sectionSubtitle}>결혼식 세부 정보를 확인해주세요</Text>
-            
-            <View style={styles.app_infoCards}>
-              {[
-                {
-                  icon: '📅',
-                  title: '날짜 & 시간',
-                  description: `${formatDate(eventData.date || eventData.event_date, { defaultDate: '2024년 11월 16일 토요일' })}\n${formatTime(eventData.ceremonyTime || eventData.ceremony_time, { defaultTime: '오후 2시' })} - 4시`,
-                  accent: '#6c5ce7',
-                  details: '가든 세레모니'
-                },
-                {
-                  icon: '🏛️',
-                  title: '장소',
-                  description: `${eventData.location || '블루밍 가든 웨딩홀'}\n${eventData.detailedAddress || eventData.detailed_address || '야외 테라스'}`,
-                  accent: '#00b894',
-                  details: '서울 강남구 테헤란로 152'
-                },
-                {
-                  icon: '🚗',
-                  title: '주차 정보',
-                  description: eventData.parkingInfo || eventData.parking_info || '무료 주차 가능\n100대 수용',
-                  accent: '#0984e3',
-                  details: '발렛 서비스 제공'
-                }
-              ].map((card, index) => (
-                <Animated.View 
-                  key={index}
+        {/* ═══ 3. 사랑 온도 카드 ═══ */}
+        <TouchableOpacity style={s.tempCard} onPress={handleTempPress} activeOpacity={0.85}>
+          <Text style={s.tempGuide}>터치해서 두 사람의 사랑 온도를 올려주세요!</Text>
+          <View style={s.tempRow}>
+            <Text style={s.tempFireIcon}>🔥</Text>
+            <View style={s.tempBarArea}>
+              <View style={s.tempValueRow}>
+                <Text style={s.tempValue}>{temperature.toFixed(1)}°C</Text>
+                <Text style={s.tempMax}>100°C</Text>
+              </View>
+              <View style={s.tempBarBg}>
+                <Animated.View
                   style={[
-                    styles.app_infoCard,
+                    s.tempBarFill,
                     {
-                      opacity: cardAnims[14 + index],
-                      transform: [{
-                        translateY: cardAnims[14 + index].interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [30, 0]
-                        })
-                      }, {
-                        scale: cardAnims[14 + index].interpolate({
-                          inputRange: [0, 0.5, 1],
-                          outputRange: [0.95, 1.02, 1]
-                        })
-                      }]
-                    }
+                      width: tempBarAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0%', '100%'],
+                      }),
+                    },
                   ]}
-                >
-                  <View style={[styles.app_cardIcon, { backgroundColor: card.accent + '20' }]}>
-                    <Text style={styles.app_cardIconText}>{card.icon}</Text>
-                  </View>
-                  <Text style={styles.app_cardTitle}>{card.title}</Text>
-                  <Text style={styles.app_cardDescription}>{card.description}</Text>
-                  <Text style={[styles.app_cardDetails, { color: card.accent }]}>{card.details}</Text>
-                </Animated.View>
-              ))}
+                />
+              </View>
             </View>
-          </Animated.View>
-        </LinearGradient>
+          </View>
+          {tempReached100 && (
+            <Text style={s.tempCongrats}>🎉 축하해주셔서 감사합니다!</Text>
+          )}
+        </TouchableOpacity>
 
-        {/* 커플 소개 섹션 - 신랑/신부 전용 사진 사용 */}
-        <View style={styles.app_coupleSection}>
-          <Animated.View 
-            style={[
-              styles.app_sectionContent,
-              {
-                opacity: cardAnims[18],
-                transform: [{
-                  translateY: cardAnims[18].interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0]
-                  })
-                }]
-              }
-            ]}
-          >
-            <Text style={styles.app_sectionTitle}>신랑 & 신부</Text>
-            <Text style={styles.app_sectionSubtitle}>두 사람을 소개합니다</Text>
-            
-            <View style={styles.app_coupleCards}>
-              {[
-                {
-                  image: safeImages.groom[0], // 신랑 전용 사진
-                  name: eventData.groomName || eventData.groom_name || '김민수',
-                  role: '신랑',
-                  parents: `${eventData.groomFatherName || eventData.groom_father_name || '김○○'} · ${eventData.groomMotherName || eventData.groom_mother_name || '이○○'}의 장남`,
-                },
-                {
-                  image: safeImages.bride[0], // 신부 전용 사진
-                  name: eventData.brideName || eventData.bride_name || '박예은',
-                  role: '신부',
-                  parents: `${eventData.brideFatherName || eventData.bride_father_name || '박○○'} · ${eventData.brideMotherName || eventData.bride_mother_name || '최○○'}의 장녀`,
-                }
-              ].map((person, index) => (
-                <Animated.View 
-                  key={index}
-                  style={[
-                    styles.app_coupleCard,
-                    {
-                      opacity: cardAnims[19 + index],
-                      transform: [{
-                        translateY: cardAnims[19 + index].interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [40, 0]
-                        })
-                      }, {
-                        scale: cardAnims[19 + index].interpolate({
-                          inputRange: [0, 0.5, 1],
-                          outputRange: [0.95, 1.03, 1]
-                        })
-                      }]
-                    }
-                  ]}
-                >
-                  <View style={styles.app_couplePhotoContainer}>
-                    <Image 
-                      source={person.image}
-                      style={styles.app_couplePhoto}
+        {/* 떠오르는 하트 */}
+        {floatingHearts.map(heart => (
+          <FloatingHeart key={heart.id} x={heart.x} />
+        ))}
+
+        {/* ═══ 3. 스크랩북 갤러리 ═══ */}
+        {galleryImages.length > 0 && (
+          <View style={s.section}>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionEmoji}>{'\uD83D\uDCF7'}</Text>
+              <Text style={s.sectionTitle}>{'\uC6B0\uB9AC\uC758 \uC2A4\uD06C\uB7A9\uBD81'}</Text>
+            </View>
+            <View style={s.galleryGrid}>
+              {galleryImages.map((item, idx) => {
+                const isLeft = idx % 2 === 0;
+                const heightVar = idx % 3 === 0 ? 220 : idx % 3 === 1 ? 180 : 200;
+                const imgSource = typeof item.source === 'string' ? { uri: item.source } : item.source;
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    activeOpacity={0.9}
+                    onPress={() => setViewerImage(imgSource)}
+                    style={[
+                      s.polaroid,
+                      {
+                        transform: [{ rotate: `${item.rotate}deg` }],
+                        width: (width - 56) / 2,
+                        marginLeft: isLeft ? 0 : 8,
+                        marginRight: isLeft ? 8 : 0,
+                      },
+                    ]}
+                  >
+                    <View style={s.polaroidTape}>
+                      <View style={s.tapeStrip} />
+                    </View>
+                    <Image
+                      source={imgSource}
+                      style={[s.polaroidImage, { height: heightVar }]}
                       resizeMode="cover"
                     />
-                  </View>
-                  <Text style={styles.app_coupleName}>{person.name}</Text>
-                  <Text style={styles.app_coupleRole}>{person.role}</Text>
-                  <Text style={styles.app_coupleParents}>{person.parents}</Text>
-                </Animated.View>
-              ))}
+                    <Text style={s.polaroidCaption}>{item.caption}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          </Animated.View>
-        </View>
+          </View>
+        )}
 
-        {/* 연락처 섹션 */}
-        <LinearGradient 
-          colors={['#ffffff', '#f8f9fa']} 
-          style={styles.app_contactSection}
-        >
-          <Animated.View 
-            style={[
-              styles.app_sectionContent,
-              {
-                opacity: getSafeAnimValue(fadeAnims, 21),
-                transform: [{
-                  translateY: getSafeAnimValue(fadeAnims, 21, 0).interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0]
-                  })
-                }]
-              }
-            ]}
-          >
-            <Text style={styles.app_sectionTitle}>연락처</Text>
-            <Text style={styles.app_sectionSubtitle}>문의사항이 있으시면 연락해주세요</Text>
-            
-            <View style={styles.app_contactCards}>
-              {[
-                { name: `신랑 ${eventData.groomName || eventData.groom_name || '민수'}`, role: '신랑', color: '#6c5ce7', phone: eventData.groomContact || eventData.groom_contact || '010-1234-5678' },
-                { name: `신부 ${eventData.brideName || eventData.bride_name || '예은'}`, role: '신부', color: '#fd79a8', phone: eventData.brideContact || eventData.bride_contact || '010-9876-5432' }
-              ].map((contact, index) => (
-                <Animated.View
-                  key={index}
-                  style={[
-                    {
-                      opacity: getSafeAnimValue(fadeAnims, 22 + index),
-                      transform: [{
-                        scale: getSafeAnimValue(fadeAnims, 22 + index).interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.9, 1]
-                        })
-                      }]
-                    }
-                  ]}
-                >
-                  <TouchableOpacity 
-                    style={styles.app_contactCard}
-                    onPress={() => {
-                      if (contact.phone) {
-                        Linking.openURL(`tel:${contact.phone}`);
-                      }
-                    }}
-                  >
-                    <View style={[styles.app_contactAvatar, { backgroundColor: contact.color + '20' }]}>
-                      <Text style={styles.app_contactAvatarText}>
-                        {contact.role === '신랑' ? '👨' : '👩'}
+        {/* ═══ 4. 지인들의 따뜻한 후기 (축하메시지) ═══ */}
+        {allowMessages && (
+          <View style={s.section}>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionEmoji}>💬</Text>
+              <Text style={s.sectionTitle}>지인들의 따뜻한 후기</Text>
+            </View>
+            {reviews.map((review, idx) => (
+              <View key={idx} style={s.reviewCard}>
+                <View style={s.reviewTop}>
+                  <View style={s.reviewAvatar}>
+                    <Text style={s.reviewAvatarText}>{review.emoji}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.reviewName}>{review.name}</Text>
+                    <Text style={s.reviewTime}>{review.time}</Text>
+                  </View>
+                </View>
+                <Text style={s.reviewMessage}>{review.message}</Text>
+              </View>
+            ))}
+            <TouchableOpacity
+              style={s.addReviewBtn}
+              onPress={() => showToast('미리보기에서는 메시지를 남길 수 없어요')}
+              activeOpacity={0.8}
+            >
+              <Text style={s.addReviewBtnText}>+ 축하 메시지 남기기</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ═══ 6. 계좌 아코디언 ═══ */}
+        {hasAnyAccount && (
+          <View style={s.section}>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionEmoji}>🧡</Text>
+              <Text style={s.sectionTitle}>축의금 보내기</Text>
+            </View>
+            <Text style={s.accountDesc}>계좌번호를 터치하면 복사됩니다</Text>
+            {['groom', 'bride'].map(side => {
+              const list = accounts[side];
+              if (list.length === 0) return null;
+              const anim = side === 'groom' ? groomAnim : brideAnim;
+              const h = accordionHeight(anim, list.length);
+              const isGroom = side === 'groom';
+              return (
+                <View key={side} style={s.accordionCard}>
+                  <TouchableOpacity style={s.accordionHeader} onPress={() => toggleAccount(side)} activeOpacity={0.85}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <View style={[s.sideBadge, { backgroundColor: isGroom ? C.orangeBg : '#FFF0F6' }]}>
+                        <Text style={{ fontSize: 16 }}>{isGroom ? '🤵' : '👰'}</Text>
+                      </View>
+                      <Text style={s.accordionTitle}>
+                        {isGroom ? '신랑측' : '신부측'}
                       </Text>
                     </View>
-                    <View style={styles.app_contactInfo}>
-                      <Text style={styles.app_contactName}>{contact.name}</Text>
-                      <Text style={styles.app_contactPhone}>{contact.phone}</Text>
-                      <Text style={styles.app_contactRole}>{contact.role}</Text>
-                    </View>
-                    <View style={[styles.app_contactButton, { backgroundColor: contact.color }]}>
-                      <Ionicons name="call" size={16} color="#ffffff" />
-                      <Text style={styles.app_contactButtonText}>전화</Text>
-                    </View>
+                    <Text style={{ fontSize: 16, color: C.sub }}>
+                      {activeAccount === side ? '▲' : '▼'}
+                    </Text>
                   </TouchableOpacity>
-                </Animated.View>
-              ))}
+                  <Animated.View style={[s.accordionBody, { height: h, overflow: 'hidden' }]}>
+                    {list.map((acc, idx) => (
+                      <TouchableOpacity key={idx} style={s.accountBox} onPress={() => copyToClipboard(acc.number)} activeOpacity={0.7}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.accountName}>{acc.name}</Text>
+                          <Text style={s.accountBank}>{acc.bank} {acc.number}</Text>
+                        </View>
+                        <View style={s.copyBtn}>
+                          <Text style={s.copyBtnText}>복사</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </Animated.View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* ── 장소 안내 ── */}
+        {locName ? (
+          <View style={s.section}>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionEmoji}>📍</Text>
+              <Text style={s.sectionTitle}>오시는 길</Text>
+            </View>
+            <Text style={s.locName}>{locName}</Text>
+            {locAddr ? <Text style={s.locAddr}>{locAddr}</Text> : null}
+            <Text style={s.locDate}>{dateStr} {timeStr}</Text>
+
+            {/* 지도 - OpenStreetMap (Leaflet) */}
+            {mapCoord ? (
+              <View style={s.mapContainer}>
+                <WebView
+                  source={{ html: `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><style>*{margin:0;padding:0}html,body,#map{width:100%;height:100%}</style></head><body><div id="map"></div><script>var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([${mapCoord.lat},${mapCoord.lng}],16);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);L.marker([${mapCoord.lat},${mapCoord.lng}]).addTo(map);</script></body></html>` }}
+                  style={{ flex: 1 }}
+                  scrollEnabled={false}
+                  javaScriptEnabled
+                  originWhitelist={['*']}
+                />
+              </View>
+            ) : (locAddr || locName) ? (
+              <View style={s.mapMock}>
+                <Text style={{ fontSize: 14, color: C.sub }}>지도를 불러오는 중...</Text>
+              </View>
+            ) : null}
+
+            {/* 내비 버튼 */}
+            <View style={s.navBtns}>
+              <TouchableOpacity style={s.navBtn} onPress={() => showToast('네이버지도로 이동합니다')} activeOpacity={0.85}>
+                <Text style={s.navBtnText}>🧭 네이버지도</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.navBtn} onPress={() => showToast('카카오내비로 이동합니다')} activeOpacity={0.85}>
+                <Text style={s.navBtnText}>🧭 카카오내비</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.navBtn} onPress={() => showToast('티맵으로 이동합니다')} activeOpacity={0.85}>
+                <Text style={s.navBtnText}>🧭 티맵</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
+      </ScrollView>
+      </Animated.View>
+
+      {/* ═══ 7. 하단 고정 버튼 ═══ */}
+      <View style={[s.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
+        <TouchableOpacity style={s.shareMainBtn} onPress={handleShare} activeOpacity={0.88}>
+          <Text style={s.shareMainBtnText}>{'\uB3D9\uB124 \uC774\uC6C3\uC5D0\uAC8C \uACF5\uC720\uD558\uAE30'} {'\uD83E\uDD55'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ═══ 8. 토스트 ═══ */}
+      {toast.visible && (
+        <Animated.View
+          style={[
+            s.toast,
+            {
+              opacity: toastAnim,
+              transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
+              bottom: insets.bottom + 80,
+            },
+          ]}
+        >
+          <Text style={s.toastText}>{toast.message}</Text>
+        </Animated.View>
+      )}
+
+      {/* ═══ 이미지 뷰어 모달 ═══ */}
+      <Modal visible={!!viewerImage} transparent animationType="fade">
+        <View style={s.viewerBg}>
+          <TouchableOpacity style={[s.viewerClose, { top: insets.top + 16 }]} onPress={() => setViewerImage(null)}>
+            <Text style={s.viewerCloseText}>✕</Text>
+          </TouchableOpacity>
+          {viewerImage && (
+            <Image source={viewerImage} style={s.viewerImage} resizeMode="contain" />
+          )}
+        </View>
+      </Modal>
+
+      {/* ═══ 인트로 오버레이 ═══ */}
+      {showIntro && (
+        <Animated.View style={[s.introOverlay, { opacity: introOpacity }]} pointerEvents="auto">
+          <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFill} />
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={dismissIntro} activeOpacity={1} />
+          <Animated.View style={[
+            s.notifCard,
+            { top: insets.top + 16 },
+            { opacity: notifOpacity, transform: [{ translateY: notifSlide }] },
+          ]}>
+            <View style={s.notifIcon}>
+              <Text style={{ fontSize: 22 }}>🥕</Text>
+            </View>
+            <View style={s.notifContent}>
+              <View style={s.notifTopRow}>
+                <View style={s.notifAppRow}>
+                  <Text style={s.notifAppName}>경조앱</Text>
+                  <View style={s.notifDot} />
+                </View>
+                <Text style={s.notifTime}>방금 전</Text>
+              </View>
+              <Text style={s.notifMessage}>
+                따뜻한 이웃,{' '}
+                <Text style={{ fontWeight: '800', color: C.orange }}>
+                  {groomName} ♥ {brideName}
+                </Text>
+                {' '}님의 모바일 청첩장이 도착했어요! 💌
+              </Text>
+              <Text style={s.notifHint}>터치해서 열어보기</Text>
             </View>
           </Animated.View>
-        </LinearGradient>
-
-        {/* 청첩장 공유하기 섹션 */}
-        <LinearGradient 
-          colors={['#6c5ce7', '#5f3dc4']} 
-          style={styles.app_shareSection}
-        >
-          <Animated.View 
-            style={[
-              styles.app_sectionContent,
-              {
-                opacity: getSafeAnimValue(fadeAnims, 24),
-                transform: [{
-                  translateY: getSafeAnimValue(fadeAnims, 24, 0).interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [30, 0]
-                  })
-                }, {
-                  scale: getSafeAnimValue(fadeAnims, 24).interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [0.9, 1.05, 1]
-                  })
-                }]
-              }
-            ]}
-          >
-            <Text style={styles.app_shareTitle}>청첩장을 공유해주세요</Text>
-            <Text style={styles.app_shareSubtitle}>
-              소중한 분들과 함께 이 기쁨을 나누고 싶습니다
-            </Text>
-            
-            {/* 청첩장 공유하기 버튼 */}
-            <Animated.View
-              style={[
-                {
-                  transform: [{
-                    scale: (pulseAnim || new Animated.Value(1)).interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [1, 1.05]
-                    })
-                  }]
-                }
-              ]}
-            >
-              <TouchableOpacity 
-                style={styles.app_shareButton}
-                onPress={async () => {
-                  try {
-                    const dateStr = formatDate(eventData.date || eventData.event_date, { defaultDate: '2024년 11월 16일' });
-                    const timeStr = formatTime(eventData.ceremonyTime || eventData.ceremony_time, { defaultTime: '오후 2시' });
-                    const location = eventData.location || '웨딩홀';
-                    const groomName = eventData.groomName || eventData.groom_name || '신랑';
-                    const brideName = eventData.brideName || eventData.bride_name || '신부';
-                    
-                    // 템플릿 공유 로직 - 웹 링크로 이동
-                    const WEB_BASE_URL = 'https://contribution-web-srgt.vercel.app';
-                    const eventId = eventData.id || eventData.event_id || 'sample-event';
-                    const templateUrl = `${WEB_BASE_URL}/template/${eventId}?template=vintage`;
-                    
-                    console.log('🔍 공유 링크 생성:', { eventData, eventId, templateUrl });
-                    
-                    await Share.share({
-                      message: `${groomName} ♥ ${brideName} 결혼식에 초대합니다!\n\n${dateStr} ${timeStr}\n${location}\n\n모바일 청첩장을 확인하세요:\n${templateUrl}`,
-                      title: '모바일 청첩장',
-                    });
-                  } catch (error) {
-                    console.log('Share error:', error);
-                  }
-                }}
-              >
-                <Ionicons name="heart" size={20} color="#ffffff" style={{ marginRight: 8 }} />
-                <Text style={styles.app_shareButtonText}>청첩장 공유하기</Text>
-              </TouchableOpacity>
-            </Animated.View>
-          </Animated.View>
-        </LinearGradient>
-      </ScrollView>
-
-      <ImageViewer 
-        visible={showImageViewer}
-        images={[...safeImages.main, ...safeImages.gallery]}
-        currentIndex={currentImageIndex}
-        onClose={() => setShowImageViewer(false)}
-        onIndexChange={setCurrentImageIndex}
-      />
+        </Animated.View>
+      )}
     </View>
   );
-};
+}
 
-export default VintageAppTemplate;
+// ── 떠오르는 하트 컴포넌트 ──
+function FloatingHeart({ x }) {
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 1400,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  return (
+    <Animated.Text
+      style={{
+        position: 'absolute',
+        left: x,
+        fontSize: 28,
+        zIndex: 99,
+        opacity: anim.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 0.8, 0] }),
+        transform: [
+          { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [400, 100] }) },
+          { scale: anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.6, 1.2, 0.8] }) },
+        ],
+      }}
+    >
+      {'\u2764\uFE0F'}
+    </Animated.Text>
+  );
+}
+
+// ======================================================================
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.gray },
+
+  // ── 히어로 ──
+  hero: { width: '100%', height: 640, position: 'relative' },
+  heroImage: { width: '100%', height: '100%' },
+  heroImageOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  heroContent: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    paddingHorizontal: 24, paddingBottom: 56, alignItems: 'center',
+  },
+  heroBadge: {
+    backgroundColor: 'rgba(180,170,155,0.45)', paddingHorizontal: 18, paddingVertical: 8,
+    borderRadius: 999, marginBottom: 24,
+  },
+  heroBadgeText: { color: '#4A4540', fontSize: 14, fontWeight: '700' },
+  heroNames: { fontSize: 36, fontWeight: '800', color: '#2A2520', marginBottom: 12, textAlign: 'center', letterSpacing: 4 },
+  heroDate: { fontSize: 15, fontWeight: '500', color: '#6A6560', letterSpacing: 1 },
+
+  // ── 사랑 온도 카드 ──
+  tempCard: {
+    marginTop: -24, marginHorizontal: 16, backgroundColor: C.white,
+    borderRadius: 20, padding: 24, zIndex: 2,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
+  },
+  tempGuide: { fontSize: 15, fontWeight: '700', color: C.sub, textAlign: 'center', marginBottom: 20 },
+  tempRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 14 },
+  tempFireIcon: { fontSize: 40, marginBottom: -4 },
+  tempBarArea: { flex: 1 },
+  tempValueRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 },
+  tempValue: { fontSize: 26, fontWeight: '800', color: C.orange },
+  tempMax: { fontSize: 13, color: C.sub },
+  tempBarBg: {
+    width: '100%', height: 14, backgroundColor: C.gray, borderRadius: 7, overflow: 'hidden',
+  },
+  tempBarFill: {
+    height: '100%', borderRadius: 7,
+    backgroundColor: C.orange,
+  },
+  tempCongrats: {
+    marginTop: 16, fontSize: 14, fontWeight: '700', color: C.orange, textAlign: 'center',
+  },
+
+  // ── 인사말 ──
+  greetingSection: {
+    backgroundColor: C.white, paddingHorizontal: 24, paddingVertical: 48, alignItems: 'center',
+  },
+  greetingTitle: { fontSize: 18, fontWeight: '700', color: C.orange, marginBottom: 24 },
+  greetingText: { fontSize: 15, lineHeight: 26, color: C.main, textAlign: 'center', marginBottom: 32 },
+  parentsBox: {
+    backgroundColor: C.orangeBg, borderRadius: 20, paddingVertical: 24, paddingHorizontal: 20, width: '100%',
+  },
+  parentsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  parentsNames: { fontSize: 15, color: C.sub },
+  parentsRole: { fontSize: 13, color: C.sub },
+  parentsChild: { fontSize: 15, fontWeight: '700', color: C.main, marginLeft: 8 },
+
+  // ── 공통 섹션 ──
+  section: {
+    backgroundColor: C.white, marginTop: 8, paddingHorizontal: 20, paddingVertical: 28,
+  },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 8 },
+  sectionEmoji: { fontSize: 22 },
+  sectionTitle: { fontSize: 20, fontWeight: '800', color: C.main },
+
+  // ── 스크랩북 갤러리 ──
+  galleryGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center',
+  },
+  polaroid: {
+    backgroundColor: C.white, borderRadius: 4, padding: 8, paddingBottom: 24, marginBottom: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3,
+    borderWidth: 1, borderColor: '#eee', position: 'relative',
+  },
+  polaroidTape: {
+    position: 'absolute', top: -6, left: '35%', zIndex: 2,
+    alignItems: 'center',
+  },
+  tapeStrip: {
+    width: 40, height: 14, backgroundColor: 'rgba(255,200,100,0.5)',
+    borderRadius: 1, transform: [{ rotate: '-2deg' }],
+  },
+  polaroidImage: { width: '100%', borderRadius: 2 },
+  polaroidCaption: {
+    marginTop: 10, fontSize: 13, color: C.sub, textAlign: 'center', fontWeight: '500',
+  },
+
+  // ── 지인 후기 ──
+  reviewCard: {
+    backgroundColor: C.gray, borderRadius: 16, padding: 16, marginBottom: 10,
+  },
+  reviewTop: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10,
+  },
+  reviewAvatar: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: C.orangeBg,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  reviewAvatarText: { fontSize: 18 },
+  reviewName: { fontSize: 15, fontWeight: '700', color: C.main },
+  reviewTime: { fontSize: 12, color: C.sub },
+  reviewMessage: { fontSize: 14, lineHeight: 22, color: C.main },
+  addReviewBtn: {
+    marginTop: 8, borderWidth: 1.5, borderColor: C.orange, borderStyle: 'dashed',
+    paddingVertical: 14, borderRadius: 14, alignItems: 'center',
+  },
+  addReviewBtnText: { fontSize: 15, fontWeight: '700', color: C.orange },
+
+  // ── 계좌 아코디언 ──
+  accountDesc: { fontSize: 14, color: C.sub, marginBottom: 16 },
+  accordionCard: {
+    borderWidth: 1, borderColor: C.border, borderRadius: 16, overflow: 'hidden',
+    marginBottom: 10, backgroundColor: C.white,
+  },
+  accordionHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 16,
+  },
+  accordionTitle: { fontSize: 16, fontWeight: '700', color: C.main },
+  accordionBody: { paddingHorizontal: 16 },
+  sideBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  sideBadgeText: { fontSize: 12, fontWeight: '700' },
+  accountBox: {
+    backgroundColor: C.gray, borderRadius: 12, padding: 14,
+    flexDirection: 'row', alignItems: 'center', marginBottom: 8,
+  },
+  accountName: { fontSize: 15, fontWeight: '700', color: C.main, marginBottom: 2 },
+  accountBank: { fontSize: 13, color: C.sub },
+  copyBtn: {
+    backgroundColor: C.white, paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 10, borderWidth: 1, borderColor: C.border,
+  },
+  copyBtnText: { fontSize: 13, fontWeight: '700', color: C.orange },
+
+  // ── 장소 ──
+  locName: { fontSize: 18, fontWeight: '700', color: C.main, marginBottom: 4 },
+  locAddr: { fontSize: 14, color: C.sub, marginBottom: 4 },
+  locDate: { fontSize: 13, color: C.sub, marginBottom: 16 },
+  mapMock: {
+    width: '100%', height: 180, backgroundColor: '#E8E6E3', borderRadius: 16, marginBottom: 12,
+    alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden',
+  },
+  mapPin: {
+    width: 44, height: 44, backgroundColor: C.white, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 4,
+  },
+  mapLabel: {
+    position: 'absolute', bottom: 10, right: 10, backgroundColor: 'rgba(255,255,255,0.9)',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10,
+  },
+  mapLabelText: { fontSize: 12, fontWeight: '700', color: C.main },
+  navBtns: { flexDirection: 'row', gap: 8 },
+  navBtn: {
+    flex: 1, backgroundColor: C.gray, paddingVertical: 12, borderRadius: 12, alignItems: 'center',
+  },
+  navBtnText: { fontSize: 13, fontWeight: '700', color: C.main },
+
+  // ── 하단 버튼 ──
+  bottomBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: 'rgba(255,255,255,0.95)', borderTopWidth: 1, borderTopColor: C.border,
+    paddingHorizontal: 16, paddingTop: 12,
+  },
+  shareMainBtn: {
+    backgroundColor: C.orange, paddingVertical: 16, borderRadius: 14,
+    alignItems: 'center',
+    shadowColor: C.orange, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5,
+  },
+  shareMainBtnText: { fontSize: 17, fontWeight: '700', color: C.white },
+
+  // ── 토스트 ──
+  toast: {
+    position: 'absolute', left: 24, right: 24, zIndex: 50,
+    alignItems: 'center',
+  },
+  toastText: {
+    backgroundColor: 'rgba(33,33,36,0.92)', paddingHorizontal: 24, paddingVertical: 14,
+    borderRadius: 999, fontSize: 15, fontWeight: '600', color: C.white,
+    overflow: 'hidden',
+  },
+
+  // ── 이미지 뷰어 ──
+  viewerBg: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
+  viewerClose: { position: 'absolute', right: 16, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.2)', width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  viewerCloseText: { fontSize: 20, color: '#fff', fontWeight: '600' },
+  viewerImage: { width: '100%', height: '80%' },
+
+  // ── 지도 ──
+  mapContainer: {
+    width: '100%', height: 200, borderRadius: 16, overflow: 'hidden', marginBottom: 12,
+    borderWidth: 1, borderColor: '#E5E7EB', position: 'relative',
+  },
+  mapImage: { width: '100%', height: '100%' },
+
+  // ── 인트로 오버레이 ──
+  introOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.2)', zIndex: 50,
+  },
+  notifCard: {
+    position: 'absolute', left: 16, right: 16,
+    backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 20, padding: 16,
+    flexDirection: 'row', gap: 12, alignItems: 'flex-start',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 24, elevation: 12,
+  },
+  notifIcon: {
+    width: 42, height: 42, backgroundColor: C.orange, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  notifContent: { flex: 1, paddingTop: 2 },
+  notifTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  notifAppRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  notifAppName: { fontSize: 13, fontWeight: '700', color: C.main },
+  notifDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef4444' },
+  notifTime: { fontSize: 12, color: C.sub },
+  notifMessage: { fontSize: 14, color: C.main, lineHeight: 20, fontWeight: '500' },
+  notifHint: { fontSize: 12, color: C.sub, fontWeight: '600', marginTop: 6 },
+});

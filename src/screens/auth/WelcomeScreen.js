@@ -6,9 +6,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  ScrollView,
   Dimensions,
   Image,
   Animated,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,7 +27,6 @@ export default function WelcomeScreen({ navigation }) {
   const buttonFloatingAnim1 = useRef(new Animated.Value(0)).current;
   const buttonFloatingAnim2 = useRef(new Animated.Value(0)).current;
   
-  const locationGlowAnim = useRef(new Animated.Value(0)).current;
   const locationScaleAnim = useRef(new Animated.Value(0.98)).current;
   const locationOpacityAnim = useRef(new Animated.Value(0.8)).current;
   const cardScaleAnim = useRef(new Animated.Value(0.9)).current;
@@ -46,7 +47,6 @@ export default function WelcomeScreen({ navigation }) {
         floatingAnim3.setValue(0);
         buttonFloatingAnim1.setValue(0);
         buttonFloatingAnim2.setValue(0);
-        locationGlowAnim.setValue(0);
         locationScaleAnim.setValue(0.98);
         locationOpacityAnim.setValue(0.8);
         cardScaleAnim.setValue(0.9);
@@ -63,7 +63,7 @@ export default function WelcomeScreen({ navigation }) {
       // --- 2. 애니메이션 정의 및 시작 ---
       const createFloatingAnimation = (animValue, duration, delay = 0) => Animated.loop(Animated.sequence([Animated.delay(delay), Animated.timing(animValue, { toValue: 1, duration, useNativeDriver: true }), Animated.timing(animValue, { toValue: 0, duration, useNativeDriver: true })]));
       const createButtonAnimation = (animValue, duration, delay = 0) => Animated.loop(Animated.sequence([Animated.delay(delay), Animated.timing(animValue, { toValue: 1, duration, useNativeDriver: true }), Animated.timing(animValue, { toValue: 0, duration, useNativeDriver: true })]));
-      const locationGlowAnimation = () => Animated.loop(Animated.sequence([Animated.timing(locationGlowAnim, { toValue: 1, duration: 2500, useNativeDriver: false }), Animated.timing(locationGlowAnim, { toValue: 0, duration: 2500, useNativeDriver: false })]));
+      // locationGlowAnimation 제거 - useNativeDriver: false로 JS 스레드 병목 유발
       const locationScaleAnimation = () => Animated.loop(Animated.sequence([Animated.timing(locationScaleAnim, { toValue: 1.02, duration: 3000, useNativeDriver: true }), Animated.timing(locationScaleAnim, { toValue: 0.98, duration: 3000, useNativeDriver: true })]));
       const locationOpacityAnimation = () => Animated.loop(Animated.sequence([Animated.timing(locationOpacityAnim, { toValue: 1, duration: 2000, useNativeDriver: true }), Animated.timing(locationOpacityAnim, { toValue: 0.8, duration: 2000, useNativeDriver: true })]));
       const cardAppearAnimation = () => Animated.parallel([Animated.timing(cardScaleAnim, { toValue: 1, duration: 800, useNativeDriver: true }), Animated.timing(cardOpacityAnim, { toValue: 1, duration: 800, useNativeDriver: true })]);
@@ -76,7 +76,6 @@ export default function WelcomeScreen({ navigation }) {
         createFloatingAnimation(floatingAnim3, 5000, 2000),
         createButtonAnimation(buttonFloatingAnim1, 6000, 0),
         createButtonAnimation(buttonFloatingAnim2, 8000, 3000),
-        locationGlowAnimation(),
         locationScaleAnimation(),
         locationOpacityAnimation(),
       ];
@@ -94,7 +93,7 @@ export default function WelcomeScreen({ navigation }) {
       return () => {
         loopingAnimations.forEach(anim => anim.stop());
         clearTimeout(sequenceTimer);
-        [floatingAnim1, floatingAnim2, floatingAnim3, buttonFloatingAnim1, buttonFloatingAnim2, locationGlowAnim, locationScaleAnim, locationOpacityAnim, cardScaleAnim, cardOpacityAnim, iconAnim1, iconAnim2, iconAnim3, textSlideAnim, textOpacityAnim].forEach(anim => anim.stopAnimation());
+        [floatingAnim1, floatingAnim2, floatingAnim3, buttonFloatingAnim1, buttonFloatingAnim2, locationScaleAnim, locationOpacityAnim, cardScaleAnim, cardOpacityAnim, iconAnim1, iconAnim2, iconAnim3, textSlideAnim, textOpacityAnim].forEach(anim => anim.stopAnimation());
       };
     }, [])
   );
@@ -116,7 +115,11 @@ export default function WelcomeScreen({ navigation }) {
         justifyContent: 'space-between'을 사용해 상단 콘텐츠와 하단 버튼을 명확하게 분리합니다.
         이를 통해 화면 재진입 시 발생하던 레이아웃 밀림 현상을 해결합니다.
       */}
-      <View style={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        bounces={true}
+      >
         {/* 상단 및 중간 콘텐츠를 하나의 그룹으로 묶습니다. */}
         <View>
           {/* 로고 및 메인 메시지 */}
@@ -145,11 +148,11 @@ export default function WelcomeScreen({ navigation }) {
               <Animated.View style={[styles.floatingCircle, styles.floatingCircle2, { transform: [{ translateX: floatingAnim2.interpolate({ inputRange: [0, 1], outputRange: [20, -10] }) }, { translateY: floatingAnim2.interpolate({ inputRange: [0, 1], outputRange: [5, 20] }) }], opacity: floatingAnim2.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.2, 0.5, 0.2] }) }]} />
               <Animated.View style={[styles.floatingCircle, styles.floatingCircle3, { transform: [{ translateX: floatingAnim3.interpolate({ inputRange: [0, 1], outputRange: [-5, 15] }) }, { translateY: floatingAnim3.interpolate({ inputRange: [0, 1], outputRange: [8, -5] }) }], opacity: floatingAnim3.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.4, 0.7, 0.4] }) }]} />
               
-              <Animated.View style={[styles.locationTextShadow, { shadowOpacity: locationGlowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.1, 0.25] }), shadowRadius: locationGlowAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 16] }), elevation: locationGlowAnim.interpolate({ inputRange: [0, 1], outputRange: [2, 6] }) }]}>
-                <Animated.Text style={[styles.locationText, { borderColor: locationGlowAnim.interpolate({ inputRange: [0, 1], outputRange: ['#E3F2FD', '#90CAF9'] }), backgroundColor: locationGlowAnim.interpolate({ inputRange: [0, 1], outputRange: ['#FFFFFF', '#F8FDFF'] }) }]}>
+              <View style={styles.locationTextShadow}>
+                <Text style={styles.locationText}>
                   지금 경조사 관리를 시작해보세요
-                </Animated.Text>
-              </Animated.View>
+                </Text>
+              </View>
             </Animated.View>
           </View>
 
@@ -190,7 +193,7 @@ export default function WelcomeScreen({ navigation }) {
             <Text style={styles.linkText}>개인정보처리방침</Text>에 동의하게 됩니다.
           </Text>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -201,12 +204,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 24,
     justifyContent: 'space-between',
-    paddingTop: 50,
-    // 버튼 영역의 하단 여백을 content 컨테이너로 이동하여 전체적인 레이아웃을 제어합니다.
-    paddingBottom: 44,
+    paddingTop: Platform.OS === 'ios' ? 10 : 50,
+    paddingBottom: Platform.OS === 'ios' ? 10 : 44,
   },
   logoSection: {
     alignItems: 'center',
@@ -261,12 +263,13 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     textAlign: 'center',
     fontWeight: '700',
-    backgroundColor: Colors.white,
+    backgroundColor: '#F8FDFF',
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 50,
     overflow: 'hidden',
     borderWidth: 2,
+    borderColor: '#90CAF9',
     zIndex: 10,
   },
   floatingCircle: {

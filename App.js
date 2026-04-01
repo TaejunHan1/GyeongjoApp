@@ -1,26 +1,43 @@
 // App.js - AsyncStorage와 Supabase Auth 둘 다 체크
 import React, { useState, useEffect, useRef } from 'react';
-import { Alert, Platform } from 'react-native';
+import { Alert, Platform, LogBox } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import Toast from 'react-native-toast-message';
+
+// Expo Go에서 나오는 알림 관련 경고 숨기기
+LogBox.ignoreLogs([
+  'expo-notifications',
+  'expo-notifications:',
+  'Android Push notifications',
+  'functionality is not fully supported',
+  'Network request failed',
+]);
+
+// 네트워크 에러 (Supabase Realtime 등) 조용히 처리
+const originalConsoleError = console.error;
+console.error = (...args) => {
+  const msg = args[0]?.toString?.() || '';
+  if (msg.includes('Network request failed')) return;
+  originalConsoleError(...args);
+};
 import { supabase } from './src/lib/supabase';
 import LoadingScreen from './src/screens/LoadingScreen';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import AppNavigator from './src/navigation/AppNavigator';
 
-// Expo 네이티브 알림 초기화
+// Expo 네이티브 알림 초기화 (Expo Go에서는 제한됨)
 const initializeNotifications = async () => {
   try {
     console.log('🔔 Expo 알림 시스템 초기화...');
-    
-    // Android 알림 채널 설정
-    if (Platform.OS === 'android') {
+
+    // Android 알림 채널 설정 (함수 존재 여부 확인)
+    if (Platform.OS === 'android' && typeof Notifications.setNotificationChannelAsync === 'function') {
       console.log('📱 Android 기본 알림 채널 설정...');
       await Notifications.setNotificationChannelAsync('contribution-notifications', {
         name: '축의금 알림',
-        importance: Notifications.AndroidImportance.HIGH,
+        importance: Notifications.AndroidImportance?.HIGH || 4,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#FF231F7C',
         sound: 'default',
@@ -28,32 +45,38 @@ const initializeNotifications = async () => {
         showBadge: true,
       });
       console.log('✅ Android 기본 알림 채널 설정 완료');
+    } else {
+      console.log('📱 알림 채널 설정 스킵 (Expo Go 제한)');
     }
-    
+
     return true;
   } catch (error) {
-    console.error('❌ 알림 초기화 실패:', error);
+    console.log('⚠️ 알림 초기화 스킵 (Expo Go 제한):', error.message);
     return false;
   }
 };
 
-// 알림 수신 시 처리 설정 (백그라운드 알림 지원)
+// 알림 수신 시 처리 설정 (백그라운드 알림 지원) - Expo Go에서는 제한됨
 try {
-  Notifications.setNotificationHandler({
-    handleNotification: async (notification) => {
-      console.log('🔔 백그라운드 알림 수신:', notification);
-      
-      return {
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        priority: Notifications.AndroidNotificationPriority.HIGH,
-      };
-    },
-  });
-  console.log('✅ 백그라운드 알림 핸들러 설정 완료');
+  if (typeof Notifications.setNotificationHandler === 'function') {
+    Notifications.setNotificationHandler({
+      handleNotification: async (notification) => {
+        console.log('🔔 백그라운드 알림 수신:', notification);
+
+        return {
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          priority: Notifications.AndroidNotificationPriority?.HIGH || 'high',
+        };
+      },
+    });
+    console.log('✅ 백그라운드 알림 핸들러 설정 완료');
+  } else {
+    console.log('⚠️ 알림 핸들러 설정 스킵 (Expo Go 제한)');
+  }
 } catch (error) {
-  console.log('⚠️ 알림 핸들러 설정 실패 (Expo Go에서는 지원 안함)');
+  console.log('⚠️ 알림 핸들러 설정 스킵 (Expo Go 제한)');
 }
 
 export default function App() {
@@ -216,10 +239,14 @@ export default function App() {
       }
     );
 
-    // 푸시 알림 리스너 설정
+    // 푸시 알림 리스너 설정 (Expo Go에서는 제한됨)
     try {
-      notificationListener.current = Notifications.addNotificationReceivedListener(handleNotificationReceived);
-      responseListener.current = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+      if (typeof Notifications.addNotificationReceivedListener === 'function') {
+        notificationListener.current = Notifications.addNotificationReceivedListener(handleNotificationReceived);
+      }
+      if (typeof Notifications.addNotificationResponseReceivedListener === 'function') {
+        responseListener.current = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+      }
       console.log('🔔 푸시 알림 리스너 설정 완료');
     } catch (error) {
       console.log('⚠️ Expo Go 환경 - 알림 기능 비활성화');
@@ -231,13 +258,25 @@ export default function App() {
         clearInterval(authCheckInterval);
       }
       authListener?.subscription?.unsubscribe();
-      
-      // 알림 리스너 정리
-      if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
-      }
-      if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
+
+      // 알림 리스너 정리 (함수 존재 여부 확인)
+      try {
+        if (notificationListener.current) {
+          if (typeof Notifications.removeNotificationSubscription === 'function') {
+            Notifications.removeNotificationSubscription(notificationListener.current);
+          } else if (notificationListener.current?.remove) {
+            notificationListener.current.remove();
+          }
+        }
+        if (responseListener.current) {
+          if (typeof Notifications.removeNotificationSubscription === 'function') {
+            Notifications.removeNotificationSubscription(responseListener.current);
+          } else if (responseListener.current?.remove) {
+            responseListener.current.remove();
+          }
+        }
+      } catch (cleanupError) {
+        console.log('⚠️ 알림 리스너 정리 스킵');
       }
     };
   }, []);

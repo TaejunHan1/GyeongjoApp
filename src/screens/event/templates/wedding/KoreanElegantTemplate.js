@@ -11,7 +11,9 @@ import {
   Image,
   Linking,
   Share,
+  Alert,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -35,10 +37,11 @@ import styles from './WeddingStyles';
 const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  
+  const [activeAccountToggle, setActiveAccountToggle] = useState('groom');
+
   const scrollY = useRef(new Animated.Value(0)).current;
-  const fadeAnims = useRef(Array.from({ length: 12 }, () => new Animated.Value(0))).current;
-  const slideAnims = useRef(Array.from({ length: 12 }, () => new Animated.Value(50))).current;
+  const fadeAnims = useRef(Array.from({ length: 14 }, () => new Animated.Value(0))).current;
+  const slideAnims = useRef(Array.from({ length: 14 }, () => new Animated.Value(50))).current;
   
   // 실시간 카운트다운
   const timeLeft = useCountdown(
@@ -48,6 +51,11 @@ const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
   
   // 카테고리별 이미지 안전하게 가져오기
   const safeImages = getCategorizedImagesSafe(categorizedImages);
+
+  // 신랑/신부 사진 유무 확인
+  const hasGroomPhoto = categorizedImages?.groom?.length > 0 && typeof categorizedImages.groom[0] !== 'number';
+  const hasBridePhoto = categorizedImages?.bride?.length > 0 && typeof categorizedImages.bride[0] !== 'number';
+  const hasCouplePhotos = hasGroomPhoto || hasBridePhoto;
 
   
   useEffect(() => {
@@ -111,6 +119,29 @@ const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
     setCurrentImageIndex(index);
     setShowImageViewer(true);
   };
+
+  const handleAccountToggle = (type) => {
+    setActiveAccountToggle(activeAccountToggle === type ? null : type);
+  };
+
+  const copyAccount = async (accountNumber) => {
+    try {
+      await Clipboard.setStringAsync(accountNumber);
+      Alert.alert('복사 완료', '계좌번호가 복사되었습니다.');
+    } catch (error) {
+      Alert.alert('오류', '복사에 실패했습니다.');
+    }
+  };
+
+  // 계좌 정보 존재 여부
+  const hasAnyAccount = !!(
+    eventData.additional_info?.groom_account_number ||
+    eventData.additional_info?.groom_father_account_number ||
+    eventData.additional_info?.groom_mother_account_number ||
+    eventData.additional_info?.bride_account_number ||
+    eventData.additional_info?.bride_father_account_number ||
+    eventData.additional_info?.bride_mother_account_number
+  );
 
   return (
     <View style={styles.korean_container}>
@@ -216,7 +247,8 @@ const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
           </Text>
         </Animated.View>
 
-        {/* 신랑신부 소개 - 신랑/신부 전용 사진 사용 */}
+        {/* 신랑신부 소개 - 사진이 있을 때만 */}
+        {hasCouplePhotos && (
         <Animated.View style={[
           styles.korean_coupleSection,
           {
@@ -276,6 +308,7 @@ const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
             </View>
           </View>
         </Animated.View>
+        )}
 
         {/* 예식 정보 */}
         <Animated.View style={[
@@ -430,6 +463,183 @@ const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
           </View>
         </Animated.View>
 
+        {/* 계좌번호 섹션 */}
+        {hasAnyAccount && (
+          <Animated.View style={[
+            koreanAccountStyles.accountSection,
+            {
+              opacity: fadeAnims[10],
+              transform: [{ translateY: slideAnims[10] }]
+            }
+          ]}>
+            <View style={styles.korean_sectionHeader}>
+              <View style={styles.korean_decorativeLine} />
+              <Text style={styles.korean_sectionTitle}>마음 전하실 곳</Text>
+              <View style={styles.korean_decorativeLine} />
+            </View>
+
+            {/* 토글 버튼 */}
+            <View style={koreanAccountStyles.toggleContainer}>
+              <View style={koreanAccountStyles.toggleButtons}>
+                <TouchableOpacity
+                  style={[
+                    koreanAccountStyles.toggleButton,
+                    activeAccountToggle === 'groom' && koreanAccountStyles.toggleButtonActive
+                  ]}
+                  onPress={() => handleAccountToggle('groom')}
+                >
+                  <Text style={[
+                    koreanAccountStyles.toggleButtonText,
+                    activeAccountToggle === 'groom' && koreanAccountStyles.toggleButtonTextActive
+                  ]}>신랑측</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    koreanAccountStyles.toggleButton,
+                    activeAccountToggle === 'bride' && koreanAccountStyles.toggleButtonActive
+                  ]}
+                  onPress={() => handleAccountToggle('bride')}
+                >
+                  <Text style={[
+                    koreanAccountStyles.toggleButtonText,
+                    activeAccountToggle === 'bride' && koreanAccountStyles.toggleButtonTextActive
+                  ]}>신부측</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* 신랑측 계좌 */}
+            {activeAccountToggle === 'groom' && (eventData.additional_info?.groom_account_number ||
+              eventData.additional_info?.groom_father_account_number ||
+              eventData.additional_info?.groom_mother_account_number) && (
+              <View style={koreanAccountStyles.accountGroup}>
+                {eventData.additional_info?.groom_account_number && (
+                  <TouchableOpacity
+                    style={koreanAccountStyles.accountCard}
+                    onPress={() => copyAccount(eventData.additional_info.groom_account_number)}
+                  >
+                    <View style={koreanAccountStyles.accountInfo}>
+                      <Text style={koreanAccountStyles.accountName}>
+                        {eventData.groomName || eventData.groom_name || '신랑'}
+                      </Text>
+                      <View style={koreanAccountStyles.bankInfo}>
+                        <Text style={koreanAccountStyles.bankName}>{eventData.additional_info.groom_bank_name || '은행'}</Text>
+                        <Text style={koreanAccountStyles.accountNumber}>{eventData.additional_info.groom_account_number}</Text>
+                      </View>
+                    </View>
+                    <View style={koreanAccountStyles.copyButton}>
+                      <Text style={koreanAccountStyles.copyButtonText}>복사</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                {eventData.additional_info?.groom_father_account_number && (
+                  <TouchableOpacity
+                    style={koreanAccountStyles.accountCard}
+                    onPress={() => copyAccount(eventData.additional_info.groom_father_account_number)}
+                  >
+                    <View style={koreanAccountStyles.accountInfo}>
+                      <Text style={koreanAccountStyles.accountName}>
+                        {eventData.groomFatherName || eventData.groom_father_name || '신랑 아버지'} 아버님
+                      </Text>
+                      <View style={koreanAccountStyles.bankInfo}>
+                        <Text style={koreanAccountStyles.bankName}>{eventData.additional_info.groom_father_bank_name || '은행'}</Text>
+                        <Text style={koreanAccountStyles.accountNumber}>{eventData.additional_info.groom_father_account_number}</Text>
+                      </View>
+                    </View>
+                    <View style={koreanAccountStyles.copyButton}>
+                      <Text style={koreanAccountStyles.copyButtonText}>복사</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                {eventData.additional_info?.groom_mother_account_number && (
+                  <TouchableOpacity
+                    style={koreanAccountStyles.accountCard}
+                    onPress={() => copyAccount(eventData.additional_info.groom_mother_account_number)}
+                  >
+                    <View style={koreanAccountStyles.accountInfo}>
+                      <Text style={koreanAccountStyles.accountName}>
+                        {eventData.groomMotherName || eventData.groom_mother_name || '신랑 어머니'} 어머님
+                      </Text>
+                      <View style={koreanAccountStyles.bankInfo}>
+                        <Text style={koreanAccountStyles.bankName}>{eventData.additional_info.groom_mother_bank_name || '은행'}</Text>
+                        <Text style={koreanAccountStyles.accountNumber}>{eventData.additional_info.groom_mother_account_number}</Text>
+                      </View>
+                    </View>
+                    <View style={koreanAccountStyles.copyButton}>
+                      <Text style={koreanAccountStyles.copyButtonText}>복사</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {/* 신부측 계좌 */}
+            {activeAccountToggle === 'bride' && (eventData.additional_info?.bride_account_number ||
+              eventData.additional_info?.bride_father_account_number ||
+              eventData.additional_info?.bride_mother_account_number) && (
+              <View style={koreanAccountStyles.accountGroup}>
+                {eventData.additional_info?.bride_account_number && (
+                  <TouchableOpacity
+                    style={koreanAccountStyles.accountCard}
+                    onPress={() => copyAccount(eventData.additional_info.bride_account_number)}
+                  >
+                    <View style={koreanAccountStyles.accountInfo}>
+                      <Text style={koreanAccountStyles.accountName}>
+                        {eventData.brideName || eventData.bride_name || '신부'}
+                      </Text>
+                      <View style={koreanAccountStyles.bankInfo}>
+                        <Text style={koreanAccountStyles.bankName}>{eventData.additional_info.bride_bank_name || '은행'}</Text>
+                        <Text style={koreanAccountStyles.accountNumber}>{eventData.additional_info.bride_account_number}</Text>
+                      </View>
+                    </View>
+                    <View style={koreanAccountStyles.copyButton}>
+                      <Text style={koreanAccountStyles.copyButtonText}>복사</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                {eventData.additional_info?.bride_father_account_number && (
+                  <TouchableOpacity
+                    style={koreanAccountStyles.accountCard}
+                    onPress={() => copyAccount(eventData.additional_info.bride_father_account_number)}
+                  >
+                    <View style={koreanAccountStyles.accountInfo}>
+                      <Text style={koreanAccountStyles.accountName}>
+                        {eventData.brideFatherName || eventData.bride_father_name || '신부 아버지'} 아버님
+                      </Text>
+                      <View style={koreanAccountStyles.bankInfo}>
+                        <Text style={koreanAccountStyles.bankName}>{eventData.additional_info.bride_father_bank_name || '은행'}</Text>
+                        <Text style={koreanAccountStyles.accountNumber}>{eventData.additional_info.bride_father_account_number}</Text>
+                      </View>
+                    </View>
+                    <View style={koreanAccountStyles.copyButton}>
+                      <Text style={koreanAccountStyles.copyButtonText}>복사</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                {eventData.additional_info?.bride_mother_account_number && (
+                  <TouchableOpacity
+                    style={koreanAccountStyles.accountCard}
+                    onPress={() => copyAccount(eventData.additional_info.bride_mother_account_number)}
+                  >
+                    <View style={koreanAccountStyles.accountInfo}>
+                      <Text style={koreanAccountStyles.accountName}>
+                        {eventData.brideMotherName || eventData.bride_mother_name || '신부 어머니'} 어머님
+                      </Text>
+                      <View style={koreanAccountStyles.bankInfo}>
+                        <Text style={koreanAccountStyles.bankName}>{eventData.additional_info.bride_mother_bank_name || '은행'}</Text>
+                        <Text style={koreanAccountStyles.accountNumber}>{eventData.additional_info.bride_mother_account_number}</Text>
+                      </View>
+                    </View>
+                    <View style={koreanAccountStyles.copyButton}>
+                      <Text style={koreanAccountStyles.copyButtonText}>복사</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </Animated.View>
+        )}
+
         {/* 공유 섹션 */}
         <Animated.View style={[
           styles.korean_shareSection,
@@ -478,5 +688,91 @@ const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
     </View>
   );
 };
+
+const koreanAccountStyles = StyleSheet.create({
+  accountSection: {
+    backgroundColor: KoreanColors.elegant.light,
+    paddingVertical: 50,
+    paddingHorizontal: 20,
+  },
+  toggleContainer: {
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 20,
+  },
+  toggleButtons: {
+    flexDirection: 'row',
+    backgroundColor: KoreanColors.elegant.secondary,
+    borderRadius: 25,
+    padding: 4,
+  },
+  toggleButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 30,
+    borderRadius: 22,
+  },
+  toggleButtonActive: {
+    backgroundColor: KoreanColors.elegant.accent,
+  },
+  toggleButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: KoreanColors.elegant.text,
+    opacity: 0.5,
+  },
+  toggleButtonTextActive: {
+    color: '#ffffff',
+    opacity: 1,
+  },
+  accountGroup: {
+    marginTop: 5,
+  },
+  accountCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: KoreanColors.elegant.secondary,
+  },
+  accountInfo: {
+    flex: 1,
+  },
+  accountName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: KoreanColors.elegant.text,
+    marginBottom: 4,
+  },
+  bankInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bankName: {
+    fontSize: 13,
+    color: KoreanColors.elegant.text,
+    opacity: 0.6,
+    marginRight: 8,
+  },
+  accountNumber: {
+    fontSize: 13,
+    color: KoreanColors.elegant.text,
+    opacity: 0.8,
+  },
+  copyButton: {
+    backgroundColor: KoreanColors.elegant.accent,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  copyButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+});
 
 export default KoreanElegantTemplate;

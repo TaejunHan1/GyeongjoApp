@@ -18,6 +18,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { WebView } from 'react-native-webview';
 import {
   useCountdown,
   getCategorizedImagesSafe,
@@ -294,7 +295,8 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [activeAccountToggle, setActiveAccountToggle] = useState(null);
   const [galleryIndex, setGalleryIndex] = useState(0); // 갤러리 인덱스 추가
-  
+  const [mapCoord, setMapCoord] = useState(null);
+
   const scrollViewRef = useRef(null);
   const fadeAnims = useRef(Array.from({ length: 20 }, () => new Animated.Value(0))).current;
   const slideAnims = useRef(Array.from({ length: 20 }, () => new Animated.Value(30))).current;
@@ -350,7 +352,36 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
       easing: Easing.out(Easing.ease),
     }).start();
   }, []);
-  
+
+  // 카카오 좌표 검색
+  const KAKAO_KEY = '8389c9b97fc151fcf5b0f7d994e16f7a';
+  const locName = eventData.location || eventData.hallName || eventData.hall_name || '';
+  const locAddr = eventData.detailedAddress || eventData.detailed_address || eventData.address || '';
+
+  useEffect(() => {
+    const query = locAddr || locName;
+    if (!query) return;
+
+    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
+      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
+    })
+      .then(r => r.json())
+      .then(data => {
+        const doc = data.documents?.[0];
+        if (doc) {
+          setMapCoord({ lat: doc.y, lng: doc.x });
+        } else if (locAddr) {
+          return fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(locAddr)}`, {
+            headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
+          }).then(r => r.json()).then(d2 => {
+            const doc2 = d2.documents?.[0];
+            if (doc2) setMapCoord({ lat: doc2.y, lng: doc2.x });
+          });
+        }
+      })
+      .catch(() => {});
+  }, [locAddr, locName]);
+
   const handleImagePress = (index) => {
     setCurrentImageIndex(index);
     setShowImageViewer(true);
@@ -433,16 +464,55 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
   ]) : [];
 
   const groomAccount = {
-    bank: eventData.groomBank || '국민은행',
-    number: eventData.groomAccount || '123-456-789012',
-    name: eventData.groomName || '현'
+    bank: eventData.groomBank || '',
+    number: eventData.groomAccount || '',
+    name: eventData.groomName || ''
   };
 
   const brideAccount = {
-    bank: eventData.brideBank || '신한은행',
-    number: eventData.brideAccount || '234-567-890123',
-    name: eventData.brideName || '아름'
+    bank: eventData.brideBank || '',
+    number: eventData.brideAccount || '',
+    name: eventData.brideName || ''
   };
+
+  const groomFatherAccount = {
+    bank: eventData.additional_info?.groom_father_bank_name || '',
+    number: eventData.additional_info?.groom_father_account_number || '',
+    name: eventData.groomFatherName || ''
+  };
+
+  const groomMotherAccount = {
+    bank: eventData.additional_info?.groom_mother_bank_name || '',
+    number: eventData.additional_info?.groom_mother_account_number || '',
+    name: eventData.groomMotherName || ''
+  };
+
+  const brideFatherAccount = {
+    bank: eventData.additional_info?.bride_father_bank_name || '',
+    number: eventData.additional_info?.bride_father_account_number || '',
+    name: eventData.brideFatherName || ''
+  };
+
+  const brideMotherAccount = {
+    bank: eventData.additional_info?.bride_mother_bank_name || '',
+    number: eventData.additional_info?.bride_mother_account_number || '',
+    name: eventData.brideMotherName || ''
+  };
+
+  const hasGroomAccount = groomAccount.number.length > 0;
+  const hasBrideAccount = brideAccount.number.length > 0;
+  const hasGroomFatherAccount = groomFatherAccount.number.length > 0;
+  const hasGroomMotherAccount = groomMotherAccount.number.length > 0;
+  const hasBrideFatherAccount = brideFatherAccount.number.length > 0;
+  const hasBrideMotherAccount = brideMotherAccount.number.length > 0;
+  const hasAnyGroomSide = hasGroomAccount || hasGroomFatherAccount || hasGroomMotherAccount;
+  const hasAnyBrideSide = hasBrideAccount || hasBrideFatherAccount || hasBrideMotherAccount;
+  const hasAnyAccount = hasAnyGroomSide || hasAnyBrideSide;
+
+  // 신랑/신부 사진 유무 확인
+  const hasGroomPhoto = categorizedImages?.groom?.length > 0 && typeof categorizedImages.groom[0] !== 'number';
+  const hasBridePhoto = categorizedImages?.bride?.length > 0 && typeof categorizedImages.bride[0] !== 'number';
+  const hasCouplePhotos = hasGroomPhoto || hasBridePhoto;
 
   return (
     <View style={styles.container}>
@@ -685,7 +755,8 @@ please bless our marriage.`}
           </View>
         </Animated.View>
         
-        {/* 신랑 & 신부 섹션 */}
+        {/* 신랑 & 신부 섹션 - 사진이 있을 때만 표시 */}
+        {hasCouplePhotos && (
         <Animated.View style={[
           styles.coupleSection,
           {
@@ -695,42 +766,49 @@ please bless our marriage.`}
         ]}>
           <Text style={styles.sectionTitle}>THE COUPLE</Text>
           <View style={styles.sectionTitleLine} />
-          
+
           <View style={styles.coupleContainer}>
             {/* 신랑 */}
+            {hasGroomPhoto && (
             <View style={styles.personCard}>
               <View style={styles.personImageContainer}>
-                <Image 
+                <Image
                   source={safeImages.groom[0]}
                   style={styles.personImage}
                   resizeMode="cover"
                 />
               </View>
               <Text style={styles.personRole}>GROOM</Text>
-              <Text style={styles.personName}>{eventData.groomName || '현'}</Text>
+              <Text style={styles.personName}>{eventData.groomName || ''}</Text>
               <Text style={styles.personEngName}>{groomEngName}</Text>
             </View>
-            
+            )}
+
             {/* & 심볼 */}
+            {hasGroomPhoto && hasBridePhoto && (
             <View style={styles.ampersandContainer}>
               <Text style={styles.ampersand}>&</Text>
             </View>
-            
+            )}
+
             {/* 신부 */}
+            {hasBridePhoto && (
             <View style={styles.personCard}>
               <View style={styles.personImageContainer}>
-                <Image 
+                <Image
                   source={safeImages.bride[0]}
                   style={styles.personImage}
                   resizeMode="cover"
                 />
               </View>
               <Text style={styles.personRole}>BRIDE</Text>
-              <Text style={styles.personName}>{eventData.brideName || '아름'}</Text>
+              <Text style={styles.personName}>{eventData.brideName || ''}</Text>
               <Text style={styles.personEngName}>{brideEngName}</Text>
             </View>
+            )}
           </View>
         </Animated.View>
+        )}
         
         {/* 오시는 길 섹션 */}
         <View style={styles.locationSection}>
@@ -755,10 +833,22 @@ please bless our marriage.`}
             <Text style={styles.locationAddress}>
               {eventData.detailedAddress || '서울시 중구 소공로 119 그랜드볼룸'}
             </Text>
-            
-            <TouchableOpacity style={styles.mapButton}>
-              <Text style={styles.mapButtonText}>지도 보기</Text>
-            </TouchableOpacity>
+
+            {mapCoord ? (
+              <View style={styles.mapContainer}>
+                <WebView
+                  source={{ html: `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><style>*{margin:0;padding:0}html,body,#map{width:100%;height:100%}</style></head><body><div id="map"></div><script>var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([${mapCoord.lat},${mapCoord.lng}],16);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);L.marker([${mapCoord.lat},${mapCoord.lng}]).addTo(map);</script></body></html>` }}
+                  style={{ flex: 1 }}
+                  scrollEnabled={false}
+                  javaScriptEnabled
+                  originWhitelist={['*']}
+                />
+              </View>
+            ) : (locAddr || locName) ? (
+              <View style={styles.mapLoading}>
+                <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)' }}>지도를 불러오는 중...</Text>
+              </View>
+            ) : null}
             
             {eventData.parkingInfo && (
               <View style={styles.parkingInfo}>
@@ -769,7 +859,8 @@ please bless our marriage.`}
           </Animated.View>
         </View>
 
-        {/* 계좌번호 섹션 */}
+        {/* 계좌번호 섹션 - 계좌가 있을 때만 */}
+        {hasAnyAccount && (
         <Animated.View style={[
           styles.accountSection,
           {
@@ -780,65 +871,130 @@ please bless our marriage.`}
           <Text style={styles.sectionTitle}>CONGRATULATORY MONEY</Text>
           <View style={styles.sectionTitleLine} />
           <Text style={styles.accountSubtitle}>마음 전하실 곳</Text>
-          
+
           <View style={styles.accountContainer}>
-            {/* 신랑 계좌 */}
-            <TouchableOpacity 
+            {/* 신랑측 계좌 */}
+            {hasAnyGroomSide && (
+            <TouchableOpacity
               style={styles.accountCard}
               onPress={() => handleAccountToggle('groom')}
             >
               <View style={styles.accountHeader}>
                 <Text style={styles.accountTitle}>신랑측 계좌번호</Text>
-                <Ionicons 
-                  name={activeAccountToggle === 'groom' ? "chevron-up" : "chevron-down"} 
-                  size={20} 
-                  color="#666" 
+                <Ionicons
+                  name={activeAccountToggle === 'groom' ? "chevron-up" : "chevron-down"}
+                  size={20}
+                  color="#666"
                 />
               </View>
               {activeAccountToggle === 'groom' && (
                 <View style={styles.accountDetails}>
-                  <Text style={styles.accountBank}>{groomAccount.bank}</Text>
-                  <Text style={styles.accountNumber}>{groomAccount.number}</Text>
-                  <Text style={styles.accountName}>예금주: {groomAccount.name}</Text>
-                  <TouchableOpacity 
-                    style={styles.copyButton}
-                    onPress={() => copyAccount(groomAccount.number)}
-                  >
-                    <Text style={styles.copyButtonText}>복사하기</Text>
-                  </TouchableOpacity>
+                  {hasGroomAccount && (
+                    <View>
+                      <Text style={styles.accountBank}>{groomAccount.bank}</Text>
+                      <Text style={styles.accountNumber}>{groomAccount.number}</Text>
+                      <Text style={styles.accountName}>예금주: {groomAccount.name}</Text>
+                      <TouchableOpacity
+                        style={styles.copyButton}
+                        onPress={() => copyAccount(groomAccount.number)}
+                      >
+                        <Text style={styles.copyButtonText}>복사하기</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {hasGroomFatherAccount && (
+                    <View style={{ marginTop: 16 }}>
+                      <Text style={styles.accountBank}>{groomFatherAccount.bank}</Text>
+                      <Text style={styles.accountNumber}>{groomFatherAccount.number}</Text>
+                      <Text style={styles.accountName}>예금주: {groomFatherAccount.name}</Text>
+                      <TouchableOpacity
+                        style={styles.copyButton}
+                        onPress={() => copyAccount(groomFatherAccount.number)}
+                      >
+                        <Text style={styles.copyButtonText}>복사하기</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {hasGroomMotherAccount && (
+                    <View style={{ marginTop: 16 }}>
+                      <Text style={styles.accountBank}>{groomMotherAccount.bank}</Text>
+                      <Text style={styles.accountNumber}>{groomMotherAccount.number}</Text>
+                      <Text style={styles.accountName}>예금주: {groomMotherAccount.name}</Text>
+                      <TouchableOpacity
+                        style={styles.copyButton}
+                        onPress={() => copyAccount(groomMotherAccount.number)}
+                      >
+                        <Text style={styles.copyButtonText}>복사하기</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               )}
             </TouchableOpacity>
-            
-            {/* 신부 계좌 */}
-            <TouchableOpacity 
+            )}
+
+            {/* 신부측 계좌 */}
+            {hasAnyBrideSide && (
+            <TouchableOpacity
               style={styles.accountCard}
               onPress={() => handleAccountToggle('bride')}
             >
               <View style={styles.accountHeader}>
                 <Text style={styles.accountTitle}>신부측 계좌번호</Text>
-                <Ionicons 
-                  name={activeAccountToggle === 'bride' ? "chevron-up" : "chevron-down"} 
-                  size={20} 
-                  color="#666" 
+                <Ionicons
+                  name={activeAccountToggle === 'bride' ? "chevron-up" : "chevron-down"}
+                  size={20}
+                  color="#666"
                 />
               </View>
               {activeAccountToggle === 'bride' && (
                 <View style={styles.accountDetails}>
-                  <Text style={styles.accountBank}>{brideAccount.bank}</Text>
-                  <Text style={styles.accountNumber}>{brideAccount.number}</Text>
-                  <Text style={styles.accountName}>예금주: {brideAccount.name}</Text>
-                  <TouchableOpacity 
-                    style={styles.copyButton}
-                    onPress={() => copyAccount(brideAccount.number)}
-                  >
-                    <Text style={styles.copyButtonText}>복사하기</Text>
-                  </TouchableOpacity>
+                  {hasBrideAccount && (
+                    <View>
+                      <Text style={styles.accountBank}>{brideAccount.bank}</Text>
+                      <Text style={styles.accountNumber}>{brideAccount.number}</Text>
+                      <Text style={styles.accountName}>예금주: {brideAccount.name}</Text>
+                      <TouchableOpacity
+                        style={styles.copyButton}
+                        onPress={() => copyAccount(brideAccount.number)}
+                      >
+                        <Text style={styles.copyButtonText}>복사하기</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {hasBrideFatherAccount && (
+                    <View style={{ marginTop: 16 }}>
+                      <Text style={styles.accountBank}>{brideFatherAccount.bank}</Text>
+                      <Text style={styles.accountNumber}>{brideFatherAccount.number}</Text>
+                      <Text style={styles.accountName}>예금주: {brideFatherAccount.name}</Text>
+                      <TouchableOpacity
+                        style={styles.copyButton}
+                        onPress={() => copyAccount(brideFatherAccount.number)}
+                      >
+                        <Text style={styles.copyButtonText}>복사하기</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {hasBrideMotherAccount && (
+                    <View style={{ marginTop: 16 }}>
+                      <Text style={styles.accountBank}>{brideMotherAccount.bank}</Text>
+                      <Text style={styles.accountNumber}>{brideMotherAccount.number}</Text>
+                      <Text style={styles.accountName}>예금주: {brideMotherAccount.name}</Text>
+                      <TouchableOpacity
+                        style={styles.copyButton}
+                        onPress={() => copyAccount(brideMotherAccount.number)}
+                      >
+                        <Text style={styles.copyButtonText}>복사하기</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               )}
             </TouchableOpacity>
+            )}
           </View>
         </Animated.View>
+        )}
         
         {/* 방명록 섹션 */}
         {allowMessages && (
@@ -908,17 +1064,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+    ...(Platform.OS === 'web' && { height: '100vh', overflow: 'hidden' }),
   },
   scrollView: {
     flex: 1,
+    ...(Platform.OS === 'web' && { height: '100%', overflowY: 'auto' }),
   },
   scrollContent: {
     flexGrow: 1,
+    ...(Platform.OS === 'web' && { minHeight: 'auto' }),
   },
-  
+
   // 히어로 섹션
   heroSection: {
-    height: height * 0.85,
+    height: Platform.OS === 'web' ? '85vh' : height * 0.85,
     backgroundColor: '#000',
     overflow: 'hidden', // 꽃잎이 섹션 밖으로 나가지 않도록
     position: 'relative',
@@ -1274,6 +1433,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 1,
     color: 'rgba(255,255,255,0.8)',
+  },
+  mapContainer: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 25,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  mapLoading: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginBottom: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   parkingInfo: {
     flexDirection: 'row',

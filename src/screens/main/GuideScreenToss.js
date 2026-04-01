@@ -830,7 +830,7 @@ const styles = StyleSheet.create({
     backgroundColor: TossColors.background,
     borderBottomWidth: 1,
     borderBottomColor: TossColors.border,
-    marginTop: STATUSBAR_HEIGHT, // 플랫폼별 상태바 높이
+    marginTop: Platform.OS === 'ios' ? 0 : STATUSBAR_HEIGHT, // SafeAreaView가 iOS 상단 처리
   },
   headerTitle: {
     fontSize: 17,
@@ -847,7 +847,7 @@ const styles = StyleSheet.create({
     backgroundColor: TossColors.background,
     borderBottomWidth: 1,
     borderBottomColor: TossColors.border,
-    marginTop: STATUSBAR_HEIGHT, // 플랫폼별 상태바 높이
+    marginTop: Platform.OS === 'ios' ? 0 : STATUSBAR_HEIGHT, // SafeAreaView가 iOS 상단 처리
   },
   backButton: {
     padding: 4,

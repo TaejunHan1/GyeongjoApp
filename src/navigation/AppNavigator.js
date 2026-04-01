@@ -89,9 +89,9 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
           borderTopWidth: 1,
           borderTopColor: Colors.gray100,
           backgroundColor: Colors.white,
-          paddingBottom: Math.max(insets.bottom, 24),
-          paddingTop: 8,
-          height: 94 + insets.bottom,
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
+          paddingTop: 6,
+          height: 56 + (insets.bottom > 0 ? insets.bottom : 8),
         },
         tabBarLabelStyle: {
           fontSize: 10,
@@ -235,22 +235,10 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
         </Stack.Screen>
         
         {/* 🆕 결혼식 전용 스크린 추가 */}
-        <Stack.Screen 
-          name="CreateWedding" 
+        <Stack.Screen
+          name="CreateWedding"
           options={{
-            headerShown: true,
-            title: '결혼식 청첩장 만들기',
-            headerStyle: {
-              backgroundColor: Colors.white,
-              borderBottomWidth: 1,
-              borderBottomColor: Colors.gray100,
-            },
-            headerTitleStyle: {
-              fontSize: 18,
-              fontWeight: '600',
-              color: Colors.textPrimary,
-            },
-            headerTintColor: Colors.textPrimary,
+            headerShown: false,
           }}
         >
           {(props) => (

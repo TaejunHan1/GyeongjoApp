@@ -804,15 +804,9 @@ export const deleteEventImages = async (imageUrls) => {
  */
 export const getUserEvents = async (passedUserInfo = null) => {
   try {
-    console.log('🔍 getUserEvents 시작');
-    
     let currentUser = null;
-    
+
     if (passedUserInfo?.id) {
-      console.log('✅ 전달받은 userInfo 사용:', {
-        id: passedUserInfo.id,
-        name: passedUserInfo.name
-      });
       currentUser = passedUserInfo;
     } else {
       const userResult = await getCurrentUserInfo();
@@ -821,13 +815,7 @@ export const getUserEvents = async (passedUserInfo = null) => {
       }
       currentUser = userResult.user;
     }
-    
-    console.log('👤 이벤트 조회 대상 사용자:', {
-      id: currentUser.id,
-      name: currentUser.name,
-      auth_method: currentUser.auth_method || 'unknown'
-    });
-    
+
     const { data, error } = await supabase
       .from('events')
       .select(`
@@ -854,12 +842,9 @@ export const getUserEvents = async (passedUserInfo = null) => {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('❌ 이벤트 조회 오류:', error);
       throw error;
     }
 
-    console.log(`✅ 이벤트 조회 완료: ${data?.length || 0}개`);
-    
     return {
       success: true,
       data: data || []
@@ -1556,29 +1541,40 @@ export const getEventDetail = async (eventId) => {
       throw error;
     }
 
-    // 🔥 guest_book_stats에서 통계 정보도 가져오기 (테이블이 없으면 기본값 사용)
-    const { data: stats, error: statsError } = await supabase
-      .from('guest_book_stats')
+    // 🔥 guest_book 테이블에서 직접 통계 계산
+    const { data: guestBookEntries, error: guestBookError } = await supabase
+      .from('guest_book')
       .select('*')
-      .eq('event_id', eventId)
-      .single();
+      .eq('event_id', eventId);
 
-    if (stats) {
+    if (guestBookEntries && !guestBookError) {
+      const totalAmount = guestBookEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+      const totalEntries = guestBookEntries.length;
+      const attendingCount = guestBookEntries.filter(entry => entry.attending === true).length;
+      const messageCount = guestBookEntries.filter(entry => entry.message && entry.message.trim() !== '').length;
+      const verifiedCount = guestBookEntries.filter(entry => entry.is_verified === true).length;
+
+      // 결혼식 전용 통계 (relation_category로 구분)
+      const groomSideEntries = guestBookEntries.filter(entry =>
+        entry.relation_category === '신랑측' || entry.relation_category === 'groom'
+      );
+      const brideSideEntries = guestBookEntries.filter(entry =>
+        entry.relation_category === '신부측' || entry.relation_category === 'bride'
+      );
+
       data.statistics = {
-        totalAmount: stats.total_amount || 0,
-        totalEntries: stats.total_entries || 0,
-        attendingCount: stats.attending_count || 0,
-        messageCount: stats.message_count || 0,
-        verifiedCount: stats.verified_count || 0,
-        // 결혼식 전용 통계
-        groomSideAmount: stats.groom_side_amount || 0,
-        brideSideAmount: stats.bride_side_amount || 0,
-        groomSideCount: stats.groom_side_count || 0,
-        brideSideCount: stats.bride_side_count || 0,
+        totalAmount,
+        totalEntries,
+        attendingCount,
+        messageCount,
+        verifiedCount,
+        groomSideAmount: groomSideEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0),
+        brideSideAmount: brideSideEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0),
+        groomSideCount: groomSideEntries.length,
+        brideSideCount: brideSideEntries.length,
       };
-    } else if (statsError?.code === '42P01') {
-      // guest_book_stats 테이블이 없으면 기본 통계 제공
-      console.log('⚠️ guest_book_stats 뷰가 없음. 기본 통계를 제공합니다.');
+    } else {
+      console.log('⚠️ guest_book 조회 실패. 기본 통계를 제공합니다.', guestBookError?.message);
       data.statistics = {
         totalAmount: 0,
         totalEntries: 0,
@@ -1822,9 +1818,6 @@ export const getEventGuestBook = async (eventId) => {
   }
 };
 
-/**
- * 이벤트 통계 조회 (guest_book_stats 뷰 사용)
- */
 // 간단한 Supabase 연결 테스트
 export const testSupabaseConnection = async () => {
   
@@ -1856,37 +1849,13 @@ export const testSupabaseConnection = async () => {
 };
 
 export const getEventStatistics = async (eventId) => {
-  
   try {
-    // 1단계: 전체 guest_book 데이터 확인 (RLS 문제 확인용)
-    const { data: allEntries, error: allError } = await supabase
-      .from('guest_book')
-      .select('event_id, amount, attending')
-      .limit(5);
-    
-   
-    // 2단계: 현재 사용자 정보 확인
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-   
-
-    // 3단계: 특정 event_id로 조회
     const { data: entries, error } = await supabase
       .from('guest_book')
-      .select('*')
+      .select('amount, attending')
       .eq('event_id', eventId);
 
-  
-
-    // 4단계: 알려진 event_id로 테스트
-    const { data: testEntries, error: testError } = await supabase
-      .from('guest_book')
-      .select('*')
-      .eq('event_id', 'ddaa48e8-1d3d-42fd-a027-d25179d5036e');
-
-    
-
     if (error) {
-      console.error('🔥🔥🔥 guest_book 조회 에러:', error);
       return {
         success: true,
         data: {
@@ -2029,22 +1998,6 @@ export const getEventContributions = async (eventId) => {
       }
     }
     
-    // 🔍 guest_book_stats 뷰에서 실제 원본 데이터 확인해보기
-    try {
-      const { data: statsViewData, error: statsViewError } = await supabase
-        .from('guest_book_stats')
-        .select('*')
-        .eq('event_id', eventId);
-        
-      console.log('🔍 guest_book_stats 뷰 직접 조회:', {
-        success: !statsViewError,
-        data: statsViewData,
-        error: statsViewError?.message
-      });
-    } catch (error) {
-      console.log('❌ guest_book_stats 뷰 조회 실패:', error.message);
-    }
-
     // 🔍 전체 guest_book 테이블 데이터 확인
     const { data: allData, error: allError } = await supabase
       .from('guest_book')
@@ -2177,31 +2130,19 @@ export const getMonthlyStatistics = async (userId) => {
 
     // 5. 각 이벤트별 guest_book 통계 조회
     for (const event of events) {
-      
-      // 🔥 전체 통계 - guest_book_stats 뷰 사용 (없으면 contributions 테이블에서 직접 계산)
-      const { data: eventStats, error: statsError } = await supabase
-        .from('guest_book_stats')
-        .select('*')
-        .eq('event_id', event.id)
-        .single();
+
+      // 🔥 전체 통계 - guest_book 테이블에서 직접 계산
+      const { data: guestBookEntries } = await supabase
+        .from('guest_book')
+        .select('amount, attending')
+        .eq('event_id', event.id);
 
       let eventTotal = 0;
       let eventCount = 0;
 
-      if (!statsError && eventStats) {
-        eventTotal = eventStats.total_amount || 0;
-        eventCount = eventStats.total_entries || 0;
-      } else if (statsError?.code === '42P01') {
-        // guest_book_stats 테이블이 없으면 guest_book에서 직접 계산
-        const { data: guestBookEntries } = await supabase
-          .from('guest_book')
-          .select('amount, attending')
-          .eq('event_id', event.id);
-        
-        if (guestBookEntries) {
-          eventTotal = guestBookEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
-          eventCount = guestBookEntries.length;
-        }
+      if (guestBookEntries) {
+        eventTotal = guestBookEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+        eventCount = guestBookEntries.length;
       }
 
       if (eventTotal > 0 || eventCount > 0) {

@@ -1,6 +1,6 @@
 // src/navigation/AuthNavigator.js
 import React from 'react';
-import { createStackNavigator } from '@react-navigation/stack';
+import { createStackNavigator, CardStyleInterpolators, TransitionPresets } from '@react-navigation/stack';
 import { NavigationContainer } from '@react-navigation/native';
 
 import WelcomeScreen from '../screens/auth/WelcomeScreen';
@@ -19,18 +19,7 @@ export default function AuthNavigator({ setUserInfo, setIsAuthenticated }) {
         screenOptions={{
           headerShown: false,
           gestureEnabled: true,
-          cardStyleInterpolator: ({ current, layouts }) => ({
-            cardStyle: {
-              transform: [
-                {
-                  translateX: current.progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [layouts.screen.width, 0],
-                  }),
-                },
-              ],
-            },
-          }),
+          ...TransitionPresets.SlideFromRightIOS,
         }}
       >
         <Stack.Screen name="Welcome" component={WelcomeScreen} />

@@ -35,10 +35,8 @@ import {
   getEventGuestBook,
   getMonthlyStatistics,
   getEventStatistics,
-  getUserSubscriptionInfo,
-  testSupabaseConnection 
+  getUserSubscriptionInfo
 } from '../../lib/supabaseHelper';
-import Svg, { Rect, Circle, Path, Ellipse, G } from 'react-native-svg';
 import * as Notifications from 'expo-notifications';
 import NotificationPermissionModal from '../../components/NotificationPermissionModal';
 
@@ -204,37 +202,6 @@ const CalendarComponent = ({ events, onDatePress, onEventPress, currentCalendarD
   );
 };
 
-// 🔥 커스텀 SVG 아이콘 컴포넌트들
-const WeddingIcon = () => (
-  <Svg width="64" height="64" viewBox="0 0 90 90" fill="none">
-    <Rect width="90" height="90" rx="18" fill="#FFF"/>
-    <Rect x="20" y="18" width="50" height="60" rx="8" fill="#EAF3FF" stroke="#0064FF" strokeWidth="2"/>
-    <Rect x="28" y="26" width="34" height="14" rx="4" fill="#FFF"/>
-    <Rect x="32" y="44" width="26" height="5" rx="2.5" fill="#BBD5FF"/>
-    <Circle cx="45" cy="62" r="8" fill="#FFF7F0" stroke="#FFAA64" strokeWidth="2"/>
-    <Path d="M40 59 Q45 69 50 59" stroke="#FFAA64" strokeWidth="1.5" fill="none"/>
-    <Ellipse cx="43" cy="61.5" rx="1.6" ry="2.2" fill="#FF7F63"/>
-    <Ellipse cx="47" cy="61.5" rx="1.6" ry="2.2" fill="#FF7F63"/>
-    <Rect x="41.5" y="65" width="7" height="1.6" rx="0.8" fill="#FFAA64"/>
-  </Svg>
-);
-
-const FuneralIcon = () => (
-  <Svg width="64" height="64" viewBox="0 0 90 90" fill="none">
-    <Rect width="90" height="90" rx="18" fill="#FFF"/>
-    <Rect x="20" y="18" width="50" height="60" rx="8" fill="#F4F4F5" stroke="#A8B3C7" strokeWidth="2"/>
-    <Rect x="28" y="26" width="34" height="14" rx="4" fill="#FFF"/>
-    <Rect x="32" y="44" width="26" height="5" rx="2.5" fill="#E3E6EE"/>
-    <G>
-      <Ellipse cx="45" cy="62" rx="7.5" ry="9" fill="#FFF" stroke="#A8B3C7" strokeWidth="2"/>
-      <Rect x="41" y="70" width="8" height="3" rx="1.5" fill="#A8B3C7"/>
-      <Rect x="44" y="56.2" width="2" height="7" rx="1" fill="#A8B3C7"/>
-      <Ellipse cx="45" cy="56" rx="4" ry="2.2" fill="#A8B3C7" opacity="0.4"/>
-      <Path d="M41.5 63 C43 66, 47 66, 48.5 63" stroke="#BCC5D2" strokeWidth="1.2" fill="none"/>
-    </G>
-  </Svg>
-);
-
 // 🔥 일정 추가 모달 컴포넌트
 const EventAddModal = ({ visible, onClose, selectedDate, onAddEvent }) => {
   const [eventTitle, setEventTitle] = useState('');
@@ -392,14 +359,20 @@ const EventAddModal = ({ visible, onClose, selectedDate, onAddEvent }) => {
   );
 };
 
-// 📱 푸시 알림 핸들러 설정
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// 📱 푸시 알림 핸들러 설정 (Expo Go에서는 제한됨)
+try {
+  if (typeof Notifications.setNotificationHandler === 'function') {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+  }
+} catch (error) {
+  console.log('📱 알림 핸들러 설정 스킵 (Expo Go 제한)');
+}
 
 export default function HomeScreen({ navigation, userInfo, session, isAuthenticated }) {
   const [user, setUser] = useState(null);
@@ -426,6 +399,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const [selectedDateEvents, setSelectedDateEvents] = useState([]); // 🔥 선택된 날짜의 일정들
   const [showTossConfirmModal, setShowTossConfirmModal] = useState(false); // 🔥 토스 스타일 확인 모달
   const [showTossSuccessModal, setShowTossSuccessModal] = useState(false); // 🔥 토스 스타일 성공 모달
+  const [showCreateEventModal, setShowCreateEventModal] = useState(false); // 경조사 만들기 모달
   const [showPremiumModal, setShowPremiumModal] = useState(false); // 🔥 프리미엄 업그레이드 모달
   const [premiumModalType, setPremiumModalType] = useState(''); // 'wedding' or 'funeral'
   const [monthlyStats, setMonthlyStats] = useState({
@@ -457,27 +431,33 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   });
   
   const fadeAnim = useRef(new Animated.Value(1)).current;
-  
+  const eventIdsRef = useRef([]);
+
   // 토스 모달 애니메이션 값들
   const confirmModalSlideAnim = useRef(new Animated.Value(0)).current;
   const confirmModalOpacity = useRef(new Animated.Value(0)).current;
   const successModalScale = useRef(new Animated.Value(0)).current;
   const successModalOpacity = useRef(new Animated.Value(0)).current;
 
-  // Props 확인 로그 & 데이터베이스 테스트
+  // Props 확인 & 네트워크 테스트
   useEffect(() => {
-    console.log('🏠 HomeScreen props:', { 
-      hasUserInfo: !!userInfo, 
-      hasSession: !!session, 
+    console.log('🏠 HomeScreen props:', {
+      hasUserInfo: !!userInfo,
+      hasSession: !!session,
       isAuthenticated,
       userInfo: userInfo ? { userId: userInfo.userId, userName: userInfo.userName } : null
     });
-    
-    // Supabase 연결 테스트
-    if (isAuthenticated) {
-      console.log('🚨 Supabase 연결 테스트 실행');
-      testSupabaseConnection();
-    }
+
+    // 네트워크 연결 테스트
+    fetch('https://ofshqvrldcesvjtredxo.supabase.co/rest/v1/', {
+      method: 'HEAD',
+      headers: {
+        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mc2hxdnJsZGNlc3ZqdHJlZHhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwNDI1MTQsImV4cCI6MjA2NDYxODUxNH0.uIfuqMP7SFvQfQXSESS9xKHWlBYeWmZwf1j_4eveZ6Q'
+      }
+    })
+    .then(res => console.log('🌐 네트워크 테스트 성공:', res.status))
+    .catch(err => console.error('🌐 네트워크 테스트 실패:', err.message));
+
   }, [userInfo, session, isAuthenticated]);
 
   // 슬라이드 데이터 - 경조사 종류별로 구성
@@ -540,6 +520,11 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     }, [userInfo, session, dataLoaded, lastLoadTime])
   );
 
+  // eventIds ref를 최신 상태로 유지
+  useEffect(() => {
+    eventIdsRef.current = events.map(e => e.id).filter(id => id);
+  }, [events]);
+
   // 자동 슬라이드
   useEffect(() => {
     const interval = setInterval(() => {
@@ -560,116 +545,37 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     return () => clearInterval(interval);
   }, [fadeAnim]);
 
-  // 📡 실시간 연결 테스트 (컴포넌트 마운트 시)
-  useEffect(() => {
-    const testRealtime = async () => {
-      console.log('🔄 Supabase 실시간 연결 테스트 시작...');
-      
-      // 간단한 브로드캐스트 채널로 테스트
-      const testChannel = supabase
-        .channel('test-channel')
-        .on('broadcast', { event: 'test' }, (payload) => {
-          console.log('✅ 브로드캐스트 메시지 수신:', payload);
-        })
-        .subscribe(async (status) => {
-          console.log('📡 테스트 채널 상태:', status);
-          
-          if (status === 'SUBSCRIBED') {
-            console.log('✅ Supabase 실시간 연결 성공!');
-            
-            // 테스트 메시지 전송
-            await testChannel.send({
-              type: 'broadcast',
-              event: 'test',
-              payload: { message: '실시간 연결 테스트' }
-            });
-            
-            // 5초 후 정리
-            setTimeout(() => {
-              supabase.removeChannel(testChannel);
-              console.log('🧹 테스트 채널 정리 완료');
-            }, 5000);
-          } else if (status === 'TIMED_OUT') {
-            console.log('📱 테스트 채널 타임아웃 (정상 - 실제 리스너는 별도)');
-          }
-        });
-    };
-    
-    testRealtime();
-  }, []);
 
   // 📱 알림 권한 체크 및 설정
   useEffect(() => {
     const checkNotificationPermission = async () => {
       try {
-        // userInfo 확인 및 변환 (userId -> id)
         const actualUserInfo = userInfo?.userId ? {
           id: userInfo.userId,
           name: userInfo.userName
         } : userInfo;
-        
-        console.log('📱 알림 권한 체크 - userInfo 변환:', { 
-          original: userInfo, 
-          converted: actualUserInfo,
-          hasId: !!actualUserInfo?.id 
-        });
-        
-        if (!actualUserInfo?.id) {
-          console.log('❌ userInfo ID가 없음 - 알림 설정 불가:', {
-            userInfo,
-            actualUserInfo,
-            hasUserId: !!userInfo?.userId,
-            hasId: !!userInfo?.id
-          });
-          return;
-        }
 
-        console.log('📱 DB 알림 설정 조회 시작 - actualUserInfo:', actualUserInfo);
+        if (!actualUserInfo?.id) return;
 
-        // 데이터베이스에서 알림 설정 확인
         const { data: userData, error } = await supabase
           .from('users')
-          .select('push_notification_enabled, notification_settings')
+          .select('push_notification_enabled')
           .eq('id', actualUserInfo.id)
           .single();
 
         if (error) {
-          console.error('❌ 알림 설정 조회 실패:', error);
-          console.log('🧪 에러 발생 시에도 모달 표시 테스트');
-          
-          // 에러가 발생해도 모달을 표시해보자 (테스트용)
           const permissionAsked = await AsyncStorage.getItem('notificationPermissionAsked');
           if (!permissionAsked) {
-            console.log('✅ 에러 상황에서도 알림 모달 표시 예정 (2초 후)');
-            setTimeout(() => {
-              console.log('📱 에러 상황 알림 모달 표시 실행');
-              setShowNotificationModal(true);
-            }, 2000);
+            setTimeout(() => setShowNotificationModal(true), 2000);
           }
           return;
         }
 
-        console.log('📱 DB 알림 설정 조회 결과:', userData);
-        
-        // 데이터베이스에서 알림이 비활성화되어 있다면 모달 표시
         if (userData && userData.push_notification_enabled === false) {
           const permissionAsked = await AsyncStorage.getItem('notificationPermissionAsked');
-          console.log('📱 AsyncStorage 권한 확인:', { 
-            permissionAsked,
-            shouldShowModal: !permissionAsked 
-          });
-          
           if (!permissionAsked) {
-            console.log('✅ 알림 모달 표시 예정 (2초 후)');
-            setTimeout(() => {
-              console.log('📱 알림 모달 표시 실행');
-              setShowNotificationModal(true);
-            }, 2000); // 2초 후 모달 표시
-          } else {
-            console.log('❌ 이미 권한 요청함 - 모달 표시하지 않음');
+            setTimeout(() => setShowNotificationModal(true), 2000);
           }
-        } else {
-          console.log('❌ 알림이 이미 활성화되어 있거나 데이터 없음');
         }
       } catch (error) {
         console.error('❌ 알림 권한 체크 오류:', error);
@@ -677,500 +583,128 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     };
 
     checkNotificationPermission();
-    
-    // 디버깅을 위해 3초 후 알림 상태 확인
-    setTimeout(() => {
-      debugNotificationStatus();
-    }, 3000);
   }, [userInfo]);
 
   // 📱 푸시 알림 수신 리스너
   useEffect(() => {
-    console.log('📱 푸시 알림 리스너 설정 시작');
-    
-    // 포그라운드에서 알림 수신 시
-    const notificationListener = Notifications.addNotificationReceivedListener(notification => {
-      console.log('📱 포그라운드 알림 수신:', notification);
-      
-      // 축의금 알림인 경우 데이터 새로고침
-      if (notification.request.content.data?.type === 'contribution') {
-        console.log('💰 축의금 알림 감지 - 데이터 새로고침');
-        loadEvents(); // 이벤트 목록 새로고침
-        loadMonthlyStatistics(); // 통계 새로고침
-        
-        // 토스트 메시지 표시
-        Toast.show({
-          type: 'success',
-          text1: '💰 새로운 축의금',
-          text2: notification.request.content.body,
-          position: 'top',
-          visibilityTime: 4000,
+
+    let notificationListener = null;
+    let responseListener = null;
+
+    try {
+      // Expo Go에서는 알림 기능이 제한됨 - 함수 존재 여부 확인
+      if (typeof Notifications.addNotificationReceivedListener === 'function') {
+        // 포그라운드에서 알림 수신 시
+        notificationListener = Notifications.addNotificationReceivedListener(notification => {
+          console.log('📱 포그라운드 알림 수신:', notification);
+
+          // 축의금 알림인 경우 데이터 새로고침
+          if (notification.request.content.data?.type === 'contribution') {
+            console.log('💰 축의금 알림 감지 - 데이터 새로고침');
+            loadEvents(); // 이벤트 목록 새로고침
+            loadMonthlyStatistics(); // 통계 새로고침
+
+            // 토스트 메시지 표시
+            Toast.show({
+              type: 'success',
+              text1: '💰 새로운 축의금',
+              text2: notification.request.content.body,
+              position: 'top',
+              visibilityTime: 4000,
+            });
+          }
         });
       }
-    });
 
-    // 알림 클릭 시 응답
-    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('📱 알림 클릭:', response);
-      
-      // 축의금 알림 클릭 시 해당 이벤트로 이동
-      if (response.notification.request.content.data?.type === 'contribution') {
-        const eventId = response.notification.request.content.data.eventId;
-        if (eventId) {
-          // 이벤트 상세 화면으로 이동
-          navigation.navigate('EventDisplay', { eventId });
-        }
+      if (typeof Notifications.addNotificationResponseReceivedListener === 'function') {
+        // 알림 클릭 시 응답
+        responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+          console.log('📱 알림 클릭:', response);
+
+          // 축의금 알림 클릭 시 해당 이벤트로 이동
+          if (response.notification.request.content.data?.type === 'contribution') {
+            const eventId = response.notification.request.content.data.eventId;
+            if (eventId) {
+              // 이벤트 상세 화면으로 이동
+              navigation.navigate('EventDisplay', { eventId });
+            }
+          }
+        });
       }
-    });
+    } catch (error) {
+      console.log('📱 푸시 알림 설정 스킵 (Expo Go 제한):', error.message);
+    }
 
     return () => {
       console.log('📱 푸시 알림 리스너 정리');
-      Notifications.removeNotificationSubscription(notificationListener);
-      Notifications.removeNotificationSubscription(responseListener);
+      try {
+        // 함수 존재 여부 확인 후 호출
+        if (notificationListener && typeof Notifications.removeNotificationSubscription === 'function') {
+          Notifications.removeNotificationSubscription(notificationListener);
+        } else if (notificationListener?.remove) {
+          notificationListener.remove();
+        }
+
+        if (responseListener && typeof Notifications.removeNotificationSubscription === 'function') {
+          Notifications.removeNotificationSubscription(responseListener);
+        } else if (responseListener?.remove) {
+          responseListener.remove();
+        }
+      } catch (error) {
+        console.log('📱 푸시 알림 리스너 정리 스킵:', error.message);
+      }
     };
   }, [navigation]);
 
   // 📱 축의금 실시간 업데이트 리스너
   useEffect(() => {
-    // userInfo 확인 및 변환
     const actualUserInfo = userInfo?.userId ? {
       id: userInfo.userId,
       name: userInfo.userName
     } : userInfo;
-    
-    console.log('📱 실시간 리스너 - userInfo 변환:', { 
-      original: userInfo, 
-      converted: actualUserInfo,
-      hasId: !!actualUserInfo?.id,
-      eventsCount: events.length 
-    });
-    
-    // 사용자 정보가 없으면 리스너 설정 불가
-    if (!actualUserInfo?.id) {
-      console.log('📱 리스너 설정 불가 - 사용자 정보 없음');
-      return;
-    }
-    
-    // 이벤트가 없어도 일단 리스너는 설정 (나중에 추가될 수 있음)
-    if (!events.length) {
-      console.log('📱 이벤트 없음 - 하지만 리스너는 설정 진행');
-    }
 
-    const eventIds = events.map(e => e.id).filter(id => id);
-    console.log('📱 축의금 실시간 리스너 설정 시작:', { 
-      userId: actualUserInfo.id, 
-      eventIds,
-      eventsCount: events.length 
-    });
+    if (!actualUserInfo?.id) return;
 
-    // Supabase 실시간 구독 설정 - 더 간단한 방식으로 시도
-    let retryCount = 0;
-    const maxRetries = 3;
-    
-    const setupRealtimeListener = async () => {
-      console.log('📱 실시간 리스너 설정 시작');
+    const channelName = `guest-book-realtime-${actualUserInfo.id}`;
+    const channel = supabase
+      .channel(channelName)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'guest_book' },
+        (payload) => {
+          const changeType = payload.eventType || payload.event;
+          const contributionData = payload.new || payload.old;
+          const contributionEventId = contributionData?.event_id;
+          const currentEventIds = eventIdsRef.current;
 
-      // 익명 인증을 다시 시도 (더 적극적으로)
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          console.log('📱 기존 세션 없음 - 익명 인증 시도');
-          const { data, error } = await supabase.auth.signInAnonymously();
-          if (error) {
-            console.log('📱 익명 인증 실패:', error.message);
-          } else {
-            console.log('📱 익명 인증 성공');
-          }
-        } else {
-          console.log('📱 기존 인증 세션 사용');
-        }
-      } catch (e) {
-        console.log('📱 인증 시도 실패:', e.message);
-      }
-
-      // 채널 설정 최적화
-      const channelName = `guest-book-realtime-${Date.now()}`;
-      const channel = supabase
-        .channel(channelName, {
-          config: {
-            presence: { key: 'user-id' },
-            broadcast: { self: true }
-          }
-        })
-        .on('postgres_changes', 
-          { 
-            event: '*',
-            schema: 'public', 
-            table: 'guest_book'
-          }, 
-          (payload) => {
-            console.log('🔥🔥🔥 guest_book 변경 감지 - 실시간 PAYLOAD:', {
-              eventType: payload.eventType,
-              event: payload.event,
-              table: payload.table,
-              schema: payload.schema,
-              timestamp: new Date().toISOString(),
-              fullPayload: payload
-            });
-            
-            const changeType = payload.eventType || payload.event;
-            const contributionData = payload.new || payload.old;
-            const contributionEventId = contributionData?.event_id;
-            
-            console.log('🎯 축의금 변경 상세 정보:', {
-              changeType,
-              contributionEventId,
-              guestName: contributionData?.guest_name,
-              amount: contributionData?.amount,
-              myEventIds: eventIds,
-              isMyEvent: eventIds.includes(contributionEventId)
-            });
-            
-            // 무조건 토스트 표시 (테스트)
-            console.log('🚨 무조건 테스트 토스트 표시!');
-            Toast.show({
-              type: 'success',
-              text1: '🔥🔥 실시간 데이터 변경!',
-              text2: `테이블: ${payload.table} | 이벤트: ${changeType}`,
-              position: 'top',
-              visibilityTime: 4000,
-            });
-            
+          // 내 이벤트인 경우만 처리
+          if (currentEventIds.includes(contributionEventId)) {
             if (contributionData) {
-              console.log('🚨 기여 데이터 토스트 표시');
               Toast.show({
                 type: 'info',
                 text1: '💰 축의금 알림',
-                text2: `${contributionData.guest_name || '익명'}님 - ${contributionData.amount || 0}원`,
+                text2: `${contributionData.guest_name || '익명'}님 - ${(contributionData.amount || 0).toLocaleString()}원`,
                 position: 'top',
                 visibilityTime: 3000,
               });
             }
-            
-            // 내 이벤트인 경우만 처리
-            if (eventIds.includes(contributionEventId)) {
-              console.log('✅✅ 내 이벤트 확인 - handleContributionChange 호출');
-              handleContributionChange(changeType, contributionData, eventIds);
-            } else {
-              console.log('⚠️ 다른 사용자 이벤트 - 무시');
-            }
+            handleContributionChange(changeType, contributionData, currentEventIds);
           }
-        )
-        .subscribe(async (status) => {
-          console.log('📱 리스너 구독 상태:', status);
-          
-          if (status === 'SUBSCRIBED') {
-            console.log('✅ 실시간 리스너 연결 성공!');
-            retryCount = 0; // 성공 시 재시도 카운터 리셋
-            
-            // 연결 성공 토스트 (한 번만)
-            if (!window.realtimeConnected) {
-              window.realtimeConnected = true;
-              Toast.show({
-                type: 'success',
-                text1: '✅ 실시간 알림 활성화',
-                text2: '축의금 알림을 실시간으로 받습니다',
-                position: 'bottom',
-                visibilityTime: 2000,
-              });
-            }
-          } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
-            console.log('📱 연결 타임아웃 - 자동 재연결 시도...');
-            
-            // 재시도 로직
-            if (retryCount < maxRetries) {
-              retryCount++;
-              console.log(`🔄 재연결 시도 ${retryCount}/${maxRetries}...`);
-              
-              setTimeout(() => {
-                supabase.removeChannel(channel);
-                setupRealtimeListener(); // 재귀적으로 다시 시도
-              }, 2000 + (retryCount * 1000)); // 2초, 3초, 4초 간격으로 재시도
-            } else {
-              console.error('❌ 최대 재시도 횟수 초과');
-              Toast.show({
-                type: 'error',
-                text1: '⚠️ 실시간 알림 연결 실패',
-                text2: '앱을 재시작해주세요',
-                position: 'top',
-                visibilityTime: 3000,
-              });
-            }
-          }
-        });
-        
-      return channel;
-    };
-    
-    let contributionSubscription;
-    setupRealtimeListener().then(channel => {
-      contributionSubscription = channel;
-    });
+        }
+      )
+      .subscribe();
 
     return () => {
-      console.log('📱 축의금 실시간 리스너 정리');
-      supabase.removeChannel(contributionSubscription);
+      supabase.removeChannel(channel);
     };
-  }, [userInfo, events]);
+  }, [userInfo]);
 
-  // 📱 알림 상태 디버깅 함수
-  const debugNotificationStatus = async () => {
-    try {
-      console.log('🔍 알림 상태 디버깅 시작');
-      
-      // userInfo 확인 및 변환
-      const actualUserInfo = userInfo?.userId ? {
-        id: userInfo.userId,
-        name: userInfo.userName
-      } : userInfo;
-      
-      console.log('📱 디버깅 - userInfo 변환:', { 
-        original: userInfo, 
-        converted: actualUserInfo 
-      });
-      
-      // 1. 시스템 알림 권한 확인
-      const { status } = await Notifications.getPermissionsAsync();
-      console.log('📱 시스템 알림 권한:', status);
-      
-      // 2. 푸시 토큰 확인
-      try {
-        const tokenData = await Notifications.getExpoPushTokenAsync({
-          projectId: '6e007e44-78af-48b5-b36e-ab75a54ab3fa',
-        });
-        console.log('📱 현재 푸시 토큰:', tokenData.data);
-      } catch (tokenError) {
-        console.error('❌ 푸시 토큰 조회 실패:', tokenError);
-      }
-      
-      // 3. 데이터베이스 알림 설정 확인
-      if (actualUserInfo?.id) {
-        console.log('📱 DB 알림 설정 조회 시작 - ID:', actualUserInfo.id);
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('push_notification_enabled, push_token, notification_settings')
-          .eq('id', actualUserInfo.id)
-          .single();
-          
-        if (error) {
-          console.error('❌ DB 알림 설정 조회 실패:', error);
-        } else {
-          console.log('📱 DB 알림 설정:', {
-            enabled: userData.push_notification_enabled,
-            hasToken: !!userData.push_token,
-            tokenPreview: userData.push_token?.substring(0, 30) + '...',
-            settings: userData.notification_settings
-          });
-        }
-      }
-      
-      // 4. AsyncStorage 상태 확인
-      const permissionAsked = await AsyncStorage.getItem('notificationPermissionAsked');
-      const permissionGranted = await AsyncStorage.getItem('notificationPermissionGranted');
-      console.log('📱 AsyncStorage 상태:', {
-        permissionAsked,
-        permissionGranted
-      });
-      
-    } catch (error) {
-      console.error('❌ 알림 상태 디버깅 오류:', error);
-    }
-  };
 
-  // 📱 테스트 Toast 알림 함수
-  const testToastNotification = () => {
-    console.log('🧪 테스트 Toast 알림 실행');
-    Toast.show({
-      type: 'success',
-      text1: '🧪 테스트 알림',
-      text2: '테스트용 축의금 알림입니다',
-      position: 'top',
-      visibilityTime: 4000,
-      autoHide: true,
-      topOffset: 60,
-    });
-  };
-
-  // 🧪 테스트용 AsyncStorage 클리어 함수
-  const clearNotificationSettings = async () => {
-    try {
-      await AsyncStorage.multiRemove(['notificationPermissionAsked', 'notificationPermissionGranted']);
-      console.log('🧪 AsyncStorage 알림 설정 클리어 완료');
-      Toast.show({
-        type: 'info',
-        text1: '🧪 설정 초기화',
-        text2: 'AsyncStorage 알림 설정이 초기화되었습니다',
-        position: 'top',
-        visibilityTime: 3000,
-        topOffset: 60,
-      });
-    } catch (error) {
-      console.error('❌ AsyncStorage 클리어 실패:', error);
-    }
-  };
-
-  // 🔧 알림 설정을 false로 변경하고 모달 테스트
-  const disableNotificationsForTest = async () => {
-    try {
-      const actualUserInfo = userInfo?.userId ? {
-        id: userInfo.userId,
-        name: userInfo.userName
-      } : userInfo;
-
-      if (!actualUserInfo?.id) {
-        console.log('❌ userInfo ID가 없음');
-        return;
-      }
-
-      console.log('🧪 알림 설정을 false로 변경 시작');
-
-      // DB 알림 설정을 false로 업데이트
-      const { data, error } = await supabase
-        .from('users')
-        .update({
-          push_notification_enabled: false,
-          notification_settings: {
-            contribution: false,
-            event_reminder: false,
-            app_notifications: false
-          }
-        })
-        .eq('id', actualUserInfo.id)
-        .select();
-
-      if (error) {
-        console.error('❌ 알림 설정 비활성화 실패:', error);
-      } else {
-        console.log('✅ 알림 설정 비활성화 성공:', data);
-        
-        // AsyncStorage도 클리어
-        await AsyncStorage.multiRemove(['notificationPermissionAsked', 'notificationPermissionGranted']);
-        console.log('🧪 AsyncStorage도 클리어 완료');
-        
-        Toast.show({
-          type: 'info',
-          text1: '🧪 알림 비활성화',
-          text2: '알림 설정이 비활성화되었습니다. 앱을 재시작하세요.',
-          position: 'top',
-          visibilityTime: 4000,
-          topOffset: 60,
-        });
-      }
-    } catch (error) {
-      console.error('❌ 알림 비활성화 오류:', error);
-    }
-  };
-
-  // 🔧 테스트용 알림 설정 활성화 함수
-  const enableNotificationsForTest = async () => {
-    try {
-      const actualUserInfo = userInfo?.userId ? {
-        id: userInfo.userId,
-        name: userInfo.userName
-      } : userInfo;
-
-      if (!actualUserInfo?.id) {
-        console.log('❌ userInfo ID가 없음');
-        return;
-      }
-
-      // 푸시 토큰 생성
-      let pushToken = null;
-      try {
-        const tokenData = await Notifications.getExpoPushTokenAsync({
-          projectId: '6e007e44-78af-48b5-b36e-ab75a54ab3fa',
-        });
-        pushToken = tokenData.data;
-      } catch (tokenError) {
-        console.error('❌ 푸시 토큰 생성 실패:', tokenError);
-      }
-
-      // DB 알림 설정 업데이트
-      const { data, error } = await supabase
-        .from('users')
-        .update({
-          push_notification_enabled: true,
-          push_token: pushToken,
-          notification_settings: {
-            contribution: true,
-            event_reminder: true,
-            app_notifications: true
-          }
-        })
-        .eq('id', actualUserInfo.id)
-        .select();
-
-      if (error) {
-        console.error('❌ 알림 설정 업데이트 실패:', error);
-        Toast.show({
-          type: 'error',
-          text1: '❌ 설정 실패',
-          text2: '알림 설정 업데이트에 실패했습니다',
-          position: 'top',
-          visibilityTime: 3000,
-          topOffset: 60,
-        });
-      } else {
-        console.log('✅ 알림 설정 업데이트 성공:', data);
-        Toast.show({
-          type: 'success',
-          text1: '✅ 알림 활성화',
-          text2: '푸시 알림이 활성화되었습니다',
-          position: 'top',
-          visibilityTime: 3000,
-          topOffset: 60,
-        });
-      }
-    } catch (error) {
-      console.error('❌ 알림 활성화 오류:', error);
-    }
-  };
-
-  // 🧪 강제로 모달 표시 테스트
-  const showNotificationModalForTest = () => {
-    console.log('🧪 모달 강제 표시 테스트');
-    setShowNotificationModal(true);
-    Toast.show({
-      type: 'info',
-      text1: '🧪 모달 테스트',
-      text2: '알림 권한 모달을 강제로 표시합니다',
-      position: 'top',
-      visibilityTime: 2000,
-      topOffset: 60,
-    });
-  };
 
   // 📱 축의금 변경 처리 공통 함수
   const handleContributionChange = (eventType, contribution, eventIds) => {
-    console.log('🔥🔥 handleContributionChange 호출됨:', {
-      eventType,
-      contribution,
-      contributionEventId: contribution?.event_id,
-      eventIds,
-      eventIdsLength: eventIds.length,
-      timestamp: new Date().toISOString()
-    });
+    if (!eventIds.includes(contribution?.event_id)) return;
 
-    // 내 이벤트인지 확인
-    if (!eventIds.includes(contribution.event_id)) {
-      console.log('📱 다른 사용자의 이벤트 - 무시:', {
-        contributionEventId: contribution.event_id,
-        myEventIds: eventIds
-      });
-      return;
-    }
-    
-    console.log(`✅✅✅ 내 이벤트 축의금 ${eventType} 확인 - Toast 표시 실행!`);
-    
-    // Toast 알림 표시
     const actionText = eventType === 'INSERT' ? '전달' : '수정';
-    
-    console.log('🎯🎯 Toast.show() 호출 직전:', {
-      actionText,
-      guestName: contribution.guest_name,
-      amount: contribution.amount
-    });
-    
     Toast.show({
       type: 'success',
       text1: `💰 축의금 ${actionText}!`,
@@ -1181,11 +715,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       topOffset: 60,
     });
 
-    console.log('🎯🎯 Toast.show() 호출 완료!');
-
-    // 🚀 캐시 무효화하고 통계 새로고침 (실시간 업데이트)
-    console.log('📊 실시간 축의금 변경 - 캐시 무효화 및 통계 새로고침');
-    setDataLoaded(false); // 캐시 무효화
+    setDataLoaded(false);
     loadMonthlyStatistics();
   };
 
@@ -1229,22 +759,24 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   // 🔥 서울 시간 기준 날짜 비교 함수 - 완전히 새로 작성
   const isEventCompleted = (eventDate) => {
-    if (!eventDate) return true; // 미정인 경우 완료로 처리
-    
+    if (!eventDate) {
+      return true; // 미정인 경우 완료로 처리
+    }
+
     try {
       // 현재 서울 시간 구하기
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
+
       // 이벤트 날짜 구하기
       const eventDay = new Date(eventDate);
       const eventDateOnly = new Date(eventDay.getFullYear(), eventDay.getMonth(), eventDay.getDate());
-      
+
       // 오늘보다 이전이면 완료, 오늘 이후(오늘 포함)면 진행중
       const isCompleted = eventDateOnly < today;
-      
+
       return isCompleted;
-      
+
     } catch (error) {
       console.error('❌ 날짜 오류:', error);
       return true;
@@ -1912,12 +1444,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     const isCompleted = isEventCompleted(event.event_date);
     return !isCompleted;
   });
-  
+
   const completedEventsFiltered = hostedEvents.filter(event => {
     const isCompleted = isEventCompleted(event.event_date);
     return isCompleted;
   });
-  
+
   // 🔥 최대 3개까지만 표시
   const currentEvents = selectedTab === 'active' 
     ? activeEventsFiltered.slice(0, 3) 
@@ -2006,9 +1538,11 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                 userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events
               }
             >
-              <View style={styles.quickIcon}>
-                <WeddingIcon />
-              </View>
+              <Image
+                source={require('../../../assets/wedding-Photoroom.png')}
+                style={{ width: 120, height: 120 }}
+                resizeMode="contain"
+              />
               <Text style={styles.quickTitle}>청첩장</Text>
               <Text style={styles.quickSubtitle}>행복한 결혼 소식을 전해보세요</Text>
               <TouchableOpacity 
@@ -2045,9 +1579,11 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                 userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events
               }
             >
-              <View style={styles.quickIcon}>
-                <FuneralIcon />
-              </View>
+              <Image
+                source={require('../../../assets/funeral-Photoroom.png')}
+                style={{ width: 120, height: 120 }}
+                resizeMode="contain"
+              />
               <Text style={styles.quickTitle}>부고장</Text>
               <Text style={styles.quickSubtitle}>슬픈 소식을 정중하게 전달하세요</Text>
               <TouchableOpacity 
@@ -2114,92 +1650,58 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               {currentEvents.map((event) => (
                 <TouchableOpacity
                   key={event.id}
-                  style={[
-                    styles.eventListItem,
-                    selectedTab === 'completed' && styles.completedEventItem
-                  ]}
+                  style={styles.eventCardNew}
                   onPress={() => handleActiveEventPress(event)}
                   activeOpacity={0.8}
                 >
-                  {/* 🔥 완료된 항목에 왼쪽 파란색 바 */}
-                  {selectedTab === 'completed' && (
-                    <View style={styles.completedMarker} />
-                  )}
-
-                  {/* 🔥 이벤트 타입 표시 (왼쪽) */}
-                  <View style={styles.eventTypeColumn}>
+                  {/* 상단: 배지 + 날짜 */}
+                  <View style={styles.eventCardHeader}>
                     <View style={[
-                      styles.eventTypeBadge, 
-                      { backgroundColor: getEventStatusColor(event.event_type) }
+                      styles.eventTypeBadgeNew,
+                      { backgroundColor: event.event_type === 'funeral' ? '#F1F5F9' : '#FFF1F2' }
                     ]}>
-                      <Text style={styles.eventTypeBadgeText}>
+                      <Text style={[
+                        styles.eventTypeBadgeTextNew,
+                        { color: getEventStatusColor(event.event_type) }
+                      ]}>
                         {getEventTypeText(event.event_type)}
                       </Text>
                     </View>
+                    <View style={styles.eventDateBadge}>
+                      <Text style={styles.eventDateBadgeText}>
+                        {formatDateWithTime(event.event_date, event.event_time)}
+                      </Text>
+                    </View>
                   </View>
 
-                  {/* 이벤트 정보 */}
-                  <View style={styles.eventListInfo}>
-                    <View style={styles.eventTitleRow}>
-                      <Text style={styles.eventListTitle} numberOfLines={1}>
-                        {event.event_name || event.title}
-                      </Text>
-                      {/* 🔥 개인 일정 표시 */}
-                      {(event.source === 'personal' || event.is_personal_schedule) && (
-                        <View style={styles.personalScheduleBadge}>
-                          <Ionicons name="calendar-outline" size={12} color={Colors.gray500} />
-                          <Text style={styles.personalScheduleBadgeText}>개인</Text>
-                        </View>
-                      )}
-                    </View>
-                    
-                    <Text style={styles.eventListLocation}>
+                  {/* 중간: 이벤트명 + 장소 */}
+                  <Text style={styles.eventCardTitle} numberOfLines={1}>
+                    {event.event_name || event.title}
+                  </Text>
+                  <View style={styles.eventCardLocationRow}>
+                    <Ionicons name="location-outline" size={15} color={Colors.gray400} />
+                    <Text style={styles.eventCardLocation} numberOfLines={1}>
                       {event.location || '장소 미정'}
                     </Text>
-                    
-                    <Text style={styles.eventListDate} numberOfLines={1}>
-                      {event.event_date ? formatDate(event.event_date) : '날짜 미정'}
-                    </Text>
-                    
-                    {/* 🔥 행사별 통계 정보 */}
-                    <View style={styles.eventStatsRow}>
-                      <View style={styles.eventStatItem}>
-                        <Ionicons name="people-outline" size={14} color={Colors.gray500} />
-                        <Text style={styles.eventStatText}>
-                          {event.total_contributions || 0}명 참여
-                        </Text>
-                      </View>
-                      <View style={styles.eventStatItem}>
-                        <Ionicons name="cash-outline" size={14} color={Colors.gray500} />
-                        <Text style={styles.eventStatText}>
-                          {event.total_amount 
-                            ? (event.total_amount >= 10000 
-                                ? `${Math.floor(event.total_amount / 10000)}만원` 
-                                : `${event.total_amount.toLocaleString()}원`)
-                            : '0원'
-                          }
-                        </Text>
-                      </View>
-                    </View>
                   </View>
 
-                  {/* 🔥 완료/화살표 */}
-                  {selectedTab === 'completed' ? (
-                    <TouchableOpacity 
-                      style={styles.completedButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        // 완료 버튼 클릭 시 동작 (예: 통계 보기, 상세 보기 등)
-                        console.log('완료 버튼 클릭:', event.event_name);
-                      }}
-                    >
-                      <Text style={styles.completedButtonText}>완료</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.eventArrow}>
-                      <Ionicons name="chevron-forward" size={20} color={Colors.gray400} />
+                  {/* 하단: 참여 통계 */}
+                  <View style={styles.eventCardStatsBar}>
+                    <View style={styles.eventCardStatItem}>
+                      <Ionicons name="people-outline" size={16} color={Colors.gray500} />
+                      <Text style={styles.eventCardStatText}>
+                        {event.total_contributions || 0}명 참여
+                      </Text>
                     </View>
-                  )}
+                    <Text style={styles.eventCardStatAmount}>
+                      {event.total_amount
+                        ? (event.total_amount >= 10000
+                            ? `${Math.floor(event.total_amount / 10000).toLocaleString()}만원`
+                            : `${event.total_amount.toLocaleString()}원`)
+                        : '0원'
+                      }
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               ))}
               
@@ -2226,11 +1728,11 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                 {selectedTab === 'active' ? '첫 번째 경조사를 만들어보세요' : '첫 번째 경조사를 완료해보세요'}
               </Text>
               {selectedTab === 'active' && (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.createButton}
-                  onPress={() => handleCalendarDatePress(new Date())}
+                  onPress={() => setShowCreateEventModal(true)}
                 >
-                  <Text style={styles.createButtonText}>일정 추가</Text>
+                  <Text style={styles.createButtonText}>경조사 만들기</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -2734,6 +2236,81 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         </Animated.View>
       </Modal>
 
+      {/* 경조사 만들기 바텀시트 모달 */}
+      <Modal
+        visible={showCreateEventModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCreateEventModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowCreateEventModal(false)}>
+          <View style={styles.createEventModalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.createEventModalContainer}>
+                <View style={styles.createEventModalHandle} />
+                <Text style={styles.createEventModalTitle}>경조사 만들기</Text>
+                <Text style={styles.createEventModalSubtitle}>어떤 경조사를 준비하시나요?</Text>
+
+                <View style={styles.createEventModalOptions}>
+                  <TouchableOpacity
+                    style={styles.createEventModalOption}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setShowCreateEventModal(false);
+                      handleQuickStart('wedding');
+                    }}
+                  >
+                    <View style={[styles.createEventModalIconWrap, { backgroundColor: '#FFF0F5' }]}>
+                      <Image
+                        source={require('../../../assets/wedding-Photoroom.png')}
+                        style={{ width: 80, height: 80 }}
+                        resizeMode="contain"
+                      />
+                    </View>
+                    <View style={styles.createEventModalOptionInfo}>
+                      <Text style={styles.createEventModalOptionTitle}>청첩장 만들기</Text>
+                      <Text style={styles.createEventModalOptionDesc}>결혼식 초대장과 부조금 관리</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={Colors.gray400} />
+                  </TouchableOpacity>
+
+                  <View style={styles.createEventModalDivider} />
+
+                  <TouchableOpacity
+                    style={styles.createEventModalOption}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setShowCreateEventModal(false);
+                      handleQuickStart('funeral');
+                    }}
+                  >
+                    <View style={[styles.createEventModalIconWrap, { backgroundColor: '#F0F0F5' }]}>
+                      <Image
+                        source={require('../../../assets/funeral-Photoroom.png')}
+                        style={{ width: 80, height: 80 }}
+                        resizeMode="contain"
+                      />
+                    </View>
+                    <View style={styles.createEventModalOptionInfo}>
+                      <Text style={styles.createEventModalOptionTitle}>부고장 만들기</Text>
+                      <Text style={styles.createEventModalOptionDesc}>장례 안내와 조의금 관리</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={Colors.gray400} />
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.createEventModalCancelBtn}
+                  onPress={() => setShowCreateEventModal(false)}
+                >
+                  <Text style={styles.createEventModalCancelText}>닫기</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
       {/* 🔥 프리미엄 업그레이드 모달 */}
       <Modal
         visible={showPremiumModal}
@@ -2861,8 +2438,8 @@ const getEventStatusColor = (eventType) => {
 
 const getEventTypeText = (eventType) => {
   switch (eventType) {
-    case 'wedding': return '결혼식';
-    case 'funeral': return '부고';
+    case 'wedding': return '경사';
+    case 'funeral': return '조사';
     default: return '행사';
   }
 };
@@ -2871,9 +2448,28 @@ const formatDate = (dateString) => {
   if (!dateString) return '날짜 미정';
   const date = new Date(dateString);
   return date.toLocaleDateString('ko-KR', {
+    year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
+};
+
+const formatDateWithTime = (dateString, timeString) => {
+  if (!dateString) return '날짜 미정';
+  const date = new Date(dateString);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+  const dayOfWeek = dayNames[date.getDay()];
+  let result = `${year}.${month}.${day}(${dayOfWeek})`;
+  if (timeString) {
+    const timeParts = timeString.split(':');
+    if (timeParts.length >= 2) {
+      result += ` ${timeParts[0]}:${timeParts[1]}`;
+    }
+  }
+  return result;
 };
 
 const styles = StyleSheet.create({
@@ -2888,7 +2484,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 50,
+    paddingTop: Platform.OS === 'ios' ? 8 : 50,
     paddingBottom: 16,
     backgroundColor: Colors.white,
   },
@@ -3100,130 +2696,97 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   
-  // 이벤트 리스트 아이템
+  // 이벤트 리스트
   eventsList: {
-    gap: 12,
+    gap: 16,
   },
-  eventListItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  // 새 이벤트 카드 (세로형)
+  eventCardNew: {
     backgroundColor: Colors.white,
     borderRadius: 16,
-    padding: 16,
+    padding: 20,
     borderWidth: 1,
     borderColor: Colors.gray100,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    position: 'relative',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  
-  // 🔥 완료된 이벤트 아이템 (왼쪽 여백 추가)
-  completedEventItem: {
-    paddingLeft: 20,
-  },
-  
-  // 🔥 완료된 항목 왼쪽 파란색 마커
-  completedMarker: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    backgroundColor: Colors.primary,
-    borderTopLeftRadius: 16,
-    borderBottomLeftRadius: 16,
-  },
-  
-  // 🔥 이벤트 타입 컬럼 (왼쪽)
-  eventTypeColumn: {
-    width: 60,
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  eventTypeBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 12,
-    minWidth: 50,
-    alignItems: 'center',
-  },
-  eventTypeBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.white,
-  },
-  
-  // 이벤트 정보
-  eventListInfo: {
-    flex: 1,
-  },
-  
-  eventTitleRow: {
+
+  // 카드 상단: 배지 + 날짜
+  eventCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginBottom: 14,
   },
-  
-  eventListTitle: {
-    fontSize: 16,
+  eventTypeBadgeNew: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  eventTypeBadgeTextNew: {
+    fontSize: 13,
     fontWeight: '600',
-    color: Colors.textPrimary,
-    lineHeight: 20,
-    flex: 1,
   },
-  
-  // 🔥 개인 일정 표시 배지
-  personalScheduleBadge: {
+  eventDateBadge: {
+    backgroundColor: Colors.gray50,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  eventDateBadgeText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: Colors.gray600 || '#475569',
+  },
+
+  // 카드 중간: 이벤트명 + 장소
+  eventCardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    lineHeight: 24,
+    marginBottom: 6,
+  },
+  eventCardLocationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.gray100,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    gap: 2,
-    marginLeft: 8,
+    gap: 4,
+    marginBottom: 16,
   },
-  
-  personalScheduleBadgeText: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: Colors.gray500,
-  },
-  eventListLocation: {
+  eventCardLocation: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: Colors.gray500,
     lineHeight: 18,
-    marginBottom: 2,
   },
-  eventListDate: {
-    fontSize: 13,
-    color: Colors.gray400,
-    lineHeight: 16,
-  },
-  
-  // 화살표
-  eventArrow: {
-    marginLeft: 12,
-  },
-  
-  // 🔥 완료 버튼
-  completedButton: {
-    marginLeft: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: Colors.gray100,
-    borderRadius: 16,
+
+  // 카드 하단: 통계 바
+  eventCardStatsBar: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.gray50,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  completedButtonText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: Colors.textSecondary,
+  eventCardStatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  eventCardStatText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.gray600 || '#475569',
+  },
+  eventCardStatAmount: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   
   // 🔥 더보기 버튼
@@ -4419,6 +3982,88 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.gray300,
     fontWeight: '400',
+  },
+
+  // 경조사 만들기 바텀시트 모달
+  createEventModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  createEventModalContainer: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  },
+  createEventModalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.gray200,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  createEventModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  createEventModalSubtitle: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginBottom: 24,
+  },
+  createEventModalOptions: {
+    backgroundColor: Colors.gray50,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  createEventModalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  createEventModalIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  createEventModalOptionInfo: {
+    flex: 1,
+  },
+  createEventModalOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  createEventModalOptionDesc: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  createEventModalDivider: {
+    height: 1,
+    backgroundColor: Colors.gray100,
+    marginHorizontal: 16,
+  },
+  createEventModalCancelBtn: {
+    marginTop: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: Colors.gray100,
+    borderRadius: 12,
+  },
+  createEventModalCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textSecondary,
   },
 
 });

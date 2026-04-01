@@ -38,6 +38,7 @@ import {
   RomanticPinkCalendar,
   GuestBookMessages,
 } from './WeddingCommonComponents';
+import { WebView } from 'react-native-webview';
 import styles from './WeddingStyles';
 
 // 랜덤 인사말 목록 - 더 길고 아름답게 수정
@@ -344,7 +345,8 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
   const [showDateAnimation, setShowDateAnimation] = useState(false);
   const [dateSectionY, setDateSectionY] = useState(0);
   const [randomGreeting, setRandomGreeting] = useState(null);
-  
+  const [mapCoord, setMapCoord] = useState(null);
+
   const scrollY = useRef(new Animated.Value(0)).current;
   const fadeAnims = useRef(Array.from({ length: 15 }, () => new Animated.Value(0))).current;
   const slideAnims = useRef(Array.from({ length: 15 }, () => new Animated.Value(50))).current;
@@ -399,6 +401,11 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
   
   // 카테고리별 이미지 안전하게 가져오기
   const safeImages = getCategorizedImagesSafe(categorizedImages);
+
+  // 신랑/신부 사진 유무 확인 (기본 이미지가 아닌 실제 업로드 사진)
+  const hasGroomPhoto = categorizedImages?.groom?.length > 0 && typeof categorizedImages.groom[0] !== 'number';
+  const hasBridePhoto = categorizedImages?.bride?.length > 0 && typeof categorizedImages.bride[0] !== 'number';
+  const hasCouplePhotos = hasGroomPhoto || hasBridePhoto;
 
   useEffect(() => {
     // 오프닝 오버레이 제거
@@ -571,6 +578,35 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
   const openMessageModal = () => {
     setShowMessageModal(true);
   };
+
+  // 카카오 좌표 검색
+  const KAKAO_KEY = '8389c9b97fc151fcf5b0f7d994e16f7a';
+  const locName = eventData.location || eventData.hallName || eventData.hall_name || '';
+  const locAddr = eventData.detailedAddress || eventData.detailed_address || eventData.address || '';
+
+  useEffect(() => {
+    const query = locAddr || locName;
+    if (!query) return;
+
+    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
+      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
+    })
+      .then(r => r.json())
+      .then(data => {
+        const doc = data.documents?.[0];
+        if (doc) {
+          setMapCoord({ lat: doc.y, lng: doc.x });
+        } else if (locAddr) {
+          return fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(locAddr)}`, {
+            headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
+          }).then(r => r.json()).then(d2 => {
+            const doc2 = d2.documents?.[0];
+            if (doc2) setMapCoord({ lat: doc2.y, lng: doc2.x });
+          });
+        }
+      })
+      .catch(() => {});
+  }, [locAddr, locName]);
 
   const handleNavigation = () => {
     const address = eventData.detailedAddress || eventData.detailed_address || '서울시 중구 소공로 119';
@@ -930,7 +966,8 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
           </Text>
         </Animated.View>
 
-        {/* 신랑신부 카드 */}
+        {/* 신랑신부 카드 - 사진이 있을 때만 */}
+        {hasCouplePhotos && (
         <Animated.View style={[
           styles.romantic_coupleSection,
           {
@@ -942,11 +979,12 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
             colors={['#F8F5F2', '#F5F3F2']}
             style={StyleSheet.absoluteFill}
           />
-          
+
           <Text style={styles.romantic_coupleTitle}>Meet the Couple</Text>
-          
+
           <View style={styles.romantic_coupleCardsColumn}>
             {/* 신부 카드 */}
+            {hasBridePhoto && (
             <View style={styles.romantic_coupleCardFull}>
               <View style={{ width: '100%', height: 200, marginBottom: 25 }}>
                 <Image
@@ -956,14 +994,16 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
                 />
               </View>
               <Text style={styles.romantic_coupleRole}>신부</Text>
-              <Text style={styles.romantic_coupleName}>{eventData.brideName || eventData.bride_name || '배하윤'}</Text>
+              <Text style={styles.romantic_coupleName}>{eventData.brideName || eventData.bride_name || ''}</Text>
               <Text style={styles.romantic_coupleEngName}>{brideEnglishName}</Text>
               <Text style={styles.romantic_coupleParents}>
-                {eventData.brideFatherName || eventData.bride_father_name || '배종영'} · {eventData.brideMotherName || eventData.bride_mother_name || '유미연'}의 딸
+                {eventData.brideFatherName || eventData.bride_father_name || ''} · {eventData.brideMotherName || eventData.bride_mother_name || ''}의 딸
               </Text>
             </View>
-            
+            )}
+
             {/* 신랑 카드 */}
+            {hasGroomPhoto && (
             <View style={styles.romantic_coupleCardFull}>
               <View style={{ width: '100%', height: 200, marginBottom: 25 }}>
                 <Image
@@ -973,14 +1013,16 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
                 />
               </View>
               <Text style={styles.romantic_coupleRole}>신랑</Text>
-              <Text style={styles.romantic_coupleName}>{eventData.groomName || eventData.groom_name || '이민호'}</Text>
+              <Text style={styles.romantic_coupleName}>{eventData.groomName || eventData.groom_name || ''}</Text>
               <Text style={styles.romantic_coupleEngName}>{groomEnglishName}</Text>
               <Text style={styles.romantic_coupleParents}>
-                {eventData.groomFatherName || eventData.groom_father_name || '이상현'} · {eventData.groomMotherName || eventData.groom_mother_name || '김미정'}의 아들
+                {eventData.groomFatherName || eventData.groom_father_name || ''} · {eventData.groomMotherName || eventData.groom_mother_name || ''}의 아들
               </Text>
             </View>
+            )}
           </View>
         </Animated.View>
+        )}
 
         {/* 방명록 메시지 섹션 */}
         {allowMessages && (
@@ -1026,10 +1068,21 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
             </Text>
           </View>
           
-          <View style={styles.romantic_mapContainer}>
-            <Text style={styles.romantic_mapPlaceholder}>🗺️</Text>
-            <Text style={styles.romantic_mapText}>지도 영역</Text>
-          </View>
+          {mapCoord ? (
+            <View style={styles.romantic_mapContainerReal}>
+              <WebView
+                source={{ html: `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><style>*{margin:0;padding:0}html,body,#map{width:100%;height:100%}</style></head><body><div id="map"></div><script>var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([${mapCoord.lat},${mapCoord.lng}],16);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);L.marker([${mapCoord.lat},${mapCoord.lng}]).addTo(map);</script></body></html>` }}
+                style={{ flex: 1 }}
+                scrollEnabled={false}
+                javaScriptEnabled
+                originWhitelist={['*']}
+              />
+            </View>
+          ) : (locAddr || locName) ? (
+            <View style={styles.romantic_mapContainer}>
+              <Text style={{ fontSize: 14, color: '#999' }}>지도를 불러오는 중...</Text>
+            </View>
+          ) : null}
           
           <View style={styles.romantic_transportCard}>
             <View style={styles.romantic_transportIcon}>

@@ -5,10 +5,13 @@ import { View, Text, StyleSheet } from 'react-native';
 // 분리된 템플릿들 import
 import ModernDarkTemplate from './wedding/ModernMinimalTemplate';
 import ModernMinimalTemplate from './wedding/ElegantGardenTemplate';
-import KoreanElegantTemplate from './wedding/KoreanElegantTemplate';
+import TossStyleTemplate from './wedding/TossStyleTemplate';
 import VintageAppTemplate from './wedding/VintageAppTemplate';
 import RomanticPinkTemplate from './wedding/RomanticPinkTemplate';
 import ElegantGardenTemplate from './wedding/ElegantGardenTemplate';
+import ClassicElegantTemplate from './wedding/ClassicElegantTemplate';
+import RomanticArchTemplate from './wedding/RomanticArchTemplate';
+import EditorialMagazineTemplate from './wedding/EditorialMagazineTemplate';
 
 // 메인 렌더링 컴포넌트
 export default function WeddingTemplatePreview({ 
@@ -50,14 +53,20 @@ export default function WeddingTemplatePreview({
     case 'modern-dark': 
       return <ModernDarkTemplate {...commonProps} />;
     case 'korean-elegant':
-      return <KoreanElegantTemplate {...commonProps} />;
+      return <TossStyleTemplate {...commonProps} />;
     case 'vintage-app': 
       return <VintageAppTemplate {...commonProps} />;
     case 'romantic-pink':
       return <RomanticPinkTemplate {...commonProps} />;
     case 'elegant-garden':
       return <ElegantGardenTemplate {...commonProps} />;
-    default: 
+    case 'classic-elegant':
+      return <ClassicElegantTemplate {...commonProps} />;
+    case 'romantic-arch':
+      return <RomanticArchTemplate {...commonProps} />;
+    case 'editorial-magazine':
+      return <EditorialMagazineTemplate {...commonProps} />;
+    default:
       return (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <Text>지원하지 않는 템플릿입니다: {template.style}</Text>
