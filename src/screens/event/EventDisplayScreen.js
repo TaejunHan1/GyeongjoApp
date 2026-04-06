@@ -333,8 +333,11 @@ export default function EventDisplayScreen({ navigation, route }) {
   // 🔥 QR 코드 관련 함수들
   const getQRValue = () => {
     if (!event) return '';
-    const WEB_BASE_URL = 'https://contribution-web-srgt.vercel.app';
-    return `${WEB_BASE_URL}/contribute/${event.id}`;
+    const WEB_BASE_URL = __DEV__
+      ? 'http://192.168.219.46:3000'
+      : 'https://contribution-web-srgt.vercel.app';
+    const templateStyle = getFinalTemplateStyle();
+    return `${WEB_BASE_URL}/template/${event.id}?template=${templateStyle}`;
   };
 
   const handleQRShare = async () => {
