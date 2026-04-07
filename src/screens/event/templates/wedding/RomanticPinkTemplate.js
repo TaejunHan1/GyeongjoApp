@@ -657,13 +657,10 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
   return (
     <View style={styles.romantic_container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F5F2" />
-      
+
       {/* 커스텀 오프닝 오버레이 */}
       <CustomOpeningOverlay visible={showOpening} />
-      
-      {/* 꽃잎 애니메이션 */}
-      <FallingPetals />
-      
+
       <ScrollView
         style={styles.romantic_scrollView}
         showsVerticalScrollIndicator={false}

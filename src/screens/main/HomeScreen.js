@@ -1702,6 +1702,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                       }
                     </Text>
                   </View>
+
                 </TouchableOpacity>
               ))}
               
@@ -2788,7 +2789,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.primary,
   },
-  
+
   // 🔥 더보기 버튼
   viewMoreButton: {
     flexDirection: 'row',

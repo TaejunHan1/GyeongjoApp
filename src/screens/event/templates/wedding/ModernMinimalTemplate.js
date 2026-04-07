@@ -564,9 +564,6 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
               style={styles.imageOverlay}
             />
             
-            {/* 꽃잎 애니메이션 - 히어로 섹션 내부에만 */}
-            <FallingFlowers heroHeight={height * 0.85} />
-            
             {/* 메인 텍스트 오버레이 */}
             <View style={styles.heroTextOverlay}>
               <Animated.View style={{ 
@@ -593,35 +590,43 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
             transform: [{ translateY: slideAnims[1] }]
           }
         ]}>
-          <Text style={styles.greetingTitle}>우리의 사랑이 꽃피는 날,</Text>
-          <Text style={styles.greetingSubtitle}>함께 축복해 주세요</Text>
-          
-          <View style={styles.greetingDivider} />
-          
+          {/* 섹션 헤더 */}
+          <Text style={{ fontSize: 12, color: '#888', letterSpacing: 4, textTransform: 'uppercase', marginBottom: 8 }}>Greeting</Text>
+          <Text style={{ fontSize: 24, fontWeight: '300', color: '#1a1a1a', marginBottom: 16, letterSpacing: 2 }}>인사말</Text>
+          <View style={{ width: 40, height: 1, backgroundColor: '#ddd', marginBottom: 32 }} />
+
           <Text style={styles.greetingContent}>
-            {eventData.customMessage || 
+            {eventData.customMessage ||
             `서로 다른 길을 걸어온 두 사람이
 하나의 길을 함께 걷고자 합니다.
-저희의 새로운 시작을 
-따뜻한 마음으로 축복해 주세요.
-
-On the day our love blossoms,
-please bless our marriage.`}
+저희의 새로운 시작을
+따뜻한 마음으로 축복해 주세요.`}
           </Text>
-          
-          {/* 부모님 성함 */}
-          <View style={styles.parentsSection}>
-            <View style={styles.parentsRow}>
-              <Text style={styles.parentsText}>
-                {eventData.groomFatherName || '아버지'} · {eventData.groomMotherName || '어머니'}의 아들 {eventData.groomName || '현'}
+
+          {/* 신랑 신부 이름 블록 */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+            gap: 30, marginTop: 40, paddingVertical: 24, paddingHorizontal: 30,
+            backgroundColor: 'rgba(0,0,0,0.02)', borderWidth: 1,
+            borderColor: '#eeeeee', borderRadius: 16,
+          }}>
+            <View style={{ alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontSize: 10, color: '#888', letterSpacing: 3 }}>GROOM</Text>
+              <Text style={{ fontSize: 20, color: '#1a1a1a', fontWeight: '500', letterSpacing: 1 }}>
+                {eventData.groomName || eventData.groom_name || '현'}
               </Text>
             </View>
-            <View style={styles.parentsRow}>
-              <Text style={styles.parentsText}>
-                {eventData.brideFatherName || '아버지'} · {eventData.brideMotherName || '어머니'}의 딸 {eventData.brideName || '아름'}
+            <Text style={{ fontSize: 18, color: '#aaa' }}>♥</Text>
+            <View style={{ alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontSize: 10, color: '#888', letterSpacing: 3 }}>BRIDE</Text>
+              <Text style={{ fontSize: 20, color: '#1a1a1a', fontWeight: '500', letterSpacing: 1 }}>
+                {eventData.brideName || eventData.bride_name || '아름'}
               </Text>
             </View>
           </View>
+          <Text style={{ fontSize: 13, color: '#888', letterSpacing: 1, marginTop: 16 }}>
+            두 사람이 하나되어 새로운 시작을 합니다
+          </Text>
         </Animated.View>
         
         {/* 날짜 & 시간 & 카운트다운 통합 섹션 */}
@@ -850,10 +855,41 @@ please bless our marriage.`}
               </View>
             ) : null}
             
+            {/* 지도 앱 버튼 */}
+            {(locAddr || locName) && (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                    gap: 8, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.08)',
+                    borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+                  }}
+                  onPress={() => Linking.openURL(`nmap://search?query=${encodeURIComponent(locAddr || locName)}&appname=com.gyeongjo.app`)}
+                >
+                  <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: '600' }}>네이버지도</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{
+                    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                    gap: 8, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.08)',
+                    borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+                  }}
+                  onPress={() => Linking.openURL(`tmap://search?name=${encodeURIComponent(locAddr || locName)}`)}
+                >
+                  <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: '600' }}>T맵</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {eventData.parkingInfo && (
-              <View style={styles.parkingInfo}>
-                <Ionicons name="car" size={20} color="rgba(255,255,255,0.6)" />
-                <Text style={styles.parkingText}>{eventData.parkingInfo}</Text>
+              <View style={styles.parkingCard}>
+                <View style={styles.parkingIconBox}>
+                  <Text style={{ fontSize: 22 }}>🅿️</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.parkingCardTitle}>주차 안내</Text>
+                  <Text style={styles.parkingCardText}>{eventData.parkingInfo}</Text>
+                </View>
               </View>
             )}
           </Animated.View>
@@ -1452,14 +1488,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  parkingInfo: {
+  parkingCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 14,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 14,
+    padding: 16,
+    marginTop: 16,
   },
-  parkingText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
-    marginLeft: 10,
+  parkingIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  parkingCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 4,
+  },
+  parkingCardText: {
+    fontSize: 13,
+    color: '#666',
+    lineHeight: 20,
   },
 
   // 계좌번호 섹션

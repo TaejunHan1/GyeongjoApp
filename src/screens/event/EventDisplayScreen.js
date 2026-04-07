@@ -1,5 +1,5 @@
 // src/screens/event/EventDisplayScreen.js - 부조하기 버튼 QR코드 연결 및 메시지 기능
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,55 +13,226 @@ import {
   Modal,
   Share,
   Clipboard,
+  ScrollView,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system/legacy';
 import QRCode from 'react-native-qrcode-svg';
 import { Colors } from '../../styles/constants';
-import { getEventDetail, getEventMessages, createEventMessage } from '../../lib/supabaseHelper';
+import { getEventDetail, getEventMessages, createEventMessage, updateEvent } from '../../lib/supabaseHelper';
+import { supabase } from '../../lib/supabase';
 import { syncEventToWeb } from '../../lib/webSync';
 import WeddingTemplatePreview from './templates/WeddingTemplatePreview';
 import FuneralTemplatePreview from './templates/FuneralTemplatePreview';
+import { GlobalFallingEffect } from './templates/wedding/WeddingCommonComponents';
+
+const MUSIC_TRACKS = [
+  { id: 'none', name: '음악 없음', emoji: '🔇', file: null },
+  { id: 'track1', name: '웨딩 트레일러', emoji: '🎺', file: require('../../../assets/music/hitslab-wedding-wedding-trailer-music-269139.mp3') },
+  { id: 'track2', name: '로맨틱 웨딩', emoji: '🌹', file: require('../../../assets/music/krasnoshchok-wedding-romantic-love-music-409293.mp3') },
+  { id: 'track3', name: '웨딩 피아노 I', emoji: '🎹', file: require('../../../assets/music/paulyudin-wedding-485932.mp3') },
+  { id: 'track4', name: '웨딩 피아노 II', emoji: '🎹', file: require('../../../assets/music/paulyudin-wedding-music-valentines-day-182505.mp3') },
+  { id: 'track5', name: '웨딩 왈츠', emoji: '💃', file: require('../../../assets/music/prettyjohn1-wedding-487335.mp3') },
+  { id: 'track6', name: '클래식 웨딩', emoji: '🎻', file: require('../../../assets/music/starostin-wedding-wedding-music-345462.mp3') },
+  { id: 'track7', name: '마운틴 웨딩 I', emoji: '🏔️', file: require('../../../assets/music/the_mountain-wedding-455512.mp3') },
+  { id: 'track8', name: '마운틴 웨딩 II', emoji: '🏔️', file: require('../../../assets/music/the_mountain-wedding-487025.mp3') },
+  { id: 'track9', name: '벨벳 펀치', emoji: '🎷', file: require('../../../assets/music/The_Velvet_Punch.mp3') },
+  { id: 'track10', name: '웨딩 조이', emoji: '🎊', file: require('../../../assets/music/u_3m10w313je-wedding-joy-189888.mp3') },
+  { id: 'track11', name: '로맨틱 배경음악', emoji: '🎵', file: require('../../../assets/music/viacheslavstarostin-romantic-wedding-background-music-357203.mp3') },
+];
 
 const { width, height } = Dimensions.get('window');
 
 export default function EventDisplayScreen({ navigation, route }) {
-  const { 
-    eventId, 
+  console.log('🏗️ EventDisplayScreen 렌더링 시작');
+  const {
+    eventId,
     templateStyle,
     categorizedImages,
-    eventData: passedEventData 
+    eventData: passedEventData
   } = route.params;
-  
+  console.log('🏗️ EventDisplayScreen params:', { eventId: eventId?.substring(0, 8), hasCategorizedImages: !!categorizedImages });
+
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showExitButton, setShowExitButton] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
-  const [eventMessages, setEventMessages] = useState([]); // 🔥 메시지 state 추가
+  const [eventMessages, setEventMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [showQRModal, setShowQRModal] = useState(false); // 🔥 QR 모달 state 추가
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [signedCategorizedImages, setSignedCategorizedImages] = useState(null);
+
+  // 🎵 음악 관련 state
+  const [showMusicModal, setShowMusicModal] = useState(false);
+  const [selectedMusicId, setSelectedMusicId] = useState('none');
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [previewingId, setPreviewingId] = useState(null);
+  const soundRef = useRef(null);
+  const previewSoundRef = useRef(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
 
   useEffect(() => {
     if (eventId === 'preview' && passedEventData) {
       setIsPreviewMode(true);
       setEvent(passedEventData);
       setLoading(false);
+      // 미리보기: 저장된 음악 있으면 자동재생
+      const savedMusic = passedEventData?.additional_info?.background_music;
+      if (savedMusic?.id && savedMusic.id !== 'none') {
+        setSelectedMusicId(savedMusic.id);
+        setTimeout(() => playMusic(savedMusic.id), 1000);
+      }
     } else {
       loadEventData();
       loadEventMessages();
     }
-    
+
     startAnimations();
-    
+
     const exitTimer = setTimeout(() => {
       setShowExitButton(true);
     }, 8000);
 
     return () => {
       clearTimeout(exitTimer);
+      stopAllSounds();
     };
   }, [eventId, passedEventData]);
+
+  // 이벤트 로드 완료 후 저장된 음악 자동재생
+  useEffect(() => {
+    if (event && !isPreviewMode) {
+      const savedMusic = event?.additional_info?.background_music;
+      if (savedMusic?.id && savedMusic.id !== 'none') {
+        setSelectedMusicId(savedMusic.id);
+        setTimeout(() => playMusic(savedMusic.id), 1500);
+      }
+    }
+  }, [event]);
+
+  const stopAllSounds = async () => {
+    if (soundRef.current) {
+      try { await soundRef.current.stopAsync(); await soundRef.current.unloadAsync(); } catch {}
+      soundRef.current = null;
+    }
+    if (previewSoundRef.current) {
+      try { await previewSoundRef.current.stopAsync(); await previewSoundRef.current.unloadAsync(); } catch {}
+      previewSoundRef.current = null;
+    }
+    setIsPlaying(false);
+    setPreviewingId(null);
+  };
+
+  const playMusic = async (trackId) => {
+    const track = MUSIC_TRACKS.find(t => t.id === trackId);
+    if (!track || !track.file) return;
+
+    await stopAllSounds();
+
+    try {
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
+      const { sound } = await Audio.Sound.createAsync(track.file, { isLooping: true, volume: 0.6 });
+      soundRef.current = sound;
+      await sound.playAsync();
+      setIsPlaying(true);
+      setSelectedMusicId(trackId);
+    } catch (e) {
+      console.warn('음악 재생 오류:', e);
+    }
+  };
+
+  const togglePlayPause = async () => {
+    if (!soundRef.current) {
+      if (selectedMusicId && selectedMusicId !== 'none') {
+        await playMusic(selectedMusicId);
+      }
+      return;
+    }
+    if (isPlaying) {
+      await soundRef.current.pauseAsync();
+      setIsPlaying(false);
+    } else {
+      await soundRef.current.playAsync();
+      setIsPlaying(true);
+    }
+  };
+
+  const previewTrack = async (trackId) => {
+    const track = MUSIC_TRACKS.find(t => t.id === trackId);
+    if (!track || !track.file) return;
+
+    if (previewingId === trackId) {
+      // 같은 트랙 미리듣기 중이면 정지
+      if (previewSoundRef.current) {
+        try { await previewSoundRef.current.stopAsync(); await previewSoundRef.current.unloadAsync(); } catch {}
+        previewSoundRef.current = null;
+      }
+      setPreviewingId(null);
+      return;
+    }
+
+    if (previewSoundRef.current) {
+      try { await previewSoundRef.current.stopAsync(); await previewSoundRef.current.unloadAsync(); } catch {}
+      previewSoundRef.current = null;
+    }
+
+    try {
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
+      const { sound } = await Audio.Sound.createAsync(track.file, { volume: 0.8 });
+      previewSoundRef.current = sound;
+      await sound.playAsync();
+      setPreviewingId(trackId);
+      // 10초 후 자동 정지
+      setTimeout(async () => {
+        if (previewSoundRef.current) {
+          try { await previewSoundRef.current.stopAsync(); await previewSoundRef.current.unloadAsync(); } catch {}
+          previewSoundRef.current = null;
+        }
+        setPreviewingId(null);
+      }, 10000);
+    } catch (e) {
+      console.warn('미리듣기 오류:', e);
+    }
+  };
+
+  const handleSelectMusic = async (trackId) => {
+    // 기존 미리듣기 정지
+    if (previewSoundRef.current) {
+      try { await previewSoundRef.current.stopAsync(); await previewSoundRef.current.unloadAsync(); } catch {}
+      previewSoundRef.current = null;
+      setPreviewingId(null);
+    }
+
+    setSelectedMusicId(trackId);
+
+    if (trackId === 'none') {
+      await stopAllSounds();
+    } else {
+      await playMusic(trackId);
+    }
+
+    // DB 저장 (비미리보기 모드)
+    if (!isPreviewMode && eventId && eventId !== 'preview') {
+      try {
+        const track = MUSIC_TRACKS.find(t => t.id === trackId);
+        const currentAdditionalInfo = event?.additional_info || {};
+        await updateEvent(eventId, {
+          additional_info: {
+            ...currentAdditionalInfo,
+            background_music: trackId === 'none' ? null : { id: trackId, name: track?.name },
+          }
+        });
+      } catch (e) {
+        console.warn('음악 저장 오류:', e);
+      }
+    }
+
+    setShowMusicModal(false);
+  };
 
   const loadEventData = async () => {
     try {
@@ -70,6 +241,14 @@ export default function EventDisplayScreen({ navigation, route }) {
       
       if (result.success) {
         setEvent(result.data);
+
+        // Supabase URL → base64 변환 (React Native Image가 직접 못 불러오는 문제 해결)
+        const rawCI = result.data?.additional_info?.categorized_images;
+        if (rawCI) {
+          convertToBase64Uris(rawCI).then(converted => {
+            setSignedCategorizedImages(converted);
+          }).catch(() => {});
+        }
 
         // 웹 데이터베이스에 동기화 (백그라운드에서 실행)
         syncEventToWeb(result.data).catch((err) => {
@@ -85,6 +264,67 @@ export default function EventDisplayScreen({ navigation, route }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Supabase Storage URL → FileSystem 다운로드 → base64 data URI 변환
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mc2hxdnJsZGNlc3ZqdHJlZHhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwNDI1MTQsImV4cCI6MjA2NDYxODUxNH0.uIfuqMP7SFvQfQXSESS9xKHWlBYeWmZwf1j_4eveZ6Q';
+
+  const fetchImageAsBase64 = async (url) => {
+    console.log('📥 fetchImageAsBase64 시작:', url.substring(0, 80));
+    try {
+      const fileName = `img_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+      const tempPath = `${FileSystem.cacheDirectory}${fileName}`;
+
+      const downloadResult = await FileSystem.downloadAsync(url, tempPath, {
+        headers: { 'apikey': SUPABASE_ANON_KEY },
+      });
+
+      console.log('📥 다운로드 결과 status:', downloadResult.status, 'uri:', downloadResult.uri?.substring(0, 60));
+
+      if (downloadResult.status !== 200) {
+        console.log('❌ 다운로드 실패:', downloadResult.status);
+        await FileSystem.deleteAsync(tempPath, { idempotent: true });
+        return null;
+      }
+
+      const base64 = await FileSystem.readAsStringAsync(downloadResult.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      await FileSystem.deleteAsync(downloadResult.uri, { idempotent: true });
+
+      if (!base64) {
+        console.log('❌ base64 변환 실패: 빈 문자열');
+        return null;
+      }
+
+      console.log('✅ base64 완료 길이:', base64.length);
+      return `data:image/jpeg;base64,${base64}`;
+    } catch (e) {
+      console.log('❌ fetchImageAsBase64 예외:', e.message);
+      return null;
+    }
+  };
+
+  const convertToBase64Uris = async (ci) => {
+    console.log('🔄 [CONVERT] convertToBase64Uris 시작, keys:', Object.keys(ci || {}));
+    if (!ci || typeof ci !== 'object') return ci;
+    const result = {};
+    for (const key of Object.keys(ci)) {
+      if (!Array.isArray(ci[key])) { result[key] = ci[key]; continue; }
+      result[key] = await Promise.all(ci[key].map(async (img) => {
+        if (!img || typeof img !== 'object') return img;
+        const isLocal = img.uri && (img.uri.startsWith('file://') || img.uri.startsWith('ph://') || img.uri.startsWith('data:'));
+        if (isLocal) return img;
+        const supabaseUrl = img.publicUrl || img.uri;
+        if (!supabaseUrl || !supabaseUrl.startsWith('http')) return img;
+        const base64 = await fetchImageAsBase64(supabaseUrl);
+        if (!base64) return img;
+        console.log('✅ base64 변환 완료:', key, supabaseUrl.substring(50, 80));
+        return { ...img, uri: base64 };
+      }));
+    }
+    return result;
   };
 
   // 🔥 메시지 로드 함수 추가
@@ -225,18 +465,19 @@ export default function EventDisplayScreen({ navigation, route }) {
   };
 
   const getFinalCategorizedImages = () => {
-    console.log('🔍 [IMAGE DEBUG] getFinalCategorizedImages 시작');
-    console.log('🔍 [IMAGE DEBUG] categorizedImages:', categorizedImages);
-    console.log('🔍 [IMAGE DEBUG] event?.image_urls:', event?.image_urls);
-    console.log('🔍 [IMAGE DEBUG] event?.additional_info?.categorized_images:', event?.additional_info?.categorized_images);
-    
-    if (categorizedImages && Object.keys(categorizedImages).length > 0) {
-      console.log('✅ [IMAGE DEBUG] route.params의 categorizedImages 사용');
+    // Signed URL로 변환된 이미지가 있으면 우선 사용
+    if (signedCategorizedImages) return signedCategorizedImages;
+
+    // 실제 이미지가 있는지 확인하는 헬퍼
+    const hasImages = (ci) => ci && typeof ci === 'object' &&
+      ['main','gallery','groom','bride','all'].some(k => Array.isArray(ci[k]) && ci[k].length > 0);
+
+    if (hasImages(categorizedImages)) {
       return categorizedImages;
     }
 
     if (event) {
-      if (event.additional_info?.categorized_images) {
+      if (hasImages(event.additional_info?.categorized_images)) {
         console.log('✅ [IMAGE DEBUG] additional_info.categorized_images 사용');
         return event.additional_info.categorized_images;
       }
@@ -435,17 +676,24 @@ export default function EventDisplayScreen({ navigation, route }) {
   const finalTemplate = { style: finalTemplateStyle };
   const messageSettings = getMessageSettings();
 
+  const petalEffect = event?.additional_info?.background_petal || null;
+
   return (
     <View style={styles.container}>
       <StatusBar hidden />
-      
+      <GlobalFallingEffect
+        type={petalEffect?.id || petalEffect}
+        speed={petalEffect?.speed}
+        qty={petalEffect?.qty}
+      />
+
       {isPreviewMode && (
         <View style={styles.previewBanner}>
           <Ionicons name="eye" size={16} color={Colors.white} />
           <Text style={styles.previewBannerText}>미리보기 모드</Text>
         </View>
       )}
-      
+
       <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
         {finalEventType === 'funeral' ? (
           <FuneralTemplatePreview
@@ -472,9 +720,17 @@ export default function EventDisplayScreen({ navigation, route }) {
         )}
       </Animated.View>
       
+      {/* 🎵 음악 플로팅 버튼 */}
+      <TouchableOpacity
+        style={[styles.musicFloatingButton, isPlaying && styles.musicFloatingButtonActive]}
+        onPress={togglePlayPause}
+      >
+        <Ionicons name={isPlaying ? 'musical-notes' : 'musical-note'} size={20} color={Colors.white} />
+      </TouchableOpacity>
+
       {/* 🔥 부조하기 플로팅 버튼 - QR코드로 연결 */}
       {!isPreviewMode && (
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.contributeFloatingButton}
           onPress={handleContribute}
         >
@@ -652,6 +908,141 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   
+  // 🎵 음악 플로팅 버튼
+  musicFloatingButton: {
+    position: 'absolute',
+    bottom: 40,
+    left: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
+    zIndex: 1000,
+  },
+  musicFloatingButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+
+  // 🎵 음악 모달
+  musicModalContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  musicModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    maxHeight: height * 0.8,
+  },
+  musicModalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  musicModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    marginBottom: 8,
+  },
+  musicModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  musicCurrentPlaying: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#f0f4ff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  },
+  musicCurrentLabel: {
+    fontSize: 11,
+    color: Colors.primary,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  musicCurrentName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  musicPlayPauseBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  musicPlayPauseBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  musicTrackItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+  },
+  musicTrackItemSelected: {
+    backgroundColor: '#f0f4ff',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    marginHorizontal: -6,
+  },
+  musicTrackEmoji: {
+    fontSize: 22,
+    width: 32,
+    textAlign: 'center',
+  },
+  musicTrackName: {
+    flex: 1,
+    fontSize: 15,
+    color: '#333',
+  },
+  musicTrackNameSelected: {
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  previewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  previewBtnText: {
+    fontSize: 12,
+    color: Colors.primary,
+    fontWeight: '500',
+  },
+
   // 🔥 부조하기 플로팅 버튼 - QR코드 아이콘 추가
   contributeFloatingButton: {
     position: 'absolute',

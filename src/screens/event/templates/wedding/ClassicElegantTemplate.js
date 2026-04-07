@@ -689,7 +689,6 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
     {/* ── 인트로 (3D 문 열림 효과) ── */}
     {showIntro && (
       <Animated.View style={[s.introRoot, { paddingTop: insets.top, paddingBottom: insets.bottom, opacity: introOpacity }]}>
-        <FallingFlowers />
         {/* 왼쪽 문 (텍스트 포함) */}
         <Animated.View style={[s.doorLeft, {
           transform: [

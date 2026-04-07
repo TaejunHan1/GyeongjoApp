@@ -275,9 +275,10 @@ export const processImageArray = (images, defaultFallback = []) => {
         uri: img
       };
     } 
-    // 이미 객체 형태인 경우
+    // 이미 객체 형태인 경우 - 로컬 파일 우선, 없으면 publicUrl
     else if (img && (img.uri || img.publicUrl)) {
-      const uri = img.publicUrl || img.uri;
+      const isLocal = img.uri && (img.uri.startsWith('file://') || img.uri.startsWith('ph://') || img.uri.startsWith('assets-library://') || img.uri.startsWith('data:'));
+      const uri = isLocal ? img.uri : (img.publicUrl || img.uri);
       console.log(`✅ 객체 이미지 [${index}] 사용:`, uri.substring(0, 50) + '...');
       return {
         uri: uri

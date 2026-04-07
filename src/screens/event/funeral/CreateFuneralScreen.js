@@ -20,6 +20,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUserInfo, moveImagesToEventFolder,
 } from '../../../lib/supabaseHelper';
 import DaumPostcode from '../../../components/DaumPostcode';
@@ -730,7 +731,15 @@ export default function CreateFuneralScreen({ navigation, route }) {
             
             console.log('🔍 [DEBUG] 개별 이미지 업로드 시작:', fileName);
   
-            const uploadResult = await uploadImageToStorage(asset.uri, fileName, currentUser.id, tempEventId);
+            let uploadUri = asset.uri;
+            try {
+              const converted = await ImageManipulator.manipulateAsync(
+                asset.uri, [{ resize: { width: 1200 } }], { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
+              );
+              uploadUri = converted.uri;
+            } catch (e) { console.warn('⚠️ 변환 실패:', e.message); }
+
+            const uploadResult = await uploadImageToStorage(uploadUri, fileName, currentUser.id, tempEventId);
             
             setImageUploadState(prev => ({
               ...prev,

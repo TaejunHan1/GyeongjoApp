@@ -559,7 +559,7 @@ export const uploadImageToStorage = async (imageUri, fileName, userId, eventId =
       supabaseUrl: supabase.supabaseUrl?.slice(0, 30) + '...' 
     });
     
-    // 1. 파일 읽기 방식 개선 (ArrayBuffer 사용)
+    // 1. 파일 읽기 (Blob - JPEG로 변환된 uri가 들어온다고 가정)
     let fileData;
     try {
       console.log('🔍 파일 읽기 시작...');
@@ -567,12 +567,9 @@ export const uploadImageToStorage = async (imageUri, fileName, userId, eventId =
       if (!response.ok) {
         throw new Error(`파일 읽기 실패: ${response.status} ${response.statusText}`);
       }
-      
-      // ArrayBuffer로 읽기 (더 안정적)
-      fileData = await response.arrayBuffer();
-      console.log('✅ 파일 읽기 완료, 크기:', fileData.byteLength, 'bytes');
-      
-      if (fileData.byteLength === 0) {
+      fileData = await response.blob();
+      console.log('✅ 파일 읽기 완료, 크기:', fileData.size, 'bytes, type:', fileData.type);
+      if (!fileData.size || fileData.size === 0) {
         throw new Error('파일이 비어있습니다.');
       }
     } catch (fileError) {
@@ -591,12 +588,12 @@ export const uploadImageToStorage = async (imageUri, fileName, userId, eventId =
     console.log('🔍 업로드 경로:', uniqueFileName);
     
     // 3. Supabase Storage에 업로드
+    const contentType = fileData.type && fileData.type !== 'application/octet-stream' ? fileData.type : 'image/jpeg';
     const { data, error } = await supabase.storage
       .from('event-images')
       .upload(uniqueFileName, fileData, {
-        contentType: 'image/jpeg',
-        upsert: true, // 🔥 덮어쓰기 허용
-        duplex: 'half'
+        contentType,
+        upsert: true,
       });
 
     if (error) {
@@ -836,7 +833,8 @@ export const getUserEvents = async (passedUserInfo = null) => {
         custom_message,
         allow_messages,
         message_placeholder,
-        additional_info
+        additional_info,
+        image_urls
       `)
       .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false });

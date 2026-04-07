@@ -20,6 +20,35 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as FileSystem from 'expo-file-system/legacy';
+
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mc2hxdnJsZGNlc3ZqdHJlZHhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwNDI1MTQsImV4cCI6MjA2NDYxODUxNH0.uIfuqMP7SFvQfQXSESS9xKHWlBYeWmZwf1j_4eveZ6Q';
+
+const downloadSupabaseImage = async (url) => {
+  if (!url || !url.startsWith('http')) return null;
+  try {
+    console.log('📥 [DL] 이미지 다운로드 시작:', url.substring(0, 60));
+    const fileName = `supa_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+    const tempPath = `${FileSystem.cacheDirectory}${fileName}`;
+    const result = await FileSystem.downloadAsync(url, tempPath, {
+      headers: { 'apikey': SUPABASE_ANON_KEY },
+    });
+    if (result.status !== 200) {
+      console.log('❌ [DL] 다운로드 실패 status:', result.status);
+      return null;
+    }
+    const base64 = await FileSystem.readAsStringAsync(result.uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    await FileSystem.deleteAsync(result.uri, { idempotent: true });
+    if (!base64) return null;
+    console.log('✅ [DL] 다운로드 완료 길이:', base64.length);
+    return `data:image/jpeg;base64,${base64}`;
+  } catch (e) {
+    console.log('❌ [DL] 예외:', e.message);
+    return null;
+  }
+};
 import { 
   width, 
   height, 
@@ -107,6 +136,147 @@ export const FallingPetals = () => {
       ))}
     </View>
   );
+};
+
+// ── 전역 꽃잎 효과 (configurable) ──
+const SPEED_MULT = { slow: 1.9, normal: 1, fast: 0.55 };
+const QTY_COUNT = { few: 0.45, normal: 1, many: 1.8 };
+
+// 각 파티클을 랜덤 진행률에서 시작 → 항상 화면 전체에 고르게 분포, 끊김 없이 루프
+function startContinuousParticle(anim, dur) {
+  const initialProgress = Math.random(); // 0~1 랜덤 시작 위치
+  anim.setValue(initialProgress);
+  // 현재 사이클 나머지 구간 완료
+  Animated.timing(anim, {
+    toValue: 1,
+    duration: dur * (1 - initialProgress),
+    useNativeDriver: true,
+    easing: Easing.linear,
+  }).start(({ finished }) => {
+    if (!finished) return;
+    anim.setValue(0);
+    // 이후 무한 루프
+    Animated.loop(
+      Animated.timing(anim, { toValue: 1, duration: dur, useNativeDriver: true, easing: Easing.linear }),
+      { iterations: -1 }
+    ).start();
+  });
+}
+
+const FlowerEffect = ({ speed = 'normal', qty = 'normal' }) => {
+  const imgs = [
+    require('../../../../../assets/images/flowers/flower2.png'),
+    require('../../../../../assets/images/flowers/flower3.png'),
+    require('../../../../../assets/images/flowers/flower4.png'),
+    require('../../../../../assets/images/flowers/flower5.png'),
+  ];
+  const sm = SPEED_MULT[speed] || 1;
+  const count = Math.round(28 * (QTY_COUNT[qty] || 1));
+  const flowers = useRef([...Array(count)].map((_, i) => ({
+    anim: new Animated.Value(Math.random()),
+    x: Math.random() * width,
+    size: Math.random() * 38 + 26,
+    imgIdx: i % 4,
+    dur: (7000 + Math.random() * 2000) * sm,
+  }))).current;
+  useEffect(() => {
+    flowers.forEach(f => startContinuousParticle(f.anim, f.dur));
+  }, []);
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, pointerEvents: 'none' }}>
+      {flowers.map((f, i) => (
+        <Animated.View key={i} style={{
+          position: 'absolute', left: f.x,
+          opacity: f.anim.interpolate({ inputRange: [0, 0.04, 0.92, 1], outputRange: [0, 0.82, 0.82, 0] }),
+          transform: [
+            { translateY: f.anim.interpolate({ inputRange: [0, 1], outputRange: [-100, height + 100] }) },
+            { translateX: f.anim.interpolate({ inputRange: [0, 0.3, 0.7, 1], outputRange: [0, 14, -9, 5] }) },
+            { rotate: f.anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '120deg'] }) },
+          ],
+        }}>
+          <Image source={imgs[f.imgIdx]} style={{ width: f.size, height: f.size }} resizeMode="contain" />
+        </Animated.View>
+      ))}
+    </View>
+  );
+};
+
+const ClassicSnowEffect = ({ speed = 'normal', qty = 'normal' }) => {
+  const imgs = [
+    require('../../../../../assets/icons/1.png'), require('../../../../../assets/icons/2.png'),
+    require('../../../../../assets/icons/3.png'), require('../../../../../assets/icons/4.png'),
+    require('../../../../../assets/icons/5.png'), require('../../../../../assets/icons/6.png'),
+    require('../../../../../assets/icons/7.png'), require('../../../../../assets/icons/8.png'),
+    require('../../../../../assets/icons/9.png'), require('../../../../../assets/icons/10.png'),
+    require('../../../../../assets/icons/11.png'), require('../../../../../assets/icons/12.png'),
+  ];
+  const sm = SPEED_MULT[speed] || 1;
+  const count = Math.round(32 * (QTY_COUNT[qty] || 1));
+  const flakes = useRef([...Array(count)].map((_, i) => ({
+    anim: new Animated.Value(Math.random()),
+    x: Math.random() * width,
+    size: Math.random() * 7 + 4,
+    imgIdx: i % 12,
+    dur: (5000 + Math.random() * 2000) * sm,
+  }))).current;
+  useEffect(() => {
+    flakes.forEach(f => startContinuousParticle(f.anim, f.dur));
+  }, []);
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, pointerEvents: 'none' }}>
+      {flakes.map((f, i) => (
+        <Animated.View key={i} style={{
+          position: 'absolute', left: f.x,
+          opacity: f.anim.interpolate({ inputRange: [0, 0.04, 0.92, 1], outputRange: [0, 0.68, 0.68, 0] }),
+          transform: [
+            { translateY: f.anim.interpolate({ inputRange: [0, 1], outputRange: [-80, height + 50] }) },
+            { translateX: f.anim.interpolate({ inputRange: [0, 0.3, 0.7, 1], outputRange: [0, 12, -8, 5] }) },
+            { rotate: f.anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '100deg'] }) },
+          ],
+        }}>
+          <Image source={imgs[f.imgIdx]} style={{ width: f.size, height: f.size }} resizeMode="contain" fadeDuration={0} />
+        </Animated.View>
+      ))}
+    </View>
+  );
+};
+
+const PetalEffect = ({ speed = 'normal', qty = 'normal' }) => {
+  const sm = SPEED_MULT[speed] || 1;
+  const count = Math.round(18 * (QTY_COUNT[qty] || 1));
+  const petals = useRef([...Array(count)].map(() => ({
+    anim: new Animated.Value(Math.random()),
+    x: Math.random() * width,
+    size: 18 + Math.random() * 12,
+    dur: (8000 + Math.random() * 4000) * sm,
+  }))).current;
+  useEffect(() => {
+    petals.forEach(p => startContinuousParticle(p.anim, p.dur));
+  }, []);
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, pointerEvents: 'none' }}>
+      {petals.map((p, i) => (
+        <Animated.View key={i} style={{
+          position: 'absolute', left: p.x,
+          opacity: p.anim.interpolate({ inputRange: [0, 0.05, 0.92, 1], outputRange: [0, 0.82, 0.82, 0] }),
+          transform: [
+            { translateY: p.anim.interpolate({ inputRange: [0, 1], outputRange: [-50, height + 50] }) },
+            { rotate: p.anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
+          ],
+        }}>
+          <Text style={{ fontSize: p.size }}>🌸</Text>
+        </Animated.View>
+      ))}
+    </View>
+  );
+};
+
+export const GlobalFallingEffect = ({ type, speed = 'normal', qty = 'normal' }) => {
+  if (!type || type === 'none') return null;
+  if (type === 'flower') return <FlowerEffect speed={speed} qty={qty} />;
+  if (type === 'classic') return <ClassicSnowEffect speed={speed} qty={qty} />;
+  if (type === 'petal') return <PetalEffect speed={speed} qty={qty} />;
+  return null;
 };
 
 // 하트 효과 컴포넌트
@@ -350,6 +520,27 @@ export const MainPhotoSlideshow = ({ images = [], style, onImagePress, template 
   const intervalRef = useRef(null);
   const isMountedRef = useRef(true);
   const isChangingRef = useRef(false);
+  const [downloadedUris, setDownloadedUris] = useState({});
+  const downloadingRef = useRef({});
+
+  const handleImageError = async (imgSource) => {
+    const url = imgSource?.uri;
+    if (!url || !url.startsWith('http')) return;
+    if (downloadedUris[url] || downloadingRef.current[url]) return;
+    downloadingRef.current[url] = true;
+    const base64Uri = await downloadSupabaseImage(url);
+    if (base64Uri && isMountedRef.current) {
+      setDownloadedUris(prev => ({ ...prev, [url]: base64Uri }));
+    }
+    downloadingRef.current[url] = false;
+  };
+
+  const getResolvedSource = (imgSource) => {
+    if (!imgSource) return defaultImages[0];
+    const url = imgSource?.uri;
+    if (url && downloadedUris[url]) return { uri: downloadedUris[url] };
+    return imgSource;
+  };
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -409,13 +600,14 @@ export const MainPhotoSlideshow = ({ images = [], style, onImagePress, template 
       onPress={() => onImagePress && onImagePress(currentIndex)}
     >
       <Animated.View style={{ opacity: fadeAnim }}>
-        <Image 
-          source={mainImages[currentIndex] || mainImages[0] || defaultImages[0]}
+        <Image
+          source={getResolvedSource(mainImages[currentIndex] || mainImages[0])}
           style={styles.mainPhotoImage}
           resizeMode="cover"
           onError={(error) => {
-            console.log('❌ 메인 이미지 로딩 에러:', error.nativeEvent.error);
-            console.log('🔍 실패한 이미지:', mainImages[currentIndex]);
+            const failedSrc = mainImages[currentIndex] || mainImages[0];
+            console.log('❌ 메인 이미지 로딩 에러 - FileSystem으로 재시도:', failedSrc?.uri?.substring(0, 60));
+            handleImageError(failedSrc);
           }}
           onLoad={() => {
             console.log('✅ 메인 이미지 로딩 성공:', currentIndex);
@@ -447,6 +639,27 @@ export const PhotoGallery = ({ images = [], style, onImagePress, autoSlide = fal
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const intervalRef = useRef(null);
   const isMountedRef = useRef(true);
+  const [downloadedUris, setDownloadedUris] = useState({});
+  const downloadingRef = useRef({});
+
+  const handleGalleryImageError = async (imgSource) => {
+    const url = imgSource?.uri;
+    if (!url || !url.startsWith('http')) return;
+    if (downloadedUris[url] || downloadingRef.current[url]) return;
+    downloadingRef.current[url] = true;
+    const base64Uri = await downloadSupabaseImage(url);
+    if (base64Uri && isMountedRef.current) {
+      setDownloadedUris(prev => ({ ...prev, [url]: base64Uri }));
+    }
+    downloadingRef.current[url] = false;
+  };
+
+  const getGallerySource = (imgSource) => {
+    if (!imgSource) return defaultImages[0];
+    const url = imgSource?.uri;
+    if (url && downloadedUris[url]) return { uri: downloadedUris[url] };
+    return imgSource;
+  };
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -528,10 +741,11 @@ export const PhotoGallery = ({ images = [], style, onImagePress, autoSlide = fal
         onPress={() => onImagePress && onImagePress(currentIndex)}
       >
         <Animated.View style={{ opacity: fadeAnim }}>
-          <Image 
-            source={images[currentIndex] || images[0] || defaultImages[0]}
+          <Image
+            source={getGallerySource(images[currentIndex] || images[0])}
             style={styles.galleryAutoSlideImage}
             resizeMode="cover"
+            onError={() => handleGalleryImageError(images[currentIndex] || images[0])}
           />
         </Animated.View>
         <View style={styles.galleryAutoSlideIndicators}>
@@ -566,10 +780,11 @@ export const PhotoGallery = ({ images = [], style, onImagePress, autoSlide = fal
           style={styles.galleryItem}
           onPress={() => onImagePress(index)}
         >
-          <Image 
-            source={image}
+          <Image
+            source={getGallerySource(image)}
             style={styles.galleryItemImage}
             resizeMode="cover"
+            onError={() => handleGalleryImageError(image)}
           />
         </TouchableOpacity>
       ))}

@@ -3,17 +3,20 @@ import React, { useState, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, KeyboardAvoidingView, Platform, Image,
-  Dimensions, Modal, Animated, Easing,
+  Dimensions, Modal, Animated, Easing, FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import {
   createEvent, uploadImageToStorage, deleteImageFromStorage,
   getCurrentUserInfo, moveImagesToEventFolder,
 } from '../../../lib/supabaseHelper';
 import DaumPostcode from '../../../components/DaumPostcode';
 import WeddingTemplatePreview from '../templates/WeddingTemplatePreview';
+import { GlobalFallingEffect } from '../templates/wedding/WeddingCommonComponents';
 
 const { width } = Dimensions.get('window');
 
@@ -135,10 +138,63 @@ const formatAccountNumber = (value, bankCode) => {
   return result;
 };
 
+// ── 테스트용 랜덤 플레이스홀더 이미지 ──
+const PLACEHOLDER_IMAGES = [
+  require('../../../../assets/images/aa1.png'),
+  require('../../../../assets/images/aa2.png'),
+  require('../../../../assets/images/aa3.png'),
+  require('../../../../assets/images/aa4.png'),
+  require('../../../../assets/images/bb1.png'),
+  require('../../../../assets/images/bb2.png'),
+];
+
 // ── 사진 카테고리 ──
 const PHOTO_CATEGORIES = [
-  { key: 'main',    label: '메인 사진',   icon: '🖼',  maxCount: 5,  required: true,  desc: '청첩장 첫 화면에 표시될 대표 사진' },
+  { key: 'main',    label: '메인 사진',   icon: '🖼',  maxCount: 5,  required: false, desc: '청첩장 첫 화면에 표시될 대표 사진' },
   { key: 'gallery', label: '갤러리 사진', icon: '📷',  maxCount: 10, required: false, desc: '갤러리 섹션에 표시될 추억 사진들' },
+];
+
+// ── 배경음악 목록 ──
+const MUSIC_TRACKS = [
+  { id: 'none',    name: '음악 없음',      file: null, desc: '배경음악 없이 조용하게' },
+  { id: 'track1',  name: '웨딩 트레일러',  file: require('../../../../assets/music/hitslab-wedding-wedding-trailer-music-269139.mp3'),                   desc: '웅장하고 설레는 오프닝 분위기' },
+  { id: 'track2',  name: '로맨틱 웨딩',    file: require('../../../../assets/music/krasnoshchok-wedding-romantic-love-music-409293.mp3'),                 desc: '감미롭고 달콤한 러브 선율' },
+  { id: 'track3',  name: '웨딩 피아노 I',  file: require('../../../../assets/music/paulyudin-wedding-485932.mp3'),                                         desc: '잔잔하고 감동적인 피아노 연주' },
+  { id: 'track4',  name: '웨딩 피아노 II', file: require('../../../../assets/music/paulyudin-wedding-music-valentines-day-182505.mp3'),                   desc: '서정적이고 아름다운 피아노 곡' },
+  { id: 'track5',  name: '웨딩 왈츠',      file: require('../../../../assets/music/prettyjohn1-wedding-487335.mp3'),                                       desc: '우아하고 흥겨운 왈츠 선율' },
+  { id: 'track6',  name: '클래식 웨딩',    file: require('../../../../assets/music/starostin-wedding-wedding-music-345462.mp3'),                           desc: '품격 있는 클래식 웨딩 음악' },
+  { id: 'track7',  name: '마운틴 웨딩 I',  file: require('../../../../assets/music/the_mountain-wedding-455512.mp3'),                                       desc: '청량하고 자연스러운 멜로디' },
+  { id: 'track8',  name: '마운틴 웨딩 II', file: require('../../../../assets/music/the_mountain-wedding-487025.mp3'),                                       desc: '맑고 서정적인 산의 선율' },
+  { id: 'track9',  name: '벨벳 펀치',      file: require('../../../../assets/music/The_Velvet_Punch.mp3'),                                                 desc: '재즈풍의 세련된 웨딩 음악' },
+  { id: 'track10', name: '웨딩 조이',      file: require('../../../../assets/music/u_3m10w313je-wedding-joy-189888.mp3'),                                  desc: '밝고 즐거운 축제 분위기' },
+  { id: 'track11', name: '로맨틱 배경음악', file: require('../../../../assets/music/viacheslavstarostin-romantic-wedding-background-music-357203.mp3'),    desc: '부드럽고 낭만적인 배경음악' },
+];
+
+// ── 꽃잎 효과 목록 ──
+const PETAL_EFFECTS = [
+  { id: 'none',    name: '효과 없음', emoji: '✨', desc: '꽃잎 효과를 사용하지 않습니다' },
+  { id: 'flower',  name: '눈꽃',     emoji: '❄️', desc: '하얀 눈꽃이 화면 전체에 흩날려요' },
+  { id: 'classic', name: '벚꽃잎',   emoji: '🌸', desc: '화사한 벚꽃잎이 화면 전체에' },
+  { id: 'petal',   name: '꽃비',     emoji: '🌺', desc: '낭만적인 꽃비가 화면 전체에' },
+];
+
+const PETAL_COLORS = {
+  none:    { bg: '#F7F8FA', accent: '#8B95A1', iconBg: '#ECEEF0' },
+  flower:  { bg: '#EFF6FF', accent: '#3B82F6', iconBg: '#DBEAFE' },
+  classic: { bg: '#FFF0F8', accent: '#EC4899', iconBg: '#FCE7F3' },
+  petal:   { bg: '#FFF5F0', accent: '#F97316', iconBg: '#FFEDD5' },
+};
+
+const PETAL_SPEEDS = [
+  { id: 'slow',   label: '느리게' },
+  { id: 'normal', label: '보통' },
+  { id: 'fast',   label: '빠르게' },
+];
+
+const PETAL_QTYS = [
+  { id: 'few',    label: '적게' },
+  { id: 'normal', label: '보통' },
+  { id: 'many',   label: '많이' },
 ];
 
 // ── 템플릿 목록 ──
@@ -148,42 +204,42 @@ const TEMPLATES = [
     description: '세련되고 감각적인 디자인',
     preview: require('../../../../assets/images/aa1.png'),
     style: 'modern-dark',
-    features: ['다크 모드', '그라디언트'],
+    features: ['다크 모드', '그라디언트', '달력 포함'],
   },
   {
     id: 'romantic-pink', name: '로맨틱 핑크',
     description: '따뜻하고 로맨틱한 분위기',
     preview: require('../../../../assets/images/aa2.png'),
     style: 'romantic-pink',
-    features: ['핑크 톤', '감성적 디자인'],
+    features: ['핑크 톤', '감성적 디자인', '꽃 애니메이션'],
   },
   {
     id: 'korean-elegant', name: '클린 화이트',
     description: '깔끔하고 세련된 화이트 스타일',
     preview: require('../../../../assets/images/aa3.png'),
     style: 'korean-elegant',
-    features: ['미니멀', '화이트 톤'],
+    features: ['미니멀', '화이트 톤', '심플 레이아웃'],
   },
   {
     id: 'vintage-app', name: '웜 오렌지',
     description: '따뜻한 감성의 오렌지 스타일',
     preview: require('../../../../assets/images/aa2.png'),
     style: 'vintage-app',
-    features: ['콜라주 갤러리', '웜톤 디자인'],
+    features: ['콜라주 갤러리', '웜톤 디자인', '빈티지 감성'],
   },
   {
     id: 'elegant-garden', name: '오로라 블랙',
     description: '고급스러운 오로라 스타일',
     preview: require('../../../../assets/images/aa1.png'),
     style: 'elegant-garden',
-    features: ['오로라 효과', '글래스모피즘'],
+    features: ['오로라 효과', '글래스모피즘', '프리미엄'],
   },
   {
     id: 'classic-elegant', name: '클래식 엘레강스',
     description: '프리미엄 호텔 예식 스타일',
     preview: require('../../../../assets/images/aa1.png'),
     style: 'classic-elegant',
-    features: ['클래식', '화이트 톤'],
+    features: ['클래식', '화이트 톤', '호텔 예식'],
   },
   {
     id: 'romantic-arch', name: '로맨틱 아치',
@@ -640,6 +696,19 @@ export default function CreateWeddingScreen({ navigation, route }) {
   const [showAddressSearch, setShowAddressSearch] = useState(false);
   const [showTemplatePreview, setShowTemplatePreview] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState(null);
+  const [showMusicModal, setShowMusicModal] = useState(false);
+  const [templateMusicMap, setTemplateMusicMap] = useState({}); // { templateId: { id, name } }
+  const [currentPreviewMusicId, setCurrentPreviewMusicId] = useState('none');
+  const [showPetalModal, setShowPetalModal] = useState(false);
+  const [templatePetalMap, setTemplatePetalMap] = useState({}); // { templateId: { id, speed, qty } }
+  const [currentPreviewPetalId, setCurrentPreviewPetalId] = useState('none');
+  const [currentPreviewPetalSpeed, setCurrentPreviewPetalSpeed] = useState('normal');
+  const [currentPreviewPetalQty, setCurrentPreviewPetalQty] = useState('normal');
+  const currentPreviewTemplateRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [previewingId, setPreviewingId] = useState(null);
+  const soundRef = useRef(null);
+  const previewSoundRef = useRef(null);
   const [bankPicker, setBankPicker] = useState({ visible: false, field: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [alertInfo, setAlertInfo] = useState({ visible: false, title: '', message: '' });
@@ -802,13 +871,27 @@ export default function CreateWeddingScreen({ navigation, route }) {
           const fileName = `${category.key}_${timestamp}_${rnd}.jpg`;
           const imgId = `${category.key}_${timestamp}_${rnd}`;
           try {
-            const uploadPromise = uploadImageToStorage(asset.uri, fileName, currentUser.id, tempEventId);
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000));
+            // HEIC → JPEG 변환 + 리사이즈 (대용량 파일 처리 속도 개선)
+            let uploadUri = asset.uri;
+            try {
+              const converted = await ImageManipulator.manipulateAsync(
+                asset.uri,
+                [{ resize: { width: 1200 } }],
+                { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
+              );
+              uploadUri = converted.uri;
+              console.log('✅ 이미지 변환 완료 (JPEG)');
+            } catch (e) {
+              console.warn('⚠️ 이미지 변환 실패, 원본 사용:', e.message);
+            }
+
+            const uploadPromise = uploadImageToStorage(uploadUri, fileName, currentUser.id, tempEventId);
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 60000));
             const uploadResult = await Promise.race([uploadPromise, timeoutPromise]);
             setImageUploadState(prev => ({ ...prev, currentIndex: index + 1 }));
             if (uploadResult.success) {
               results.push({
-                ...asset, category: category.key, categoryLabel: category.label,
+                ...asset, uri: uploadUri, category: category.key, categoryLabel: category.label,
                 id: imgId, publicUrl: uploadResult.data.publicUrl, storagePath: uploadResult.data.path,
                 eventId: tempEventId, uploadSuccess: true,
               });
@@ -858,10 +941,127 @@ export default function CreateWeddingScreen({ navigation, route }) {
     showAlert('업로드 취소', '이미지 업로드가 취소되었습니다.');
   };
 
+  // ── 음악 ──
+  const stopAllSounds = async () => {
+    if (soundRef.current) {
+      try { await soundRef.current.stopAsync(); await soundRef.current.unloadAsync(); } catch {}
+      soundRef.current = null;
+    }
+    if (previewSoundRef.current) {
+      try { await previewSoundRef.current.stopAsync(); await previewSoundRef.current.unloadAsync(); } catch {}
+      previewSoundRef.current = null;
+    }
+    setIsPlaying(false);
+    setPreviewingId(null);
+  };
+
+  const playMusic = async (trackId) => {
+    const track = MUSIC_TRACKS.find(t => t.id === trackId);
+    if (!track?.file) return;
+    await stopAllSounds();
+    try {
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
+      const { sound } = await Audio.Sound.createAsync(track.file, { isLooping: true, volume: 0.6 });
+      soundRef.current = sound;
+      await sound.playAsync();
+      setIsPlaying(true);
+    } catch (e) { console.warn('음악 재생 오류:', e); }
+  };
+
+  const togglePlayPause = async () => {
+    if (!soundRef.current) { if (currentPreviewMusicId !== 'none') await playMusic(currentPreviewMusicId); return; }
+    if (isPlaying) { await soundRef.current.pauseAsync(); setIsPlaying(false); }
+    else { await soundRef.current.playAsync(); setIsPlaying(true); }
+  };
+
+  const previewTrack = async (trackId) => {
+    const track = MUSIC_TRACKS.find(t => t.id === trackId);
+    if (!track?.file) return;
+    if (previewingId === trackId) {
+      if (previewSoundRef.current) { try { await previewSoundRef.current.stopAsync(); await previewSoundRef.current.unloadAsync(); } catch {} previewSoundRef.current = null; }
+      setPreviewingId(null); return;
+    }
+    if (previewSoundRef.current) { try { await previewSoundRef.current.stopAsync(); await previewSoundRef.current.unloadAsync(); } catch {} previewSoundRef.current = null; }
+    try {
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
+      const { sound } = await Audio.Sound.createAsync(track.file, { volume: 0.8 });
+      previewSoundRef.current = sound;
+      await sound.playAsync();
+      setPreviewingId(trackId);
+      setTimeout(async () => {
+        if (previewSoundRef.current) { try { await previewSoundRef.current.stopAsync(); await previewSoundRef.current.unloadAsync(); } catch {} previewSoundRef.current = null; }
+        setPreviewingId(null);
+      }, 10000);
+    } catch (e) { console.warn('미리듣기 오류:', e); }
+  };
+
+  const handleSelectMusic = async (trackId) => {
+    if (previewSoundRef.current) { try { await previewSoundRef.current.stopAsync(); await previewSoundRef.current.unloadAsync(); } catch {} previewSoundRef.current = null; setPreviewingId(null); }
+    setCurrentPreviewMusicId(trackId);
+    const tplId = currentPreviewTemplateRef.current;
+    if (tplId) {
+      setTemplateMusicMap(prev => ({
+        ...prev,
+        [tplId]: trackId === 'none' ? null : { id: trackId, name: MUSIC_TRACKS.find(t => t.id === trackId)?.name },
+      }));
+    }
+    if (trackId === 'none') { await stopAllSounds(); }
+    else { await playMusic(trackId); }
+    setShowMusicModal(false);
+  };
+
+  const handleSelectPetal = (petalId) => {
+    setCurrentPreviewPetalId(petalId);
+    const tplId = currentPreviewTemplateRef.current;
+    if (tplId) {
+      setTemplatePetalMap(prev => ({
+        ...prev,
+        [tplId]: petalId === 'none' ? null : {
+          id: petalId,
+          speed: currentPreviewPetalSpeed,
+          qty: currentPreviewPetalQty,
+        },
+      }));
+    }
+  };
+
+  const handleApplyPetalSettings = () => {
+    const tplId = currentPreviewTemplateRef.current;
+    if (tplId && currentPreviewPetalId !== 'none') {
+      setTemplatePetalMap(prev => ({
+        ...prev,
+        [tplId]: { id: currentPreviewPetalId, speed: currentPreviewPetalSpeed, qty: currentPreviewPetalQty },
+      }));
+    }
+    setShowPetalModal(false);
+  };
+
+  const handleClosePreview = async () => {
+    await stopAllSounds();
+    setCurrentPreviewMusicId('none');
+    setCurrentPreviewPetalId('none');
+    setCurrentPreviewPetalSpeed('normal');
+    setCurrentPreviewPetalQty('normal');
+    currentPreviewTemplateRef.current = null;
+    setShowTemplatePreview(false);
+  };
+
   // ── 템플릿 ──
-  const handleTemplatePreview = (tpl) => {
+  const handleTemplatePreview = async (tpl) => {
+    await stopAllSounds();
+    currentPreviewTemplateRef.current = tpl.id;
+    const savedMusic = templateMusicMap[tpl.id];
+    const musicId = savedMusic?.id || 'none';
+    setCurrentPreviewMusicId(musicId);
+    const savedPetal = templatePetalMap[tpl.id];
+    setCurrentPreviewPetalId(savedPetal?.id || 'none');
+    setCurrentPreviewPetalSpeed(savedPetal?.speed || 'normal');
+    setCurrentPreviewPetalQty(savedPetal?.qty || 'normal');
     setPreviewTemplate(tpl);
     setShowTemplatePreview(true);
+    if (musicId !== 'none') {
+      setTimeout(() => playMusic(musicId), 400);
+    }
   };
   // ── 검증 ──
   const validateStep1 = () => {
@@ -869,7 +1069,6 @@ export default function CreateWeddingScreen({ navigation, route }) {
     if (!eventData.brideName.trim()) { showAlertWithScroll('필수 입력', '신부 이름을 입력해주세요', 'names'); return false; }
     if (!eventData.date) { showAlertWithScroll('필수 입력', '결혼식 날짜를 선택해주세요', 'dateTime'); return false; }
     if (!eventData.ceremonyTime) { showAlertWithScroll('필수 입력', '예식 시간을 선택해주세요', 'dateTime'); return false; }
-    if (getCategoryImageCount('main') === 0) { showAlertWithScroll('필수 입력', '메인 사진을 최소 1장 이상 업로드해주세요', 'photos'); return false; }
     return true;
   };
 
@@ -894,6 +1093,14 @@ export default function CreateWeddingScreen({ navigation, route }) {
     try {
       const eventTitle = `${eventData.groomName} ♥ ${eventData.brideName} 결혼식`;
       const categorizedImages = getCategorizedImages();
+
+      // 테스트용: 메인 사진 없으면 랜덤 플레이스홀더 1장 삽입
+      if (categorizedImages.main.length === 0) {
+        const placeholder = PLACEHOLDER_IMAGES[Math.floor(Math.random() * PLACEHOLDER_IMAGES.length)];
+        const placeholderEntry = { uri: Image.resolveAssetSource(placeholder).uri, category: 'main', categoryLabel: '메인 사진', id: 'placeholder_0', storagePath: null, publicUrl: null, eventId: null };
+        categorizedImages.main = [placeholderEntry];
+        categorizedImages.all = [placeholderEntry, ...categorizedImages.all];
+      }
       const fullLocation = eventData.detailedAddress
         ? `${eventData.location} ${eventData.detailedAddress}`.trim()
         : eventData.location.trim();
@@ -950,6 +1157,8 @@ export default function CreateWeddingScreen({ navigation, route }) {
           bride_mother_bank_name: eventData.brideMotherBankName?.trim() || null,
           categorized_images: categorizedImages,
           message_settings: eventData.messageSettings,
+          background_music: templateMusicMap[eventData.selectedTemplate?.id] || null,
+          background_petal: templatePetalMap[eventData.selectedTemplate?.id] || null, // { id, speed, qty }
         },
       };
 
@@ -1222,7 +1431,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
 
               {/* 사진 업로드 */}
               <View onLayout={e => { sectionPositions.current.photos = e.nativeEvent.layout.y; }}>
-                <SectionCard title="사진 업로드" required subtitle="가장 아름다운 순간을 공유해주세요">
+                <SectionCard title="사진 업로드" subtitle="가장 아름다운 순간을 공유해주세요">
                   {PHOTO_CATEGORIES.map(cat => {
                     const count = getCategoryImageCount(cat.key);
                     const images = getCategoryImages(cat.key);
@@ -1250,7 +1459,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
                           </TouchableOpacity>
                           {images.map((image) => (
                             <View key={image.id} style={s.photoThumb}>
-                              <Image source={{ uri: image.publicUrl || image.uri }} style={s.photoThumbImg} />
+                              <Image source={{ uri: image.uri || image.publicUrl }} style={s.photoThumbImg} />
                               <TouchableOpacity
                                 style={s.photoRemoveBtn}
                                 onPress={() => removeImage(image.id)}
@@ -1343,13 +1552,35 @@ export default function CreateWeddingScreen({ navigation, route }) {
                           </View>
                         ))}
                       </View>
+                      {(templateMusicMap[tpl.id] || (templatePetalMap[tpl.id] && templatePetalMap[tpl.id].id !== 'none')) && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                          {templateMusicMap[tpl.id] && (
+                            <View style={s.tplMusicBadge}>
+                              <Ionicons name="musical-notes" size={11} color={C.primary} />
+                              <Text style={s.tplMusicBadgeText} numberOfLines={1}>
+                                {templateMusicMap[tpl.id].name}
+                              </Text>
+                            </View>
+                          )}
+                          {templatePetalMap[tpl.id] && templatePetalMap[tpl.id].id !== 'none' && (
+                            <View style={[s.tplMusicBadge, { backgroundColor: '#fff0f6' }]}>
+                              <Text style={{ fontSize: 11 }}>{PETAL_EFFECTS.find(p => p.id === templatePetalMap[tpl.id].id)?.emoji}</Text>
+                              <Text style={[s.tplMusicBadgeText, { color: '#c0386b' }]} numberOfLines={1}>
+                                {PETAL_EFFECTS.find(p => p.id === templatePetalMap[tpl.id].id)?.name}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
                       {!isDisabled && (
                         <TouchableOpacity
                           style={s.previewBtn}
                           onPress={() => handleTemplatePreview(tpl)}
                           activeOpacity={0.8}
                         >
-                          <Text style={s.previewBtnText}>미리보기</Text>
+                          <Ionicons name="eye-outline" size={14} color="#fff" />
+                          <Text style={s.previewBtnText}>청첩장 미리보기</Text>
+                          <Ionicons name="chevron-forward" size={14} color="#fff" />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1454,27 +1685,52 @@ export default function CreateWeddingScreen({ navigation, route }) {
         {/* 템플릿 미리보기 */}
         <Modal visible={showTemplatePreview} animationType="slide" presentationStyle="fullScreen">
           <View style={s.previewModal}>
-            <TouchableOpacity
-              style={[s.previewCloseBtn, { top: insets.top + 12 }]}
-              onPress={() => setShowTemplatePreview(false)}
-              activeOpacity={0.7}
-            >
-              <View style={s.previewCloseBg}>
-                <Ionicons name="close" size={20} color="#fff" />
-              </View>
-            </TouchableOpacity>
+            {/* 전역 꽃잎 효과 오버레이 */}
+            <GlobalFallingEffect
+              key={`${currentPreviewPetalId}-${currentPreviewPetalSpeed}-${currentPreviewPetalQty}`}
+              type={currentPreviewPetalId}
+              speed={currentPreviewPetalSpeed}
+              qty={currentPreviewPetalQty}
+            />
+
+            {/* 오른쪽 컨트롤 — X / 음악 / 꽃잎 세로 스택 */}
+            <View style={[s.previewControls, { top: insets.top + 12 }]}>
+              {/* 닫기 */}
+              <TouchableOpacity style={s.previewCtrlBtn} onPress={handleClosePreview} activeOpacity={0.7}>
+                <Ionicons name="close" size={19} color="#fff" />
+              </TouchableOpacity>
+
+              {/* 음악 */}
+              <TouchableOpacity
+                style={[s.previewCtrlBtn, isPlaying && s.previewCtrlBtnMusic]}
+                onPress={() => setShowMusicModal(true)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={isPlaying ? 'musical-notes' : 'musical-note'} size={17} color="#fff" />
+              </TouchableOpacity>
+
+              {/* 꽃잎 */}
+              <TouchableOpacity
+                style={[s.previewCtrlBtn, currentPreviewPetalId !== 'none' && s.previewCtrlBtnPetal]}
+                onPress={() => setShowPetalModal(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={{ fontSize: 16, lineHeight: 20 }}>
+                  {currentPreviewPetalId !== 'none' ? PETAL_EFFECTS.find(p => p.id === currentPreviewPetalId)?.emoji : '✨'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             <View style={{ flex: 1 }}>
               {previewTemplate && (
                 <WeddingTemplatePreview
                   template={previewTemplate}
                   eventData={{
                     ...eventData,
-                    // ModernMinimal, ElegantGarden 템플릿용
                     groomBank: eventData.groomBankName,
                     groomAccount: eventData.groomAccountNumber,
                     brideBank: eventData.brideBankName,
                     brideAccount: eventData.brideAccountNumber,
-                    // RomanticPink 등 additional_info 사용 템플릿용
                     additional_info: {
                       groom_account_number: eventData.groomAccountNumber,
                       bride_account_number: eventData.brideAccountNumber,
@@ -1498,6 +1754,116 @@ export default function CreateWeddingScreen({ navigation, route }) {
               )}
             </View>
           </View>
+
+          {/* 음악 선택 모달 */}
+          <Modal visible={showMusicModal} transparent animationType="slide" onRequestClose={() => setShowMusicModal(false)}>
+            <View style={s.mOverlay}>
+              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => { setShowMusicModal(false); if (previewSoundRef.current) { previewSoundRef.current.stopAsync().catch(()=>{}); previewSoundRef.current = null; setPreviewingId(null); } }} />
+              <View style={s.mSheet}>
+                <View style={s.mHandle} />
+                <View style={s.mHeaderRow}>
+                  <Text style={s.mTitle}>배경음악</Text>
+                  <TouchableOpacity style={s.mCloseBtn} onPress={() => { setShowMusicModal(false); if (previewSoundRef.current) { previewSoundRef.current.stopAsync().catch(()=>{}); previewSoundRef.current = null; setPreviewingId(null); } }}>
+                    <Ionicons name="close" size={16} color="rgba(60,60,67,0.6)" />
+                  </TouchableOpacity>
+                </View>
+                <FlatList
+                  data={MUSIC_TRACKS}
+                  keyExtractor={item => item.id}
+                  style={{ maxHeight: 460 }}
+                  showsVerticalScrollIndicator={false}
+                  renderItem={({ item }) => {
+                    const isSelected = currentPreviewMusicId === item.id;
+                    const isPreviewing = previewingId === item.id;
+                    return (
+                      <TouchableOpacity style={s.mRow} onPress={() => handleSelectMusic(item.id)} activeOpacity={0.5}>
+                        <TouchableOpacity
+                          style={[s.mSpeaker, isPreviewing && s.mSpeakerActive]}
+                          onPress={(e) => { e.stopPropagation(); item.file ? previewTrack(item.id) : handleSelectMusic(item.id); }}
+                          activeOpacity={0.6}
+                        >
+                          <Ionicons
+                            name={item.file ? (isPreviewing ? 'volume-high' : 'volume-medium-outline') : 'volume-mute-outline'}
+                            size={19}
+                            color={isPreviewing ? '#fff' : 'rgba(0,0,0,0.48)'}
+                          />
+                        </TouchableOpacity>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[s.mRowName, isSelected && s.mRowNameSelected]}>{item.name}</Text>
+                          {item.desc && <Text style={s.mRowDesc}>{item.desc}</Text>}
+                        </View>
+                        {isSelected && <Ionicons name="checkmark" size={18} color="#0071e3" />}
+                      </TouchableOpacity>
+                    );
+                  }}
+                />
+              </View>
+            </View>
+          </Modal>
+
+          {/* 꽃잎 선택 모달 */}
+          <Modal visible={showPetalModal} transparent animationType="slide" onRequestClose={() => setShowPetalModal(false)}>
+            <View style={s.mOverlay}>
+              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowPetalModal(false)} />
+              <View style={s.mSheet}>
+                <View style={s.mHandle} />
+                <View style={s.mHeaderRow}>
+                  <Text style={s.mTitle}>꽃잎 효과</Text>
+                  <TouchableOpacity style={s.mCloseBtn} onPress={() => setShowPetalModal(false)}>
+                    <Ionicons name="close" size={16} color="rgba(60,60,67,0.6)" />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 480 }}>
+                  {PETAL_EFFECTS.map(item => {
+                    const isSelected = currentPreviewPetalId === item.id;
+                    return (
+                      <TouchableOpacity key={item.id} style={s.mRow} onPress={() => handleSelectPetal(item.id)} activeOpacity={0.5}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[s.mRowName, isSelected && s.mRowNameSelected]}>{item.name}</Text>
+                          <Text style={s.mRowDesc}>{item.desc}</Text>
+                        </View>
+                        {isSelected && <Ionicons name="checkmark" size={18} color="#0071e3" />}
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                  {currentPreviewPetalId !== 'none' && (
+                    <View style={s.pControls}>
+                      <View style={s.pControlRow}>
+                        <Text style={s.pControlLabel}>속도</Text>
+                        <View style={s.pSegment}>
+                          {PETAL_SPEEDS.map(sp => {
+                            const active = currentPreviewPetalSpeed === sp.id;
+                            return (
+                              <TouchableOpacity key={sp.id} style={[s.pSegBtn, active && s.pSegBtnActive]} onPress={() => setCurrentPreviewPetalSpeed(sp.id)}>
+                                <Text style={[s.pSegBtnText, active && s.pSegBtnTextActive]}>{sp.label}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+                      <View style={s.pControlRow}>
+                        <Text style={s.pControlLabel}>수량</Text>
+                        <View style={s.pSegment}>
+                          {PETAL_QTYS.map(qt => {
+                            const active = currentPreviewPetalQty === qt.id;
+                            return (
+                              <TouchableOpacity key={qt.id} style={[s.pSegBtn, active && s.pSegBtnActive]} onPress={() => setCurrentPreviewPetalQty(qt.id)}>
+                                <Text style={[s.pSegBtnText, active && s.pSegBtnTextActive]}>{qt.label}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </ScrollView>
+                <TouchableOpacity style={s.pApplyBtn} onPress={handleApplyPetalSettings}>
+                  <Text style={s.pApplyBtnText}>적용하기</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         </Modal>
       </View>
   );
@@ -1644,8 +2010,118 @@ const s = StyleSheet.create({
   tplTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   tplTag: { backgroundColor: C.bg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   tplTagText: { fontSize: 10, fontWeight: '700', color: '#4E5968' },
-  previewBtn: { backgroundColor: '#eff6ff', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, alignSelf: 'flex-start' },
-  previewBtnText: { fontSize: 12, fontWeight: '600', color: C.primary },
+  tplMusicBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eff6ff',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginBottom: 8,
+    alignSelf: 'flex-start',
+  },
+  tplMusicBadgeText: {
+    fontSize: 11,
+    color: C.primary,
+    fontWeight: '600',
+    maxWidth: 150,
+  },
+  previewBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: C.primary, paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 10, alignSelf: 'stretch', justifyContent: 'center',
+  },
+  previewBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+
+  // 미리보기 오른쪽 컨트롤 스택
+  previewControls: {
+    position: 'absolute', right: 16, zIndex: 10,
+    alignItems: 'center', gap: 8,
+  },
+  previewCtrlBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  previewCtrlBtnMusic: { backgroundColor: C.primary },
+  previewCtrlBtnPetal: { backgroundColor: 'rgba(192,56,107,0.85)' },
+
+  // ── 바텀 시트 모달 — Apple Design System ──
+  mOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  mSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 14, borderTopRightRadius: 14,
+    paddingHorizontal: 20, paddingBottom: 42,
+  },
+  // 핸들 — Apple 표준 (#d2d2d7, 36×5)
+  mHandle: { width: 36, height: 5, backgroundColor: '#d2d2d7', borderRadius: 3, alignSelf: 'center', marginTop: 10, marginBottom: 20 },
+  // 헤더
+  mHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.12)',
+    marginBottom: 0,
+  },
+  // "SF Pro Display" 스타일 — weight 600, tight letter-spacing
+  mTitle: { fontSize: 20, fontWeight: '600', color: '#1d1d1f', letterSpacing: -0.26 },
+  // 닫기 버튼 — Apple Media Control 스타일
+  mCloseBtn: {
+    width: 30, height: 30, borderRadius: 999,
+    backgroundColor: 'rgba(210,210,215,0.64)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // 리스트 행 — 하단 hairline 구분선
+  mRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 16,
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.08)',
+  },
+
+  // 스피커 원형 버튼 — Apple Media Control (#rgba(210,210,215,0.64))
+  mSpeaker: {
+    width: 44, height: 44, borderRadius: 999,
+    backgroundColor: 'rgba(210,210,215,0.64)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  // 재생 중 상태 — Apple Blue fill
+  mSpeakerActive: { backgroundColor: '#0071e3' },
+
+  // 트랙명 — SF Pro Text, 17px, -0.374 tracking
+  mRowName: { fontSize: 17, fontWeight: '400', color: '#1d1d1f', letterSpacing: -0.374, marginBottom: 2 },
+  // 선택 시 Apple Blue, semibold
+  mRowNameSelected: { color: '#0071e3', fontWeight: '600' },
+  // 설명 — caption, rgba(0,0,0,0.48)
+  mRowDesc: { fontSize: 14, color: 'rgba(0,0,0,0.48)', letterSpacing: -0.224 },
+
+  // 꽃잎 속도/수량 — #f5f5f7 카드 + iOS 세그먼트 컨트롤
+  pControls: {
+    backgroundColor: '#f5f5f7', borderRadius: 12,
+    padding: 14, gap: 14, marginTop: 8, marginBottom: 16,
+  },
+  pControlRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  pControlLabel: { fontSize: 14, fontWeight: '600', color: '#1d1d1f', width: 28, letterSpacing: -0.224 },
+  // iOS 세그먼트 컨트롤 트랙
+  pSegment: {
+    flex: 1, flexDirection: 'row',
+    backgroundColor: 'rgba(120,120,128,0.16)',
+    borderRadius: 9, padding: 2,
+  },
+  pSegBtn: { flex: 1, paddingVertical: 8, borderRadius: 7, alignItems: 'center' },
+  // 선택된 세그먼트 — 흰 배경 + 미세 그림자
+  pSegBtnActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 3, elevation: 2,
+  },
+  pSegBtnText: { fontSize: 14, fontWeight: '400', color: 'rgba(0,0,0,0.48)', letterSpacing: -0.224 },
+  pSegBtnTextActive: { color: '#1d1d1f', fontWeight: '600' },
+
+  // 적용 버튼 — Apple Blue, 8px radius, no heavy shadow
+  pApplyBtn: {
+    backgroundColor: '#0071e3', paddingVertical: 14, borderRadius: 8, alignItems: 'center', marginTop: 8,
+  },
+  pApplyBtnText: { fontSize: 17, fontWeight: '400', color: '#fff', letterSpacing: -0.374 },
 
   // STEP 3 완료
   completionWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
@@ -1798,9 +2274,6 @@ const s = StyleSheet.create({
 
   // 템플릿 미리보기
   previewModal: { flex: 1, backgroundColor: '#191F28' },
-  previewCloseBtn: {
-    position: 'absolute', right: 16, zIndex: 10,
-  },
   previewCloseBg: {
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: 'rgba(0,0,0,0.5)',
