@@ -371,7 +371,6 @@ try {
     });
   }
 } catch (error) {
-  console.log('📱 알림 핸들러 설정 스킵 (Expo Go 제한)');
 }
 
 export default function HomeScreen({ navigation, userInfo, session, isAuthenticated }) {
@@ -441,12 +440,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   // Props 확인 & 네트워크 테스트
   useEffect(() => {
-    console.log('🏠 HomeScreen props:', {
-      hasUserInfo: !!userInfo,
-      hasSession: !!session,
-      isAuthenticated,
-      userInfo: userInfo ? { userId: userInfo.userId, userName: userInfo.userName } : null
-    });
 
     // 네트워크 연결 테스트
     fetch('https://ofshqvrldcesvjtredxo.supabase.co/rest/v1/', {
@@ -455,8 +448,8 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mc2hxdnJsZGNlc3ZqdHJlZHhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwNDI1MTQsImV4cCI6MjA2NDYxODUxNH0.uIfuqMP7SFvQfQXSESS9xKHWlBYeWmZwf1j_4eveZ6Q'
       }
     })
-    .then(res => console.log('🌐 네트워크 테스트 성공:', res.status))
-    .catch(err => console.error('🌐 네트워크 테스트 실패:', err.message));
+    
+    ;
 
   }, [userInfo, session, isAuthenticated]);
 
@@ -495,11 +488,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       const shouldRefresh = !dataLoaded || (now - lastLoadTime > CACHE_DURATION);
       
       if (!shouldRefresh) {
-        console.log('🏠 캐시된 데이터 사용 - 로딩 건너뛰기');
         return;
       }
       
-      console.log('🏠 화면 포커스 - 병렬 데이터 로드 시작 (캐시 만료)');
       setLoading(true);
       
       // 모든 데이터를 병렬로 로드하여 성능 개선
@@ -509,12 +500,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         loadActiveEvents(),
         loadMonthlyStatistics()
       ]).then(() => {
-        console.log('🏠 모든 데이터 로드 완료');
         setLastLoadTime(now);
         setDataLoaded(true);
         setLoading(false);
       }).catch((error) => {
-        console.error('❌ 데이터 로드 중 오류:', error);
         setLoading(false);
       });
     }, [userInfo, session, dataLoaded, lastLoadTime])
@@ -578,7 +567,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           }
         }
       } catch (error) {
-        console.error('❌ 알림 권한 체크 오류:', error);
       }
     };
 
@@ -596,11 +584,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       if (typeof Notifications.addNotificationReceivedListener === 'function') {
         // 포그라운드에서 알림 수신 시
         notificationListener = Notifications.addNotificationReceivedListener(notification => {
-          console.log('📱 포그라운드 알림 수신:', notification);
 
           // 축의금 알림인 경우 데이터 새로고침
           if (notification.request.content.data?.type === 'contribution') {
-            console.log('💰 축의금 알림 감지 - 데이터 새로고침');
             loadEvents(); // 이벤트 목록 새로고침
             loadMonthlyStatistics(); // 통계 새로고침
 
@@ -619,7 +605,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       if (typeof Notifications.addNotificationResponseReceivedListener === 'function') {
         // 알림 클릭 시 응답
         responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-          console.log('📱 알림 클릭:', response);
 
           // 축의금 알림 클릭 시 해당 이벤트로 이동
           if (response.notification.request.content.data?.type === 'contribution') {
@@ -632,11 +617,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         });
       }
     } catch (error) {
-      console.log('📱 푸시 알림 설정 스킵 (Expo Go 제한):', error.message);
     }
 
     return () => {
-      console.log('📱 푸시 알림 리스너 정리');
       try {
         // 함수 존재 여부 확인 후 호출
         if (notificationListener && typeof Notifications.removeNotificationSubscription === 'function') {
@@ -651,7 +634,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           responseListener.remove();
         }
       } catch (error) {
-        console.log('📱 푸시 알림 리스너 정리 스킵:', error.message);
       }
     };
   }, [navigation]);
@@ -722,7 +704,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   // 🔥 월별 통계 로드 함수
   const loadMonthlyStatistics = async () => {
     try {
-      console.log('📊 월별 통계 로드 시작');
       
       // 현재 사용자 정보 가져오기
       let currentUserId = null;
@@ -740,7 +721,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       }
       
       if (!currentUserId) {
-        console.log('❌ 사용자 ID 없음 - 통계 로드 불가');
         return;
       }
       
@@ -749,11 +729,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       if (result.success) {
         setMonthlyStats(result.data);
       } else {
-        console.error('❌ 월별 통계 로드 실패:', result.error);
       }
       
     } catch (error) {
-      console.error('❌ 월별 통계 로드 예외:', error);
     }
   };
 
@@ -778,7 +756,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       return isCompleted;
 
     } catch (error) {
-      console.error('❌ 날짜 오류:', error);
       return true;
     }
   };
@@ -786,18 +763,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   // 🔥 개선된 사용자 정보 로드 함수 - 명확한 우선순위
   const loadUserData = async () => {
     try {
-      console.log('👤 사용자 정보 로드 시작');
       
       // 🔥 디버깅을 위해 사용자 정보 확인
       await debugUserInfo();
       
       // 1순위: Props로 받은 userInfo (폰 인증)
       if (userInfo?.userId) {
-        console.log('✅ Props userInfo 사용:', {
-          userId: userInfo.userId,
-          userName: userInfo.userName,
-          phone: userInfo.phone
-        });
         setUser({
           id: userInfo.userId,
           user_metadata: { name: userInfo.userName },
@@ -812,10 +783,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       
       // 2순위: Supabase Auth 세션
       if (session?.user) {
-        console.log('✅ Supabase session 사용:', {
-          id: session.user.id,
-          email: session.user.email
-        });
         setUser(session.user);
         
         // 구독 정보 로드
@@ -829,10 +796,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       
       if (isLoggedIn === 'true' && storedUserInfo) {
         const parsedUserInfo = JSON.parse(storedUserInfo);
-        console.log('✅ AsyncStorage userInfo 사용:', {
-          userId: parsedUserInfo.userId,
-          userName: parsedUserInfo.userName
-        });
         setUser({
           id: parsedUserInfo.userId,
           user_metadata: { name: parsedUserInfo.userName },
@@ -848,29 +811,21 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       // 4순위: 직접 Supabase 조회
       const { data: { user }, error } = await supabase.auth.getUser();
       if (user) {
-        console.log('✅ Supabase 직접 조회 성공:', {
-          id: user.id,
-          email: user.email
-        });
         setUser(user);
         
         // 구독 정보 로드
         await loadSubscriptionInfo(user.id);
       } else {
-        console.log('❌ 사용자 정보 없음');
       }
       
     } catch (error) {
-      console.error('❌ 사용자 정보 로드 오류:', error);
     }
   };
 
   // 🔥 구독 정보 로드 함수
   const loadSubscriptionInfo = async (userId) => {
     try {
-      console.log('💳 구독 정보 로드 시작:', userId);
       const result = await getUserSubscriptionInfo(userId);
-      console.log('💳 구독 정보 로드 완료:', result);
       
       // subscription 객체 추출 및 필드명 변환
       const subscriptionInfo = result?.subscription ? {
@@ -887,19 +842,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         current_funeral_events: 0
       };
       
-      console.log('💳 이벤트 제한 상태:', {
-        type: subscriptionInfo.subscription_type,
-        wedding: `${subscriptionInfo.current_wedding_events}/${subscriptionInfo.max_wedding_events}`,
-        funeral: `${subscriptionInfo.current_funeral_events}/${subscriptionInfo.max_funeral_events}`,
-        weddingDisabled: subscriptionInfo.subscription_type === 'free' && 
-          subscriptionInfo.current_wedding_events >= subscriptionInfo.max_wedding_events,
-        funeralDisabled: subscriptionInfo.subscription_type === 'free' && 
-          subscriptionInfo.current_funeral_events >= subscriptionInfo.max_funeral_events
-      });
       
       setUserSubscription(subscriptionInfo);
     } catch (error) {
-      console.error('❌ 구독 정보 로드 오류:', error);
       // 기본값 설정
       setUserSubscription({
         subscription_type: 'free',
@@ -915,7 +860,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const loadEvents = async () => {
     try {
       setLoading(true);
-      console.log('📅 이벤트 로드 시작');
       
       // 🔥 명확한 사용자 정보 준비
       let currentUserInfo = null;
@@ -928,7 +872,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           phone: userInfo.phone,
           auth_method: 'phone'
         };
-        console.log('📅 Props userInfo로 이벤트 조회:', currentUserInfo.id);
       } else if (session?.user) {
         // Supabase 세션 사용
         currentUserInfo = {
@@ -937,11 +880,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           email: session.user.email,
           auth_method: 'supabase'
         };
-        console.log('📅 Supabase session으로 이벤트 조회:', currentUserInfo.id);
       }
       
       if (!currentUserInfo) {
-        console.log('❌ 사용자 정보 없음 - 이벤트 조회 불가');
         setEvents([]);
         return;
       }
@@ -949,7 +890,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       const result = await getAllUserEvents(currentUserInfo);
       
       if (result.success) {
-        console.log(`✅ 이벤트 로드 완료: ${result.data?.length || 0}개`);
         
         // 🔥 각 이벤트별 통계 정보 추가
         const eventsWithStats = await Promise.all(
@@ -968,7 +908,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                 return eventWithStats;
               }
             } catch (error) {
-              console.error(`❌ 이벤트 ${event.id} 통계 로드 실패:`, error);
             }
             // 통계 로드 실패 시 기본값
             return {
@@ -984,11 +923,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         
         setEvents(eventsWithStats);
       } else {
-        console.error('❌ 이벤트 로드 실패:', result.error);
         setEvents([]);
       }
     } catch (error) {
-      console.error('❌ 이벤트 로드 예외:', error);
       setEvents([]);
     } finally {
       setLoading(false);
@@ -998,7 +935,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   // 🔥 개선된 활성 이벤트 로드 함수 - 개인 일정 포함
   const loadActiveEvents = async () => {
     try {
-      console.log('📅 활성 이벤트 로드 시작');
       
       // 🔥 상태 초기화
       setActiveEvents([]);
@@ -1008,7 +944,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       
       if (personalResult.success) {
         const personalSchedules = personalResult.data || [];
-        console.log(`✅ 개인 일정 데이터: ${personalSchedules.length}개`);
         
         // 개인 일정에 필요한 속성 추가
         const formattedSchedules = personalSchedules.map(schedule => ({
@@ -1022,15 +957,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           index === self.findIndex(e => e.id === event.id)
         );
         
-        console.log(`🔧 중복 제거 후: ${uniqueEvents.length}개`);
         
         setActiveEvents(uniqueEvents);
       } else {
-        console.error('❌ 개인 일정 로드 실패:', personalResult.error);
         setActiveEvents([]);
       }
     } catch (error) {
-      console.error('❌ 활성 이벤트 로드 예외:', error);
       setActiveEvents([]);
     }
   };
@@ -1142,7 +1074,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   // 🔥 캘린더 날짜 클릭 핸들러
   const handleCalendarDatePress = (date, dayEvents = []) => {
-    console.log('📅 캘린더 날짜 선택:', date, '이벤트 수:', dayEvents.length);
     setSelectedDate(date);
     setSelectedDateEvents(dayEvents);
     
@@ -1157,7 +1088,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   // 🔥 캘린더 월 변경 핸들러
   const handleCalendarMonthChange = (newDate) => {
-    console.log('📅 캘린더 월 변경:', newDate);
     setCalendarDate(newDate);
   };
 
@@ -1226,7 +1156,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     
     // 캘린더에서 클릭: 단순 로그만 출력 (모달 제거)
     if (source === 'calendar') {
-      console.log(`📅 ${roleText} 일정 선택:`, event.event_name || event.title);
       return;
     }
     
@@ -1302,17 +1231,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         };
         
         // 🔍 상주 정보 디버깅 로그
-        console.log('🎭 상주 정보 확인:', {
-          eventName: event.event_name,
-          familyMembersFromEvent: event.family_members?.length || 0,
-          familyMembersFromAdditional: additionalInfo.family_members?.length || 0,
-          finalFamilyMembers: eventData.familyMembers?.length || 0,
-          familyMemberDetails: eventData.familyMembers?.map(fm => ({ 
-            relation: fm.relation, 
-            names: fm.names,
-            hasNames: !!fm.names 
-          })) || []
-        });
       } else {
         // 🔥 결혼식 데이터 준비 (기존 로직)
         eventData = {
@@ -1347,40 +1265,8 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         };
       }
       
-      console.log('🎭 전달할 데이터:', {
-        eventId: event.id,
-        eventType: event.event_type,
-        templateStyle,
-        categorizedImages: {
-          main: finalCategorizedImages.main?.length || 0,
-          gallery: finalCategorizedImages.gallery?.length || 0,
-          groom: finalCategorizedImages.groom?.length || 0,
-          bride: finalCategorizedImages.bride?.length || 0
-        },
-        eventDataKeys: Object.keys(eventData),
-        // 부고 전용 디버깅
-        ...(event.event_type === 'funeral' && {
-          funeralDebug: {
-            deceasedName: eventData.deceasedName,
-            familyMembersCount: eventData.familyMembers?.length || 0,
-            primaryContact: eventData.primaryContact,
-            funeralHome: eventData.funeralHome,
-            burialLocation: eventData.burialLocation
-          }
-        })
-      });
       
       // 🔍 이미지 URL 디버깅 정보 추가
-      console.log('🖼️ EventDisplay로 전달되는 이미지 정보:', {
-        eventId: event.id,
-        eventImageUrls: event.image_urls?.length || 0,
-        finalCategorizedImages: {
-          main: finalCategorizedImages?.main?.length || 0,
-          gallery: finalCategorizedImages?.gallery?.length || 0,
-          all: finalCategorizedImages?.all?.length || 0
-        },
-        sampleImageUrl: event.image_urls?.[0]?.substring(0, 100) + '...' || 'None'
-      });
 
       navigation.navigate('EventDisplay', { 
         eventId: event.id,
@@ -1394,7 +1280,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   // 부조하기 버튼 클릭
   const handleContributePress = (event, e) => {
     e.stopPropagation(); // 부모 터치 이벤트 방지
-    console.log('💰 부조하기:', event.event_name);
     navigation.navigate('Contribution', { 
       eventId: event.id, 
       eventName: event.event_name 
@@ -1959,12 +1844,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             
             if (result.success) {
               // 🔥 디버깅: 새로 생성된 일정 데이터 확인
-              console.log('🔥 새로 생성된 일정 데이터:', result.data);
               
               // UI에 즉시 반영 - 개인 일정은 activeEvents에 추가
               setActiveEvents(prev => {
                 const updated = [...prev, result.data];
-                console.log('🔥 업데이트된 activeEvents 수:', updated.length);
                 return updated;
               });
               // 🔥 토스 스타일 성공 모달 표시
@@ -1981,7 +1864,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               setShowEventModal(false);
             }
           } catch (error) {
-            console.error('이벤트 추가 오류:', error);
             Alert.alert('오류', '일정 추가 중 오류가 발생했습니다.');
           }
         }}
@@ -2022,7 +1904,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                 style={styles.eventListItem}
                 onPress={() => {
                   // 일정 편집 기능은 나중에 구현
-                  console.log('일정 편집:', event);
                 }}
                 activeOpacity={0.7}
               >
@@ -2119,7 +2000,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                       style={styles.tossEventItem}
                       onPress={() => {
                         // 일정 편집 기능은 나중에 구현
-                        console.log('일정 편집:', event);
                       }}
                       activeOpacity={0.7}
                     >

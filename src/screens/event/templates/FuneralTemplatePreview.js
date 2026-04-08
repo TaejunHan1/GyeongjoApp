@@ -59,7 +59,6 @@ const MessageModal = ({ visible, onClose, onSubmit, placeholder, eventType }) =>
       
       onClose();
     } catch (error) {
-      console.error('메시지 전송 오류:', error);
       Alert.alert('오류', '메시지 전송에 실패했습니다.');
     } finally {
       setIsSubmitting(false);

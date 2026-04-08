@@ -44,15 +44,12 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
   // 디버그: 테스트 데이터 확인/생성
   const debugCreateTestContribution = async () => {
     try {
-      console.log('🔍 테스트 개인 일정 생성 중...');
       
       if (!userInfo || !userInfo.userId) {
-        console.error('🔴 userInfo가 없거나 userId가 없음:', userInfo);
         Alert.alert('오류', '사용자 정보를 찾을 수 없습니다.');
         return;
       }
 
-      console.log('🔍 테스트 데이터를 생성할 사용자 ID:', userInfo.userId);
 
       // 테스트 personal_schedule 항목 생성
       const testPersonalSchedule = {
@@ -71,16 +68,13 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
         .select();
 
       if (createError) {
-        console.error('🔴 테스트 개인 일정 생성 실패:', createError);
         Alert.alert('오류', `테스트 데이터 생성 실패: ${createError.message}`);
       } else {
-        console.log('✅ 테스트 개인 일정 생성 성공:', newSchedule);
         Alert.alert('성공', '테스트 개인 일정이 생성되었습니다!');
         // 데이터 새로고침
         loadParticipatedEvents();
       }
     } catch (error) {
-      console.error('🔴 테스트 개인 일정 생성 오류:', error);
       Alert.alert('오류', `오류 발생: ${error.message}`);
     }
   };
@@ -95,7 +89,6 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
       setDataLoaded(true);
       setLastLoadTime(Date.now());
     } catch (error) {
-      console.error('전체 데이터 로딩 오류:', error);
     } finally {
       setLoading(false);
     }
@@ -143,7 +136,6 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
                 }
               };
             } catch (error) {
-              console.error('통계 로딩 오류:', error);
               const autoStatus = determineEventStatus(event.event_date);
               return {
                 ...event,
@@ -160,11 +152,9 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
         );
         setHostedEvents(eventsWithStats);
       } else {
-        console.error('주최 이벤트 로딩 실패:', result.error);
         setHostedEvents([]);
       }
     } catch (error) {
-      console.error('주최 이벤트 로딩 오류:', error);
       setHostedEvents([]);
     }
   };
@@ -183,7 +173,6 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
         .order('created_at', { ascending: false });
 
       if (schedulesError) {
-        console.error('personal_schedules 조회 에러:', schedulesError);
         setParticipatedEvents([]);
         return;
       }
@@ -211,7 +200,6 @@ export default function MyEventsScreen({ navigation, userInfo, session, isAuthen
 
       setParticipatedEvents(participatedEventsArray);
     } catch (error) {
-      console.error('참여 이벤트 로딩 오류:', error);
       setParticipatedEvents([]);
     }
   };

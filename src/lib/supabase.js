@@ -23,7 +23,6 @@ const createRedirectUrl = () => {
   return 'gyeongjoapp://';
 };
 
-console.log('🟡 Supabase Redirect URL:', createRedirectUrl());
 
 // Supabase 클라이언트 생성
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -55,7 +54,6 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
  */
 export const sendPhoneOtp = async (phoneNumber) => {
   try {
-    console.log('📱 Sending OTP to:', phoneNumber);
     
     const { data, error } = await supabase.auth.signInWithOtp({
       phone: phoneNumber,
@@ -65,14 +63,11 @@ export const sendPhoneOtp = async (phoneNumber) => {
     });
 
     if (error) {
-      console.log('🔴 Phone OTP error:', error);
       return { success: false, error: error.message };
     }
 
-    console.log('🟢 Phone OTP sent successfully');
     return { success: true, data };
   } catch (error) {
-    console.error('🔴 Phone OTP exception:', error);
     return { success: false, error: '인증번호 발송에 실패했습니다.' };
   }
 };
@@ -82,7 +77,6 @@ export const sendPhoneOtp = async (phoneNumber) => {
  */
 export const verifyPhoneOtp = async (phoneNumber, token) => {
   try {
-    console.log('🔍 Verifying phone OTP for:', phoneNumber);
     
     const { data, error } = await supabase.auth.verifyOtp({
       phone: phoneNumber,
@@ -91,14 +85,11 @@ export const verifyPhoneOtp = async (phoneNumber, token) => {
     });
 
     if (error) {
-      console.log('🔴 Phone OTP verification failed:', error);
       return { success: false, error: error.message };
     }
 
-    console.log('🟢 Phone OTP verified successfully');
     return { success: true, session: data.session, user: data.user };
   } catch (error) {
-    console.error('🔴 Phone OTP verification exception:', error);
     return { success: false, error: '인증에 실패했습니다.' };
   }
 };
@@ -108,7 +99,6 @@ export const verifyPhoneOtp = async (phoneNumber, token) => {
  */
 export const signInWithPhone = async (phoneNumber, password = null) => {
   try {
-    console.log('📱 Signing in with phone:', phoneNumber);
     
     // 임시 이메일 생성 (핸드폰 번호 기반)
     const tempEmail = `${phoneNumber.replace(/\D/g, '')}@gyeongjo.temp`;
@@ -119,14 +109,11 @@ export const signInWithPhone = async (phoneNumber, password = null) => {
     });
 
     if (error) {
-      console.log('🔴 Phone sign in error:', error);
       return { success: false, error: error.message };
     }
 
-    console.log('🟢 Phone sign in successful');
     return { success: true, session: data.session, user: data.user };
   } catch (error) {
-    console.error('🔴 Phone sign in exception:', error);
     return { success: false, error: '로그인에 실패했습니다.' };
   }
 };
@@ -136,7 +123,6 @@ export const signInWithPhone = async (phoneNumber, password = null) => {
  */
 export const signUpWithPhone = async (phoneNumber, userInfo = {}) => {
   try {
-    console.log('📱 Signing up with phone:', phoneNumber);
     
     // 임시 이메일 생성 (핸드폰 번호 기반)
     const tempEmail = `${phoneNumber.replace(/\D/g, '')}@gyeongjo.temp`;
@@ -156,14 +142,11 @@ export const signUpWithPhone = async (phoneNumber, userInfo = {}) => {
     });
 
     if (error) {
-      console.log('🔴 Phone sign up error:', error);
       return { success: false, error: error.message };
     }
 
-    console.log('🟢 Phone sign up successful');
     return { success: true, session: data.session, user: data.user };
   } catch (error) {
-    console.error('🔴 Phone sign up exception:', error);
     return { success: false, error: '회원가입에 실패했습니다.' };
   }
 };
@@ -177,7 +160,6 @@ export const signUpWithPhone = async (phoneNumber, userInfo = {}) => {
  */
 export const signInWithGoogle = async () => {
   try {
-    console.log('🟡 Starting Google OAuth...');
     
     const redirectUrl = createRedirectUrl();
     
@@ -194,14 +176,11 @@ export const signInWithGoogle = async () => {
     });
 
     if (error) {
-      console.error('🔴 Google 로그인 에러:', error);
       return { success: false, error: error.message };
     }
     
-    console.log('🟢 Google OAuth URL 생성 성공');
     return { success: true, data };
   } catch (error) {
-    console.error('🔴 Google login exception:', error);
     return { success: false, error: '구글 로그인에 실패했습니다.' };
   }
 };
@@ -211,7 +190,6 @@ export const signInWithGoogle = async () => {
  */
 export const signInWithKakao = async () => {
   try {
-    console.log('🟡 Starting Kakao OAuth...');
     
     const redirectUrl = createRedirectUrl();
     
@@ -224,14 +202,11 @@ export const signInWithKakao = async () => {
     });
 
     if (error) {
-      console.error('🔴 Kakao 로그인 에러:', error);
       return { success: false, error: error.message };
     }
     
-    console.log('🟢 Kakao OAuth URL 생성 성공');
     return { success: true, data };
   } catch (error) {
-    console.error('🔴 Kakao 로그인 오류:', error);
     return { success: false, error: '카카오 로그인에 실패했습니다.' };
   }
 };
@@ -245,18 +220,14 @@ export const signInWithKakao = async () => {
  */
 export const signOut = async () => {
   try {
-    console.log('🟡 로그아웃 시도...');
     
     const { error } = await supabase.auth.signOut();
     if (error) {
-      console.error('🔴 로그아웃 에러:', error);
       return { success: false, error: error.message };
     }
     
-    console.log('🟢 로그아웃 성공');
     return { success: true };
   } catch (error) {
-    console.error('🔴 로그아웃 오류:', error);
     return { success: false, error: '로그아웃 중 오류가 발생했습니다.' };
   }
 };
@@ -268,14 +239,11 @@ export const getCurrentUser = async () => {
   try {
     const { data: { session }, error } = await supabase.auth.getSession();
     if (error) {
-      console.error('🔴 사용자 정보 가져오기 에러:', error);
       return { success: false, error: error.message };
     }
     
-    console.log('🟡 현재 세션:', session ? '로그인됨' : '로그인 안됨');
     return { success: true, user: session?.user || null, session };
   } catch (error) {
-    console.error('🔴 사용자 정보 가져오기 오류:', error);
     return { success: false, error: '사용자 정보를 가져올 수 없습니다.' };
   }
 };
@@ -285,18 +253,11 @@ export const getCurrentUser = async () => {
  */
 export const onAuthStateChange = (callback) => {
   return supabase.auth.onAuthStateChange((event, session) => {
-    console.log('🟡 인증 상태 변경:', event, session ? '로그인됨' : '로그인 안됨');
     
     if (session?.user) {
       const loginMethod = session.user.user_metadata?.auth_method || 
                          session.user.app_metadata?.provider || 
                          'unknown';
-      console.log('🟢 로그인된 사용자:', {
-        id: session.user.id,
-        phone: session.user.phone || session.user.user_metadata?.phone,
-        email: session.user.email,
-        method: loginMethod,
-      });
     }
     
     callback(event, session);
@@ -313,14 +274,11 @@ export const updateUserProfile = async (updates) => {
     });
 
     if (error) {
-      console.error('🔴 프로필 업데이트 에러:', error);
       return { success: false, error: error.message };
     }
     
-    console.log('🟢 프로필 업데이트 성공');
     return { success: true, data };
   } catch (error) {
-    console.error('🔴 프로필 업데이트 오류:', error);
     return { success: false, error: '프로필 업데이트에 실패했습니다.' };
   }
 };
@@ -356,13 +314,11 @@ export const selectData = async (table, filters = {}, options = {}) => {
     const { data, error } = options.single ? await query.single() : await query;
     
     if (error) {
-      console.error(`🔴 ${table} 조회 에러:`, error);
       return { success: false, error: error.message };
     }
     
     return { success: true, data };
   } catch (error) {
-    console.error(`🔴 ${table} 조회 오류:`, error);
     return { success: false, error: '데이터 조회에 실패했습니다.' };
   }
 };
@@ -378,14 +334,11 @@ export const insertData = async (table, data) => {
       .select();
     
     if (error) {
-      console.error(`🔴 ${table} 삽입 에러:`, error);
       return { success: false, error: error.message };
     }
     
-    console.log(`🟢 ${table} 삽입 성공`);
     return { success: true, data: Array.isArray(data) ? result : result[0] };
   } catch (error) {
-    console.error(`🔴 ${table} 삽입 오류:`, error);
     return { success: false, error: '데이터 삽입에 실패했습니다.' };
   }
 };
@@ -405,14 +358,11 @@ export const updateData = async (table, data, filters) => {
     const { data: result, error } = await query.select();
     
     if (error) {
-      console.error(`🔴 ${table} 업데이트 에러:`, error);
       return { success: false, error: error.message };
     }
     
-    console.log(`🟢 ${table} 업데이트 성공`);
     return { success: true, data: result };
   } catch (error) {
-    console.error(`🔴 ${table} 업데이트 오류:`, error);
     return { success: false, error: '데이터 업데이트에 실패했습니다.' };
   }
 };
@@ -432,14 +382,11 @@ export const deleteData = async (table, filters) => {
     const { error } = await query;
     
     if (error) {
-      console.error(`🔴 ${table} 삭제 에러:`, error);
       return { success: false, error: error.message };
     }
     
-    console.log(`🟢 ${table} 삭제 성공`);
     return { success: true };
   } catch (error) {
-    console.error(`🔴 ${table} 삭제 오류:`, error);
     return { success: false, error: '데이터 삭제에 실패했습니다.' };
   }
 };

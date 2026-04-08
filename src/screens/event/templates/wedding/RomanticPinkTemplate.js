@@ -546,14 +546,12 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
       const eventId = eventData.id || eventData.event_id || 'sample-event';
       const templateUrl = `${WEB_BASE_URL}/template/${eventId}?template=romantic`;
       
-      console.log('🔍 공유 링크 생성:', { eventData, eventId, templateUrl });
       
       await Share.share({
         message: `${groomName} ♥ ${brideName} 결혼식에 초대합니다!\n\n${dateStr} ${timeStr}\n${location}\n\n모바일 청첩장을 확인하세요:\n${templateUrl}`,
         title: '모바일 청첩장',
       });
     } catch (error) {
-      console.log('Share error:', error);
     }
   };
 

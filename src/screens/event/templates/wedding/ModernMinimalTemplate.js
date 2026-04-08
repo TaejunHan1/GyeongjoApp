@@ -400,14 +400,12 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
       const eventId = eventData.id || eventData.event_id || 'sample-event';
       const templateUrl = `${WEB_BASE_URL}/template/${eventId}?template=modern`;
       
-      console.log('🔍 공유 링크 생성:', { eventData, eventId, templateUrl });
       
       await Share.share({
         message: `${groomName} & ${brideName}\n우리의 사랑이 꽃피는 날\n\n${dateInfo.full} ${timeStr}\n${location}\n\n모바일 청첩장을 확인하세요:\n${templateUrl}`,
         title: 'Wedding Invitation',
       });
     } catch (error) {
-      console.log('Share error:', error);
     }
   };
 
@@ -1046,7 +1044,7 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
             
             <GuestBookMessages 
               messages={eventData.guestMessages || []}
-              onAddMessage={() => console.log('Add message')}
+              onAddMessage={() => {}}
             />
           </Animated.View>
         )}

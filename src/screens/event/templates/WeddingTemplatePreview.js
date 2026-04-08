@@ -22,14 +22,6 @@ export default function WeddingTemplatePreview({
   allowMessages,
   messageSettings 
 }) {
-  console.log('🔍 [MAIN COMPONENT] 입력 파라미터:', {
-    template: template?.style || 'undefined',
-    eventData: !!eventData,
-    userImages: userImages?.length || 0,
-    categorizedImages: !!categorizedImages,
-    allowMessages: allowMessages,
-    messageSettings: !!messageSettings
-  });
 
   // template이 undefined인 경우 대비
   if (!template || !template.style) {

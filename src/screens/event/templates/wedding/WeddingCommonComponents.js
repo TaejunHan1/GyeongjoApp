@@ -26,28 +26,50 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const downloadSupabaseImage = async (url) => {
   if (!url || !url.startsWith('http')) return null;
+
+  // 방법1: fetch + arrayBuffer
   try {
-    console.log('📥 [DL] 이미지 다운로드 시작:', url.substring(0, 60));
-    const fileName = `supa_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-    const tempPath = `${FileSystem.cacheDirectory}${fileName}`;
-    const result = await FileSystem.downloadAsync(url, tempPath, {
-      headers: { 'apikey': SUPABASE_ANON_KEY },
-    });
-    if (result.status !== 200) {
-      console.log('❌ [DL] 다운로드 실패 status:', result.status);
-      return null;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (response.ok) {
+      const arrayBuffer = await response.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      if (bytes.length > 0) {
+        const chunkSize = 8192;
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+        }
+        const base64 = btoa(binary);
+        if (base64) return `data:image/jpeg;base64,${base64}`;
+      }
     }
-    const base64 = await FileSystem.readAsStringAsync(result.uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    await FileSystem.deleteAsync(result.uri, { idempotent: true });
-    if (!base64) return null;
-    console.log('✅ [DL] 다운로드 완료 길이:', base64.length);
-    return `data:image/jpeg;base64,${base64}`;
-  } catch (e) {
-    console.log('❌ [DL] 예외:', e.message);
-    return null;
+  } catch (fetchErr) {
+    // fetch 실패 시 FileSystem으로 폴백
   }
+
+  // 방법2: FileSystem.downloadAsync
+  try {
+    const fileName = `supa_${Date.now()}.jpg`;
+    const tempPath = `${FileSystem.cacheDirectory || ''}${fileName}`;
+    const result = await Promise.race([
+      FileSystem.downloadAsync(url, tempPath, { headers: { 'apikey': SUPABASE_ANON_KEY } }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('FS timeout')), 15000)),
+    ]);
+    if (result.status === 200) {
+      const base64 = await FileSystem.readAsStringAsync(result.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      await FileSystem.deleteAsync(result.uri, { idempotent: true });
+      if (base64) return `data:image/jpeg;base64,${base64}`;
+    }
+  } catch (fsErr) {
+    // 실패
+  }
+
+  return null;
 };
 import { 
   width, 
@@ -604,13 +626,9 @@ export const MainPhotoSlideshow = ({ images = [], style, onImagePress, template 
           source={getResolvedSource(mainImages[currentIndex] || mainImages[0])}
           style={styles.mainPhotoImage}
           resizeMode="cover"
-          onError={(error) => {
+          onError={() => {
             const failedSrc = mainImages[currentIndex] || mainImages[0];
-            console.log('❌ 메인 이미지 로딩 에러 - FileSystem으로 재시도:', failedSrc?.uri?.substring(0, 60));
             handleImageError(failedSrc);
-          }}
-          onLoad={() => {
-            console.log('✅ 메인 이미지 로딩 성공:', currentIndex);
           }}
           defaultSource={defaultImages[0]}
         />

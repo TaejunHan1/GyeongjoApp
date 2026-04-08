@@ -102,7 +102,6 @@ export const useCountdown = (targetDate, ceremonyTime) => {
           target = defaultTarget;
         }
       } catch (error) {
-        console.warn('Target date parsing error:', error);
         const defaultTarget = new Date();
         defaultTarget.setDate(defaultTarget.getDate() + 30);
         target = defaultTarget;
@@ -150,7 +149,6 @@ export const useCountdown = (targetDate, ceremonyTime) => {
           setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: true });
         }
       } catch (error) {
-        console.warn('Countdown calculation error:', error);
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: false });
       }
     };
@@ -259,18 +257,14 @@ export const isValidImageUrl = (url) => {
 // 이미지 처리 유틸리티 함수들 - 안전한 버전
 export const processImageArray = (images, defaultFallback = []) => {
   if (!images || !Array.isArray(images) || images.length === 0) {
-    console.log('⚠️ processImageArray: 이미지 배열이 비어있음, 기본 이미지 사용');
     return defaultFallback;
   }
   
-  console.log('🔍 processImageArray 입력:', images.length, '개 이미지');
   
   return images.map((img, index) => {
-    console.log(`🔍 이미지 [${index}] 처리:`, typeof img, img);
     
     // 문자열 URL인 경우 - 모든 URL 형태 허용
     if (typeof img === 'string') {
-      console.log(`✅ 문자열 이미지 [${index}] 사용:`, img.substring(0, 50) + '...');
       return { 
         uri: img
       };
@@ -279,47 +273,30 @@ export const processImageArray = (images, defaultFallback = []) => {
     else if (img && (img.uri || img.publicUrl)) {
       const isLocal = img.uri && (img.uri.startsWith('file://') || img.uri.startsWith('ph://') || img.uri.startsWith('assets-library://') || img.uri.startsWith('data:'));
       const uri = isLocal ? img.uri : (img.publicUrl || img.uri);
-      console.log(`✅ 객체 이미지 [${index}] 사용:`, uri.substring(0, 50) + '...');
       return {
         uri: uri
       };
     } 
     // require()된 이미지인 경우
     else if (typeof img === 'object' && !img.uri && !img.publicUrl) {
-      console.log(`✅ require 이미지 [${index}] 사용`);
       return img;
     }
     
     // 모든 처리 실패 시 기본 이미지
-    console.log(`⚠️ 처리 실패 [${index}], 기본 이미지 사용:`, typeof img);
     return defaultFallback[index % defaultFallback.length] || defaultFallback[0] || require('../../../../../assets/images/aa1.png');
   });
 };
 
 // 카테고리별 이미지 안전하게 가져오기 - 개선된 버전
 export const getCategorizedImagesSafe = (categorizedImages, userImages = []) => {
-  console.log('🔍 getCategorizedImagesSafe 호출됨:', {
-    hasCategorizedImages: !!categorizedImages,
-    categorizedImagesType: typeof categorizedImages,
-    userImagesLength: userImages?.length || 0
-  });
 
   // categorizedImages가 이미 객체 형태로 전달된 경우
   if (categorizedImages && typeof categorizedImages === 'object') {
-    console.log('📸 카테고리별 이미지 처리 중:', {
-      main: categorizedImages.main?.length || 0,
-      gallery: categorizedImages.gallery?.length || 0,
-      groom: categorizedImages.groom?.length || 0,
-      bride: categorizedImages.bride?.length || 0,
-      all: categorizedImages.all?.length || 0
-    });
     
     // 실제 이미지 URI 샘플 출력
     if (categorizedImages.main && categorizedImages.main.length > 0) {
-      console.log('🔍 [SAMPLE] main[0]:', categorizedImages.main[0]);
     }
     if (categorizedImages.all && categorizedImages.all.length > 0) {
-      console.log('🔍 [SAMPLE] all[0]:', categorizedImages.all[0]);
     }
     
     const safe = {
@@ -330,32 +307,18 @@ export const getCategorizedImagesSafe = (categorizedImages, userImages = []) => 
       all: processImageArray(categorizedImages.all || userImages, defaultImages)
     };
     
-    console.log('✅ 처리된 카테고리별 이미지:', {
-      main: safe.main?.length || 0,
-      gallery: safe.gallery?.length || 0,
-      groom: safe.groom?.length || 0,
-      bride: safe.bride?.length || 0,
-      all: safe.all?.length || 0
-    });
     
     return safe;
   }
 
   // categorizedImages가 없으면 userImages로부터 추출 시도
   if (userImages && Array.isArray(userImages) && userImages.length > 0) {
-    console.log('🔍 [TEMPLATE DEBUG] userImages에서 카테고리별로 분류 시도');
     
     const mainImages = userImages.filter(img => img.category === 'main');
     const galleryImages = userImages.filter(img => img.category === 'gallery');
     const groomImages = userImages.filter(img => img.category === 'groom');
     const brideImages = userImages.filter(img => img.category === 'bride');
     
-    console.log('🔍 [TEMPLATE DEBUG] 분류 결과:', {
-      main: mainImages.length,
-      gallery: galleryImages.length,
-      groom: groomImages.length,
-      bride: brideImages.length
-    });
     
     return {
       main: processImageArray(mainImages, defaultImages.slice(0, 5)),
@@ -367,7 +330,6 @@ export const getCategorizedImagesSafe = (categorizedImages, userImages = []) => 
   }
 
   // 기본값 반환
-  console.log('🔍 [TEMPLATE DEBUG] 기본값 사용');
   return {
     main: defaultImages.slice(0, 5),
     gallery: defaultImages.slice(5, 15),
@@ -396,7 +358,6 @@ export const formatDate = (date, options = {}) => {
       year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', ...options
     });
   } catch (error) {
-    console.warn('Date formatting error:', error);
     return options.defaultDate || '날짜 미정';
   }
 };
@@ -433,7 +394,6 @@ export const formatTime = (time, options = {}) => {
     
     return defaultTime;
   } catch (error) {
-    console.warn('Time formatting error:', error);
     return defaultTime;
   }
 };
@@ -471,7 +431,6 @@ export const formatKoreanDate = (dateString) => {
       full: `${year}년 ${parseInt(months[month])}월 ${day}일 ${days[dayOfWeek]}요일`
     };
   } catch (error) {
-    console.warn('Korean date formatting error:', error);
     return defaultResult;
   }
 };
@@ -508,7 +467,6 @@ export const formatKoreanTime = (timeString) => {
     
     return defaultTime;
   } catch (error) {
-    console.warn('Korean time formatting error:', error);
     return defaultTime;
   }
 };

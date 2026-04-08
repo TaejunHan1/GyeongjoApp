@@ -46,14 +46,12 @@ const MUSIC_TRACKS = [
 const { width, height } = Dimensions.get('window');
 
 export default function EventDisplayScreen({ navigation, route }) {
-  console.log('🏗️ EventDisplayScreen 렌더링 시작');
   const {
     eventId,
     templateStyle,
     categorizedImages,
     eventData: passedEventData
   } = route.params;
-  console.log('🏗️ EventDisplayScreen params:', { eventId: eventId?.substring(0, 8), hasCategorizedImages: !!categorizedImages });
 
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -270,7 +268,6 @@ export default function EventDisplayScreen({ navigation, route }) {
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mc2hxdnJsZGNlc3ZqdHJlZHhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwNDI1MTQsImV4cCI6MjA2NDYxODUxNH0.uIfuqMP7SFvQfQXSESS9xKHWlBYeWmZwf1j_4eveZ6Q';
 
   const fetchImageAsBase64 = async (url) => {
-    console.log('📥 fetchImageAsBase64 시작:', url.substring(0, 80));
     try {
       const fileName = `img_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
       const tempPath = `${FileSystem.cacheDirectory}${fileName}`;
@@ -279,10 +276,7 @@ export default function EventDisplayScreen({ navigation, route }) {
         headers: { 'apikey': SUPABASE_ANON_KEY },
       });
 
-      console.log('📥 다운로드 결과 status:', downloadResult.status, 'uri:', downloadResult.uri?.substring(0, 60));
-
       if (downloadResult.status !== 200) {
-        console.log('❌ 다운로드 실패:', downloadResult.status);
         await FileSystem.deleteAsync(tempPath, { idempotent: true });
         return null;
       }
@@ -293,21 +287,14 @@ export default function EventDisplayScreen({ navigation, route }) {
 
       await FileSystem.deleteAsync(downloadResult.uri, { idempotent: true });
 
-      if (!base64) {
-        console.log('❌ base64 변환 실패: 빈 문자열');
-        return null;
-      }
-
-      console.log('✅ base64 완료 길이:', base64.length);
+      if (!base64) return null;
       return `data:image/jpeg;base64,${base64}`;
     } catch (e) {
-      console.log('❌ fetchImageAsBase64 예외:', e.message);
       return null;
     }
   };
 
   const convertToBase64Uris = async (ci) => {
-    console.log('🔄 [CONVERT] convertToBase64Uris 시작, keys:', Object.keys(ci || {}));
     if (!ci || typeof ci !== 'object') return ci;
     const result = {};
     for (const key of Object.keys(ci)) {
@@ -320,7 +307,6 @@ export default function EventDisplayScreen({ navigation, route }) {
         if (!supabaseUrl || !supabaseUrl.startsWith('http')) return img;
         const base64 = await fetchImageAsBase64(supabaseUrl);
         if (!base64) return img;
-        console.log('✅ base64 변환 완료:', key, supabaseUrl.substring(50, 80));
         return { ...img, uri: base64 };
       }));
     }
@@ -333,15 +319,12 @@ export default function EventDisplayScreen({ navigation, route }) {
     
     try {
       setLoadingMessages(true);
-      console.log('📬 메시지 로드 시작:', eventId);
       
       const result = await getEventMessages(eventId);
       
       if (result.success) {
-        console.log('✅ 메시지 로드 성공:', result.data.length);
         setEventMessages(result.data || []);
       } else {
-        console.error('❌ 메시지 로드 실패:', result.error);
         setEventMessages([]);
       }
     } catch (error) {
@@ -478,24 +461,10 @@ export default function EventDisplayScreen({ navigation, route }) {
 
     if (event) {
       if (hasImages(event.additional_info?.categorized_images)) {
-        console.log('✅ [IMAGE DEBUG] additional_info.categorized_images 사용');
         return event.additional_info.categorized_images;
       }
 
       if (event.image_urls && event.image_urls.length > 0) {
-        console.log('✅ [IMAGE DEBUG] event.image_urls 처리 중...');
-        
-        // image_urls 배열의 각 항목 구조 확인
-        event.image_urls.forEach((img, index) => {
-          console.log(`🔍 [IMAGE DEBUG] image_urls[${index}]:`, {
-            type: typeof img,
-            hasUri: !!img.uri,
-            hasPublicUrl: !!img.publicUrl,
-            hasCategory: !!img.category,
-            sample: typeof img === 'string' ? img.substring(0, 100) : img
-          });
-        });
-        
         // uri 또는 publicUrl을 실제 URL로 변환
         const normalizedImages = event.image_urls.map(img => {
           if (typeof img === 'string') {
@@ -515,17 +484,10 @@ export default function EventDisplayScreen({ navigation, route }) {
           all: normalizedImages
         };
         
-        console.log('✅ [IMAGE DEBUG] 처리된 이미지:', {
-          main: processedImages.main.length,
-          gallery: processedImages.gallery.length,
-          all: processedImages.all.length
-        });
-        
         return processedImages;
       }
     }
 
-    console.log('⚠️ [IMAGE DEBUG] 이미지가 없음 - 빈 객체 반환');
     return {};
   };
 
@@ -608,7 +570,7 @@ export default function EventDisplayScreen({ navigation, route }) {
 
   // 🔥 메시지 제출 핸들러 수정 - 실제 DB 저장
   const handleMessageSubmit = async (messageData) => {
-    console.log('📝 메시지 제출:', messageData);
+;
     
     if (isPreviewMode) {
       Alert.alert('알림', '미리보기 모드에서는 메시지를 저장할 수 없습니다.');

@@ -1,25 +1,22 @@
 // src/lib/supabaseHelper.js - guest_book 테이블 사용 버전
 import { supabase } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
 
 /**
  * 실시간 연결 상태 테스트
  */
 export const testRealtimeConnection = async () => {
   try {
-    console.log('🔄 실시간 연결 테스트 시작...');
     
     // 테스트 채널 생성
     const testChannel = supabase
       .channel('test-connection')
       .on('broadcast', { event: 'test' }, (payload) => {
-        console.log('✅ 실시간 메시지 수신:', payload);
       })
       .subscribe((status) => {
-        console.log('📡 테스트 채널 상태:', status);
         
         if (status === 'SUBSCRIBED') {
-          console.log('✅ 실시간 연결 성공!');
           
           // 테스트 메시지 브로드캐스트
           testChannel.send({
@@ -31,18 +28,14 @@ export const testRealtimeConnection = async () => {
           // 3초 후 채널 정리
           setTimeout(() => {
             supabase.removeChannel(testChannel);
-            console.log('🧹 테스트 채널 정리 완료');
           }, 3000);
         } else if (status === 'TIMED_OUT') {
-          console.error('❌ 실시간 연결 시간 초과');
         } else if (status === 'CLOSED') {
-          console.log('📴 테스트 채널 종료');
         }
       });
       
     return testChannel;
   } catch (error) {
-    console.error('❌ 실시간 연결 테스트 실패:', error);
     return null;
   }
 };
@@ -69,7 +62,6 @@ export const getUserSubscriptionInfo = async (userId = null) => {
       .single();
     
     if (error) {
-      console.error('❌ 구독 정보 조회 오류:', error);
       return { success: false, error: error.message };
     }
     
@@ -87,7 +79,6 @@ export const getUserSubscriptionInfo = async (userId = null) => {
       }
     };
   } catch (error) {
-    console.error('❌ 구독 정보 조회 예외:', error);
     return { success: false, error: '구독 정보 조회에 실패했습니다.' };
   }
 };
@@ -140,7 +131,6 @@ export const checkEventCreationLimit = async (eventType, userId = null) => {
     
     return { success: false, error: '지원하지 않는 이벤트 타입입니다.' };
   } catch (error) {
-    console.error('❌ 이벤트 생성 제한 체크 오류:', error);
     return { success: false, error: '제한 체크에 실패했습니다.' };
   }
 };
@@ -180,14 +170,11 @@ export const upgradeUserSubscription = async (userId = null, subscriptionType = 
       .single();
     
     if (error) {
-      console.error('❌ 구독 업그레이드 오류:', error);
       return { success: false, error: error.message };
     }
     
-    console.log('✅ 구독 업그레이드 성공:', subscriptionType);
     return { success: true, data };
   } catch (error) {
-    console.error('❌ 구독 업그레이드 예외:', error);
     return { success: false, error: '구독 업그레이드에 실패했습니다.' };
   }
 };
@@ -204,11 +191,6 @@ export const getCurrentUserInfo = async () => {
     
     if (isLoggedIn === 'true' && storedUserInfo) {
       const userInfo = JSON.parse(storedUserInfo);
-      console.log('✅ AsyncStorage 사용자 확인:', {
-        userId: userInfo.userId,
-        userName: userInfo.userName,
-        phone: userInfo.phone
-      });
       
       return {
         success: true,
@@ -227,18 +209,12 @@ export const getCurrentUserInfo = async () => {
     const { data: { user }, error } = await supabase.auth.getUser();
     
     if (error || !user) {
-      console.log('❌ 인증된 사용자 없음');
       return {
         success: false,
         error: '로그인이 필요합니다.'
       };
     }
     
-    console.log('✅ Supabase 사용자 확인:', {
-      userId: user.id,
-      email: user.email,
-      phone: user.phone
-    });
     
     return {
       success: true,
@@ -253,7 +229,6 @@ export const getCurrentUserInfo = async () => {
     };
     
   } catch (error) {
-    console.error('❌ getCurrentUserInfo 오류:', error);
     return {
       success: false,
       error: '사용자 정보를 가져올 수 없습니다.'
@@ -266,16 +241,10 @@ export const getCurrentUserInfo = async () => {
  */
 export const moveImagesToEventFolder = async (images, realEventId, tempEventId) => {
   try {
-    console.log('🔍 이미지 이동 시작:', {
-      imageCount: images.length,
-      realEventId,
-      tempEventId
-    });
 
     const movePromises = images.map(async (image) => {
       try {
         if (!image.storagePath || !image.publicUrl) {
-          console.log('⚠️ Storage 정보 없는 이미지 건너뛰기:', image.id);
           return {
             ...image,
             moveSuccess: false,
@@ -321,14 +290,8 @@ export const moveImagesToEventFolder = async (images, realEventId, tempEventId) 
             .from('event-images')
             .remove([image.storagePath]);
         } catch (deleteError) {
-          console.warn('⚠️ 기존 파일 삭제 실패 (무시):', deleteError);
         }
 
-        console.log('✅ 이미지 이동 성공:', {
-          from: image.storagePath,
-          to: newPath,
-          newUrl: newPublicUrl
-        });
 
         return {
           ...image,
@@ -339,7 +302,6 @@ export const moveImagesToEventFolder = async (images, realEventId, tempEventId) 
         };
 
       } catch (error) {
-        console.error('❌ 개별 이미지 이동 실패:', error);
         return {
           ...image,
           moveSuccess: false,
@@ -353,11 +315,6 @@ export const moveImagesToEventFolder = async (images, realEventId, tempEventId) 
     const successfulMoves = results.filter(result => result.moveSuccess);
     const failedMoves = results.filter(result => !result.moveSuccess);
 
-    console.log('✅ 이미지 이동 완료:', {
-      total: images.length,
-      success: successfulMoves.length,
-      failed: failedMoves.length
-    });
 
     return {
       success: true,
@@ -370,7 +327,6 @@ export const moveImagesToEventFolder = async (images, realEventId, tempEventId) 
     };
 
   } catch (error) {
-    console.error('❌ moveImagesToEventFolder error:', error);
     return {
       success: false,
       error: error.message || '이미지 이동에 실패했습니다.'
@@ -383,10 +339,6 @@ export const moveImagesToEventFolder = async (images, realEventId, tempEventId) 
  */
 export const updateEventImages = async (eventId, updatedImages) => {
   try {
-    console.log('🔍 이벤트 이미지 DB 업데이트 시작:', {
-      eventId,
-      imageCount: updatedImages.length
-    });
 
     const imageUrls = updatedImages.map(img => ({
       uri: img.publicUrl,
@@ -409,11 +361,9 @@ export const updateEventImages = async (eventId, updatedImages) => {
       .single();
 
     if (error) {
-      console.error('❌ 이벤트 이미지 DB 업데이트 오류:', error);
       throw error;
     }
 
-    console.log('✅ 이벤트 이미지 DB 업데이트 완료');
     
     return {
       success: true,
@@ -421,7 +371,6 @@ export const updateEventImages = async (eventId, updatedImages) => {
     };
 
   } catch (error) {
-    console.error('❌ updateEventImages error:', error);
     return {
       success: false,
       error: error.message || '이미지 DB 업데이트에 실패했습니다.'
@@ -434,7 +383,6 @@ export const updateEventImages = async (eventId, updatedImages) => {
  */
 export const getEventStorageImages = async (userId, eventId) => {
   try {
-    console.log('🔍 특정 이벤트 Storage 이미지 조회:', { userId, eventId });
     
     // eventId 폴더의 파일 목록 가져오기
     const { data: files, error } = await supabase.storage
@@ -442,16 +390,13 @@ export const getEventStorageImages = async (userId, eventId) => {
       .list(`${userId}/${eventId}`);
 
     if (error) {
-      console.error('❌ Storage 파일 목록 조회 오류:', error);
       return { success: false, error: error.message };
     }
 
     if (!files || files.length === 0) {
-      console.log('📭 해당 이벤트의 이미지가 없음');
       return { success: true, data: { files: [], count: 0 } };
     }
 
-    console.log('✅ Storage 파일 목록:', files);
     
     // 각 파일의 public URL 생성
     const filesWithUrls = files.map(file => {
@@ -478,7 +423,6 @@ export const getEventStorageImages = async (userId, eventId) => {
     };
     
   } catch (error) {
-    console.error('❌ getEventStorageImages error:', error);
     return { success: false, error: error.message };
   }
 };
@@ -503,7 +447,6 @@ const determineImageCategory = (fileName) => {
  */
 export const deleteEventStorageImages = async (userId, eventId) => {
   try {
-    console.log('🔍 이벤트 Storage 이미지 삭제 시작:', { userId, eventId });
     
     // 해당 이벤트 폴더의 모든 파일 목록 가져오기
     const { data: files, error: listError } = await supabase.storage
@@ -511,12 +454,10 @@ export const deleteEventStorageImages = async (userId, eventId) => {
       .list(`${userId}/${eventId}`);
 
     if (listError) {
-      console.error('❌ 파일 목록 조회 오류:', listError);
       return { success: false, error: listError.message };
     }
 
     if (!files || files.length === 0) {
-      console.log('📭 삭제할 파일이 없음');
       return { success: true, data: { deletedCount: 0 } };
     }
 
@@ -529,11 +470,9 @@ export const deleteEventStorageImages = async (userId, eventId) => {
       .remove(filePaths);
 
     if (deleteError) {
-      console.error('❌ 파일 삭제 오류:', deleteError);
       return { success: false, error: deleteError.message };
     }
 
-    console.log('✅ 이벤트 Storage 이미지 삭제 완료:', filePaths.length, '개');
     
     return {
       success: true,
@@ -544,36 +483,29 @@ export const deleteEventStorageImages = async (userId, eventId) => {
     };
 
   } catch (error) {
-    console.error('❌ deleteEventStorageImages error:', error);
     return { success: false, error: error.message };
   }
 };
 
 export const uploadImageToStorage = async (imageUri, fileName, userId, eventId = null) => {
   try {
-    console.log('🔍 이미지 업로드 시작:', { 
-      fileName, 
-      userId, 
-      eventId,
-      imageUri: imageUri?.slice(0, 50) + '...',
-      supabaseUrl: supabase.supabaseUrl?.slice(0, 30) + '...' 
-    });
     
-    // 1. 파일 읽기 (Blob - JPEG로 변환된 uri가 들어온다고 가정)
+    // 1. 파일 읽기 (React Native에서 Blob이 0바이트로 업로드되는 문제 우회: base64→ArrayBuffer)
     let fileData;
     try {
-      console.log('🔍 파일 읽기 시작...');
-      const response = await fetch(imageUri);
-      if (!response.ok) {
-        throw new Error(`파일 읽기 실패: ${response.status} ${response.statusText}`);
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (!base64) throw new Error('파일이 비어있습니다.');
+      // base64 → Uint8Array (ArrayBuffer)
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
       }
-      fileData = await response.blob();
-      console.log('✅ 파일 읽기 완료, 크기:', fileData.size, 'bytes, type:', fileData.type);
-      if (!fileData.size || fileData.size === 0) {
-        throw new Error('파일이 비어있습니다.');
-      }
+      fileData = bytes.buffer;
+      if (bytes.length === 0) throw new Error('파일이 비어있습니다.');
     } catch (fileError) {
-      console.error('❌ 파일 읽기 오류:', fileError);
       throw new Error(`파일 읽기 실패: ${fileError.message}`);
     }
     
@@ -585,10 +517,9 @@ export const uploadImageToStorage = async (imageUri, fileName, userId, eventId =
     const storageEventId = eventId || `temp_${timestamp}`;
     const uniqueFileName = `${userId}/${storageEventId}/${timestamp}_${cleanFileName}`;
     
-    console.log('🔍 업로드 경로:', uniqueFileName);
     
     // 3. Supabase Storage에 업로드
-    const contentType = fileData.type && fileData.type !== 'application/octet-stream' ? fileData.type : 'image/jpeg';
+    const contentType = 'image/jpeg';
     const { data, error } = await supabase.storage
       .from('event-images')
       .upload(uniqueFileName, fileData, {
@@ -597,11 +528,6 @@ export const uploadImageToStorage = async (imageUri, fileName, userId, eventId =
       });
 
     if (error) {
-      console.error('❌ Storage 업로드 오류:', {
-        message: error.message,
-        statusCode: error.statusCode,
-        error: error
-      });
       
       if (error.message?.includes('does not exist') || error.message?.includes('not found')) {
         throw new Error('event-images 버킷이 존재하지 않습니다. Supabase Dashboard에서 버킷을 생성해주세요.');
@@ -614,7 +540,6 @@ export const uploadImageToStorage = async (imageUri, fileName, userId, eventId =
       throw new Error(`업로드 실패: ${error.message}`);
     }
 
-    console.log('✅ Storage 업로드 성공:', data);
 
     // 4. Public URL 가져오기
     const { data: { publicUrl } } = supabase.storage
@@ -625,7 +550,6 @@ export const uploadImageToStorage = async (imageUri, fileName, userId, eventId =
       throw new Error('Public URL 생성에 실패했습니다.');
     }
 
-    console.log('✅ 이미지 업로드 완료:', publicUrl);
     
     return {
       success: true,
@@ -638,11 +562,6 @@ export const uploadImageToStorage = async (imageUri, fileName, userId, eventId =
     };
 
   } catch (error) {
-    console.error('❌ uploadImageToStorage error:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
     return {
       success: false,
       error: error.message || '이미지 업로드에 실패했습니다.'
@@ -655,7 +574,6 @@ export const uploadImageToStorage = async (imageUri, fileName, userId, eventId =
  */
 export const uploadMultipleImages = async (images, userId, onProgress = null) => {
   try {
-    console.log('🔍 다중 이미지 업로드 시작:', images.length, '개');
     
     const uploadPromises = images.map(async (image, index) => {
       try {
@@ -676,7 +594,6 @@ export const uploadMultipleImages = async (images, userId, onProgress = null) =>
             uploadSuccess: true
           };
         } else {
-          console.error('❌ 개별 이미지 업로드 실패:', result.error);
           return {
             ...image,
             uploadSuccess: false,
@@ -684,7 +601,6 @@ export const uploadMultipleImages = async (images, userId, onProgress = null) =>
           };
         }
       } catch (error) {
-        console.error('❌ 개별 이미지 처리 오류:', error);
         return {
           ...image,
           uploadSuccess: false,
@@ -698,11 +614,6 @@ export const uploadMultipleImages = async (images, userId, onProgress = null) =>
     const successfulUploads = results.filter(result => result.uploadSuccess);
     const failedUploads = results.filter(result => !result.uploadSuccess);
     
-    console.log('✅ 다중 이미지 업로드 완료:', {
-      total: images.length,
-      success: successfulUploads.length,
-      failed: failedUploads.length
-    });
     
     return {
       success: true,
@@ -715,7 +626,6 @@ export const uploadMultipleImages = async (images, userId, onProgress = null) =>
     };
 
   } catch (error) {
-    console.error('❌ uploadMultipleImages error:', error);
     return {
       success: false,
       error: error.message || '다중 이미지 업로드에 실패했습니다.'
@@ -728,25 +638,21 @@ export const uploadMultipleImages = async (images, userId, onProgress = null) =>
  */
 export const deleteImageFromStorage = async (storagePath) => {
   try {
-    console.log('🔍 이미지 삭제 시작:', storagePath);
     
     const { error } = await supabase.storage
       .from('event-images')
       .remove([storagePath]);
 
     if (error) {
-      console.error('❌ 이미지 삭제 오류:', error);
       throw error;
     }
 
-    console.log('✅ 이미지 삭제 완료:', storagePath);
     
     return {
       success: true
     };
 
   } catch (error) {
-    console.error('❌ deleteImageFromStorage error:', error);
     return {
       success: false,
       error: error.message || '이미지 삭제에 실패했습니다.'
@@ -759,7 +665,6 @@ export const deleteImageFromStorage = async (storagePath) => {
  */
 export const deleteEventImages = async (imageUrls) => {
   try {
-    console.log('🔍 이벤트 이미지 일괄 삭제 시작:', imageUrls.length);
     
     const deletePromises = imageUrls.map(async (imageData) => {
       if (imageData.storagePath) {
@@ -774,10 +679,6 @@ export const deleteEventImages = async (imageUrls) => {
       result.status === 'fulfilled' && result.value.success
     ).length;
     
-    console.log('✅ 이벤트 이미지 일괄 삭제 완료:', {
-      total: imageUrls.length,
-      success: successCount
-    });
     
     return {
       success: true,
@@ -788,7 +689,6 @@ export const deleteEventImages = async (imageUrls) => {
     };
 
   } catch (error) {
-    console.error('❌ deleteEventImages error:', error);
     return {
       success: false,
       error: error.message || '이벤트 이미지 삭제에 실패했습니다.'
@@ -849,7 +749,6 @@ export const getUserEvents = async (passedUserInfo = null) => {
     };
 
   } catch (error) {
-    console.error('❌ getUserEvents error:', error);
     return {
       success: false,
       error: error.message || '이벤트를 불러올 수 없습니다.'
@@ -862,15 +761,10 @@ export const getUserEvents = async (passedUserInfo = null) => {
  */
 export const getPersonalSchedules = async (passedUserInfo = null) => {
   try {
-    console.log('🔍 getPersonalSchedules 시작');
     
     let currentUser = null;
     
     if (passedUserInfo?.id) {
-      console.log('✅ 전달받은 userInfo 사용:', {
-        id: passedUserInfo.id,
-        name: passedUserInfo.name
-      });
       currentUser = passedUserInfo;
     } else {
       const userResult = await getCurrentUserInfo();
@@ -880,11 +774,6 @@ export const getPersonalSchedules = async (passedUserInfo = null) => {
       currentUser = userResult.user;
     }
     
-    console.log('👤 개인 일정 조회 대상 사용자:', {
-      id: currentUser.id,
-      name: currentUser.name,
-      auth_method: currentUser.auth_method || 'unknown'
-    });
     
     const { data, error } = await supabase
       .from('personal_schedules')
@@ -902,11 +791,9 @@ export const getPersonalSchedules = async (passedUserInfo = null) => {
       .order('event_date', { ascending: false });
 
     if (error) {
-      console.error('❌ 개인 일정 조회 오류:', error);
       throw error;
     }
 
-    console.log(`✅ 개인 일정 조회 완료: ${data?.length || 0}개`);
     
     // 개인 일정 데이터를 이벤트 형식에 맞게 변환
     const personalSchedules = (data || []).map(schedule => ({
@@ -931,7 +818,6 @@ export const getPersonalSchedules = async (passedUserInfo = null) => {
     };
 
   } catch (error) {
-    console.error('❌ getPersonalSchedules error:', error);
     return {
       success: false,
       error: error.message || '개인 일정을 불러올 수 없습니다.'
@@ -944,7 +830,6 @@ export const getPersonalSchedules = async (passedUserInfo = null) => {
  */
 export const createPersonalSchedule = async (scheduleData, passedUserInfo = null) => {
   try {
-    console.log('🔍 createPersonalSchedule 시작:', scheduleData);
     
     let currentUser = null;
     
@@ -958,19 +843,7 @@ export const createPersonalSchedule = async (scheduleData, passedUserInfo = null
       currentUser = userResult.user;
     }
     
-    console.log('👤 개인 일정 생성 대상 사용자:', {
-      id: currentUser.id,
-      name: currentUser.name,
-      auth_method: currentUser.auth_method || 'unknown'
-    });
     
-    console.log('📝 생성할 일정 데이터:', {
-      user_id: currentUser.id,
-      title: scheduleData.title,
-      event_type: scheduleData.event_type,
-      event_date: scheduleData.event_date,
-      location: scheduleData.location
-    });
     
     const { data, error } = await supabase
       .from('personal_schedules')
@@ -986,11 +859,9 @@ export const createPersonalSchedule = async (scheduleData, passedUserInfo = null
       .single();
 
     if (error) {
-      console.error('❌ 개인 일정 생성 오류:', error);
       throw error;
     }
 
-    console.log('✅ 개인 일정 생성 완료:', data.id);
     
     return {
       success: true,
@@ -1010,7 +881,6 @@ export const createPersonalSchedule = async (scheduleData, passedUserInfo = null
     };
 
   } catch (error) {
-    console.error('❌ createPersonalSchedule error:', error);
     return {
       success: false,
       error: error.message || '개인 일정을 생성할 수 없습니다.'
@@ -1023,7 +893,6 @@ export const createPersonalSchedule = async (scheduleData, passedUserInfo = null
  */
 export const getAllUserEvents = async (passedUserInfo = null) => {
   try {
-    console.log('🔍 getAllUserEvents 시작 - 주최 경조사 + 개인 일정');
     
     // 주최 경조사 조회
     const hostedEventsResult = await getUserEvents(passedUserInfo);
@@ -1045,7 +914,6 @@ export const getAllUserEvents = async (passedUserInfo = null) => {
     // 날짜순 정렬 (최신순)
     allEvents.sort((a, b) => new Date(b.event_date) - new Date(a.event_date));
     
-    console.log(`✅ 통합 이벤트 조회 완료: 주최 ${hostedEvents.length}개 + 개인 ${personalSchedules.length}개 = 총 ${allEvents.length}개`);
     
     return {
       success: true,
@@ -1058,7 +926,6 @@ export const getAllUserEvents = async (passedUserInfo = null) => {
     };
 
   } catch (error) {
-    console.error('❌ getAllUserEvents error:', error);
     return {
       success: false,
       error: error.message || '이벤트를 불러올 수 없습니다.'
@@ -1071,8 +938,6 @@ export const getAllUserEvents = async (passedUserInfo = null) => {
  */
 export const createEvent = async (eventData) => {
   try {
-    console.log('🔍 createEvent 시작');
-    console.log('🔍 받은 eventData 키들:', Object.keys(eventData));
     
     const userResult = await getCurrentUserInfo();
     if (!userResult.success) {
@@ -1080,11 +945,6 @@ export const createEvent = async (eventData) => {
     }
 
     const currentUser = userResult.user;
-    console.log('👤 이벤트 생성 사용자:', {
-      id: currentUser.id,
-      name: currentUser.name,
-      auth_method: currentUser.auth_method
-    });
 
     // ✅ 허용된 컬럼들만 화이트리스트로 추출 (실제 DB 컬럼들만)
     const allowedColumns = [
@@ -1146,7 +1006,6 @@ export const createEvent = async (eventData) => {
         };
       });
       
-      console.log('🔍 [DB SAVE] 저장할 image_urls:', processedEventData.image_urls);
     }
 
     if (eventData.event_type === 'wedding') {
@@ -1199,23 +1058,11 @@ export const createEvent = async (eventData) => {
         });
         
         processedEventData.additional_info.categorized_images = categorizedImages;
-        console.log('🔍 [WEDDING] categorized_images 저장:', {
-          main: categorizedImages.main.length,
-          gallery: categorizedImages.gallery.length,
-          groom: categorizedImages.groom.length,
-          bride: categorizedImages.bride.length,
-          all: categorizedImages.all.length
-        });
       }
     } else if (eventData.event_type === 'funeral') {
       // 🔥 고인명 체크 - camelCase와 snake_case 모두 지원
       const deceasedName = eventData.deceasedName || eventData.deceased_name;
       if (!deceasedName || !deceasedName.trim()) {
-        console.error('❌ 고인명 누락:', { 
-          deceasedName: eventData.deceasedName, 
-          deceased_name: eventData.deceased_name,
-          eventDataKeys: Object.keys(eventData)
-        });
         throw new Error('고인명은 필수입니다.');
       }
       
@@ -1225,15 +1072,6 @@ export const createEvent = async (eventData) => {
         ? familyMembers.filter(member => member.names && member.names.trim())
         : [];
       
-      console.log('🔍 부고 데이터 처리:', {
-        deceasedName: deceasedName,
-        originalFamilyMembers: familyMembers.length,
-        validFamilyMembers: validFamilyMembers.length,
-        familyMemberDetails: validFamilyMembers.map(fm => ({ 
-          relation: fm.relation, 
-          names: fm.names 
-        }))
-      });
       
       // 🔥 고인명을 main_person_name으로 매핑 (deceased_name 컬럼은 DB에 없음)
       processedEventData.main_person_name = deceasedName.trim();
@@ -1339,22 +1177,9 @@ export const createEvent = async (eventData) => {
         });
         
         processedEventData.additional_info.categorized_images = categorizedImages;
-        console.log('🔍 [FUNERAL] categorized_images 저장:', {
-          main: categorizedImages.main.length,
-          gallery: categorizedImages.gallery.length,
-          all: categorizedImages.all.length
-        });
       }
     }
 
-    console.log('🔍 최종 전송할 데이터 키들:', Object.keys(processedEventData));
-    console.log('🔍 생성할 이벤트 데이터 (요약):', {
-      event_type: processedEventData.event_type,
-      event_name: processedEventData.event_name,
-      main_person_name: processedEventData.main_person_name,
-      image_count: processedEventData.image_urls?.length || 0,
-      images_have_publicUrl: processedEventData.image_urls?.every(img => img.publicUrl) || false
-    });
 
     const { data, error } = await supabase
       .from('events')
@@ -1363,11 +1188,9 @@ export const createEvent = async (eventData) => {
       .single();
 
     if (error) {
-      console.error('❌ 이벤트 생성 오류:', error);
       throw error;
     }
 
-    console.log('✅ 이벤트 생성 완료:', data.id);
     
     return {
       success: true,
@@ -1375,7 +1198,6 @@ export const createEvent = async (eventData) => {
     };
 
   } catch (error) {
-    console.error('❌ createEvent error:', error);
     return {
       success: false,
       error: error.message || '이벤트 생성에 실패했습니다.'
@@ -1418,11 +1240,9 @@ export const updateEvent = async (eventId, updates) => {
       .single();
 
     if (error) {
-      console.error('❌ 이벤트 수정 오류:', error);
       throw error;
     }
 
-    console.log('✅ 이벤트 수정 완료:', eventId);
     
     return {
       success: true,
@@ -1430,7 +1250,6 @@ export const updateEvent = async (eventId, updates) => {
     };
 
   } catch (error) {
-    console.error('❌ updateEvent error:', error);
     return {
       success: false,
       error: error.message || '이벤트 수정에 실패했습니다.'
@@ -1470,7 +1289,6 @@ export const deleteEvent = async (eventId) => {
         .delete()
         .eq('event_id', eventId);
     } catch (messageError) {
-      console.log('⚠️ 메시지 삭제 중 오류 (무시):', messageError);
     }
 
     // 🔥 guest_book 데이터 삭제
@@ -1480,7 +1298,6 @@ export const deleteEvent = async (eventId) => {
         .delete()
         .eq('event_id', eventId);
     } catch (guestBookError) {
-      console.log('⚠️ 방명록 삭제 중 오류 (무시):', guestBookError);
     }
 
     const { error } = await supabase
@@ -1490,18 +1307,15 @@ export const deleteEvent = async (eventId) => {
       .eq('id', eventId);
 
     if (error) {
-      console.error('❌ 이벤트 삭제 오류:', error);
       throw error;
     }
 
-    console.log('✅ 이벤트 삭제 완료:', eventId);
     
     return {
       success: true
     };
 
   } catch (error) {
-    console.error('❌ deleteEvent error:', error);
     return {
       success: false,
       error: error.message || '이벤트 삭제에 실패했습니다.'
@@ -1535,7 +1349,6 @@ export const getEventDetail = async (eventId) => {
       .single();
 
     if (error) {
-      console.error('❌ 이벤트 상세 조회 오류:', error);
       throw error;
     }
 
@@ -1572,7 +1385,6 @@ export const getEventDetail = async (eventId) => {
         brideSideCount: brideSideEntries.length,
       };
     } else {
-      console.log('⚠️ guest_book 조회 실패. 기본 통계를 제공합니다.', guestBookError?.message);
       data.statistics = {
         totalAmount: 0,
         totalEntries: 0,
@@ -1622,7 +1434,6 @@ export const getEventDetail = async (eventId) => {
     };
 
   } catch (error) {
-    console.error('❌ getEventDetail error:', error);
     return {
       success: false,
       error: error.message || '이벤트 정보를 불러올 수 없습니다.'
@@ -1637,7 +1448,6 @@ export const getEventDetail = async (eventId) => {
  */
 export const createEventMessage = async (eventId, messageData) => {
   try {
-    console.log('🔍 메시지 생성 시도:', { eventId, messageData });
 
     const { data, error } = await supabase
       .from('event_messages')
@@ -1655,14 +1465,11 @@ export const createEventMessage = async (eventId, messageData) => {
       .single();
 
     if (error) {
-      console.error('❌ 메시지 생성 에러:', error);
       throw error;
     }
 
-    console.log('✅ 메시지 생성 성공:', data.id);
     return { success: true, data };
   } catch (error) {
-    console.error('❌ createEventMessage error:', error);
     return { success: false, error: error.message };
   }
 };
@@ -1672,7 +1479,6 @@ export const createEventMessage = async (eventId, messageData) => {
  */
 export const getEventMessages = async (eventId, limit = 50) => {
   try {
-    console.log('🔍 메시지 목록 조회 시도:', { eventId, limit });
 
     const { data, error } = await supabase
       .from('event_messages')
@@ -1682,14 +1488,11 @@ export const getEventMessages = async (eventId, limit = 50) => {
       .limit(limit);
 
     if (error) {
-      console.error('❌ 메시지 목록 조회 에러:', error);
       throw error;
     }
 
-    console.log('✅ 메시지 목록 조회 성공:', data?.length || 0, '개');
     return { success: true, data: data || [] };
   } catch (error) {
-    console.error('❌ getEventMessages error:', error);
     return { success: false, error: error.message };
   }
 };
@@ -1701,7 +1504,6 @@ export const getEventMessages = async (eventId, limit = 50) => {
  */
 export const addGuestBookEntry = async (eventId, guestData) => {
   try {
-    console.log('💰 방명록 추가:', { eventId, guestData });
 
     // 현재 사용자 정보 가져오기 - 실패해도 계속 진행
     const { data: { user } } = await supabase.auth.getUser();
@@ -1745,11 +1547,9 @@ export const addGuestBookEntry = async (eventId, guestData) => {
       .single();
 
     if (error) {
-      console.error('❌ 방명록 추가 오류:', error);
       
       // RLS 정책 오류인 경우 안내 메시지
       if (error.code === '42501') {
-        console.log('🔧 RLS 정책 오류 - anon 또는 public 접근 필요');
         return {
           success: false,
           error: 'guest_book 테이블의 RLS 정책을 확인해주세요. authenticated 대신 anon 또는 public으로 설정해보세요.'
@@ -1759,7 +1559,6 @@ export const addGuestBookEntry = async (eventId, guestData) => {
       throw error;
     }
 
-    console.log('✅ 방명록 추가 완료:', data.id);
     
     return {
       success: true,
@@ -1767,7 +1566,6 @@ export const addGuestBookEntry = async (eventId, guestData) => {
     };
 
   } catch (error) {
-    console.error('❌ addGuestBookEntry error:', error);
     return {
       success: false,
       error: error.message || '방명록 추가에 실패했습니다.'
@@ -1787,7 +1585,6 @@ export const getEventGuestBook = async (eventId) => {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('❌ 방명록 조회 오류:', error);
       throw error;
     }
 
@@ -1797,7 +1594,6 @@ export const getEventGuestBook = async (eventId) => {
       .select('*')
       .eq('event_id', eventId);
 
-    console.log('✅ 방명록 조회 완료:', data?.length || 0);
     
     return {
       success: true,
@@ -1808,7 +1604,6 @@ export const getEventGuestBook = async (eventId) => {
     };
 
   } catch (error) {
-    console.error('❌ getEventGuestBook error:', error);
     return {
       success: false,
       error: error.message || '방명록을 불러올 수 없습니다.'
@@ -1828,7 +1623,6 @@ export const testSupabaseConnection = async () => {
     
     
     if (error) {
-      console.error('🔥🔥🔥 guest_book 테이블 에러:', error);
       return;
     }
 
@@ -1842,7 +1636,6 @@ export const testSupabaseConnection = async () => {
     
 
   } catch (err) {
-    console.error('🔥🔥🔥 연결 테스트 예외:', err);
   }
 };
 
@@ -1897,7 +1690,6 @@ export const getEventStatistics = async (eventId) => {
     };
 
   } catch (error) {
-    console.error('🔥🔥🔥 getEventStatistics 예외:', error);
     return {
       success: false,
       error: error.message
@@ -1910,7 +1702,6 @@ export const getEventStatistics = async (eventId) => {
  */
 export const getEventContributions = async (eventId) => {
   try {
-    console.log('💰 이벤트 부조금 내역 조회 시작:', eventId);
     
     // 🔥 contributions 테이블부터 시도해보기 (CLAUDE.md에 따르면 이 테이블이 실제 데이터)
     const { data: contributionsData, error: contributionsError } = await supabase
@@ -1918,12 +1709,6 @@ export const getEventContributions = async (eventId) => {
       .select('*')
       .eq('event_id', eventId);
       
-    console.log('🔍 contributions 테이블 조회 결과:', {
-      success: !contributionsError,
-      count: contributionsData?.length || 0,
-      data: contributionsData,
-      error: contributionsError?.message
-    });
     
     if (!contributionsError && contributionsData && contributionsData.length > 0) {
       // contributions 테이블에서 데이터 찾음 - 올바른 컬럼명 사용
@@ -1940,14 +1725,12 @@ export const getEventContributions = async (eventId) => {
         updated_at: item.updated_at
       }));
       
-      console.log(`✅ contributions 테이블에서 부조금 내역 조회 완료: ${formattedData.length}개`);
       return {
         success: true,
         data: formattedData
       };
     }
     
-    console.log('🔄 contributions 테이블에 없어서 다른 테이블들 시도');
     
     // 🔍 다른 가능한 테이블들도 확인해보기
     const possibleTables = ['event_messages', 'public_guest_messages', 'event_summary'];
@@ -1959,24 +1742,11 @@ export const getEventContributions = async (eventId) => {
           .select('*')
           .eq('event_id', eventId);
           
-        console.log(`🔍 ${tableName} 테이블 조회:`, {
-          success: !tableError,
-          count: tableData?.length || 0,
-          data: tableData?.slice(0, 2), // 처음 2개만
-          error: tableError?.message
-        });
         
         if (!tableError && tableData && tableData.length > 0) {
-          console.log(`🎉 ${tableName}에서 데이터 발견!`);
           
           // event_messages에서 데이터가 발견되면 더 자세히 확인
           if (tableName === 'event_messages') {
-            console.log('🔍 event_messages 구조 상세 분석:', {
-              sampleData: tableData[0],
-              hasAmount: 'amount' in (tableData[0] || {}),
-              hasContribution: 'contribution_amount' in (tableData[0] || {}),
-              allKeys: Object.keys(tableData[0] || {})
-            });
             
             // 혹시 amount 관련 컬럼이 있나 더 자세히 조회해보기
             const { data: detailData, error: detailError } = await supabase
@@ -1984,15 +1754,9 @@ export const getEventContributions = async (eventId) => {
               .select('*')
               .eq('event_id', eventId);
               
-            console.log('🔍 event_messages 전체 컬럼 조회:', {
-              success: !detailError,
-              data: detailData,
-              error: detailError?.message
-            });
           }
         }
       } catch (error) {
-        console.log(`❌ ${tableName} 테이블 조회 실패:`, error.message);
       }
     }
     
@@ -2002,11 +1766,6 @@ export const getEventContributions = async (eventId) => {
       .select('event_id, guest_name, amount')
       .limit(10);
     
-    console.log('🔍 guest_book 전체 데이터 샘플:', {
-      success: !allError,
-      count: allData?.length || 0,
-      sample: allData?.slice(0, 3)
-    });
 
     // guest_book 테이블에서 부조금 내역 가져오기
     const { data: contributions, error } = await supabase
@@ -2026,18 +1785,11 @@ export const getEventContributions = async (eventId) => {
       .eq('event_id', eventId)
       .order('created_at', { ascending: false });
 
-    console.log('🔍🔍 상세 조회 결과:', {
-      error: error,
-      dataLength: contributions?.length || 0,
-      rawData: contributions
-    });
 
     if (error) {
-      console.error('❌ 부조금 내역 조회 오류:', error);
       throw error;
     }
 
-    console.log(`✅ 부조금 내역 조회 완료: ${contributions?.length || 0}개`);
     
     return {
       success: true,
@@ -2045,7 +1797,6 @@ export const getEventContributions = async (eventId) => {
     };
 
   } catch (error) {
-    console.error('❌ getEventContributions error:', error);
     return {
       success: false,
       error: error.message || '부조금 내역 조회에 실패했습니다.',
@@ -2057,10 +1808,8 @@ export const getEventContributions = async (eventId) => {
 // 1. supabaseHelper.js - getMonthlyStatistics 함수 수정
 export const getMonthlyStatistics = async (userId) => {
   try {
-    console.log('📊 월별 통계 조회 시작:', userId);
     
     if (!userId) {
-      console.error('❌ 사용자 ID 없음');
       return {
         success: false,
         error: '사용자 정보가 없습니다.'
@@ -2077,12 +1826,6 @@ export const getMonthlyStatistics = async (userId) => {
     // 이번 달 마지막날 23:59:59 (로컬 시간)
     const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59);
     
-    console.log('📅 조회 기간 (로컬):', {
-      start: startOfMonth.toLocaleString('ko-KR'),
-      end: endOfMonth.toLocaleString('ko-KR'),
-      startISO: startOfMonth.toISOString(),
-      endISO: endOfMonth.toISOString()
-    });
 
     // 1. 사용자의 모든 이벤트 가져오기
     const { data: events, error: eventsError } = await supabase
@@ -2091,11 +1834,9 @@ export const getMonthlyStatistics = async (userId) => {
       .eq('user_id', userId);
 
     if (eventsError) {
-      console.error('❌ 이벤트 조회 오류:', eventsError);
       throw eventsError;
     }
 
-    console.log('📊 전체 이벤트 수:', events.length);
 
     // 2. 이번 달 생성된 이벤트 필터링
     const monthlyEvents = events.filter(event => {
@@ -2103,7 +1844,6 @@ export const getMonthlyStatistics = async (userId) => {
       return createdDate >= startOfMonth && createdDate <= endOfMonth;
     });
 
-    console.log('📊 이번 달 생성된 이벤트:', monthlyEvents.length);
 
     // 3. 활성 이벤트 수 계산
     const activeEvents = events.filter(event => event.status === 'active');
@@ -2154,7 +1894,6 @@ export const getMonthlyStatistics = async (userId) => {
           stats.totalFuneralAmount += eventTotal;
         }
         
-        console.log(`  - 전체: ${eventCount}건, ${eventTotal}원`);
       }
 
       // 🔥 이번 달 데이터만 직접 조회
@@ -2192,7 +1931,6 @@ export const getMonthlyStatistics = async (userId) => {
           });
         }
         
-        console.log(`  - 이번달: ${monthlyEventCount}건, ${monthlyEventTotal}원`);
       }
     }
 
@@ -2240,7 +1978,6 @@ export const getMonthlyStatistics = async (userId) => {
     };
 
   } catch (error) {
-    console.error('❌ getMonthlyStatistics error:', error);
     return {
       success: false,
       error: error.message || '월별 통계 조회에 실패했습니다.'
@@ -2254,7 +1991,6 @@ export const getMonthlyStatistics = async (userId) => {
  */
 export const toggleGuestBookVerification = async (entryId) => {
   try {
-    console.log('🔄 부조금 확정 상태 토글 시작:', entryId);
 
     // 현재 상태 조회
     const { data: currentEntry, error: fetchError } = await supabase
@@ -2264,7 +2000,6 @@ export const toggleGuestBookVerification = async (entryId) => {
       .single();
 
     if (fetchError) {
-      console.error('❌ 현재 상태 조회 오류:', fetchError);
       throw fetchError;
     }
 
@@ -2282,15 +2017,9 @@ export const toggleGuestBookVerification = async (entryId) => {
       .single();
 
     if (error) {
-      console.error('❌ 부조금 확정 상태 업데이트 오류:', error);
       throw error;
     }
 
-    console.log('✅ 부조금 확정 상태 업데이트 완료:', {
-      entryId,
-      previousState: currentEntry.is_verified,
-      newState: newVerifiedState
-    });
 
     return {
       success: true,
@@ -2299,7 +2028,6 @@ export const toggleGuestBookVerification = async (entryId) => {
     };
 
   } catch (error) {
-    console.error('❌ toggleGuestBookVerification error:', error);
     return {
       success: false,
       error: error.message || '확정 상태 변경에 실패했습니다.'
@@ -2312,12 +2040,10 @@ export const toggleGuestBookVerification = async (entryId) => {
  */
 export const getActiveEvents = async () => {
   try {
-    console.log('🔍 활성 이벤트 조회 시작');
     
     // 1. 현재 사용자 정보 가져오기
     const userResult = await getCurrentUserInfo();
     if (!userResult.success) {
-      console.error('❌ 사용자 정보 없음:', userResult.error);
       return {
         success: false,
         error: userResult.error
@@ -2325,12 +2051,6 @@ export const getActiveEvents = async () => {
     }
 
     const currentUser = userResult.user;
-    console.log('👤 활성 이벤트 조회 대상 사용자:', {
-      id: currentUser.id,
-      name: currentUser.name,
-      auth_method: currentUser.auth_method || 'unknown',
-      source: userResult.source
-    });
 
     // 2. 🔥 중복 방지를 위한 DISTINCT 쿼리 사용
     const { data, error } = await supabase
@@ -2375,7 +2095,6 @@ export const getActiveEvents = async () => {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('❌ 활성 이벤트 조회 오류:', error);
       return {
         success: false,
         error: error.message
@@ -2415,13 +2134,6 @@ export const getActiveEvents = async () => {
           processedEvent.funeral_end_date = additionalInfo.funeral_end_date;
         }
         
-        console.log(`🎭 부고 ${event.event_name} 가족 정보 추출:`, {
-          familyMembersCount: processedEvent.family_members?.length || 0,
-          familyMembers: processedEvent.family_members?.map(fm => ({ 
-            relation: fm.relation, 
-            names: fm.names 
-          })) || []
-        });
       }
       
       return processedEvent;
@@ -2433,7 +2145,6 @@ export const getActiveEvents = async () => {
     };
 
   } catch (error) {
-    console.error('❌ getActiveEvents error:', error);
     return {
       success: false,
       error: error.message || '활성 이벤트를 불러올 수 없습니다.'
@@ -2446,7 +2157,6 @@ export const getActiveEvents = async () => {
  */
 export const updateEventStatus = async (eventId, status) => {
   try {
-    console.log('🔍 이벤트 상태 업데이트 시도:', { eventId, status });
 
     const { data, error } = await supabase
       .from('events')
@@ -2459,14 +2169,11 @@ export const updateEventStatus = async (eventId, status) => {
       .single();
 
     if (error) {
-      console.error('❌ 이벤트 상태 업데이트 에러:', error);
       throw error;
     }
 
-    console.log('✅ 이벤트 상태 업데이트 성공:', data.id);
     return { success: true, data };
   } catch (error) {
-    console.error('❌ updateEventStatus error:', error);
     return { success: false, error: error.message };
   }
 };
@@ -2476,7 +2183,6 @@ export const updateEventStatus = async (eventId, status) => {
  */
 export const finalizeEvent = async (eventId) => {
   try {
-    console.log('🔍 이벤트 완료 처리 시도:', eventId);
 
     const { data, error } = await supabase
       .from('events')
@@ -2490,14 +2196,11 @@ export const finalizeEvent = async (eventId) => {
       .single();
 
     if (error) {
-      console.error('❌ 이벤트 완료 처리 에러:', error);
       throw error;
     }
 
-    console.log('✅ 이벤트 완료 처리 성공:', data.id);
     return { success: true, data };
   } catch (error) {
-    console.error('❌ finalizeEvent error:', error);
     return { success: false, error: error.message };
   }
 };
@@ -2608,27 +2311,15 @@ export const calculateDDay = (eventDateString) => {
  */
 export const debugUserInfo = async () => {
   try {
-    console.log('🔍 === 사용자 정보 디버깅 ===');
     
     const storedUserInfo = await AsyncStorage.getItem('userInfo');
     const isLoggedIn = await AsyncStorage.getItem('isLoggedIn');
-    console.log('📱 AsyncStorage:', {
-      isLoggedIn,
-      userInfo: storedUserInfo ? JSON.parse(storedUserInfo) : null
-    });
     
     const { data: { user }, error } = await supabase.auth.getUser();
-    console.log('🔐 Supabase Auth:', {
-      user: user ? { id: user.id, email: user.email, phone: user.phone } : null,
-      error: error?.message
-    });
     
     const userResult = await getCurrentUserInfo();
-    console.log('🔧 getCurrentUserInfo 결과:', userResult);
     
-    console.log('🔍 === 디버깅 완료 ===');
   } catch (error) {
-    console.error('❌ 디버깅 오류:', error);
   }
 };
 
@@ -2637,7 +2328,6 @@ export const debugUserInfo = async () => {
  */
 export const updateGuestBookEntry = async (entryId, updateData) => {
   try {
-    console.log('✏️ 방명록 수정 시작:', { entryId, entryIdType: typeof entryId, updateData });
     
     // entryId가 유효한지 먼저 확인
     if (!entryId) {
@@ -2650,15 +2340,8 @@ export const updateGuestBookEntry = async (entryId, updateData) => {
       .select('*')
       .eq('id', entryId);
 
-    console.log('🔍 guest_book 테이블 조회 결과:', { 
-      guestBookData, 
-      guestBookError,
-      entryId,
-      entryIdType: typeof entryId
-    });
 
     if (guestBookError) {
-      console.error('❌ guest_book 테이블 조회 오류:', guestBookError);
       throw guestBookError;
     }
 
@@ -2668,21 +2351,10 @@ export const updateGuestBookEntry = async (entryId, updateData) => {
 
     const targetTable = 'guest_book';
     const existingData = guestBookData[0];
-    console.log('✅ guest_book 테이블에서 데이터 발견:', existingData);
 
     // guest_book 테이블 업데이트 실행
-    console.log('🔄 guest_book 테이블 업데이트 실행', {
-      entryId,
-      updateData: {
-        guest_name: updateData.guest_name,
-        amount: updateData.amount,
-        relation_category: updateData.relation_category,
-        relation_detail: updateData.relation_detail,
-      }
-    });
     
     // RLS 비활성화 후 업데이트 실행
-    console.log('🔄 RLS 비활성화 후 업데이트 시도');
     
     try {
       // 1. RLS 비활성화
@@ -2690,7 +2362,6 @@ export const updateGuestBookEntry = async (entryId, updateData) => {
         sql: 'ALTER TABLE guest_book DISABLE ROW LEVEL SECURITY;'
       });
       
-      console.log('✅ RLS 비활성화 완료');
 
       // 2. 업데이트 실행
       const { data: updateResult, error: updateError } = await supabase
@@ -2706,13 +2377,11 @@ export const updateGuestBookEntry = async (entryId, updateData) => {
         .select()
         .single();
 
-      console.log('🔍 RLS 비활성화 후 업데이트 결과:', { updateResult, updateError });
 
       if (updateError) {
         throw new Error(updateError.message);
       }
 
-      console.log('✅ 부조 수정 완료:', updateResult);
       
       return {
         success: true,
@@ -2725,14 +2394,11 @@ export const updateGuestBookEntry = async (entryId, updateData) => {
         await supabase.rpc('exec_sql', {
           sql: 'ALTER TABLE guest_book ENABLE ROW LEVEL SECURITY;'
         });
-        console.log('✅ RLS 재활성화 완료');
       } catch (rlsError) {
-        console.error('❌ RLS 재활성화 실패:', rlsError);
       }
     }
 
   } catch (error) {
-    console.error('❌ updateGuestBookEntry error:', error);
     return {
       success: false,
       error: error.message || '부조 수정에 실패했습니다.'
@@ -2745,7 +2411,6 @@ export const updateGuestBookEntry = async (entryId, updateData) => {
  */
 export const deleteGuestBookEntry = async (entryId) => {
   try {
-    console.log('🗑️ 부조 삭제:', { entryId, entryIdType: typeof entryId });
 
     // guest_book 테이블에서 확인 (실제 데이터가 저장되는 테이블)
     const { data: guestBookData, error: guestBookError } = await supabase
@@ -2753,15 +2418,8 @@ export const deleteGuestBookEntry = async (entryId) => {
       .select('*')
       .eq('id', entryId);
 
-    console.log('🔍 삭제 - guest_book 테이블 조회:', { 
-      guestBookData, 
-      guestBookError,
-      entryId,
-      entryIdType: typeof entryId
-    });
 
     if (guestBookError) {
-      console.error('❌ guest_book 테이블 조회 오류:', guestBookError);
       throw guestBookError;
     }
 
@@ -2769,7 +2427,6 @@ export const deleteGuestBookEntry = async (entryId) => {
       throw new Error(`ID ${entryId}에 해당하는 데이터가 guest_book 테이블에 존재하지 않습니다.`);
     }
 
-    console.log('✅ 삭제 대상: guest_book 테이블');
 
     // guest_book 테이블에서 삭제 실행
     const { data, error } = await supabase
@@ -2779,7 +2436,6 @@ export const deleteGuestBookEntry = async (entryId) => {
       .select();
 
     if (error) {
-      console.error('❌ 방명록 삭제 오류:', error);
       throw error;
     }
 
@@ -2787,14 +2443,12 @@ export const deleteGuestBookEntry = async (entryId) => {
       throw new Error('삭제할 항목을 찾을 수 없습니다.');
     }
 
-    console.log('✅ 부조 삭제 완료:', data[0]);
     
     return {
       success: true
     };
 
   } catch (error) {
-    console.error('❌ deleteGuestBookEntry error:', error);
     return {
       success: false,
       error: error.message || '부조 삭제에 실패했습니다.'
