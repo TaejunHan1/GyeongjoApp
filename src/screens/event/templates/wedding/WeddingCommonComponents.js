@@ -293,11 +293,88 @@ const PetalEffect = ({ speed = 'normal', qty = 'normal' }) => {
   );
 };
 
-export const GlobalFallingEffect = ({ type, speed = 'normal', qty = 'normal' }) => {
+// ── 커스텀 꽃비 (색상 선택 가능한 타원형 꽃잎) ──
+const CUSTOM_PETAL_THEMES = {
+  pink:   ['#ffb7c5', '#ff9eaf', '#ffd1dc', '#fff0f5', '#ffccd5'],
+  yellow: ['#ffd700', '#ffea00', '#ffc100', '#fffacd', '#ffe066'],
+  red:    ['#ff4060', '#d70000', '#ff6b6b', '#ff0000', '#c00000'],
+  blue:   ['#8a2be2', '#4169e1', '#87cefa', '#e6e6fa', '#6ab0f5'],
+  mixed:  ['#ffb7c5', '#ffd700', '#ff4060', '#87cefa', '#c8a2e0', '#ffd1dc', '#ffe066'],
+};
+
+const CustomPetalEffect = ({ speed = 'normal', qty = 'normal', color = 'pink' }) => {
+  const sm = SPEED_MULT[speed] || 1;
+  const count = Math.round(30 * (QTY_COUNT[qty] || 1));
+  const colors = CUSTOM_PETAL_THEMES[color] || CUSTOM_PETAL_THEMES.pink;
+
+  // 핵심: 원(width=height)을 scaleY로 늘려서 진짜 타원 만들기
+  // borderRadius: size/2 on a circle → always a perfect circle
+  // transform scaleY: aspect → stretches circle into true ellipse
+  // flutter: scaleY oscillates between aspect and aspect*0.12 (pre-multiplied)
+  const petals = useRef([...Array(count)].map((_, i) => {
+    const size   = 1.5 + Math.random() * 1.5;     // 원 지름 1.5~3px
+    const aspect = 2.2 + Math.random() * 1.0;    // 세로 늘이기 2.2~3.2배 → 실제 높이 3~10px
+    return {
+      anim:     new Animated.Value(Math.random()),
+      flipAnim: new Animated.Value(Math.random()),
+      x:        Math.random() * width,
+      size,
+      aspect,
+      wobble:   12 + Math.random() * 22,
+      dur:      (4000 + Math.random() * 5000) * sm,
+      color:    colors[i % colors.length],
+      opPeak:   0.55 + Math.random() * 0.4,
+    };
+  })).current;
+
+  useEffect(() => {
+    petals.forEach(p => {
+      startContinuousParticle(p.anim, p.dur);
+      p.flipAnim.setValue(Math.random());
+      Animated.loop(
+        Animated.timing(p.flipAnim, {
+          toValue: 1, duration: p.dur * 0.35,
+          useNativeDriver: true, easing: Easing.linear,
+        }),
+        { iterations: -1 }
+      ).start();
+    });
+  }, []);
+
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, pointerEvents: 'none' }}>
+      {petals.map((p, i) => (
+        <Animated.View key={i} style={{
+          position: 'absolute',
+          left: p.x,
+          width: p.size,
+          height: p.size,
+          borderRadius: p.size / 2,  // 완벽한 원 → scaleY로 타원이 됨
+          backgroundColor: p.color,
+          opacity: p.anim.interpolate({ inputRange: [0, 0.04, 0.92, 1], outputRange: [0, p.opPeak, p.opPeak, 0] }),
+          transform: [
+            { translateY: p.anim.interpolate({ inputRange: [0, 1], outputRange: [-50, height + 50] }) },
+            { translateX: p.anim.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [0, p.wobble, 0, -p.wobble, 0] }) },
+            { rotate: p.anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
+            // aspect ratio + flutter 를 하나의 scaleY로 처리
+            // outputRange에 aspect를 미리 곱해서 진짜 타원(oval) 구현
+            { scaleY: p.flipAnim.interpolate({
+                inputRange:  [0,       0.25,          0.5,    0.75,          1      ],
+                outputRange: [p.aspect, p.aspect*0.12, p.aspect, p.aspect*0.12, p.aspect],
+              })
+            },
+          ],
+        }} />
+      ))}
+    </View>
+  );
+};
+
+export const GlobalFallingEffect = ({ type, speed = 'normal', qty = 'normal', color = 'pink' }) => {
   if (!type || type === 'none') return null;
   if (type === 'flower') return <FlowerEffect speed={speed} qty={qty} />;
   if (type === 'classic') return <ClassicSnowEffect speed={speed} qty={qty} />;
-  if (type === 'petal') return <PetalEffect speed={speed} qty={qty} />;
+  if (type === 'custom_petal') return <CustomPetalEffect speed={speed} qty={qty} color={color} />;
   return null;
 };
 

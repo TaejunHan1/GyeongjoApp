@@ -21,6 +21,7 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   useCountdown,
   getCategorizedImagesSafe,
@@ -328,6 +329,7 @@ const CustomOpeningOverlay = ({ visible }) => {
 };
 
 const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {} }) => {
+  const insets = useSafeAreaInsets();
   // additional_info가 문자열인지 객체인지 확인 및 파싱
   if (typeof eventData.additional_info === 'string') {
     try {
@@ -670,14 +672,15 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
           styles.romantic_introSection,
           {
             opacity: fadeAnims[0],
-            transform: [{ translateY: slideAnims[0] }]
+            transform: [{ translateY: slideAnims[0] }],
+            paddingTop: 20 + insets.top,
           }
         ]}>
           <LinearGradient
             colors={['#F8F5F2', '#F3EFEC']}
             style={StyleSheet.absoluteFill}
           />
-          
+
           <View style={styles.romantic_introContent}>
             <Text style={styles.romantic_subtitle}>WEDDING INVITATION</Text>
             <Text style={styles.romantic_loveText}>With Love</Text>

@@ -441,8 +441,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   romantic_loveText: {
-    fontFamily: Platform.OS === 'ios' ? 'Dancing Script' : 'cursive',
-    fontSize: 64,
+    fontFamily: 'Great Vibes',
+    fontSize: 72,
     color: '#9B8D82',
     marginVertical: 15,
     fontWeight: '400',

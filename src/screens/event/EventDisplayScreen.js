@@ -27,6 +27,7 @@ import { syncEventToWeb } from '../../lib/webSync';
 import WeddingTemplatePreview from './templates/WeddingTemplatePreview';
 import FuneralTemplatePreview from './templates/FuneralTemplatePreview';
 import { GlobalFallingEffect } from './templates/wedding/WeddingCommonComponents';
+import { INTRO_OVERLAYS } from './wedding/WeddingIntroSelectModal';
 
 const MUSIC_TRACKS = [
   { id: 'none', name: '음악 없음', emoji: '🔇', file: null },
@@ -61,6 +62,10 @@ export default function EventDisplayScreen({ navigation, route }) {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [signedCategorizedImages, setSignedCategorizedImages] = useState(null);
+
+  // 🎬 인트로 관련 state
+  const [showIntro, setShowIntro] = useState(true);
+  const [introKey, setIntroKey] = useState(0);
 
   // 🎵 음악 관련 state
   const [showMusicModal, setShowMusicModal] = useState(false);
@@ -639,15 +644,14 @@ export default function EventDisplayScreen({ navigation, route }) {
   const messageSettings = getMessageSettings();
 
   const petalEffect = event?.additional_info?.background_petal || null;
+  const introEffect   = event?.additional_info?.intro_effect || null;
+  const introEffectId = introEffect?.id || null;
+  const introTapToOpen = introEffect?.tapToOpen || false;
+  const IntroOverlay = introEffectId ? INTRO_OVERLAYS[introEffectId] : null;
 
   return (
     <View style={styles.container}>
       <StatusBar hidden />
-      <GlobalFallingEffect
-        type={petalEffect?.id || petalEffect}
-        speed={petalEffect?.speed}
-        qty={petalEffect?.qty}
-      />
 
       {isPreviewMode && (
         <View style={styles.previewBanner}>
@@ -682,6 +686,28 @@ export default function EventDisplayScreen({ navigation, route }) {
         )}
       </Animated.View>
       
+      {/* 🎬 인트로 오버레이 */}
+      {showIntro && IntroOverlay && (
+        <IntroOverlay
+          key={introKey}
+          containerW={Dimensions.get('window').width}
+          containerH={Dimensions.get('window').height}
+          tapToOpen={introTapToOpen}
+          coupleNames={event?.groom_name && event?.bride_name ? `${event.groom_name} · ${event.bride_name}` : undefined}
+          onEnd={() => setShowIntro(false)}
+        />
+      )}
+
+      {/* 🌸 꽃잎 효과 — 인트로(zIndex:10) 위에 렌더 */}
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }} pointerEvents="none">
+        <GlobalFallingEffect
+          type={petalEffect?.id || petalEffect}
+          speed={petalEffect?.speed}
+          qty={petalEffect?.qty}
+          color={petalEffect?.color}
+        />
+      </View>
+
       {/* 🎵 음악 플로팅 버튼 */}
       <TouchableOpacity
         style={[styles.musicFloatingButton, isPlaying && styles.musicFloatingButtonActive]}

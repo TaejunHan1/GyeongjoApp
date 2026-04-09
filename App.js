@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Alert, Platform, LogBox } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as Font from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import Toast from 'react-native-toast-message';
@@ -84,6 +85,13 @@ export default function App() {
   const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // 커스텀 폰트 로드
+  useEffect(() => {
+    Font.loadAsync({
+      'Great Vibes': require('./assets/fonts/GreatVibes-Regular.ttf'),
+    }).catch(() => {});
+  }, []);
   
   // 알림 리스너 참조
   const notificationListener = useRef();

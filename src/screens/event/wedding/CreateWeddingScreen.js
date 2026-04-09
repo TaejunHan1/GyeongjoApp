@@ -17,6 +17,7 @@ import {
 import DaumPostcode from '../../../components/DaumPostcode';
 import WeddingTemplatePreview from '../templates/WeddingTemplatePreview';
 import { GlobalFallingEffect } from '../templates/wedding/WeddingCommonComponents';
+import WeddingIntroSelectModal, { INTRO_OVERLAYS, INTRO_LIST } from './WeddingIntroSelectModal';
 
 const { width } = Dimensions.get('window');
 
@@ -175,15 +176,23 @@ const PETAL_EFFECTS = [
   { id: 'none',    name: '효과 없음', emoji: '✨', desc: '꽃잎 효과를 사용하지 않습니다' },
   { id: 'flower',  name: '눈꽃',     emoji: '❄️', desc: '하얀 눈꽃이 화면 전체에 흩날려요' },
   { id: 'classic', name: '벚꽃잎',   emoji: '🌸', desc: '화사한 벚꽃잎이 화면 전체에' },
-  { id: 'petal',   name: '꽃비',     emoji: '🌺', desc: '낭만적인 꽃비가 화면 전체에' },
+  { id: 'custom_petal', name: '커스텀꽃비', emoji: '🌸', desc: '색상을 선택할 수 있는 꽃비' },
 ];
 
 const PETAL_COLORS = {
-  none:    { bg: '#F7F8FA', accent: '#8B95A1', iconBg: '#ECEEF0' },
-  flower:  { bg: '#EFF6FF', accent: '#3B82F6', iconBg: '#DBEAFE' },
-  classic: { bg: '#FFF0F8', accent: '#EC4899', iconBg: '#FCE7F3' },
-  petal:   { bg: '#FFF5F0', accent: '#F97316', iconBg: '#FFEDD5' },
+  none:         { bg: '#F7F8FA', accent: '#8B95A1', iconBg: '#ECEEF0' },
+  flower:       { bg: '#EFF6FF', accent: '#3B82F6', iconBg: '#DBEAFE' },
+  classic:      { bg: '#FFF0F8', accent: '#EC4899', iconBg: '#FCE7F3' },
+  custom_petal: { bg: '#FFF5F0', accent: '#F97316', iconBg: '#FFEDD5' },
 };
+
+const CUSTOM_PETAL_COLOR_OPTIONS = [
+  { id: 'pink',   label: '벚꽃', color: '#ffb7c5' },
+  { id: 'yellow', label: '개나리', color: '#ffd700' },
+  { id: 'red',    label: '장미', color: '#ff4060' },
+  { id: 'blue',   label: '수국', color: '#8a2be2' },
+  { id: 'mixed',  label: '믹스', colors: ['#ffb7c5', '#ffd700', '#ff4060', '#8a2be2'] },
+];
 
 const PETAL_SPEEDS = [
   { id: 'slow',   label: '느리게' },
@@ -703,7 +712,13 @@ export default function CreateWeddingScreen({ navigation, route }) {
   const [templatePetalMap, setTemplatePetalMap] = useState({}); // { templateId: { id, speed, qty } }
   const [currentPreviewPetalId, setCurrentPreviewPetalId] = useState('none');
   const [currentPreviewPetalSpeed, setCurrentPreviewPetalSpeed] = useState('normal');
+  const [showIntroModal, setShowIntroModal] = useState(false);
+  const [templateIntroMap, setTemplateIntroMap] = useState({}); // { templateId: { id, tapToOpen } }
+  const [currentPreviewIntroId, setCurrentPreviewIntroId] = useState('none');
+  const [currentPreviewTapToOpen, setCurrentPreviewTapToOpen] = useState(false);
+  const [showIntroOverlay, setShowIntroOverlay] = useState(false);
   const [currentPreviewPetalQty, setCurrentPreviewPetalQty] = useState('normal');
+  const [currentPreviewPetalColor, setCurrentPreviewPetalColor] = useState('pink');
   const currentPreviewTemplateRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [previewingId, setPreviewingId] = useState(null);
@@ -1020,9 +1035,31 @@ export default function CreateWeddingScreen({ navigation, route }) {
           id: petalId,
           speed: currentPreviewPetalSpeed,
           qty: currentPreviewPetalQty,
+          color: currentPreviewPetalColor,
         },
       }));
     }
+  };
+
+  const handleSelectIntro = (introData) => {
+    const id        = typeof introData === 'string' ? introData : introData?.id || 'grand';
+    const tapToOpen = typeof introData === 'object' && introData !== null ? introData.tapToOpen || false : false;
+    setCurrentPreviewIntroId(id);
+    setCurrentPreviewTapToOpen(tapToOpen);
+    const tplId = currentPreviewTemplateRef.current;
+    if (tplId) {
+      setTemplateIntroMap(prev => ({
+        ...prev,
+        [tplId]: id === 'none' ? null : { id, tapToOpen },
+      }));
+    }
+  };
+
+  const onIntroModalClose = () => {
+    setShowIntroModal(false);
+    setShowIntroOverlay(false);
+    // 인트로 선택 모달 닫힘 후 인트로 바로 재생
+    setTimeout(() => setShowIntroOverlay(true), 300);
   };
 
   const handleApplyPetalSettings = () => {
@@ -1030,7 +1067,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
     if (tplId && currentPreviewPetalId !== 'none') {
       setTemplatePetalMap(prev => ({
         ...prev,
-        [tplId]: { id: currentPreviewPetalId, speed: currentPreviewPetalSpeed, qty: currentPreviewPetalQty },
+        [tplId]: { id: currentPreviewPetalId, speed: currentPreviewPetalSpeed, qty: currentPreviewPetalQty, color: currentPreviewPetalColor },
       }));
     }
     setShowPetalModal(false);
@@ -1042,6 +1079,9 @@ export default function CreateWeddingScreen({ navigation, route }) {
     setCurrentPreviewPetalId('none');
     setCurrentPreviewPetalSpeed('normal');
     setCurrentPreviewPetalQty('normal');
+    setCurrentPreviewPetalColor('pink');
+    setCurrentPreviewIntroId('none');
+    setShowIntroOverlay(false);
     currentPreviewTemplateRef.current = null;
     setShowTemplatePreview(false);
   };
@@ -1057,7 +1097,15 @@ export default function CreateWeddingScreen({ navigation, route }) {
     setCurrentPreviewPetalId(savedPetal?.id || 'none');
     setCurrentPreviewPetalSpeed(savedPetal?.speed || 'normal');
     setCurrentPreviewPetalQty(savedPetal?.qty || 'normal');
+    setCurrentPreviewPetalColor(savedPetal?.color || 'pink');
+    const savedIntro = templateIntroMap[tpl.id];
+    setCurrentPreviewIntroId(savedIntro?.id || 'none');
     setPreviewTemplate(tpl);
+    if (savedIntro?.id) {
+      setShowIntroOverlay(true); // 모달 열리기 전에 미리 true → 열리자마자 인트로가 덮음
+    } else {
+      setShowIntroOverlay(false);
+    }
     setShowTemplatePreview(true);
     if (musicId !== 'none') {
       setTimeout(() => playMusic(musicId), 400);
@@ -1158,7 +1206,8 @@ export default function CreateWeddingScreen({ navigation, route }) {
           categorized_images: categorizedImages,
           message_settings: eventData.messageSettings,
           background_music: templateMusicMap[eventData.selectedTemplate?.id] || null,
-          background_petal: templatePetalMap[eventData.selectedTemplate?.id] || null, // { id, speed, qty }
+          background_petal: templatePetalMap[eventData.selectedTemplate?.id] || null,
+          intro_effect: templateIntroMap[eventData.selectedTemplate?.id] || null, // { id }
         },
       };
 
@@ -1552,7 +1601,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
                           </View>
                         ))}
                       </View>
-                      {(templateMusicMap[tpl.id] || (templatePetalMap[tpl.id] && templatePetalMap[tpl.id].id !== 'none')) && (
+                      {(templateMusicMap[tpl.id] || (templatePetalMap[tpl.id] && templatePetalMap[tpl.id].id !== 'none') || (templateIntroMap[tpl.id] && templateIntroMap[tpl.id].id !== 'none')) && (
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                           {templateMusicMap[tpl.id] && (
                             <View style={s.tplMusicBadge}>
@@ -1567,6 +1616,14 @@ export default function CreateWeddingScreen({ navigation, route }) {
                               <Text style={{ fontSize: 11 }}>{PETAL_EFFECTS.find(p => p.id === templatePetalMap[tpl.id].id)?.emoji}</Text>
                               <Text style={[s.tplMusicBadgeText, { color: '#c0386b' }]} numberOfLines={1}>
                                 {PETAL_EFFECTS.find(p => p.id === templatePetalMap[tpl.id].id)?.name}
+                              </Text>
+                            </View>
+                          )}
+                          {templateIntroMap[tpl.id] && templateIntroMap[tpl.id].id !== 'none' && (
+                            <View style={[s.tplMusicBadge, { backgroundColor: '#f0f4ff' }]}>
+                              <Text style={{ fontSize: 11 }}>🎬</Text>
+                              <Text style={[s.tplMusicBadgeText, { color: '#3a5bd9' }]} numberOfLines={1}>
+                                {INTRO_LIST.find(i => i.id === templateIntroMap[tpl.id].id)?.title}
                               </Text>
                             </View>
                           )}
@@ -1685,13 +1742,6 @@ export default function CreateWeddingScreen({ navigation, route }) {
         {/* 템플릿 미리보기 */}
         <Modal visible={showTemplatePreview} animationType="slide" presentationStyle="fullScreen">
           <View style={s.previewModal}>
-            {/* 전역 꽃잎 효과 오버레이 */}
-            <GlobalFallingEffect
-              key={`${currentPreviewPetalId}-${currentPreviewPetalSpeed}-${currentPreviewPetalQty}`}
-              type={currentPreviewPetalId}
-              speed={currentPreviewPetalSpeed}
-              qty={currentPreviewPetalQty}
-            />
 
             {/* 오른쪽 컨트롤 — X / 음악 / 꽃잎 세로 스택 */}
             <View style={[s.previewControls, { top: insets.top + 12 }]}>
@@ -1718,6 +1768,15 @@ export default function CreateWeddingScreen({ navigation, route }) {
                 <Text style={{ fontSize: 16, lineHeight: 20 }}>
                   {currentPreviewPetalId !== 'none' ? PETAL_EFFECTS.find(p => p.id === currentPreviewPetalId)?.emoji : '✨'}
                 </Text>
+              </TouchableOpacity>
+
+              {/* 인트로 */}
+              <TouchableOpacity
+                style={[s.previewCtrlBtn, currentPreviewIntroId !== 'none' && s.previewCtrlBtnIntro]}
+                onPress={() => setShowIntroModal(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={{ fontSize: 16, lineHeight: 20 }}>🎬</Text>
               </TouchableOpacity>
             </View>
 
@@ -1752,6 +1811,33 @@ export default function CreateWeddingScreen({ navigation, route }) {
                   messageSettings={eventData.messageSettings}
                 />
               )}
+            </View>
+
+            {/* 인트로 오버레이 */}
+            {showIntroOverlay && INTRO_OVERLAYS[currentPreviewIntroId] && (() => {
+              const IntroComp = INTRO_OVERLAYS[currentPreviewIntroId];
+              return (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }} pointerEvents={currentPreviewTapToOpen ? 'box-none' : 'none'}>
+                  <IntroComp
+                    containerW={width}
+                    containerH={Dimensions.get('window').height}
+                    tapToOpen={currentPreviewTapToOpen}
+                    coupleNames={eventData.groomName && eventData.brideName ? `${eventData.groomName} · ${eventData.brideName}` : undefined}
+                    onEnd={() => setShowIntroOverlay(false)}
+                  />
+                </View>
+              );
+            })()}
+
+            {/* 전역 꽃잎 효과 — 인트로 위에 렌더 (zIndex > 인트로의 9999) */}
+            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999 }} pointerEvents="none">
+              <GlobalFallingEffect
+                key={`${currentPreviewPetalId}-${currentPreviewPetalSpeed}-${currentPreviewPetalQty}-${currentPreviewPetalColor}`}
+                type={currentPreviewPetalId}
+                speed={currentPreviewPetalSpeed}
+                qty={currentPreviewPetalQty}
+                color={currentPreviewPetalColor}
+              />
             </View>
           </View>
 
@@ -1829,6 +1915,35 @@ export default function CreateWeddingScreen({ navigation, route }) {
 
                   {currentPreviewPetalId !== 'none' && (
                     <View style={s.pControls}>
+                      {currentPreviewPetalId === 'custom_petal' && (
+                        <View style={s.pControlRow}>
+                          <Text style={s.pControlLabel}>색상</Text>
+                          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                            {CUSTOM_PETAL_COLOR_OPTIONS.map(opt => {
+                              const active = currentPreviewPetalColor === opt.id;
+                              return (
+                                <TouchableOpacity
+                                  key={opt.id}
+                                  onPress={() => setCurrentPreviewPetalColor(opt.id)}
+                                  style={{ alignItems: 'center', gap: 4 }}
+                                  activeOpacity={0.7}
+                                >
+                                  {opt.colors ? (
+                                    <View style={{ width: 32, height: 32, borderRadius: 16, overflow: 'hidden', borderWidth: active ? 2 : 1.5, borderColor: active ? '#0071e3' : 'rgba(0,0,0,0.12)', flexDirection: 'row', flexWrap: 'wrap' }}>
+                                      {opt.colors.map((c, ci) => (
+                                        <View key={ci} style={{ width: '50%', height: '50%', backgroundColor: c }} />
+                                      ))}
+                                    </View>
+                                  ) : (
+                                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: opt.color, borderWidth: active ? 2 : 1.5, borderColor: active ? '#0071e3' : 'rgba(0,0,0,0.12)' }} />
+                                  )}
+                                  <Text style={{ fontSize: 10, color: active ? '#0071e3' : 'rgba(0,0,0,0.5)', fontWeight: active ? '600' : '400' }}>{opt.label}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      )}
                       <View style={s.pControlRow}>
                         <Text style={s.pControlLabel}>속도</Text>
                         <View style={s.pSegment}>
@@ -1864,6 +1979,14 @@ export default function CreateWeddingScreen({ navigation, route }) {
               </View>
             </View>
           </Modal>
+
+          {/* 인트로 선택 모달 */}
+          <WeddingIntroSelectModal
+            visible={showIntroModal}
+            onClose={onIntroModalClose}
+            selectedId={currentPreviewIntroId !== 'none' ? { id: currentPreviewIntroId, tapToOpen: currentPreviewTapToOpen } : null}
+            onSelect={handleSelectIntro}
+          />
         </Modal>
       </View>
   );
@@ -2046,6 +2169,7 @@ const s = StyleSheet.create({
   },
   previewCtrlBtnMusic: { backgroundColor: C.primary },
   previewCtrlBtnPetal: { backgroundColor: 'rgba(192,56,107,0.85)' },
+  previewCtrlBtnIntro: { backgroundColor: 'rgba(212,175,55,0.85)' },
 
   // ── 바텀 시트 모달 — Apple Design System ──
   mOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
