@@ -721,9 +721,11 @@ export default function CreateWeddingScreen({ navigation, route }) {
   const [currentPreviewPetalColor, setCurrentPreviewPetalColor] = useState('pink');
   const currentPreviewTemplateRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
   const [previewingId, setPreviewingId] = useState(null);
   const soundRef = useRef(null);
   const previewSoundRef = useRef(null);
+  const progressIntervalRef = useRef(null);
   const [bankPicker, setBankPicker] = useState({ visible: false, field: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [alertInfo, setAlertInfo] = useState({ visible: false, title: '', message: '' });
@@ -865,9 +867,9 @@ export default function CreateWeddingScreen({ navigation, route }) {
         }
         const currentUser = userResult.user;
 
-        // 중복 사진 제거 (같은 URI 방지)
-        const existingUris = new Set(eventData.images.map(img => img.uri));
-        const uniqueAssets = result.assets.filter(asset => !existingUris.has(asset.uri));
+        // 중복 사진 제거 (원본 URI 기준 비교)
+        const existingOriginalUris = new Set(eventData.images.map(img => img.originalUri || img.uri));
+        const uniqueAssets = result.assets.filter(asset => !existingOriginalUris.has(asset.uri));
         if (uniqueAssets.length === 0) {
           showAlert('알림', '이미 업로드된 사진이에요.');
           return;
@@ -906,16 +908,19 @@ export default function CreateWeddingScreen({ navigation, route }) {
             setImageUploadState(prev => ({ ...prev, currentIndex: index + 1 }));
             if (uploadResult.success) {
               results.push({
-                ...asset, uri: uploadUri, category: category.key, categoryLabel: category.label,
+                ...asset,
+                uri: uploadUri,
+                originalUri: asset.uri,  // 원본 갤러리 URI 보존 (중복 체크용)
+                category: category.key, categoryLabel: category.label,
                 id: imgId, publicUrl: uploadResult.data.publicUrl, storagePath: uploadResult.data.path,
                 eventId: tempEventId, uploadSuccess: true,
               });
             } else {
-              results.push({ ...asset, category: category.key, categoryLabel: category.label, id: imgId, eventId: tempEventId, uploadSuccess: false, error: uploadResult.error });
+              results.push({ ...asset, originalUri: asset.uri, category: category.key, categoryLabel: category.label, id: imgId, eventId: tempEventId, uploadSuccess: false, error: uploadResult.error });
             }
           } catch (error) {
             setImageUploadState(prev => ({ ...prev, currentIndex: index + 1 }));
-            results.push({ ...asset, category: category.key, categoryLabel: category.label, id: imgId, eventId: tempEventId, uploadSuccess: false, error: error.message });
+            results.push({ ...asset, originalUri: asset.uri, category: category.key, categoryLabel: category.label, id: imgId, eventId: tempEventId, uploadSuccess: false, error: error.message });
           }
         }
         setImageUploadState({ isUploading: false, currentIndex: 0, totalCount: 0, uploadingCategory: null });
@@ -957,7 +962,28 @@ export default function CreateWeddingScreen({ navigation, route }) {
   };
 
   // ── 음악 ──
+  const startProgressTracking = () => {
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    progressIntervalRef.current = setInterval(async () => {
+      if (!soundRef.current) return;
+      try {
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded && status.durationMillis > 0) {
+          setPlaybackProgress(status.positionMillis / status.durationMillis);
+        }
+      } catch {}
+    }, 500);
+  };
+
+  const stopProgressTracking = () => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+  };
+
   const stopAllSounds = async () => {
+    stopProgressTracking();
     if (soundRef.current) {
       try { await soundRef.current.stopAsync(); await soundRef.current.unloadAsync(); } catch {}
       soundRef.current = null;
@@ -967,6 +993,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
       previewSoundRef.current = null;
     }
     setIsPlaying(false);
+    setPlaybackProgress(0);
     setPreviewingId(null);
   };
 
@@ -980,13 +1007,21 @@ export default function CreateWeddingScreen({ navigation, route }) {
       soundRef.current = sound;
       await sound.playAsync();
       setIsPlaying(true);
+      startProgressTracking();
     } catch (e) { console.warn('음악 재생 오류:', e); }
   };
 
   const togglePlayPause = async () => {
     if (!soundRef.current) { if (currentPreviewMusicId !== 'none') await playMusic(currentPreviewMusicId); return; }
-    if (isPlaying) { await soundRef.current.pauseAsync(); setIsPlaying(false); }
-    else { await soundRef.current.playAsync(); setIsPlaying(true); }
+    if (isPlaying) {
+      await soundRef.current.pauseAsync();
+      setIsPlaying(false);
+      stopProgressTracking();
+    } else {
+      await soundRef.current.playAsync();
+      setIsPlaying(true);
+      startProgressTracking();
+    }
   };
 
   const previewTrack = async (trackId) => {
@@ -1809,6 +1844,9 @@ export default function CreateWeddingScreen({ navigation, route }) {
                   categorizedImages={getCategorizedImages()}
                   allowMessages={eventData.allowMessages}
                   messageSettings={eventData.messageSettings}
+                  isPlaying={isPlaying}
+                  onTogglePlay={togglePlayPause}
+                  playbackProgress={playbackProgress}
                 />
               )}
             </View>

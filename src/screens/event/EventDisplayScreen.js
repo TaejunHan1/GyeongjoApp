@@ -71,9 +71,11 @@ export default function EventDisplayScreen({ navigation, route }) {
   const [showMusicModal, setShowMusicModal] = useState(false);
   const [selectedMusicId, setSelectedMusicId] = useState('none');
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
   const [previewingId, setPreviewingId] = useState(null);
   const soundRef = useRef(null);
   const previewSoundRef = useRef(null);
+  const progressIntervalRef = useRef(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -102,6 +104,7 @@ export default function EventDisplayScreen({ navigation, route }) {
 
     return () => {
       clearTimeout(exitTimer);
+      stopProgressTracking();
       stopAllSounds();
     };
   }, [eventId, passedEventData]);
@@ -117,7 +120,28 @@ export default function EventDisplayScreen({ navigation, route }) {
     }
   }, [event]);
 
+  const startProgressTracking = () => {
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    progressIntervalRef.current = setInterval(async () => {
+      if (!soundRef.current) return;
+      try {
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded && status.durationMillis > 0) {
+          setPlaybackProgress(status.positionMillis / status.durationMillis);
+        }
+      } catch {}
+    }, 500);
+  };
+
+  const stopProgressTracking = () => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+  };
+
   const stopAllSounds = async () => {
+    stopProgressTracking();
     if (soundRef.current) {
       try { await soundRef.current.stopAsync(); await soundRef.current.unloadAsync(); } catch {}
       soundRef.current = null;
@@ -127,6 +151,7 @@ export default function EventDisplayScreen({ navigation, route }) {
       previewSoundRef.current = null;
     }
     setIsPlaying(false);
+    setPlaybackProgress(0);
     setPreviewingId(null);
   };
 
@@ -143,6 +168,7 @@ export default function EventDisplayScreen({ navigation, route }) {
       await sound.playAsync();
       setIsPlaying(true);
       setSelectedMusicId(trackId);
+      startProgressTracking();
     } catch (e) {
       console.warn('음악 재생 오류:', e);
     }
@@ -158,9 +184,11 @@ export default function EventDisplayScreen({ navigation, route }) {
     if (isPlaying) {
       await soundRef.current.pauseAsync();
       setIsPlaying(false);
+      stopProgressTracking();
     } else {
       await soundRef.current.playAsync();
       setIsPlaying(true);
+      startProgressTracking();
     }
   };
 
@@ -682,6 +710,9 @@ export default function EventDisplayScreen({ navigation, route }) {
             messageSettings={messageSettings.messageSettings}
             onMessageSubmit={handleMessageSubmit}
             loadingMessages={loadingMessages}
+            isPlaying={isPlaying}
+            onTogglePlay={togglePlayPause}
+            playbackProgress={playbackProgress}
           />
         )}
       </Animated.View>

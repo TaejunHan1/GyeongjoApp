@@ -490,21 +490,13 @@ export const deleteEventStorageImages = async (userId, eventId) => {
 export const uploadImageToStorage = async (imageUri, fileName, userId, eventId = null) => {
   try {
     
-    // 1. 파일 읽기 (React Native에서 Blob이 0바이트로 업로드되는 문제 우회: base64→ArrayBuffer)
+    // 1. 파일 읽기 (fetch → ArrayBuffer: 비동기 non-blocking, JS 스레드 블로킹 없음)
     let fileData;
     try {
-      const base64 = await FileSystem.readAsStringAsync(imageUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      if (!base64) throw new Error('파일이 비어있습니다.');
-      // base64 → Uint8Array (ArrayBuffer)
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      fileData = bytes.buffer;
-      if (bytes.length === 0) throw new Error('파일이 비어있습니다.');
+      const response = await fetch(imageUri);
+      if (!response.ok) throw new Error(`파일을 불러올 수 없습니다 (status: ${response.status})`);
+      fileData = await response.arrayBuffer();
+      if (!fileData || fileData.byteLength === 0) throw new Error('파일이 비어있습니다.');
     } catch (fileError) {
       throw new Error(`파일 읽기 실패: ${fileError.message}`);
     }

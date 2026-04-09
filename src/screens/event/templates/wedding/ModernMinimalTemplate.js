@@ -293,8 +293,8 @@ const MinimalCalendar = ({ targetDate, style }) => {
 const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {} }) => {
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [activeAccountToggle, setActiveAccountToggle] = useState(null);
-  const [galleryIndex, setGalleryIndex] = useState(0); // 갤러리 인덱스 추가
+  const [activeAccountToggle, setActiveAccountToggle] = useState('groom');
+  const [galleryIndex, setGalleryIndex] = useState(0);
   const [mapCoord, setMapCoord] = useState(null);
 
   const scrollViewRef = useRef(null);
@@ -416,6 +416,22 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
   const copyAccount = (accountNumber) => {
     Alert.alert('복사 완료', '계좌번호가 복사되었습니다.');
   };
+
+  const formatPhone = (phone) => {
+    if (!phone) return '';
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length === 8) return `010-${digits.slice(0,4)}-${digits.slice(4)}`;
+    if (digits.length === 10) return `${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}`;
+    if (digits.length === 11) return `${digits.slice(0,3)}-${digits.slice(3,7)}-${digits.slice(7)}`;
+    return phone;
+  };
+
+  const formatPhoneForCall = (phone) => {
+    if (!phone) return '';
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length === 8) return `010${digits}`;
+    return digits;
+  };
   
   const dateInfo = formatKoreanDate(eventData.date || '2025-10-04');
   const ceremonyTime = formatKoreanTime(eventData.ceremonyTime || '14:00');
@@ -506,6 +522,17 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
   const hasAnyGroomSide = hasGroomAccount || hasGroomFatherAccount || hasGroomMotherAccount;
   const hasAnyBrideSide = hasBrideAccount || hasBrideFatherAccount || hasBrideMotherAccount;
   const hasAnyAccount = hasAnyGroomSide || hasAnyBrideSide;
+
+  // 연락처 데이터
+  const groomContact = eventData.groomContact || eventData.groom_contact || '';
+  const brideContact = eventData.brideContact || eventData.bride_contact || '';
+  const groomFatherContact = eventData.additional_info?.groom_father_contact || eventData.groomFatherContact || '';
+  const groomMotherContact = eventData.additional_info?.groom_mother_contact || eventData.groomMotherContact || '';
+  const brideFatherContact = eventData.additional_info?.bride_father_contact || eventData.brideFatherContact || '';
+  const brideMotherContact = eventData.additional_info?.bride_mother_contact || eventData.brideMotherContact || '';
+  const hasAnyGroomContact = !!(groomContact || groomFatherContact || groomMotherContact);
+  const hasAnyBrideContact = !!(brideContact || brideFatherContact || brideMotherContact);
+  const hasAnyContact = hasAnyGroomContact || hasAnyBrideContact;
 
   // 신랑/신부 사진 유무 확인
   const hasGroomPhoto = categorizedImages?.groom?.length > 0 && typeof categorizedImages.groom[0] !== 'number';
@@ -893,143 +920,217 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
           </Animated.View>
         </View>
 
-        {/* 계좌번호 섹션 - 계좌가 있을 때만 */}
-        {hasAnyAccount && (
+        {/* 축의금 & 연락처 통합 섹션 */}
+        {(hasAnyAccount || hasAnyContact) && (
         <Animated.View style={[
-          styles.accountSection,
+          styles.giftContactSection,
           {
             opacity: fadeAnims[7],
             transform: [{ translateY: slideAnims[7] }]
           }
         ]}>
-          <Text style={styles.sectionTitle}>CONGRATULATORY MONEY</Text>
-          <View style={styles.sectionTitleLine} />
-          <Text style={styles.accountSubtitle}>마음 전하실 곳</Text>
+          {/* 섹션 헤더 */}
+          <Text style={styles.giftSectionEn}>Contribution & Contact</Text>
+          <Text style={styles.giftSectionKo}>축의금 & 연락처</Text>
+          <View style={styles.giftSectionLine} />
+          <Text style={styles.giftSubtitle}>따뜻한 마음을 함께 나누어주세요</Text>
 
-          <View style={styles.accountContainer}>
-            {/* 신랑측 계좌 */}
-            {hasAnyGroomSide && (
-            <TouchableOpacity
-              style={styles.accountCard}
-              onPress={() => handleAccountToggle('groom')}
-            >
-              <View style={styles.accountHeader}>
-                <Text style={styles.accountTitle}>신랑측 계좌번호</Text>
-                <Ionicons
-                  name={activeAccountToggle === 'groom' ? "chevron-up" : "chevron-down"}
-                  size={20}
-                  color="#666"
-                />
+          {/* 신랑측 / 신부측 토글 */}
+          <View style={styles.giftToggleContainer}>
+            <View style={styles.giftToggleButtons}>
+              <TouchableOpacity
+                style={[styles.giftToggleBtn, activeAccountToggle === 'groom' && styles.giftToggleBtnActive]}
+                onPress={() => setActiveAccountToggle('groom')}
+              >
+                <Text style={[styles.giftToggleBtnText, activeAccountToggle === 'groom' && styles.giftToggleBtnTextActive]}>신랑측</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.giftToggleBtn, activeAccountToggle === 'bride' && styles.giftToggleBtnActive]}
+                onPress={() => setActiveAccountToggle('bride')}
+              >
+                <Text style={[styles.giftToggleBtnText, activeAccountToggle === 'bride' && styles.giftToggleBtnTextActive]}>신부측</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.giftCardsContainer}>
+            {/* ── 신랑측 ── */}
+            {activeAccountToggle === 'groom' && (
+              <View>
+                {/* 신랑 카드 */}
+                {(hasGroomAccount || !!groomContact) && (
+                  <View style={styles.giftPersonCard}>
+                    <Text style={styles.giftPersonCardLabel}>{eventData.groomName || eventData.groom_name || '신랑'}</Text>
+                    {hasGroomAccount && (
+                      <TouchableOpacity style={styles.giftPersonCardRow} onPress={() => copyAccount(groomAccount.number)}>
+                        <View style={styles.giftPersonCardRowInfo}>
+                          {!!groomAccount.bank && <Text style={styles.giftPersonCardBank}>{groomAccount.bank}</Text>}
+                          <Text style={styles.giftPersonCardValue}>{groomAccount.number}</Text>
+                        </View>
+                        <View style={styles.personActionBtn}><Text style={styles.personActionBtnText}>복사</Text></View>
+                      </TouchableOpacity>
+                    )}
+                    {hasGroomAccount && !!groomContact && <View style={styles.giftPersonCardDivider} />}
+                    {!!groomContact && (
+                      <TouchableOpacity style={styles.giftPersonCardRow} onPress={() => Linking.openURL(`tel:${formatPhoneForCall(groomContact)}`)}>
+                        <View style={styles.giftPersonCardRowInfo}>
+                          <Text style={styles.giftPersonCardValue}>{formatPhone(groomContact)}</Text>
+                        </View>
+                        <View style={[styles.personActionBtn, styles.personCallBtn]}>
+                          <Ionicons name="call-outline" size={12} color="#555" />
+                          <Text style={styles.personActionBtnText}>전화</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                {/* 신랑 아버님 카드 */}
+                {(hasGroomFatherAccount || !!groomFatherContact) && (
+                  <View style={styles.giftPersonCard}>
+                    <Text style={styles.giftPersonCardLabel}>{eventData.groomFatherName || eventData.groom_father_name || '아버님'}</Text>
+                    {hasGroomFatherAccount && (
+                      <TouchableOpacity style={styles.giftPersonCardRow} onPress={() => copyAccount(groomFatherAccount.number)}>
+                        <View style={styles.giftPersonCardRowInfo}>
+                          {!!groomFatherAccount.bank && <Text style={styles.giftPersonCardBank}>{groomFatherAccount.bank}</Text>}
+                          <Text style={styles.giftPersonCardValue}>{groomFatherAccount.number}</Text>
+                        </View>
+                        <View style={styles.personActionBtn}><Text style={styles.personActionBtnText}>복사</Text></View>
+                      </TouchableOpacity>
+                    )}
+                    {hasGroomFatherAccount && !!groomFatherContact && <View style={styles.giftPersonCardDivider} />}
+                    {!!groomFatherContact && (
+                      <TouchableOpacity style={styles.giftPersonCardRow} onPress={() => Linking.openURL(`tel:${formatPhoneForCall(groomFatherContact)}`)}>
+                        <View style={styles.giftPersonCardRowInfo}>
+                          <Text style={styles.giftPersonCardValue}>{formatPhone(groomFatherContact)}</Text>
+                        </View>
+                        <View style={[styles.personActionBtn, styles.personCallBtn]}>
+                          <Ionicons name="call-outline" size={12} color="#555" />
+                          <Text style={styles.personActionBtnText}>전화</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                {/* 신랑 어머님 카드 */}
+                {(hasGroomMotherAccount || !!groomMotherContact) && (
+                  <View style={styles.giftPersonCard}>
+                    <Text style={styles.giftPersonCardLabel}>{eventData.groomMotherName || eventData.groom_mother_name || '어머님'}</Text>
+                    {hasGroomMotherAccount && (
+                      <TouchableOpacity style={styles.giftPersonCardRow} onPress={() => copyAccount(groomMotherAccount.number)}>
+                        <View style={styles.giftPersonCardRowInfo}>
+                          {!!groomMotherAccount.bank && <Text style={styles.giftPersonCardBank}>{groomMotherAccount.bank}</Text>}
+                          <Text style={styles.giftPersonCardValue}>{groomMotherAccount.number}</Text>
+                        </View>
+                        <View style={styles.personActionBtn}><Text style={styles.personActionBtnText}>복사</Text></View>
+                      </TouchableOpacity>
+                    )}
+                    {hasGroomMotherAccount && !!groomMotherContact && <View style={styles.giftPersonCardDivider} />}
+                    {!!groomMotherContact && (
+                      <TouchableOpacity style={styles.giftPersonCardRow} onPress={() => Linking.openURL(`tel:${formatPhoneForCall(groomMotherContact)}`)}>
+                        <View style={styles.giftPersonCardRowInfo}>
+                          <Text style={styles.giftPersonCardValue}>{formatPhone(groomMotherContact)}</Text>
+                        </View>
+                        <View style={[styles.personActionBtn, styles.personCallBtn]}>
+                          <Ionicons name="call-outline" size={12} color="#555" />
+                          <Text style={styles.personActionBtnText}>전화</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
               </View>
-              {activeAccountToggle === 'groom' && (
-                <View style={styles.accountDetails}>
-                  {hasGroomAccount && (
-                    <View>
-                      <Text style={styles.accountBank}>{groomAccount.bank}</Text>
-                      <Text style={styles.accountNumber}>{groomAccount.number}</Text>
-                      <Text style={styles.accountName}>예금주: {groomAccount.name}</Text>
-                      <TouchableOpacity
-                        style={styles.copyButton}
-                        onPress={() => copyAccount(groomAccount.number)}
-                      >
-                        <Text style={styles.copyButtonText}>복사하기</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                  {hasGroomFatherAccount && (
-                    <View style={{ marginTop: 16 }}>
-                      <Text style={styles.accountBank}>{groomFatherAccount.bank}</Text>
-                      <Text style={styles.accountNumber}>{groomFatherAccount.number}</Text>
-                      <Text style={styles.accountName}>예금주: {groomFatherAccount.name}</Text>
-                      <TouchableOpacity
-                        style={styles.copyButton}
-                        onPress={() => copyAccount(groomFatherAccount.number)}
-                      >
-                        <Text style={styles.copyButtonText}>복사하기</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                  {hasGroomMotherAccount && (
-                    <View style={{ marginTop: 16 }}>
-                      <Text style={styles.accountBank}>{groomMotherAccount.bank}</Text>
-                      <Text style={styles.accountNumber}>{groomMotherAccount.number}</Text>
-                      <Text style={styles.accountName}>예금주: {groomMotherAccount.name}</Text>
-                      <TouchableOpacity
-                        style={styles.copyButton}
-                        onPress={() => copyAccount(groomMotherAccount.number)}
-                      >
-                        <Text style={styles.copyButtonText}>복사하기</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </View>
-              )}
-            </TouchableOpacity>
             )}
 
-            {/* 신부측 계좌 */}
-            {hasAnyBrideSide && (
-            <TouchableOpacity
-              style={styles.accountCard}
-              onPress={() => handleAccountToggle('bride')}
-            >
-              <View style={styles.accountHeader}>
-                <Text style={styles.accountTitle}>신부측 계좌번호</Text>
-                <Ionicons
-                  name={activeAccountToggle === 'bride' ? "chevron-up" : "chevron-down"}
-                  size={20}
-                  color="#666"
-                />
+            {/* ── 신부측 ── */}
+            {activeAccountToggle === 'bride' && (
+              <View>
+                {/* 신부 카드 */}
+                {(hasBrideAccount || !!brideContact) && (
+                  <View style={styles.giftPersonCard}>
+                    <Text style={styles.giftPersonCardLabel}>{eventData.brideName || eventData.bride_name || '신부'}</Text>
+                    {hasBrideAccount && (
+                      <TouchableOpacity style={styles.giftPersonCardRow} onPress={() => copyAccount(brideAccount.number)}>
+                        <View style={styles.giftPersonCardRowInfo}>
+                          {!!brideAccount.bank && <Text style={styles.giftPersonCardBank}>{brideAccount.bank}</Text>}
+                          <Text style={styles.giftPersonCardValue}>{brideAccount.number}</Text>
+                        </View>
+                        <View style={styles.personActionBtn}><Text style={styles.personActionBtnText}>복사</Text></View>
+                      </TouchableOpacity>
+                    )}
+                    {hasBrideAccount && !!brideContact && <View style={styles.giftPersonCardDivider} />}
+                    {!!brideContact && (
+                      <TouchableOpacity style={styles.giftPersonCardRow} onPress={() => Linking.openURL(`tel:${formatPhoneForCall(brideContact)}`)}>
+                        <View style={styles.giftPersonCardRowInfo}>
+                          <Text style={styles.giftPersonCardValue}>{formatPhone(brideContact)}</Text>
+                        </View>
+                        <View style={[styles.personActionBtn, styles.personCallBtn]}>
+                          <Ionicons name="call-outline" size={12} color="#555" />
+                          <Text style={styles.personActionBtnText}>전화</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                {/* 신부 아버님 카드 */}
+                {(hasBrideFatherAccount || !!brideFatherContact) && (
+                  <View style={styles.giftPersonCard}>
+                    <Text style={styles.giftPersonCardLabel}>{eventData.brideFatherName || eventData.bride_father_name || '아버님'}</Text>
+                    {hasBrideFatherAccount && (
+                      <TouchableOpacity style={styles.giftPersonCardRow} onPress={() => copyAccount(brideFatherAccount.number)}>
+                        <View style={styles.giftPersonCardRowInfo}>
+                          {!!brideFatherAccount.bank && <Text style={styles.giftPersonCardBank}>{brideFatherAccount.bank}</Text>}
+                          <Text style={styles.giftPersonCardValue}>{brideFatherAccount.number}</Text>
+                        </View>
+                        <View style={styles.personActionBtn}><Text style={styles.personActionBtnText}>복사</Text></View>
+                      </TouchableOpacity>
+                    )}
+                    {hasBrideFatherAccount && !!brideFatherContact && <View style={styles.giftPersonCardDivider} />}
+                    {!!brideFatherContact && (
+                      <TouchableOpacity style={styles.giftPersonCardRow} onPress={() => Linking.openURL(`tel:${formatPhoneForCall(brideFatherContact)}`)}>
+                        <View style={styles.giftPersonCardRowInfo}>
+                          <Text style={styles.giftPersonCardValue}>{formatPhone(brideFatherContact)}</Text>
+                        </View>
+                        <View style={[styles.personActionBtn, styles.personCallBtn]}>
+                          <Ionicons name="call-outline" size={12} color="#555" />
+                          <Text style={styles.personActionBtnText}>전화</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                {/* 신부 어머님 카드 */}
+                {(hasBrideMotherAccount || !!brideMotherContact) && (
+                  <View style={styles.giftPersonCard}>
+                    <Text style={styles.giftPersonCardLabel}>{eventData.brideMotherName || eventData.bride_mother_name || '어머님'}</Text>
+                    {hasBrideMotherAccount && (
+                      <TouchableOpacity style={styles.giftPersonCardRow} onPress={() => copyAccount(brideMotherAccount.number)}>
+                        <View style={styles.giftPersonCardRowInfo}>
+                          {!!brideMotherAccount.bank && <Text style={styles.giftPersonCardBank}>{brideMotherAccount.bank}</Text>}
+                          <Text style={styles.giftPersonCardValue}>{brideMotherAccount.number}</Text>
+                        </View>
+                        <View style={styles.personActionBtn}><Text style={styles.personActionBtnText}>복사</Text></View>
+                      </TouchableOpacity>
+                    )}
+                    {hasBrideMotherAccount && !!brideMotherContact && <View style={styles.giftPersonCardDivider} />}
+                    {!!brideMotherContact && (
+                      <TouchableOpacity style={styles.giftPersonCardRow} onPress={() => Linking.openURL(`tel:${formatPhoneForCall(brideMotherContact)}`)}>
+                        <View style={styles.giftPersonCardRowInfo}>
+                          <Text style={styles.giftPersonCardValue}>{formatPhone(brideMotherContact)}</Text>
+                        </View>
+                        <View style={[styles.personActionBtn, styles.personCallBtn]}>
+                          <Ionicons name="call-outline" size={12} color="#555" />
+                          <Text style={styles.personActionBtnText}>전화</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
               </View>
-              {activeAccountToggle === 'bride' && (
-                <View style={styles.accountDetails}>
-                  {hasBrideAccount && (
-                    <View>
-                      <Text style={styles.accountBank}>{brideAccount.bank}</Text>
-                      <Text style={styles.accountNumber}>{brideAccount.number}</Text>
-                      <Text style={styles.accountName}>예금주: {brideAccount.name}</Text>
-                      <TouchableOpacity
-                        style={styles.copyButton}
-                        onPress={() => copyAccount(brideAccount.number)}
-                      >
-                        <Text style={styles.copyButtonText}>복사하기</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                  {hasBrideFatherAccount && (
-                    <View style={{ marginTop: 16 }}>
-                      <Text style={styles.accountBank}>{brideFatherAccount.bank}</Text>
-                      <Text style={styles.accountNumber}>{brideFatherAccount.number}</Text>
-                      <Text style={styles.accountName}>예금주: {brideFatherAccount.name}</Text>
-                      <TouchableOpacity
-                        style={styles.copyButton}
-                        onPress={() => copyAccount(brideFatherAccount.number)}
-                      >
-                        <Text style={styles.copyButtonText}>복사하기</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                  {hasBrideMotherAccount && (
-                    <View style={{ marginTop: 16 }}>
-                      <Text style={styles.accountBank}>{brideMotherAccount.bank}</Text>
-                      <Text style={styles.accountNumber}>{brideMotherAccount.number}</Text>
-                      <Text style={styles.accountName}>예금주: {brideMotherAccount.name}</Text>
-                      <TouchableOpacity
-                        style={styles.copyButton}
-                        onPress={() => copyAccount(brideMotherAccount.number)}
-                      >
-                        <Text style={styles.copyButtonText}>복사하기</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </View>
-              )}
-            </TouchableOpacity>
             )}
           </View>
         </Animated.View>
         )}
-        
+
         {/* 방명록 섹션 */}
         {allowMessages && (
           <Animated.View style={[
@@ -1039,47 +1140,59 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
               transform: [{ translateY: slideAnims[8] }]
             }
           ]}>
-            <Text style={styles.sectionTitle}>GUEST BOOK</Text>
-            <View style={styles.sectionTitleLine} />
-            
-            <GuestBookMessages 
-              messages={eventData.guestMessages || []}
-              onAddMessage={() => {}}
-            />
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionEn, { color: '#666666' }]}>Messages</Text>
+              <Text style={[styles.sectionKo, { color: '#ffffff' }]}>방명록</Text>
+              <View style={[styles.sectionLine, { backgroundColor: '#333333' }]} />
+            </View>
+
+            {/* 메시지 목록 */}
+            <View style={styles.messagesList}>
+              {guestMessages.length === 0 ? (
+                <View style={styles.emptyMessages}>
+                  <Text style={styles.emptyIcon}>💬</Text>
+                  <Text style={styles.emptyText}>아직 축하 메시지가 없습니다</Text>
+                </View>
+              ) : (
+                guestMessages.map((msg, i) => (
+                  <View key={i} style={styles.messageCard}>
+                    <View style={styles.messageHeader}>
+                      <Text style={styles.messageFrom}>From. {msg.sender_name || msg.name || msg.from || '익명'}</Text>
+                      <Text style={styles.messageDate}>{msg.created_at ? new Date(msg.created_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' }) : msg.date || ''}</Text>
+                    </View>
+                    <Text style={styles.messageContent}>{msg.message || msg.content}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+
+            {/* 방명록 남기기 버튼 (미리보기 - 비활성) */}
+            <View style={styles.writeGuestbookBtn}>
+              <Text style={styles.writeGuestbookText}>방명록 남기기</Text>
+            </View>
           </Animated.View>
         )}
-        
-        {/* 마지막 섹션 */}
-        <View style={styles.footerSection}>
-          <LinearGradient
-            colors={['#000000', '#1a1a1a']}
-            style={StyleSheet.absoluteFill}
-          />
-          
-          <Animated.View style={[
-            styles.footerContent,
-            {
-              opacity: fadeAnims[9],
-              transform: [{ translateY: slideAnims[9] }]
-            }
-          ]}>
-            <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
-              <Ionicons name="share-outline" size={20} color="#fff" />
-              <Text style={styles.shareButtonText}>SHARE INVITATION</Text>
-            </TouchableOpacity>
-            
-            <View style={styles.footerDivider} />
-            
-            <Text style={styles.footerText}>
-              WE LOOK FORWARD TO{'\n'}
-              CELEBRATING WITH YOU
-            </Text>
-            
-            <Text style={styles.footerNames}>
-              {groomEngName} & {brideEngName}
-            </Text>
-          </Animated.View>
-        </View>
+
+        {/* 공유 & 푸터 통합 섹션 */}
+        <Animated.View style={[
+          styles.footerSection,
+          {
+            opacity: fadeAnims[9],
+            transform: [{ translateY: slideAnims[9] }]
+          }
+        ]}>
+          <Text style={styles.footerSubEn}>Thank You</Text>
+          <Text style={styles.footerTitle}>감사합니다</Text>
+          <View style={styles.footerDivider} />
+          <Text style={styles.footerMessage}>
+            귀한 걸음으로 저희의 새로운 시작을{'\n'}
+            함께 축복해 주셔서 진심으로 감사드립니다
+          </Text>
+          <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+            <Ionicons name="share-social-outline" size={16} color="#FAF6F0" />
+            <Text style={styles.shareButtonText}>청첩장 공유하기</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </ScrollView>
       
       {/* 이미지 뷰어 */}
@@ -1270,6 +1383,28 @@ const styles = StyleSheet.create({
   gallerySection: {
     paddingVertical: 60,
     backgroundColor: '#fff',
+  },
+  sectionHeader: {
+    alignItems: 'center',
+    marginBottom: 36,
+  },
+  sectionEn: {
+    fontSize: 11,
+    letterSpacing: 3,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  sectionKo: {
+    fontSize: 22,
+    fontWeight: '300',
+    letterSpacing: 2,
+    textAlign: 'center',
+    marginBottom: 14,
+  },
+  sectionLine: {
+    width: 30,
+    height: 1,
   },
   sectionTitle: {
     fontSize: 22,
@@ -1520,196 +1655,272 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // 계좌번호 섹션
-  accountSection: {
+  // 축의금 & 연락처 통합 섹션
+  giftContactSection: {
     paddingVertical: 60,
     paddingHorizontal: 25,
-    backgroundColor: '#fafafa',
+    backgroundColor: '#FAF6F0',
   },
-  accountSubtitle: {
-    fontSize: 14,
-    color: '#999',
+  giftSectionEn: {
+    fontSize: 11,
+    color: '#888888',
+    letterSpacing: 3,
     textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: 8,
+    textTransform: 'uppercase',
   },
-  accountContainer: {
-    maxWidth: 400,
+  giftSectionKo: {
+    fontSize: 22,
+    fontWeight: '300',
+    color: '#1a1a1a',
+    letterSpacing: 2,
+    textAlign: 'center',
+    marginBottom: 14,
+  },
+  giftSectionLine: {
+    width: 30,
+    height: 1,
+    backgroundColor: '#ddd',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  giftSubtitle: {
+    fontSize: 13,
+    color: '#888888',
+    textAlign: 'center',
+    marginBottom: 28,
+    letterSpacing: 0.3,
+  },
+  giftToggleContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  giftToggleButtons: {
+    flexDirection: 'row',
+    backgroundColor: '#EDE5D9',
+    borderRadius: 10,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#DDD4C6',
+  },
+  giftToggleBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 28,
+    borderRadius: 7,
+  },
+  giftToggleBtnActive: {
+    backgroundColor: '#FAF6F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  giftToggleBtnText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#999999',
+  },
+  giftToggleBtnTextActive: {
+    color: '#1a1a1a',
+  },
+  giftCardsContainer: {
+    maxWidth: 440,
     alignSelf: 'center',
     width: '100%',
   },
-  accountCard: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    marginBottom: 15,
+  // 사람 기준 카드 (축의금&연락처 섹션용)
+  giftPersonCard: {
+    backgroundColor: '#F2EBE1',
+    borderWidth: 1,
+    borderColor: '#E8DFD3',
+    borderRadius: 10,
+    marginBottom: 10,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
   },
-  accountHeader: {
+  giftPersonCardLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#888888',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  giftPersonCardRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 18,
-    backgroundColor: '#fff',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 11,
   },
-  accountTitle: {
+  giftPersonCardRowInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  giftPersonCardBank: {
+    fontSize: 11,
+    color: '#999999',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  giftPersonCardValue: {
     fontSize: 14,
-    fontWeight: '400',
-    color: '#333',
+    color: '#333333',
+    letterSpacing: 0.5,
   },
-  accountDetails: {
-    padding: 18,
-    paddingTop: 0,
+  giftPersonCardDivider: {
+    height: 1,
+    backgroundColor: '#E0D7CC',
+    marginHorizontal: 16,
   },
-  accountBank: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#666',
-    marginBottom: 5,
+  personActionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    backgroundColor: '#EAE1D5',
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#D9D0C2',
   },
-  accountNumber: {
-    fontSize: 15,
-    color: '#333',
-    marginBottom: 5,
+  personCallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
-  accountName: {
+  personActionBtnText: {
     fontSize: 12,
-    color: '#999',
-    marginBottom: 15,
+    fontWeight: '600',
+    color: '#555555',
   },
-  copyButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 20,
-    alignSelf: 'flex-start',
-  },
-  copyButtonText: {
-    fontSize: 12,
-    color: '#666',
-  },
-  
+
   // 메시지 섹션
   messagesSection: {
     paddingVertical: 60,
     paddingHorizontal: 25,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#0A0A0A',
   },
-  messagesSubtitle: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    marginBottom: 40,
-  },
-  messagesContainer: {
-    maxWidth: 500,
+  messagesList: {
+    maxWidth: 600,
     alignSelf: 'center',
     width: '100%',
+    marginBottom: 20,
+  },
+  emptyMessages: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    backgroundColor: '#111111',
+    borderWidth: 1,
+    borderColor: '#1E1E1E',
+    borderRadius: 12,
+  },
+  emptyIcon: {
+    fontSize: 40,
+    marginBottom: 12,
+  },
+  emptyText: {
+    fontSize: 15,
+    color: '#555555',
   },
   messageCard: {
-    backgroundColor: '#fff',
+    backgroundColor: '#111111',
     borderRadius: 12,
     padding: 22,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: '#1E1E1E',
   },
   messageHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f5f5f5',
+    marginBottom: 12,
   },
   messageFrom: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#444',
+    color: '#666666',
   },
   messageDate: {
     fontSize: 11,
-    color: '#aaa',
+    color: '#444444',
   },
   messageContent: {
     fontSize: 14,
-    lineHeight: 24,
-    color: '#555',
-    letterSpacing: 0.3,
+    lineHeight: 22,
+    color: '#AAAAAA',
   },
-  writeMessageButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#333',
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    borderRadius: 30,
-    marginTop: 30,
+  writeGuestbookBtn: {
     alignSelf: 'center',
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    borderRadius: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    alignItems: 'center',
   },
-  writeMessageIcon: {
-    fontSize: 18,
-    marginRight: 10,
-  },
-  writeMessageText: {
-    fontSize: 14,
+  writeGuestbookText: {
+    fontSize: 15,
     fontWeight: '500',
-    color: '#fff',
-    letterSpacing: 0.5,
+    color: '#888888',
+    letterSpacing: 1,
   },
-  
+
   // 푸터 섹션
   footerSection: {
     paddingVertical: 80,
-    position: 'relative',
-  },
-  footerContent: {
+    paddingHorizontal: 25,
+    backgroundColor: '#FAF6F0',
+    borderTopWidth: 1,
+    borderTopColor: '#E8DFD3',
     alignItems: 'center',
   },
-  shareButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 40,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    marginBottom: 35,
+  footerSubEn: {
+    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+    fontSize: 11,
+    color: '#aaaaaa',
+    letterSpacing: 4,
+    textTransform: 'uppercase',
+    marginBottom: 10,
   },
-  shareButtonText: {
-    fontSize: 13,
-    letterSpacing: 2,
-    color: '#fff',
-    marginLeft: 10,
+  footerTitle: {
+    fontSize: 26,
+    fontWeight: '300',
+    color: '#1a1a1a',
+    letterSpacing: 6,
+    marginBottom: 20,
   },
   footerDivider: {
     width: 30,
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    marginBottom: 25,
+    backgroundColor: '#dddddd',
+    marginBottom: 20,
   },
-  footerText: {
-    fontSize: 13,
-    letterSpacing: 1,
-    lineHeight: 22,
-    color: 'rgba(255,255,255,0.7)',
+  footerMessage: {
+    fontSize: 14,
+    lineHeight: 26,
+    color: '#888888',
     textAlign: 'center',
-    marginBottom: 25,
+    letterSpacing: 0.5,
+    marginBottom: 40,
   },
-  footerNames: {
-    fontSize: 18,
-    letterSpacing: 3,
-    fontWeight: '200',
-    color: '#fff',
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#1a1a1a',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+  },
+  shareButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#FAF6F0',
+    letterSpacing: 1,
   },
 });
 

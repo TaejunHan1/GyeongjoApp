@@ -20,7 +20,7 @@ import * as Clipboard from 'expo-clipboard';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import Svg, { Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Rect, Text as SvgText } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   useCountdown,
@@ -280,55 +280,8 @@ const AnimatedSvgText = ({ text, style, fontSize = 48, color = 'white' }) => {
   );
 };
 
-// 커스텀 오프닝 오버레이
-const CustomOpeningOverlay = ({ visible }) => {
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const [showText, setShowText] = useState(false);
-  
-  useEffect(() => {
-    if (visible) {
-      setTimeout(() => setShowText(true), 500);
-      
-      setTimeout(() => {
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 1500,
-          useNativeDriver: true,
-        }).start();
-      }, 3500);
-    }
-  }, [visible]);
-  
-  if (!visible) return null;
-  
-  return (
-    <Animated.View 
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.7)',
-        zIndex: 9999,
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: fadeAnim
-      }}
-      pointerEvents={visible ? 'auto' : 'none'}
-    >
-      {showText && (
-        <AnimatedSvgText 
-          text="Happy Wedding" 
-          fontSize={48} 
-          color="white"
-        />
-      )}
-    </Animated.View>
-  );
-};
 
-const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {} }) => {
+const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {}, isPlaying = false, onTogglePlay, playbackProgress = 0 }) => {
   const insets = useSafeAreaInsets();
   // additional_info가 문자열인지 객체인지 확인 및 파싱
   if (typeof eventData.additional_info === 'string') {
@@ -340,7 +293,6 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
   }
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [showOpening, setShowOpening] = useState(true);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [galleryScrollIndex, setGalleryScrollIndex] = useState(0);
   const [activeAccountToggle, setActiveAccountToggle] = useState('groom');
@@ -348,14 +300,18 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
   const [dateSectionY, setDateSectionY] = useState(0);
   const [randomGreeting, setRandomGreeting] = useState(null);
   const [mapCoord, setMapCoord] = useState(null);
+  // isPlaying은 EventDisplayScreen에서 prop으로 전달 (없으면 로컬 state fallback)
+  const [localPlaying, setLocalPlaying] = useState(false);
+  const isMusicPlaying = onTogglePlay ? isPlaying : localPlaying;
+  const handleTogglePlay = onTogglePlay ?? (() => setLocalPlaying(p => !p));
 
   const scrollY = useRef(new Animated.Value(0)).current;
-  const fadeAnims = useRef(Array.from({ length: 15 }, () => new Animated.Value(0))).current;
-  const slideAnims = useRef(Array.from({ length: 15 }, () => new Animated.Value(50))).current;
+  const fadeAnims = useRef(Array.from({ length: 15 }, () => new Animated.Value(1))).current;
+  const slideAnims = useRef(Array.from({ length: 15 }, () => new Animated.Value(0))).current;
   
   // 신랑/신부 이름 애니메이션용
-  const namesFadeAnim = useRef(new Animated.Value(0)).current;
-  const namesScaleAnim = useRef(new Animated.Value(0.8)).current;
+  const namesFadeAnim = useRef(new Animated.Value(1)).current;
+  const namesScaleAnim = useRef(new Animated.Value(1)).current;
   const heartBeatAnim = useRef(new Animated.Value(1)).current;
   
   // 랜덤 인사말 선택
@@ -410,67 +366,23 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
   const hasCouplePhotos = hasGroomPhoto || hasBridePhoto;
 
   useEffect(() => {
-    // 오프닝 오버레이 제거
-    setTimeout(() => {
-      setShowOpening(false);
-    }, 5500);
-
-    // 순차적 페이드인 애니메이션
-    fadeAnims.forEach((anim, index) => {
-      Animated.timing(anim, {
-        toValue: 1,
-        duration: 1000,
-        delay: index * 200 + 2500,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.ease),
-      }).start();
-    });
-
-    slideAnims.forEach((anim, index) => {
-      Animated.timing(anim, {
-        toValue: 0,
-        duration: 1000,
-        delay: index * 200 + 2500,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.ease),
-      }).start();
-    });
-    
-    // 신랑/신부 이름 애니메이션
-    setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(namesFadeAnim, {
-          toValue: 1,
-          duration: 1500,
+    // 하트 비트 애니메이션
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(heartBeatAnim, {
+          toValue: 1.2,
+          duration: 600,
           useNativeDriver: true,
           easing: Easing.out(Easing.ease),
         }),
-        Animated.spring(namesScaleAnim, {
+        Animated.timing(heartBeatAnim, {
           toValue: 1,
-          friction: 4,
-          tension: 40,
+          duration: 600,
           useNativeDriver: true,
+          easing: Easing.in(Easing.ease),
         })
-      ]).start();
-      
-      // 하트 비트 애니메이션
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(heartBeatAnim, {
-            toValue: 1.2,
-            duration: 600,
-            useNativeDriver: true,
-            easing: Easing.out(Easing.ease),
-          }),
-          Animated.timing(heartBeatAnim, {
-            toValue: 1,
-            duration: 600,
-            useNativeDriver: true,
-            easing: Easing.in(Easing.ease),
-          })
-        ])
-      ).start();
-    }, 3500);
+      ])
+    ).start();
   }, []);
 
   // 날짜 포맷팅
@@ -658,8 +570,6 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
     <View style={styles.romantic_container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F5F2" />
 
-      {/* 커스텀 오프닝 오버레이 */}
-      <CustomOpeningOverlay visible={showOpening} />
 
       <ScrollView
         style={styles.romantic_scrollView}
@@ -667,34 +577,92 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
         onScroll={handleScroll}
         scrollEventThrottle={16}
       >
-        {/* 인트로 섹션 */}
-        <Animated.View style={[
-          styles.romantic_introSection,
-          {
-            opacity: fadeAnims[0],
-            transform: [{ translateY: slideAnims[0] }],
-            paddingTop: 20 + insets.top,
-          }
-        ]}>
-          <LinearGradient
-            colors={['#F8F5F2', '#F3EFEC']}
-            style={StyleSheet.absoluteFill}
-          />
-
-          <View style={styles.romantic_introContent}>
-            <Text style={styles.romantic_subtitle}>WEDDING INVITATION</Text>
-            <Text style={styles.romantic_loveText}>With Love</Text>
-            
-            <View style={styles.romantic_mainImageContainer}>
-              <MainPhotoSlideshow 
+        {/* 인트로 섹션 — 뮤직 플레이어 카드 */}
+        <View style={[styles.romantic_introSection]}>
+          <View style={[styles.romantic_playerCard, { paddingTop: 20 + insets.top }]}>
+            {/* 사진 */}
+            <View style={styles.romantic_playerPhoto}>
+              <MainPhotoSlideshow
                 images={safeImages.main}
-                style={styles.romantic_mainPhoto}
+                style={{ width: '100%', height: '100%' }}
                 onImagePress={handleImagePress}
                 template="romantic"
               />
             </View>
+
+            {/* 이름 */}
+            <View style={styles.romantic_playerNames}>
+              <Text style={styles.romantic_playerName}>
+                {eventData.groomName || eventData.groom_name || '신랑'}
+              </Text>
+              <Animated.Text style={[styles.romantic_playerHeart, { transform: [{ scale: heartBeatAnim }] }]}>
+                ♥
+              </Animated.Text>
+              <Text style={styles.romantic_playerName}>
+                {eventData.brideName || eventData.bride_name || '신부'}
+              </Text>
+            </View>
+
+            {/* 날짜 */}
+            <Text style={styles.romantic_playerDate}>
+              {dateInfo.year && `${dateInfo.year}.${String(dateInfo.month).padStart(2,'0')}.${String(dateInfo.day).padStart(2,'0')}`}
+              {dateInfo.dayOfWeek && `  ${dateInfo.dayOfWeek}`}
+              {ceremonyTime && `  ${ceremonyTime}`}
+            </Text>
+
+            {/* 프로그레스 바 */}
+            <View style={styles.romantic_playerProgressWrap}>
+              <View style={styles.romantic_playerProgressTrack}>
+                <View style={[styles.romantic_playerProgressFill, { width: `${playbackProgress * 100}%` }]} />
+                <View style={[styles.romantic_playerProgressDot, { left: `${playbackProgress * 100}%`, transform: [{ translateX: -5 }] }]} />
+              </View>
+            </View>
+
+            {/* 컨트롤 버튼 */}
+            <View style={styles.romantic_playerControls}>
+              {/* 되감기 << */}
+              <TouchableOpacity style={styles.romantic_playerBtn}>
+                <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                  <Path d="M11 19l-7-7 7-7M18 19l-7-7 7-7" stroke="#7A6058" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </Svg>
+              </TouchableOpacity>
+              {/* 이전 |< */}
+              <TouchableOpacity style={styles.romantic_playerBtn}>
+                <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                  <Path d="M19 20L9 12l10-8v16zM5 4v16" stroke="#7A6058" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </Svg>
+              </TouchableOpacity>
+              {/* 재생/일시정지 */}
+              <TouchableOpacity
+                style={styles.romantic_playerPlayBtn}
+                onPress={handleTogglePlay}
+              >
+                <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                  {isMusicPlaying ? (
+                    <>
+                      <Rect x="6" y="5" width="4" height="14" rx="1" fill="#5A463E"/>
+                      <Rect x="14" y="5" width="4" height="14" rx="1" fill="#5A463E"/>
+                    </>
+                  ) : (
+                    <Path d="M8 5l11 7-11 7V5z" fill="#5A463E"/>
+                  )}
+                </Svg>
+              </TouchableOpacity>
+              {/* 다음 >| */}
+              <TouchableOpacity style={styles.romantic_playerBtn}>
+                <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                  <Path d="M5 4l10 8-10 8V4zM19 4v16" stroke="#7A6058" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </Svg>
+              </TouchableOpacity>
+              {/* 빨리감기 >> */}
+              <TouchableOpacity style={styles.romantic_playerBtn}>
+                <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                  <Path d="M13 5l7 7-7 7M6 5l7 7-7 7" stroke="#7A6058" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </Svg>
+              </TouchableOpacity>
+            </View>
           </View>
-        </Animated.View>
+        </View>
 
         {/* 인사말 섹션 - 수정된 부분 */}
         <Animated.View style={[

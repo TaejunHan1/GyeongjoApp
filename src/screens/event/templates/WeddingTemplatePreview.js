@@ -14,13 +14,16 @@ import RomanticArchTemplate from './wedding/RomanticArchTemplate';
 import EditorialMagazineTemplate from './wedding/EditorialMagazineTemplate';
 
 // 메인 렌더링 컴포넌트
-export default function WeddingTemplatePreview({ 
-  template, 
-  eventData, 
-  userImages, 
+export default function WeddingTemplatePreview({
+  template,
+  eventData,
+  userImages,
   categorizedImages,
   allowMessages,
-  messageSettings 
+  messageSettings,
+  isPlaying,
+  onTogglePlay,
+  playbackProgress,
 }) {
 
   // template이 undefined인 경우 대비
@@ -37,7 +40,10 @@ export default function WeddingTemplatePreview({
     eventData: eventData || {},
     categorizedImages: categorizedImages,
     allowMessages: allowMessages,
-    messageSettings: messageSettings
+    messageSettings: messageSettings,
+    isPlaying: isPlaying,
+    onTogglePlay: onTogglePlay,
+    playbackProgress: playbackProgress ?? 0,
   };
 
   // 템플릿 스타일에 따라 해당하는 컴포넌트 렌더링

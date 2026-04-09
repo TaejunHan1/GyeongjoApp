@@ -12,6 +12,7 @@ const PHONE_W = Math.min(SCREEN_W - 48, 270);
 const PHONE_H = PHONE_W * (16 / 9);
 
 export const INTRO_LIST = [
+  { id: 'none',    title: '인트로 없음',   desc: '청첩장이 바로 열립니다',                   emoji: '✕'  },
   { id: 'grand',   title: '그랜드 오픈',   desc: '아이보리 도어 · 황금빛 W 씰',             emoji: '🚪' },
   { id: 'classic', title: '클래식 누아르',  desc: '칠흑 더블프레임 도어 · 골드 링 씰',       emoji: '🚪' },
   { id: 'arch',    title: '로맨틱 버건디',  desc: '와인빛 아치 도어 · 로즈골드 다이아 씰',   emoji: '🚪' },
@@ -583,13 +584,13 @@ export const INTRO_OVERLAYS = {
 // ══════════════════════════════════════════════════════
 export default function WeddingIntroSelectModal({ visible, onClose, selectedId, onSelect }) {
   const insets = useSafeAreaInsets();
-  const [selected,  setSelected]  = useState('grand');
+  const [selected,  setSelected]  = useState('none');
   const [tapToOpen, setTapToOpen] = useState(false);
   const [playKey,   setPlayKey]   = useState(0);
 
   useEffect(() => {
     if (visible) {
-      const id  = typeof selectedId === 'string' ? selectedId : selectedId?.id || 'grand';
+      const id  = typeof selectedId === 'string' ? selectedId : selectedId?.id || 'none';
       const tap = typeof selectedId === 'object' && selectedId !== null
                 ? selectedId.tapToOpen || false : false;
       setSelected(id);
@@ -638,20 +639,22 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
             </View>
           </View>
 
-          <View style={s.toggleSection}>
-            <View style={s.toggleRow}>
-              <View style={{ flex: 1, marginRight: 12 }}>
-                <Text style={s.toggleLabel}>눌러서 열기</Text>
-                <Text style={s.toggleDesc}>하객이 화면을 직접 터치해서 문을 열 수 있어요</Text>
+          {selected !== 'none' && (
+            <View style={s.toggleSection}>
+              <View style={s.toggleRow}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={s.toggleLabel}>눌러서 열기</Text>
+                  <Text style={s.toggleDesc}>하객이 화면을 직접 터치해서 문을 열 수 있어요</Text>
+                </View>
+                <Switch value={tapToOpen} onValueChange={handleTapToOpenChange}
+                  trackColor={{ false: '#E5E5EA', true: '#34C759' }}
+                  thumbColor="#fff" ios_backgroundColor="#E5E5EA" />
               </View>
-              <Switch value={tapToOpen} onValueChange={handleTapToOpenChange}
-                trackColor={{ false: '#E5E5EA', true: '#34C759' }}
-                thumbColor="#fff" ios_backgroundColor="#E5E5EA" />
             </View>
-          </View>
+          )}
 
           <View style={s.listWrap}>
-            <Text style={s.listHeader}>도어 컬렉션 ({INTRO_LIST.length})</Text>
+            <Text style={s.listHeader}>도어 컬렉션 ({INTRO_LIST.filter(i => i.id !== 'none').length})</Text>
             <View style={s.listCard}>
               {INTRO_LIST.map((intro, i) => {
                 const isSel = selected === intro.id;
@@ -679,7 +682,9 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
         <View style={[s.cta, { paddingBottom: (insets.bottom || 0) + 16 }]}>
           <TouchableOpacity style={s.ctaBtn} activeOpacity={0.88}
             onPress={() => { onSelect({ id: selected, tapToOpen }); onClose(); }}>
-            <Text style={s.ctaBtnText}>이 도어로 적용하기</Text>
+            <Text style={s.ctaBtnText}>
+              {selected === 'none' ? '인트로 없이 적용하기' : '이 도어로 적용하기'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
