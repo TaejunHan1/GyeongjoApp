@@ -238,11 +238,39 @@ const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
             <Text style={styles.korean_sectionTitle}>인사말</Text>
             <View style={styles.korean_decorativeLine} />
           </View>
-          
-          <Text style={styles.korean_customMessage}>
-            {eventData.customMessage || eventData.custom_message || 
-             '두 사람이 하나 되어 새로운 인생을 시작하려 합니다.\n저희의 소중한 첫걸음에 함께해 주시면 더없는 기쁨이겠습니다.'}
-          </Text>
+
+          {/* 인사 메시지 박스 */}
+          <View style={styles.korean_greetingMessageBox}>
+            <Text style={styles.korean_customMessage}>
+              {eventData.customMessage || eventData.custom_message ||
+               '두 사람이 하나 되어 새로운 인생을 시작하려 합니다.\n저희의 소중한 첫걸음에 함께해 주시면 더없는 기쁨이겠습니다.'}
+            </Text>
+          </View>
+
+          {/* 신랑 · 신부 이름 카드 */}
+          <View style={styles.korean_greetingCoupleRow}>
+            <View style={styles.korean_greetingCoupleItem}>
+              <Text style={styles.korean_greetingCoupleRole}>신랑</Text>
+              <Text style={styles.korean_greetingCoupleName}>
+                {eventData.groomName || eventData.groom_name || '신랑'}
+              </Text>
+              <Text style={styles.korean_greetingCoupleParents}>
+                {eventData.additional_info?.groom_father_name || eventData.groomFatherName || '아버지'}{' · '}{eventData.additional_info?.groom_mother_name || eventData.groomMotherName || '어머니'}의 아들
+              </Text>
+            </View>
+
+            <Text style={styles.korean_greetingHeart}>♡</Text>
+
+            <View style={styles.korean_greetingCoupleItem}>
+              <Text style={styles.korean_greetingCoupleRole}>신부</Text>
+              <Text style={styles.korean_greetingCoupleName}>
+                {eventData.brideName || eventData.bride_name || '신부'}
+              </Text>
+              <Text style={styles.korean_greetingCoupleParents}>
+                {eventData.additional_info?.bride_father_name || eventData.brideFatherName || '아버지'}{' · '}{eventData.additional_info?.bride_mother_name || eventData.brideMotherName || '어머니'}의 딸
+              </Text>
+            </View>
+          </View>
         </Animated.View>
 
         {/* 신랑신부 소개 - 사진이 있을 때만 */}

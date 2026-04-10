@@ -295,6 +295,7 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [galleryScrollIndex, setGalleryScrollIndex] = useState(0);
+  const [currentPage, setCurrentPage] = useState(0);
   const [activeAccountToggle, setActiveAccountToggle] = useState('groom');
   const [showDateAnimation, setShowDateAnimation] = useState(false);
   const [dateSectionY, setDateSectionY] = useState(0);
@@ -475,7 +476,7 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
   };
 
   const handleAccountToggle = (type) => {
-    setActiveAccountToggle(activeAccountToggle === type ? null : type);
+    setActiveAccountToggle(type);
   };
 
   const copyAccount = async (accountNumber) => {
@@ -486,6 +487,23 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
       Alert.alert('오류', '복사에 실패했습니다.');
     }
   };
+
+  const formatPhone = (phone) => {
+    if (!phone) return '';
+    const d = phone.replace(/\D/g, '');
+    if (d.length === 8) return `010-${d.slice(0,4)}-${d.slice(4)}`;
+    if (d.length === 10) return `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6)}`;
+    if (d.length === 11) return `${d.slice(0,3)}-${d.slice(3,7)}-${d.slice(7)}`;
+    return phone;
+  };
+
+  const additionalInfo = eventData.additional_info || {};
+  const groomContact = eventData.groomContact || eventData.groom_contact || '';
+  const brideContact = eventData.brideContact || eventData.bride_contact || '';
+  const groomFatherContact = additionalInfo.groom_father_contact || eventData.groomFatherContact || '';
+  const groomMotherContact = additionalInfo.groom_mother_contact || eventData.groomMotherContact || '';
+  const brideFatherContact = additionalInfo.bride_father_contact || eventData.brideFatherContact || '';
+  const brideMotherContact = additionalInfo.bride_mother_contact || eventData.brideMotherContact || '';
 
   const openMessageModal = () => {
     setShowMessageModal(true);
@@ -547,6 +565,9 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
       content: "하윤아 결혼 진심으로 축하해!\n웨딩스냅, 청첩장 모두 너무 예쁘다!💚\n남은 결혼식 준비도 잘 마무리하고!\n행복한 결혼생활 되기를 바래✨"
     }
   ];
+  const messagesPerPage = 3;
+  const totalPages = Math.ceil(guestMessages.length / messagesPerPage);
+  const currentMessages = guestMessages.slice(currentPage * messagesPerPage, (currentPage + 1) * messagesPerPage);
 
   // 인사말 텍스트 결정
   let greetingMessage = '';
@@ -994,25 +1015,67 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
         {allowMessages && (
           <Animated.View style={[
             styles.romantic_messagesSection,
-            {
-              opacity: fadeAnims[6],
-              transform: [{ translateY: slideAnims[6] }]
-            }
+            { opacity: fadeAnims[6], transform: [{ translateY: slideAnims[6] }] }
           ]}>
             <LinearGradient
               colors={['#F8F5F2', '#F3EFEC']}
               style={StyleSheet.absoluteFill}
             />
-            
+
             <Text style={styles.romantic_messagesTitle}>Messages</Text>
             <Text style={styles.romantic_messagesSubtitle}>
               {messageSettings?.placeholder || '저희 둘에게 따뜻한 방명록을 남겨주세요'}
             </Text>
-            
-            <GuestBookMessages 
-              messages={guestMessages}
-              onAddMessage={openMessageModal}
-            />
+
+            {/* 메시지 리스트 */}
+            <View style={styles.romantic_messagesList}>
+              {guestMessages.length === 0 ? (
+                <View style={styles.romantic_emptyMessages}>
+                  <Text style={styles.romantic_emptyIcon}>💬</Text>
+                  <Text style={styles.romantic_emptyText}>아직 축하 메시지가 없습니다</Text>
+                </View>
+              ) : (
+                currentMessages.map((msg, i) => (
+                  <View key={i} style={styles.romantic_messageCard}>
+                    <View style={styles.romantic_messageHeader}>
+                      <Text style={styles.romantic_messageFrom}>From. {msg.from}</Text>
+                      <Text style={styles.romantic_messageDate}>{msg.date}</Text>
+                    </View>
+                    <Text style={styles.romantic_messageContent}>{msg.content}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+
+            {/* 페이지네이션 */}
+            {totalPages > 1 && (
+              <View style={styles.romantic_pagination}>
+                <TouchableOpacity
+                  onPress={() => setCurrentPage(p => Math.max(0, p - 1))}
+                  disabled={currentPage === 0}
+                >
+                  <Text style={[styles.romantic_pageNavButton, currentPage === 0 && styles.romantic_pageNavButtonDisabled]}>‹</Text>
+                </TouchableOpacity>
+                <View style={styles.romantic_pageDots}>
+                  {Array.from({ length: totalPages }, (_, i) => (
+                    <TouchableOpacity key={i} onPress={() => setCurrentPage(i)}>
+                      <View style={[styles.romantic_pageDot, currentPage === i && styles.romantic_pageDotActive]} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity
+                  onPress={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={currentPage === totalPages - 1}
+                >
+                  <Text style={[styles.romantic_pageNavButton, currentPage === totalPages - 1 && styles.romantic_pageNavButtonDisabled]}>›</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* 축하메시지 남기기 버튼 (미리보기에서 비활성) */}
+            <View style={styles.romantic_guestbookButton}>
+              <Text style={styles.romantic_guestbookButtonText}>축하메시지 남기기</Text>
+            </View>
           </Animated.View>
         )}
 
@@ -1069,7 +1132,7 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
           </TouchableOpacity>
         </Animated.View>
 
-        {/* 축하금 안내 섹션 - 웹 버전 스타일 적용 */}
+        {/* 축의금 & 연락처 섹션 */}
         <Animated.View style={[
           styles.romantic_giftSection,
           {
@@ -1077,184 +1140,203 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
             transform: [{ translateY: slideAnims[8] }]
           }
         ]}>
-          <View style={styles.romantic_giftHeader}>
-            <Text style={styles.romantic_giftTitle}>축의금 전달</Text>
-            <Text style={styles.romantic_giftSubtitle}>따뜻한 마음을 함께 나누어주세요</Text>
-          </View>
-          
-          <View style={styles.romantic_giftDescription}>
-            <Text style={styles.romantic_giftDescriptionText}>
-              축복의 마음을 담은 소중한 마음,{'\n'}
-              이렇게 전할 수 있어요
-            </Text>
+          {/* 헤더 */}
+          <View style={styles.romantic_giftContactHeader}>
+            <Text style={styles.romantic_giftContactEn}>Contribution & Contact</Text>
+            <Text style={styles.romantic_giftContactKo}>축의금 & 연락처</Text>
+            <View style={styles.romantic_giftContactLine} />
+            <Text style={styles.romantic_giftContactSubtitle}>따뜻한 마음을 함께 나누어주세요</Text>
           </View>
 
-          {/* 토글 버튼 */}
+          {/* 토글 */}
           <View style={styles.romantic_toggleContainer}>
             <View style={styles.romantic_toggleButtons}>
-              <TouchableOpacity 
-                style={[
-                  styles.romantic_toggleButton, 
-                  activeAccountToggle === 'groom' && styles.romantic_toggleButtonActive
-                ]}
+              <TouchableOpacity
+                style={[styles.romantic_toggleButton, activeAccountToggle === 'groom' && styles.romantic_toggleButtonActive]}
                 onPress={() => handleAccountToggle('groom')}
               >
-                <Text style={[
-                  styles.romantic_toggleButtonText,
-                  activeAccountToggle === 'groom' && styles.romantic_toggleButtonTextActive
-                ]}>신랑측</Text>
+                <Text style={[styles.romantic_toggleButtonText, activeAccountToggle === 'groom' && styles.romantic_toggleButtonTextActive]}>신랑측</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[
-                  styles.romantic_toggleButton, 
-                  activeAccountToggle === 'bride' && styles.romantic_toggleButtonActive
-                ]}
+              <TouchableOpacity
+                style={[styles.romantic_toggleButton, activeAccountToggle === 'bride' && styles.romantic_toggleButtonActive]}
                 onPress={() => handleAccountToggle('bride')}
               >
-                <Text style={[
-                  styles.romantic_toggleButtonText,
-                  activeAccountToggle === 'bride' && styles.romantic_toggleButtonTextActive
-                ]}>신부측</Text>
+                <Text style={[styles.romantic_toggleButtonText, activeAccountToggle === 'bride' && styles.romantic_toggleButtonTextActive]}>신부측</Text>
               </TouchableOpacity>
             </View>
           </View>
-          
-          <View style={styles.romantic_accountsContainer}>
-            {/* 신랑측 계좌 */}
-            {activeAccountToggle === 'groom' && (eventData.additional_info?.groom_account_number || 
-              eventData.additional_info?.groom_father_account_number || 
-              eventData.additional_info?.groom_mother_account_number) && (
-              <View style={styles.romantic_accountGroup}>
-                <View style={styles.romantic_accountCards}>
-                  {eventData.additional_info?.groom_account_number && (
-                    <TouchableOpacity 
-                      style={styles.romantic_accountCard}
-                      onPress={() => copyAccount(eventData.additional_info.groom_account_number)}
-                    >
-                      <View style={styles.romantic_accountInfo}>
-                        <Text style={styles.romantic_accountName}>
-                          {eventData.groomName || eventData.groom_name || '신랑'}
-                        </Text>
-                        <View style={styles.romantic_bankInfo}>
-                          <Text style={styles.romantic_bankName}>{eventData.additional_info.groom_bank_name || '은행'}</Text>
-                          <Text style={styles.romantic_accountNumber}>{eventData.additional_info.groom_account_number}</Text>
+
+          {/* 카드 목록 */}
+          <View style={styles.romantic_personCardsContainer}>
+            {activeAccountToggle === 'groom' && (
+              <View style={styles.romantic_personCardGroup}>
+                {/* 신랑 */}
+                {(additionalInfo.groom_account_number || groomContact) && (
+                  <View style={styles.romantic_personCard}>
+                    <Text style={styles.romantic_personCardLabel}>{eventData.groomName || eventData.groom_name || '신랑'}</Text>
+                    {additionalInfo.groom_account_number && (
+                      <TouchableOpacity style={styles.romantic_personCardRow} onPress={() => copyAccount(additionalInfo.groom_account_number)}>
+                        <View style={styles.romantic_personCardRowInfo}>
+                          {additionalInfo.groom_bank_name && <Text style={styles.romantic_personCardBank}>{additionalInfo.groom_bank_name}</Text>}
+                          <Text style={styles.romantic_personCardValue}>{additionalInfo.groom_account_number}</Text>
                         </View>
-                      </View>
-                      <View style={styles.romantic_copyButton}>
-                        <Text style={styles.romantic_copyIcon}>복사</Text>
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                  
-                  {eventData.additional_info?.groom_father_account_number && (
-                    <TouchableOpacity 
-                      style={styles.romantic_accountCard}
-                      onPress={() => copyAccount(eventData.additional_info.groom_father_account_number)}
-                    >
-                      <View style={styles.romantic_accountInfo}>
-                        <Text style={styles.romantic_accountName}>
-                          {eventData.groomFatherName || eventData.groom_father_name || '신랑'} 아버님
-                        </Text>
-                        <View style={styles.romantic_bankInfo}>
-                          <Text style={styles.romantic_bankName}>{eventData.additional_info.groom_father_bank_name || '은행'}</Text>
-                          <Text style={styles.romantic_accountNumber}>{eventData.additional_info.groom_father_account_number}</Text>
+                        <View style={styles.romantic_personActionBtn}><Text style={styles.romantic_personActionBtnText}>복사</Text></View>
+                      </TouchableOpacity>
+                    )}
+                    {additionalInfo.groom_account_number && groomContact && <View style={styles.romantic_personCardDivider} />}
+                    {groomContact && (
+                      <TouchableOpacity style={styles.romantic_personCardRow} onPress={() => Linking.openURL(`tel:${groomContact.replace(/\D/g, '').length === 8 ? '010' + groomContact.replace(/\D/g, '') : groomContact.replace(/\D/g, '')}`)}>
+                        <View style={styles.romantic_personCardRowInfo}>
+                          <Text style={styles.romantic_personCardValue}>{formatPhone(groomContact)}</Text>
                         </View>
-                      </View>
-                      <View style={styles.romantic_copyButton}>
-                        <Text style={styles.romantic_copyIcon}>복사</Text>
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                  
-                  {eventData.additional_info?.groom_mother_account_number && (
-                    <TouchableOpacity 
-                      style={styles.romantic_accountCard}
-                      onPress={() => copyAccount(eventData.additional_info.groom_mother_account_number)}
-                    >
-                      <View style={styles.romantic_accountInfo}>
-                        <Text style={styles.romantic_accountName}>
-                          {eventData.groomMotherName || eventData.groom_mother_name || '신랑'} 어머님
-                        </Text>
-                        <View style={styles.romantic_bankInfo}>
-                          <Text style={styles.romantic_bankName}>{eventData.additional_info.groom_mother_bank_name || '은행'}</Text>
-                          <Text style={styles.romantic_accountNumber}>{eventData.additional_info.groom_mother_account_number}</Text>
+                        <View style={[styles.romantic_personActionBtn, styles.romantic_personCallBtn]}>
+                          <Ionicons name="call-outline" size={13} color="#9B6B5A" />
+                          <Text style={styles.romantic_personActionBtnText}>전화</Text>
                         </View>
-                      </View>
-                      <View style={styles.romantic_copyButton}>
-                        <Text style={styles.romantic_copyIcon}>복사</Text>
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                {/* 신랑 아버님 */}
+                {(additionalInfo.groom_father_account_number || groomFatherContact) && (
+                  <View style={styles.romantic_personCard}>
+                    <Text style={styles.romantic_personCardLabel}>아버님</Text>
+                    {additionalInfo.groom_father_account_number && (
+                      <TouchableOpacity style={styles.romantic_personCardRow} onPress={() => copyAccount(additionalInfo.groom_father_account_number)}>
+                        <View style={styles.romantic_personCardRowInfo}>
+                          {additionalInfo.groom_father_bank_name && <Text style={styles.romantic_personCardBank}>{additionalInfo.groom_father_bank_name}</Text>}
+                          <Text style={styles.romantic_personCardValue}>{additionalInfo.groom_father_account_number}</Text>
+                        </View>
+                        <View style={styles.romantic_personActionBtn}><Text style={styles.romantic_personActionBtnText}>복사</Text></View>
+                      </TouchableOpacity>
+                    )}
+                    {additionalInfo.groom_father_account_number && groomFatherContact && <View style={styles.romantic_personCardDivider} />}
+                    {groomFatherContact && (
+                      <TouchableOpacity style={styles.romantic_personCardRow} onPress={() => Linking.openURL(`tel:${groomFatherContact.replace(/\D/g, '').length === 8 ? '010' + groomFatherContact.replace(/\D/g, '') : groomFatherContact.replace(/\D/g, '')}`)}>
+                        <View style={styles.romantic_personCardRowInfo}>
+                          <Text style={styles.romantic_personCardValue}>{formatPhone(groomFatherContact)}</Text>
+                        </View>
+                        <View style={[styles.romantic_personActionBtn, styles.romantic_personCallBtn]}>
+                          <Ionicons name="call-outline" size={13} color="#9B6B5A" />
+                          <Text style={styles.romantic_personActionBtnText}>전화</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                {/* 신랑 어머님 */}
+                {(additionalInfo.groom_mother_account_number || groomMotherContact) && (
+                  <View style={styles.romantic_personCard}>
+                    <Text style={styles.romantic_personCardLabel}>어머님</Text>
+                    {additionalInfo.groom_mother_account_number && (
+                      <TouchableOpacity style={styles.romantic_personCardRow} onPress={() => copyAccount(additionalInfo.groom_mother_account_number)}>
+                        <View style={styles.romantic_personCardRowInfo}>
+                          {additionalInfo.groom_mother_bank_name && <Text style={styles.romantic_personCardBank}>{additionalInfo.groom_mother_bank_name}</Text>}
+                          <Text style={styles.romantic_personCardValue}>{additionalInfo.groom_mother_account_number}</Text>
+                        </View>
+                        <View style={styles.romantic_personActionBtn}><Text style={styles.romantic_personActionBtnText}>복사</Text></View>
+                      </TouchableOpacity>
+                    )}
+                    {additionalInfo.groom_mother_account_number && groomMotherContact && <View style={styles.romantic_personCardDivider} />}
+                    {groomMotherContact && (
+                      <TouchableOpacity style={styles.romantic_personCardRow} onPress={() => Linking.openURL(`tel:${groomMotherContact.replace(/\D/g, '').length === 8 ? '010' + groomMotherContact.replace(/\D/g, '') : groomMotherContact.replace(/\D/g, '')}`)}>
+                        <View style={styles.romantic_personCardRowInfo}>
+                          <Text style={styles.romantic_personCardValue}>{formatPhone(groomMotherContact)}</Text>
+                        </View>
+                        <View style={[styles.romantic_personActionBtn, styles.romantic_personCallBtn]}>
+                          <Ionicons name="call-outline" size={13} color="#9B6B5A" />
+                          <Text style={styles.romantic_personActionBtnText}>전화</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
               </View>
             )}
-            
-            {/* 신부측 계좌 */}
-            {activeAccountToggle === 'bride' && (eventData.additional_info?.bride_account_number || 
-              eventData.additional_info?.bride_father_account_number || 
-              eventData.additional_info?.bride_mother_account_number) && (
-              <View style={styles.romantic_accountGroup}>
-                <View style={styles.romantic_accountCards}>
-                  {eventData.additional_info?.bride_account_number && (
-                    <TouchableOpacity 
-                      style={styles.romantic_accountCard}
-                      onPress={() => copyAccount(eventData.additional_info.bride_account_number)}
-                    >
-                      <View style={styles.romantic_accountInfo}>
-                        <Text style={styles.romantic_accountName}>
-                          {eventData.brideName || eventData.bride_name || '신부'}
-                        </Text>
-                        <View style={styles.romantic_bankInfo}>
-                          <Text style={styles.romantic_bankName}>{eventData.additional_info.bride_bank_name || '은행'}</Text>
-                          <Text style={styles.romantic_accountNumber}>{eventData.additional_info.bride_account_number}</Text>
+
+            {activeAccountToggle === 'bride' && (
+              <View style={styles.romantic_personCardGroup}>
+                {/* 신부 */}
+                {(additionalInfo.bride_account_number || brideContact) && (
+                  <View style={styles.romantic_personCard}>
+                    <Text style={styles.romantic_personCardLabel}>{eventData.brideName || eventData.bride_name || '신부'}</Text>
+                    {additionalInfo.bride_account_number && (
+                      <TouchableOpacity style={styles.romantic_personCardRow} onPress={() => copyAccount(additionalInfo.bride_account_number)}>
+                        <View style={styles.romantic_personCardRowInfo}>
+                          {additionalInfo.bride_bank_name && <Text style={styles.romantic_personCardBank}>{additionalInfo.bride_bank_name}</Text>}
+                          <Text style={styles.romantic_personCardValue}>{additionalInfo.bride_account_number}</Text>
                         </View>
-                      </View>
-                      <View style={styles.romantic_copyButton}>
-                        <Text style={styles.romantic_copyIcon}>복사</Text>
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                  
-                  {eventData.additional_info?.bride_father_account_number && (
-                    <TouchableOpacity 
-                      style={styles.romantic_accountCard}
-                      onPress={() => copyAccount(eventData.additional_info.bride_father_account_number)}
-                    >
-                      <View style={styles.romantic_accountInfo}>
-                        <Text style={styles.romantic_accountName}>
-                          {eventData.brideFatherName || eventData.bride_father_name || '신부'} 아버님
-                        </Text>
-                        <View style={styles.romantic_bankInfo}>
-                          <Text style={styles.romantic_bankName}>{eventData.additional_info.bride_father_bank_name || '은행'}</Text>
-                          <Text style={styles.romantic_accountNumber}>{eventData.additional_info.bride_father_account_number}</Text>
+                        <View style={styles.romantic_personActionBtn}><Text style={styles.romantic_personActionBtnText}>복사</Text></View>
+                      </TouchableOpacity>
+                    )}
+                    {additionalInfo.bride_account_number && brideContact && <View style={styles.romantic_personCardDivider} />}
+                    {brideContact && (
+                      <TouchableOpacity style={styles.romantic_personCardRow} onPress={() => Linking.openURL(`tel:${brideContact.replace(/\D/g, '').length === 8 ? '010' + brideContact.replace(/\D/g, '') : brideContact.replace(/\D/g, '')}`)}>
+                        <View style={styles.romantic_personCardRowInfo}>
+                          <Text style={styles.romantic_personCardValue}>{formatPhone(brideContact)}</Text>
                         </View>
-                      </View>
-                      <View style={styles.romantic_copyButton}>
-                        <Text style={styles.romantic_copyIcon}>복사</Text>
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                  
-                  {eventData.additional_info?.bride_mother_account_number && (
-                    <TouchableOpacity 
-                      style={styles.romantic_accountCard}
-                      onPress={() => copyAccount(eventData.additional_info.bride_mother_account_number)}
-                    >
-                      <View style={styles.romantic_accountInfo}>
-                        <Text style={styles.romantic_accountName}>
-                          {eventData.brideMotherName || eventData.bride_mother_name || '신부'} 어머님
-                        </Text>
-                        <View style={styles.romantic_bankInfo}>
-                          <Text style={styles.romantic_bankName}>{eventData.additional_info.bride_mother_bank_name || '은행'}</Text>
-                          <Text style={styles.romantic_accountNumber}>{eventData.additional_info.bride_mother_account_number}</Text>
+                        <View style={[styles.romantic_personActionBtn, styles.romantic_personCallBtn]}>
+                          <Ionicons name="call-outline" size={13} color="#9B6B5A" />
+                          <Text style={styles.romantic_personActionBtnText}>전화</Text>
                         </View>
-                      </View>
-                      <View style={styles.romantic_copyButton}>
-                        <Text style={styles.romantic_copyIcon}>복사</Text>
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                {/* 신부 아버님 */}
+                {(additionalInfo.bride_father_account_number || brideFatherContact) && (
+                  <View style={styles.romantic_personCard}>
+                    <Text style={styles.romantic_personCardLabel}>아버님</Text>
+                    {additionalInfo.bride_father_account_number && (
+                      <TouchableOpacity style={styles.romantic_personCardRow} onPress={() => copyAccount(additionalInfo.bride_father_account_number)}>
+                        <View style={styles.romantic_personCardRowInfo}>
+                          {additionalInfo.bride_father_bank_name && <Text style={styles.romantic_personCardBank}>{additionalInfo.bride_father_bank_name}</Text>}
+                          <Text style={styles.romantic_personCardValue}>{additionalInfo.bride_father_account_number}</Text>
+                        </View>
+                        <View style={styles.romantic_personActionBtn}><Text style={styles.romantic_personActionBtnText}>복사</Text></View>
+                      </TouchableOpacity>
+                    )}
+                    {additionalInfo.bride_father_account_number && brideFatherContact && <View style={styles.romantic_personCardDivider} />}
+                    {brideFatherContact && (
+                      <TouchableOpacity style={styles.romantic_personCardRow} onPress={() => Linking.openURL(`tel:${brideFatherContact.replace(/\D/g, '').length === 8 ? '010' + brideFatherContact.replace(/\D/g, '') : brideFatherContact.replace(/\D/g, '')}`)}>
+                        <View style={styles.romantic_personCardRowInfo}>
+                          <Text style={styles.romantic_personCardValue}>{formatPhone(brideFatherContact)}</Text>
+                        </View>
+                        <View style={[styles.romantic_personActionBtn, styles.romantic_personCallBtn]}>
+                          <Ionicons name="call-outline" size={13} color="#9B6B5A" />
+                          <Text style={styles.romantic_personActionBtnText}>전화</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                {/* 신부 어머님 */}
+                {(additionalInfo.bride_mother_account_number || brideMotherContact) && (
+                  <View style={styles.romantic_personCard}>
+                    <Text style={styles.romantic_personCardLabel}>어머님</Text>
+                    {additionalInfo.bride_mother_account_number && (
+                      <TouchableOpacity style={styles.romantic_personCardRow} onPress={() => copyAccount(additionalInfo.bride_mother_account_number)}>
+                        <View style={styles.romantic_personCardRowInfo}>
+                          {additionalInfo.bride_mother_bank_name && <Text style={styles.romantic_personCardBank}>{additionalInfo.bride_mother_bank_name}</Text>}
+                          <Text style={styles.romantic_personCardValue}>{additionalInfo.bride_mother_account_number}</Text>
+                        </View>
+                        <View style={styles.romantic_personActionBtn}><Text style={styles.romantic_personActionBtnText}>복사</Text></View>
+                      </TouchableOpacity>
+                    )}
+                    {additionalInfo.bride_mother_account_number && brideMotherContact && <View style={styles.romantic_personCardDivider} />}
+                    {brideMotherContact && (
+                      <TouchableOpacity style={styles.romantic_personCardRow} onPress={() => Linking.openURL(`tel:${brideMotherContact.replace(/\D/g, '').length === 8 ? '010' + brideMotherContact.replace(/\D/g, '') : brideMotherContact.replace(/\D/g, '')}`)}>
+                        <View style={styles.romantic_personCardRowInfo}>
+                          <Text style={styles.romantic_personCardValue}>{formatPhone(brideMotherContact)}</Text>
+                        </View>
+                        <View style={[styles.romantic_personActionBtn, styles.romantic_personCallBtn]}>
+                          <Ionicons name="call-outline" size={13} color="#9B6B5A" />
+                          <Text style={styles.romantic_personActionBtnText}>전화</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
               </View>
             )}
           </View>

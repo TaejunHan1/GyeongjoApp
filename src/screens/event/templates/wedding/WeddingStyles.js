@@ -801,7 +801,102 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 40,
   },
-  
+  romantic_messagesList: {
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  romantic_emptyMessages: {
+    alignItems: 'center',
+    padding: 40,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+  },
+  romantic_emptyIcon: {
+    fontSize: 40,
+    marginBottom: 12,
+  },
+  romantic_emptyText: {
+    fontSize: 15,
+    color: '#999',
+  },
+  romantic_messageCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 22,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  romantic_messageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  romantic_messageFrom: {
+    fontSize: 13,
+    color: '#9B8D82',
+    fontWeight: '500',
+  },
+  romantic_messageDate: {
+    fontSize: 11,
+    color: '#bbb',
+  },
+  romantic_messageContent: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: '#555',
+  },
+  romantic_pagination: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 20,
+    marginVertical: 24,
+  },
+  romantic_pageNavButton: {
+    fontSize: 22,
+    color: '#9B8D82',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  romantic_pageNavButtonDisabled: {
+    color: '#ddd',
+  },
+  romantic_pageDots: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  romantic_pageDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E0D5D1',
+  },
+  romantic_pageDotActive: {
+    width: 24,
+    backgroundColor: '#9B8D82',
+  },
+  romantic_guestbookButton: {
+    alignSelf: 'center',
+    marginTop: 20,
+    backgroundColor: '#191919',
+    paddingHorizontal: 36,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  romantic_guestbookButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
   // 위치 섹션
   romantic_locationSection: {
     backgroundColor: '#ffffff',
@@ -1971,12 +2066,59 @@ const styles = StyleSheet.create({
     backgroundColor: KoreanColors.elegant.accent,
     opacity: 0.5,
   },
+  korean_greetingMessageBox: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    marginBottom: 24,
+    width: '100%',
+  },
   korean_customMessage: {
-    fontSize: 16,
+    fontSize: 15,
     lineHeight: 28,
     color: KoreanColors.elegant.text,
     textAlign: 'center',
     fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+  },
+  korean_greetingCoupleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EBF2FF',
+    borderRadius: 16,
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    gap: 16,
+    width: '100%',
+  },
+  korean_greetingCoupleItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  korean_greetingCoupleRole: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#3182F6',
+    letterSpacing: 1,
+  },
+  korean_greetingCoupleName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1B1B1B',
+    letterSpacing: -0.5,
+  },
+  korean_greetingCoupleParents: {
+    fontSize: 11,
+    color: '#8B95A1',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  korean_greetingHeart: {
+    fontSize: 22,
+    color: '#3182F6',
+    fontWeight: '300',
   },
   korean_coupleGrid: {
     flexDirection: 'row',
@@ -2941,7 +3083,109 @@ romantic_coupleCardFull: {
     color: 'white',
     letterSpacing: -0.3,
   },
-  
+
+  // 축의금 & 연락처 통합 섹션 (person-card)
+  romantic_giftContactHeader: {
+    alignItems: 'center',
+    marginBottom: 28,
+  },
+  romantic_giftContactEn: {
+    fontSize: 11,
+    color: '#C2A08A',
+    letterSpacing: 3,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  romantic_giftContactKo: {
+    fontSize: 22,
+    fontWeight: '300',
+    color: '#5C3D2E',
+    letterSpacing: 2,
+    marginBottom: 14,
+  },
+  romantic_giftContactLine: {
+    width: 30,
+    height: 1,
+    backgroundColor: '#E8C4A8',
+    marginBottom: 12,
+  },
+  romantic_giftContactSubtitle: {
+    fontSize: 13,
+    color: '#C2A08A',
+    textAlign: 'center',
+  },
+  romantic_personCardsContainer: {
+    maxWidth: 440,
+    alignSelf: 'center',
+    width: '100%',
+  },
+  romantic_personCardGroup: {
+    flexDirection: 'column',
+  },
+  romantic_personCard: {
+    backgroundColor: '#FFF5EE',
+    borderWidth: 1,
+    borderColor: '#F0D5C0',
+    borderRadius: 10,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  romantic_personCardLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#C2A08A',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  romantic_personCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+  },
+  romantic_personCardRowInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  romantic_personCardBank: {
+    fontSize: 11,
+    color: '#C2A08A',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  romantic_personCardValue: {
+    fontSize: 14,
+    color: '#5C3D2E',
+    letterSpacing: 0.5,
+  },
+  romantic_personCardDivider: {
+    height: 1,
+    backgroundColor: '#F0D5C0',
+    marginHorizontal: 16,
+  },
+  romantic_personActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    backgroundColor: '#F5E0D0',
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#E8CAAF',
+  },
+  romantic_personCallBtn: {
+    gap: 4,
+  },
+  romantic_personActionBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9B6B5A',
+  },
+
 });
 
 export default styles;
