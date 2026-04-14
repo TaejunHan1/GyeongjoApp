@@ -11,12 +11,38 @@ import {
   StatusBar,
   Animated,
 } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, G } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as ScreenOrientation from 'expo-screen-orientation';
 
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
 const INACTIVITY_MS = 10000;
+
+// 웹 버전과 동일한 경로 사용 (viewBox 0 0 250 120 기준)
+// strokeDasharray=200 통일 — 모든 획이 200 미만이므로 정상 동작
+const HINT_STROKES = [
+  // ── 홍 ──
+  { d: 'M 45 20 L 45 25' },                                         // ㅎ 머리 (세로 짧은 획)
+  { d: 'M 30 35 L 60 35' },                                         // ㅎ 가로줄
+  { d: 'M 45 44 A 8 8 0 1 1 45 60 A 8 8 0 1 1 45 44' },           // ㅎ 동그라미
+  { d: 'M 45 66 L 45 76' },                                         // ㅗ 세로줄 (위→아래)
+  { d: 'M 25 76 L 65 76' },                                         // ㅗ 가로줄
+  { d: 'M 45 84 A 10 10 0 1 1 45 104 A 10 10 0 1 1 45 84' },      // ㅇ 받침
+  // ── 길 ──
+  { d: 'M 100 28 L 125 28 L 125 55' },                             // ㄱ (가로→오른 세로)
+  { d: 'M 142 22 L 142 65' },                                       // ㅣ
+  { d: 'M 102 75 L 138 75 L 138 86' },                             // ㄹ 위
+  { d: 'M 102 86 L 138 86' },                                       // ㄹ 중간
+  { d: 'M 102 86 L 102 99 L 142 99' },                             // ㄹ 아래
+  // ── 동 ──
+  { d: 'M 185 28 L 215 28' },                                       // ㄷ 위 가로
+  { d: 'M 185 28 L 185 55 L 215 55' },                             // ㄷ 왼 세로 + 아래 가로
+  { d: 'M 200 64 L 200 74' },                                       // ㅗ 세로
+  { d: 'M 175 74 L 225 74' },                                       // ㅗ 가로
+  { d: 'M 200 84 A 10 10 0 1 1 200 104 A 10 10 0 1 1 200 84' },   // ㅇ 받침
+];
 
 export default function GuestWritingScreen({ navigation, route }) {
   const { event, side = 'groom' } = route.params;
@@ -38,12 +64,52 @@ export default function GuestWritingScreen({ navigation, route }) {
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   const timerRef = useRef(null);
   const hideTimerRef = useRef(null);
+
+  // 힌트 획 애니메이션
+  const hintAnims = useRef(HINT_STROKES.map(() => new Animated.Value(0))).current;
+  const hintOpacity = useRef(new Animated.Value(1)).current;
   // 팜 리젝션
   const drawingTouchId = useRef(null);
   // 아직 어느 터치가 펜인지 결정 못한 후보들 { id → {x, y} }
   const pendingTouches = useRef(new Map());
 
   const hasStrokes = strokes.length > 0 || currentPath.length > 0;
+
+  // 획 하나씩 그려지는 힌트 애니메이션 (웹 버전과 동일한 로직)
+  useEffect(() => {
+    if (hasStrokes || mode !== 'drawing') {
+      hintAnims.forEach(v => v.stopAnimation());
+      hintOpacity.stopAnimation();
+      return;
+    }
+
+    const run = () => {
+      hintAnims.forEach(v => v.setValue(0));
+      hintOpacity.setValue(1);
+
+      const seq = [];
+      HINT_STROKES.forEach((_, i) => {
+        // 각 획: 280ms 그리기 + 70ms 간격 (웹의 0.3s + 0.05s 갭)
+        seq.push(Animated.timing(hintAnims[i], {
+          toValue: 1,
+          duration: 280,
+          useNativeDriver: false,
+        }));
+        seq.push(Animated.delay(70));
+      });
+      seq.push(Animated.delay(1800));   // 완성 후 잠시 유지
+      seq.push(Animated.timing(hintOpacity, { toValue: 0, duration: 600, useNativeDriver: false }));
+      seq.push(Animated.delay(500));
+
+      Animated.sequence(seq).start(({ finished }) => { if (finished) run(); });
+    };
+
+    run();
+    return () => {
+      hintAnims.forEach(v => v.stopAnimation());
+      hintOpacity.stopAnimation();
+    };
+  }, [hasStrokes, mode]);
 
   // 화면 크기 변경 감지 (회전 후)
   useEffect(() => {
@@ -266,41 +332,53 @@ export default function GuestWritingScreen({ navigation, route }) {
 
     return (
       <View style={intro.container}>
-        <StatusBar hidden />
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-        {/* 뒤로 */}
-        <TouchableOpacity style={intro.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={intro.backText}>✕</Text>
-        </TouchableOpacity>
-
-        {/* 측 배지 */}
-        <View style={[intro.sideBadge, { backgroundColor: sideColor + '18', borderColor: sideColor }]}>
-          <Text style={intro.sideEmoji}>{sideEmoji}</Text>
-          <Text style={[intro.sideLabel, { color: sideColor }]}>{sideLabel}</Text>
+        {/* 헤더 */}
+        <View style={intro.header}>
+          <TouchableOpacity style={intro.backBtn} onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={intro.backText}>✕</Text>
+          </TouchableOpacity>
+          <Text style={intro.headerTitle}>하객 접수</Text>
+          <View style={{ width: 36 }} />
         </View>
 
-        {/* 행사명 */}
-        <Text style={intro.eventName}>{eventTitle}</Text>
-        <Text style={intro.desc}>결혼식에 오신 것을 환영합니다</Text>
+        {/* 본문 */}
+        <View style={intro.body}>
+          {/* 측 + 행사명 */}
+          <View style={[intro.sideIconWrap, { backgroundColor: sideColor + '15' }]}>
+            <Text style={{ fontSize: 32 }}>{sideEmoji}</Text>
+          </View>
+          <Text style={[intro.sideName, { color: sideColor }]}>{sideLabel}</Text>
+          <Text style={intro.eventName}>{eventTitle}</Text>
 
-        {/* 안내 */}
-        <View style={intro.infoBox}>
-          <Text style={intro.infoIcon}>📱</Text>
-          <Text style={intro.infoText}>
-            시작 버튼을 누르면 화면이{'\n'}
-            <Text style={intro.infoHighlight}>가로 방향 전체화면</Text>으로 전환됩니다.{'\n'}
-            하객분이 터치펜으로 성함만 적으시면 됩니다.
-          </Text>
+          {/* 안내 카드 */}
+          <View style={intro.infoCard}>
+            <View style={intro.infoRow}>
+              <View style={intro.infoDot} />
+              <Text style={intro.infoText}>시작하면 화면이 <Text style={intro.infoStrong}>가로 전체화면</Text>으로 전환돼요</Text>
+            </View>
+            <View style={intro.infoRow}>
+              <View style={intro.infoDot} />
+              <Text style={intro.infoText}>하객분이 터치펜으로 성함을 직접 적어요</Text>
+            </View>
+            <View style={intro.infoRow}>
+              <View style={intro.infoDot} />
+              <Text style={intro.infoText}>10초 무입력 시 자동으로 초기화돼요</Text>
+            </View>
+          </View>
         </View>
 
-        {/* 시작 버튼 */}
-        <TouchableOpacity
-          style={[intro.startBtn, { backgroundColor: sideColor }]}
-          onPress={enterDrawing}
-          activeOpacity={0.85}
-        >
-          <Text style={intro.startBtnText}>방명록 시작하기  →</Text>
-        </TouchableOpacity>
+        {/* 하단 버튼 */}
+        <View style={intro.footer}>
+          <TouchableOpacity
+            style={[intro.startBtn, { backgroundColor: sideColor }]}
+            onPress={enterDrawing}
+            activeOpacity={0.85}
+          >
+            <Text style={intro.startBtnText}>방명록 시작하기</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -358,26 +436,87 @@ export default function GuestWritingScreen({ navigation, route }) {
             )}
           </Svg>
 
-          {/* 빈 캔버스 안내 */}
-          {!hasStrokes && (
-            <View style={draw.emptyHint} pointerEvents="none">
-              <Text style={draw.emptyText}>성함을 적어주세요</Text>
-            </View>
-          )}
+          {/* 힌트는 ViewShot 밖으로 이동 — 캡처에 포함 안 됨 */}
         </View>
       </ViewShot>
 
-      {/* 플로팅 컨트롤 — 3초 후 반투명 */}
-      <Animated.View style={[draw.controls, { opacity: controlsOpacity }]} pointerEvents="box-none">
-
-        {/* 좌상단: 나가기 */}
-        <TouchableOpacity
-          style={draw.exitBtn}
-          onPress={exitDrawing}
-          hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+      {/* 획 힌트 오버레이 — ViewShot 밖, 캡처 안 됨 */}
+      {!hasStrokes && (
+        <Animated.View
+          style={[StyleSheet.absoluteFill, { opacity: hintOpacity }]}
+          pointerEvents="none"
         >
-          <Text style={draw.exitBtnText}>✕  나가기</Text>
-        </TouchableOpacity>
+          <Svg style={StyleSheet.absoluteFill} width={SW} height={SH}>
+            {/*
+              웹 viewBox 0 0 250 120 기준 경로
+              캐릭터 x중심≈125, y중심≈62
+              scale(2.5) 후 화면 중앙 배치:
+                translateX = SW/2 - 125*2.5 = SW/2 - 312
+                translateY = SH/2 - 62*2.5  = SH/2 - 155
+            */}
+            <G transform={`translate(${SW / 2 - 312}, ${SH / 2 - 155}) scale(2.5)`}>
+              {HINT_STROKES.map((stroke, i) => {
+                const dashOffset = hintAnims[i].interpolate({ inputRange: [0, 1], outputRange: [200, 0] });
+                const coreColor = hintAnims[i].interpolate({
+                  inputRange:  [0,       0.15,    0.6,     1      ],
+                  outputRange: ['#fff',  '#fff',  '#E0F2FE','#C8CDD4'],
+                });
+                return (
+                  <G key={i}>
+                    {/* ── 레이어 1: 하늘색 아우터 블룸 (scale 2.5 → 실제 20px) ── */}
+                    <AnimatedPath
+                      d={stroke.d} fill="none"
+                      stroke="#7DD3FC" strokeWidth={8}
+                      strokeLinecap="round" strokeLinejoin="round"
+                      strokeDasharray="200 201" strokeDashoffset={dashOffset}
+                      opacity={hintAnims[i].interpolate({
+                        inputRange: [0, 0.05, 0.5, 1],
+                        outputRange: [0, 0.35, 0.25, 0],
+                      })}
+                    />
+
+                    {/* ── 레이어 2: 흰색 이너 글로우 (scale 2.5 → 실제 10px) ── */}
+                    <AnimatedPath
+                      d={stroke.d} fill="none"
+                      stroke="white" strokeWidth={4}
+                      strokeLinecap="round" strokeLinejoin="round"
+                      strokeDasharray="200 201" strokeDashoffset={dashOffset}
+                      opacity={hintAnims[i].interpolate({
+                        inputRange: [0, 0.05, 0.45, 1],
+                        outputRange: [0, 0.80, 0.55, 0],
+                      })}
+                    />
+
+                    {/* ── 레이어 3: 흰색 코어 (scale 2.5 → 실제 4px 얇은 네온선) ── */}
+                    <AnimatedPath
+                      d={stroke.d} fill="none"
+                      stroke={coreColor} strokeWidth={1.6}
+                      strokeLinecap="round" strokeLinejoin="round"
+                      strokeDasharray="200 201" strokeDashoffset={dashOffset}
+                      opacity={0.98}
+                    />
+                  </G>
+                );
+              })}
+            </G>
+          </Svg>
+          <View style={draw.hintTextWrap}>
+            <Text style={draw.emptyText}>성함을 적어주세요</Text>
+          </View>
+        </Animated.View>
+      )}
+
+      {/* 나가기 버튼 — 항상 완전히 보임 (애니메이션 밖) */}
+      <TouchableOpacity
+        style={draw.exitBtn}
+        onPress={exitDrawing}
+        hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+      >
+        <Text style={draw.exitBtnText}>✕  나가기</Text>
+      </TouchableOpacity>
+
+      {/* 플로팅 컨트롤 — 3초 후 반투명 (다시쓰기 + 완료) */}
+      <Animated.View style={[draw.controls, { opacity: controlsOpacity }]} pointerEvents="box-none">
 
         {/* 우하단: 다시쓰기 + 완료 */}
         <View style={draw.rightBtns}>
@@ -407,57 +546,118 @@ const intro = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+
+  // 헤더
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    gap: 16,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 56,
+    paddingBottom: 16,
   },
   backBtn: {
-    position: 'absolute', top: 52, left: 20,
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: '#F2F2F7',
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#F2F4F6',
     alignItems: 'center', justifyContent: 'center',
   },
-  backText: { fontSize: 16, color: '#3C3C43', fontWeight: '600' },
-  sideBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 18, paddingVertical: 8,
-    borderRadius: 999, borderWidth: 1.5,
+  backText: { fontSize: 14, color: '#4E5968', fontWeight: '700' },
+  headerTitle: {
+    fontSize: 17, fontWeight: '700', color: '#191F28',
   },
-  sideEmoji: { fontSize: 20 },
-  sideLabel: { fontSize: 15, fontWeight: '700' },
+
+  // 본문
+  body: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 10,
+    paddingBottom: 40,
+  },
+  sideIconWrap: {
+    width: 72, height: 72, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4,
+  },
+  sideName: {
+    fontSize: 14, fontWeight: '700', letterSpacing: 0.2,
+  },
   eventName: {
-    fontSize: 26, fontWeight: '700', color: '#1C1C1E',
+    fontSize: 22, fontWeight: '800', color: '#191F28',
     letterSpacing: -0.5, textAlign: 'center',
+    marginBottom: 8,
   },
-  desc: { fontSize: 15, color: '#8E8E93' },
-  infoBox: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-    backgroundColor: '#F5F5F7', borderRadius: 16,
-    padding: 16, marginTop: 8,
+
+  // 안내 카드
+  infoCard: {
+    width: '100%',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 16,
+    padding: 18,
+    gap: 12,
   },
-  infoIcon: { fontSize: 22, marginTop: 1 },
-  infoText: { flex: 1, fontSize: 14, color: '#3C3C43', lineHeight: 22 },
-  infoHighlight: { fontWeight: '700', color: '#1C1C1E' },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  infoDot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: '#C5CCD5',
+  },
+  infoText: {
+    flex: 1, fontSize: 14, color: '#4E5968', lineHeight: 20,
+  },
+  infoStrong: { fontWeight: '700', color: '#191F28' },
+
+  // 하단 버튼
+  footer: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
   startBtn: {
-    width: '100%', height: 58, borderRadius: 16,
+    height: 54, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
-    marginTop: 8,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2, shadowRadius: 12, elevation: 6,
   },
-  startBtnText: { fontSize: 17, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.3 },
+  startBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.3 },
 });
 
 // ── 드로잉 스타일 ─────────────────────────────
 const draw = StyleSheet.create({
-  emptyHint: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center',
-    pointerEvents: 'none',
+  hintCharRow: {
+    flexDirection: 'row',
+    gap: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 28,
+  },
+  hintChar: {
+    fontSize: 72,
+    fontWeight: '200',
+    color: '#1A1209',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 14,
+  },
+  charGlow: {
+    position: 'absolute',
+    width: 84, height: 84,
+    borderRadius: 42,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 24,
+    shadowOpacity: 0.7,
+    elevation: 0,
+  },
+  hintTextWrap: {
+    position: 'absolute',
+    bottom: 56,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
   emptyText: {
-    fontSize: 28, color: '#C8BFA8', fontWeight: '300', letterSpacing: 4,
+    fontSize: 16, color: '#C8BFA8', fontWeight: '400', letterSpacing: 3,
   },
   controls: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
@@ -466,12 +666,14 @@ const draw = StyleSheet.create({
   // 나가기 버튼 (좌상단)
   exitBtn: {
     position: 'absolute', top: 14, left: 14,
-    backgroundColor: 'rgba(28,20,12,0.4)',
-    paddingHorizontal: 16, paddingVertical: 9,
+    backgroundColor: '#191F28',
+    paddingHorizontal: 18, paddingVertical: 10,
     borderRadius: 24,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18, shadowRadius: 6, elevation: 4,
   },
-  exitBtnText: { fontSize: 13, color: '#FFFFFF', fontWeight: '600', letterSpacing: 0.2 },
+  exitBtnText: { fontSize: 14, color: '#FFFFFF', fontWeight: '700', letterSpacing: 0.2 },
 
   // 우하단 버튼 그룹 (가로)
   rightBtns: {
@@ -481,8 +683,11 @@ const draw = StyleSheet.create({
   clearBtn: {
     paddingHorizontal: 18, paddingVertical: 10,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: '#191F28',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15, shadowRadius: 4, elevation: 3,
   },
   clearBtnText: { fontSize: 14, color: '#FFFFFF', fontWeight: '600' },
   doneBtn: {

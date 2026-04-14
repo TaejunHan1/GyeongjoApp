@@ -192,6 +192,8 @@ export default function GuestConfirmScreen({ navigation, route }) {
     }
   };
 
+  const handleExit = () => navigation.pop(2);
+
   const { width: SW, height: SH } = screenSize;
   const isLandscape = SW > SH;
   const leftW = isLandscape ? SW * 0.42 : SW;
@@ -260,6 +262,15 @@ export default function GuestConfirmScreen({ navigation, route }) {
         style={{ width: rightW }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        {/* 나가기 버튼 — 항상 우상단에 고정 */}
+        <TouchableOpacity
+          style={s.exitBtn}
+          onPress={handleExit}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={s.exitBtnText}>✕  나가기</Text>
+        </TouchableOpacity>
+
         <ScrollView
           contentContainerStyle={[s.rightScroll, { minHeight: SH }]}
           keyboardShouldPersistTaps="handled"
@@ -708,6 +719,18 @@ const s = StyleSheet.create({
   },
   amountBtnSel: { backgroundColor: '#FFF9F0' },
   amountBtnText: { fontSize: 13, fontWeight: '500', color: '#3C3733' },
+
+  // 나가기 버튼
+  exitBtn: {
+    position: 'absolute', top: 14, right: 14, zIndex: 50,
+    backgroundColor: '#191F28',
+    paddingHorizontal: 16, paddingVertical: 9,
+    borderRadius: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18, shadowRadius: 6, elevation: 4,
+  },
+  exitBtnText: { fontSize: 13, color: '#FFFFFF', fontWeight: '700' },
 
   // 건너뛰기
   skipBtn: { height: 44, alignItems: 'center', justifyContent: 'center' },

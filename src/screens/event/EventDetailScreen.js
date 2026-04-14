@@ -27,10 +27,10 @@ import { getEventDetail, getEventContributions, getEventStatistics, addGuestBook
 import { supabase } from '../../lib/supabase';
 
 export default function EventDetailScreen({ navigation, route }) {
-  const { eventId } = route.params;
+  const { eventId, initialEvent, initialStats } = route.params;
   const insets = useSafeAreaInsets();
 
-  // 백 버튼 텍스트 제거 (iOS) — 마운트 즉시 적용
+  // 백 버튼 텍스트 제거 + 초기 타이틀 즉시 적용
   React.useLayoutEffect(() => {
     navigation.setOptions({
       headerLeft: () => (
@@ -42,14 +42,16 @@ export default function EventDetailScreen({ navigation, route }) {
           <Ionicons name="chevron-back" size={26} color="#191F28" />
         </TouchableOpacity>
       ),
+      ...(initialEvent?.event_name ? { title: initialEvent.event_name } : {}),
     });
   }, [navigation]);
-  
-  const [event, setEvent] = useState(null);
+
+  // initialEvent/initialStats가 있으면 즉시 렌더링, 없으면 로딩 후 표시
+  const [event, setEvent] = useState(initialEvent || null);
   const [contributions, setContributions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialEvent); // 초기 데이터 있으면 로딩 스킵
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState(initialStats || {
     totalAmount: 0,
     totalCount: 0,
     averageAmount: 0,
@@ -85,6 +87,9 @@ export default function EventDetailScreen({ navigation, route }) {
   const [inputEditable, setInputEditable] = useState(true);
   const searchInputRef = useRef(null);
   const keyboardActivated = useRef(false); // 키보드 활성화 상태 추적
+  const scrollViewRef = useRef(null);
+  const itemYPositions = useRef({}); // 각 아이템의 Y 위치 (newListSection 기준)
+  const listSectionY = useRef(0);    // newListSection의 ScrollView 기준 Y 위치
   
   // 통계 모달
   const [statisticsModalVisible, setStatisticsModalVisible] = useState(false);
@@ -199,16 +204,26 @@ export default function EventDetailScreen({ navigation, route }) {
     relation_detail: '친구',
   });
 
-  // 부조 수정 모달
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editingContribution, setEditingContribution] = useState(false);
-  const [editContribution, setEditContribution] = useState(null);
-  const [editData, setEditData] = useState({
+  // 인라인 수정
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [inlineEditData, setInlineEditData] = useState({
     guest_name: '',
     amount: '',
     relation_category: '신랑측',
     relation_detail: '친구',
   });
+
+  // 인라인 수정 중 키보드 올라오면 해당 아이템이 키보드 위로 오도록 스크롤
+  useEffect(() => {
+    if (!editingItemId) return;
+    const sub = Keyboard.addListener('keyboardDidShow', (e) => {
+      const itemY = itemYPositions.current[editingItemId];
+      if (itemY === undefined || !scrollViewRef.current) return;
+      const targetY = listSectionY.current + itemY - 80;
+      scrollViewRef.current.scrollTo({ y: Math.max(0, targetY), animated: true });
+    });
+    return () => sub.remove();
+  }, [editingItemId]);
 
   // 부조 추가 처리
   const handleAddContribution = async () => {
@@ -266,62 +281,58 @@ export default function EventDetailScreen({ navigation, route }) {
     }
   };
 
-  // 부조 수정 처리
+  // 인라인 수정 열기
   const handleEditContribution = (contribution) => {
-    console.log('🔍 수정할 contribution 객체:', contribution);
-    console.log('🔍 contribution.id:', contribution.id);
-    setEditContribution(contribution);
-    setEditData({
-      guest_name: contribution.guest_name,
-      amount: formatAmount(contribution.amount),
-      relation_category: contribution.relation_category,
-      relation_detail: contribution.relation_detail,
+    setEditingItemId(contribution.id);
+    setInlineEditData({
+      guest_name: contribution.guest_name || '',
+      amount: contribution.amount || 0,
+      relation_category: contribution.relation_category || '신랑측',
+      relation_detail: contribution.relation_detail || '친구',
     });
-    setEditModalVisible(true);
+
+    // 스크롤은 keyboardDidShow 리스너에서 처리
   };
 
-  const handleUpdateContribution = async () => {
-    if (!editData.guest_name.trim()) {
+  // 인라인 수정 저장 (낙관적 업데이트)
+  const handleSaveInlineEdit = async (contribution) => {
+    if (!inlineEditData.guest_name.trim()) {
       Alert.alert('알림', '성함을 입력해주세요.');
       return;
     }
-    
-    const amount = parseInt(editData.amount.replace(/[^0-9]/g, ''));
+    const amount = inlineEditData.amount;
     if (!amount || amount < 1000) {
       Alert.alert('알림', '부조금을 1,000원 이상 입력해주세요.');
       return;
     }
 
-    setEditingContribution(true);
+    const updated = {
+      ...contribution,
+      guest_name: inlineEditData.guest_name.trim(),
+      amount,
+      relation_category: inlineEditData.relation_category,
+      relation_detail: inlineEditData.relation_detail,
+    };
+
+    // 즉시 UI 반영
+    setContributions(prev => prev.map(c => c.id === contribution.id ? updated : c));
+    setEditingItemId(null);
 
     try {
-      const updateData = {
-        guest_name: editData.guest_name.trim(),
-        amount: amount,
-        relation_category: editData.relation_category,
-        relation_detail: editData.relation_detail,
-      };
-
-      const result = await updateGuestBookEntry(editContribution.id, updateData);
-      
-      if (result.success) {
-        setEditModalVisible(false);
-        setEditContribution(null);
-        setEditData({
-          guest_name: '',
-          amount: '',
-          relation_category: '신랑측',
-          relation_detail: '친구',
-        });
-        loadEventData(); // 데이터 새로고침
-      } else {
+      const result = await updateGuestBookEntry(contribution.id, {
+        guest_name: updated.guest_name,
+        amount: updated.amount,
+        relation_category: updated.relation_category,
+        relation_detail: updated.relation_detail,
+      });
+      if (!result.success) {
+        // 실패 시 원래 값으로 되돌리기
+        setContributions(prev => prev.map(c => c.id === contribution.id ? contribution : c));
         Alert.alert('오류', result.error || '부조 수정에 실패했습니다.');
       }
     } catch (error) {
-      console.error('부조 수정 오류:', error);
+      setContributions(prev => prev.map(c => c.id === contribution.id ? contribution : c));
       Alert.alert('오류', '부조 수정 중 오류가 발생했습니다.');
-    } finally {
-      setEditingContribution(false);
     }
   };
 
@@ -357,17 +368,41 @@ export default function EventDetailScreen({ navigation, route }) {
   };
 
 
-  // 부조 확정/미확정 토글 처리 — 카드 버튼: 모달 없이 즉시 처리
+  // 부조 확정/미확정 토글 처리 — 낙관적 업데이트(즉시 UI 반영)
   const handleToggleVerification = async (contribution) => {
+    const newVerified = !contribution.is_verified;
+
+    // 즉시 UI 반영
+    setContributions(prev =>
+      prev.map(c => c.id === contribution.id ? { ...c, is_verified: newVerified } : c)
+    );
+    setStats(prev => ({
+      ...prev,
+      confirmedCount: prev.confirmedCount + (newVerified ? 1 : -1),
+    }));
+
     try {
       const result = await toggleGuestBookVerification(contribution.id);
-      if (result.success) {
-        loadEventData();
-      } else {
+      if (!result.success) {
+        // 실패 시 되돌리기
+        setContributions(prev =>
+          prev.map(c => c.id === contribution.id ? { ...c, is_verified: contribution.is_verified } : c)
+        );
+        setStats(prev => ({
+          ...prev,
+          confirmedCount: prev.confirmedCount + (newVerified ? -1 : 1),
+        }));
         Alert.alert('오류', result.error || '확정 상태 변경에 실패했습니다.');
       }
     } catch (error) {
-      console.error('확정 상태 변경 오류:', error);
+      // 실패 시 되돌리기
+      setContributions(prev =>
+        prev.map(c => c.id === contribution.id ? { ...c, is_verified: contribution.is_verified } : c)
+      );
+      setStats(prev => ({
+        ...prev,
+        confirmedCount: prev.confirmedCount + (newVerified ? -1 : 1),
+      }));
       Alert.alert('오류', '확정 상태 변경 중 오류가 발생했습니다.');
     }
   };
@@ -511,88 +546,45 @@ export default function EventDetailScreen({ navigation, route }) {
 
   const loadEventData = async () => {
     try {
-      setLoading(true);
-      
-      // 경조사 정보 로드
-      const eventResult = await getEventDetail(eventId);
-      
+      // initialEvent가 있으면 전체 로딩 스피너 없이 백그라운드에서 갱신
+      if (!initialEvent) setLoading(true);
+
+      // 세 API를 동시에 병렬 호출 — 순차 대기 제거
+      const [eventResult, statsResult, contributionsResult] = await Promise.all([
+        initialEvent
+          ? Promise.resolve({ success: true, data: initialEvent })
+          : getEventDetail(eventId),
+        getEventStatistics(eventId),
+        getEventContributions(eventId),
+      ]);
+
       if (eventResult.success) {
         setEvent(eventResult.data);
-        
-        // 헤더 제목 업데이트
-        navigation.setOptions({
-          title: eventResult.data.event_name || '경조사 상세',
-        });
-        
-        // 통계 가져오기
-        const statsResult = await getEventStatistics(eventId);
-        
-        // 실제 부조금 목록 조회
-        const contributionsResult = await getEventContributions(eventId);
-        
-        // 부조금 목록 설정 - 실제 데이터를 우선으로 하고, 없으면 통계 데이터 기반으로 생성
-        if (contributionsResult.success && contributionsResult.data && contributionsResult.data.length > 0) {
-          setContributions(contributionsResult.data);
-        } else if (eventResult.data?.guest_book && eventResult.data.guest_book.length > 0) {
-          setContributions(eventResult.data.guest_book);
-        } else if (statsResult.success && statsResult.data?.totalContributions > 0) {
-          // 통계 데이터를 기반으로 부조자 목록 생성 (기존 데이터 복원)
-          const contributionList = [];
-          
-          // 신랑측 부조금이 있으면 추가
-          if (statsResult.data.groomSideCount > 0) {
-            for (let i = 0; i < statsResult.data.groomSideCount; i++) {
-              contributionList.push({
-                id: `groom-${i + 1}`,
-                guest_name: i === 0 ? '한태준' : `신랑측 부조자 ${i + 1}`,
-                amount: Math.floor(statsResult.data.groomSideAmount / statsResult.data.groomSideCount),
-                relation_category: '신랑측',
-                relation_detail: '친구',
-                message: i === 0 ? '와 니가 결혼하다니 ㄹㅇㅋㅋ' : '축하합니다!',
-                message_type: 'congratulation',
-                is_verified: false,
-                created_at: new Date().toISOString()
-              });
-            }
-          }
-          
-          // 신부측 부조금이 있으면 추가
-          if (statsResult.data.brideSideCount > 0) {
-            for (let i = 0; i < statsResult.data.brideSideCount; i++) {
-              contributionList.push({
-                id: `bride-${i + 1}`,
-                guest_name: `신부측 부조자 ${i + 1}`,
-                amount: Math.floor(statsResult.data.brideSideAmount / statsResult.data.brideSideCount),
-                relation_category: '신부측',
-                relation_detail: '친구',
-                message: '축하합니다!',
-                message_type: 'congratulation',
-                is_verified: false,
-                created_at: new Date().toISOString()
-              });
-            }
-          }
-          
-          setContributions(contributionList);
-        } else {
-          setContributions([]);
-        }
-        
-        // 통계 데이터를 stats state에 설정
-        if (statsResult.success) {
-          setStats({
-            totalAmount: statsResult.data?.totalAmount || 0,
-            totalCount: statsResult.data?.totalContributions || 0,
-            averageAmount: statsResult.data?.averageAmount || 0,
-            confirmedCount: statsResult.data?.verifiedCount || 0,
-          });
-        }
+        navigation.setOptions({ title: eventResult.data.event_name || '경조사 상세' });
       } else {
         Alert.alert('오류', eventResult.error || '경조사 정보를 불러올 수 없습니다.');
         navigation.goBack();
         return;
       }
-      
+
+      // 부조 목록
+      if (contributionsResult.success && contributionsResult.data?.length > 0) {
+        setContributions(contributionsResult.data);
+      } else if (eventResult.data?.guest_book?.length > 0) {
+        setContributions(eventResult.data.guest_book);
+      } else {
+        setContributions([]);
+      }
+
+      // 통계
+      if (statsResult.success) {
+        setStats({
+          totalAmount: statsResult.data?.totalAmount || 0,
+          totalCount: statsResult.data?.totalContributions || 0,
+          averageAmount: statsResult.data?.averageAmount || 0,
+          confirmedCount: statsResult.data?.verifiedCount || 0,
+        });
+      }
     } catch (error) {
       console.error('Event detail loading error:', error);
       Alert.alert('오류', '데이터를 불러오는 중 오류가 발생했습니다.');
@@ -726,7 +718,8 @@ export default function EventDetailScreen({ navigation, route }) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        <ScrollView 
+        <ScrollView
+          ref={scrollViewRef}
           style={styles.content}
           refreshControl={
             <RefreshControl
@@ -805,7 +798,10 @@ export default function EventDetailScreen({ navigation, route }) {
         <View style={styles.sectionGap} />
 
         {/* ── 리스트 섹션 ── */}
-        <View style={styles.newListSection}>
+        <View
+          style={styles.newListSection}
+          onLayout={e => { listSectionY.current = e.nativeEvent.layout.y; }}
+        >
 
           {/* 필터 탭 + 검색 */}
           <View style={styles.listControlRow}>
@@ -852,86 +848,199 @@ export default function EventDetailScreen({ navigation, route }) {
                   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
                 })();
 
+                const isEditing = editingItemId === contribution.id;
+
                 return (
-                  <TouchableOpacity
+                  <View
                     key={contribution.id || index}
-                    style={styles.flatItem}
-                    onPress={() => isRealItem && toggleExpand(contribution.id || index)}
-                    activeOpacity={0.6}
+                    onLayout={e => {
+                      if (contribution.id) {
+                        itemYPositions.current[contribution.id] = e.nativeEvent.layout.y;
+                      }
+                    }}
+                    style={[styles.flatItem, isEditing && styles.flatItemEditing]}
                   >
-                    {/* 아바타 */}
-                    <View style={[
-                      styles.flatAvatar,
-                      contribution.is_verified && styles.flatAvatarVerified,
-                    ]}>
-                      <Text style={styles.flatAvatarText}>
-                        {(contribution.guest_name || '이').charAt(0)}
-                      </Text>
-                    </View>
-
-                    {/* 이름 + 시간·관계 */}
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.flatName}>
-                        {contribution.guest_name || '이름 없음'}
-                      </Text>
-                      <Text style={styles.flatMeta}>
-                        {timeStr ? `${timeStr} · ` : ''}{displayCategory} {displayDetail}
-                      </Text>
-
-                      {/* 액션 버튼 (탭 시 펼침) */}
-                      {isExpanded && isRealItem && (
-                        <View style={styles.flatActions}>
-                          {contribution.is_verified ? (
-                            <TouchableOpacity
-                              style={styles.flatActBtn}
-                              onPress={() => { handleToggleVerification(contribution); setExpandedItemId(null); }}
-                            >
-                              <Text style={[styles.flatActBtnText, { color: '#8B95A1' }]}>확정취소</Text>
-                            </TouchableOpacity>
-                          ) : (
-                            <>
-                              <TouchableOpacity
-                                style={styles.flatActBtn}
-                                onPress={() => { handleToggleVerification(contribution); setExpandedItemId(null); }}
-                              >
-                                <Text style={[styles.flatActBtnText, { color: '#3182F6' }]}>확정</Text>
-                              </TouchableOpacity>
-                              <View style={styles.flatActSep} />
-                              <TouchableOpacity
-                                style={styles.flatActBtn}
-                                onPress={() => { handleEditContribution(contribution); setExpandedItemId(null); }}
-                              >
-                                <Text style={styles.flatActBtnText}>수정</Text>
-                              </TouchableOpacity>
-                              <View style={styles.flatActSep} />
-                              <TouchableOpacity
-                                style={styles.flatActBtn}
-                                onPress={() => { handleDeleteContribution(contribution); setExpandedItemId(null); }}
-                              >
-                                <Text style={[styles.flatActBtnText, { color: '#F04452' }]}>삭제</Text>
-                              </TouchableOpacity>
-                            </>
-                          )}
+                    {isEditing ? (
+                      /* ── 인라인 수정 폼 ── */
+                      <View style={{ flex: 1 }}>
+                        {/* 성함 한 줄 */}
+                        <View style={styles.inlineEditRow}>
+                          <TextInput
+                            style={[styles.inlineInput, { flex: 1 }]}
+                            value={inlineEditData.guest_name}
+                            onChangeText={t => setInlineEditData(p => ({ ...p, guest_name: t }))}
+                            placeholder="성함"
+                            placeholderTextColor="#C5CCD5"
+                            autoFocus
+                          />
                         </View>
-                      )}
-                    </View>
 
-                    {/* 금액 + 상태 */}
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={[
-                        styles.flatAmount,
-                        !contribution.amount && styles.flatAmountEmpty,
-                      ]}>
-                        {contribution.amount ? `+${formatAmountCard(contribution.amount)}원` : '금액 미입력'}
-                      </Text>
-                      <Text style={[
-                        styles.flatStatus,
-                        contribution.is_verified && styles.flatStatusDone,
-                      ]}>
-                        {contribution.is_verified ? '확정완료' : '미확정'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                        {/* 금액 터치 칩 */}
+                        <View style={styles.amountChipSection}>
+                          {/* 현재 금액 표시 */}
+                          <View style={styles.amountDisplayRow}>
+                            <Text style={styles.amountDisplayText}>
+                              {inlineEditData.amount > 0
+                                ? `${inlineEditData.amount.toLocaleString()}원`
+                                : '금액 선택'}
+                            </Text>
+                            <TouchableOpacity
+                              style={styles.amountResetBtn}
+                              onPress={() => setInlineEditData(p => ({ ...p, amount: 0 }))}
+                            >
+                              <Text style={styles.amountResetText}>정정</Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          {/* 빠른 설정 칩 (만원 단위 세팅) */}
+                          <View style={styles.amountChipRow}>
+                            {[30000, 50000, 70000, 100000, 150000, 200000].map(v => (
+                              <TouchableOpacity
+                                key={v}
+                                style={[
+                                  styles.amountChip,
+                                  inlineEditData.amount === v && styles.amountChipActive,
+                                ]}
+                                onPress={() => setInlineEditData(p => ({ ...p, amount: v }))}
+                              >
+                                <Text style={[
+                                  styles.amountChipText,
+                                  inlineEditData.amount === v && styles.amountChipTextActive,
+                                ]}>
+                                  {v / 10000}만
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+
+                          {/* 추가 칩 (+N만) */}
+                          <View style={styles.amountChipRow}>
+                            {[10000, 30000, 50000, 100000].map(v => (
+                              <TouchableOpacity
+                                key={`add-${v}`}
+                                style={styles.amountAddChip}
+                                onPress={() => setInlineEditData(p => ({ ...p, amount: (p.amount || 0) + v }))}
+                              >
+                                <Text style={styles.amountAddChipText}>+{v / 10000}만</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </View>
+
+                        {/* 측 칩 */}
+                        <View style={styles.inlineChipRow}>
+                          {['신랑측', '신부측'].map(cat => (
+                            <TouchableOpacity
+                              key={cat}
+                              style={[styles.inlineChip, inlineEditData.relation_category === cat && styles.inlineChipActive]}
+                              onPress={() => setInlineEditData(p => ({ ...p, relation_category: cat }))}
+                            >
+                              <Text style={[styles.inlineChipText, inlineEditData.relation_category === cat && styles.inlineChipTextActive]}>{cat}</Text>
+                            </TouchableOpacity>
+                          ))}
+                          <View style={{ width: 12 }} />
+                          {['친구', '동료', '가족', '친척', '기타'].map(det => (
+                            <TouchableOpacity
+                              key={det}
+                              style={[styles.inlineChip, inlineEditData.relation_detail === det && styles.inlineChipActive]}
+                              onPress={() => setInlineEditData(p => ({ ...p, relation_detail: det }))}
+                            >
+                              <Text style={[styles.inlineChipText, inlineEditData.relation_detail === det && styles.inlineChipTextActive]}>{det}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        {/* 저장 / 취소 */}
+                        <View style={styles.inlineActRow}>
+                          <TouchableOpacity
+                            style={styles.inlineCancelBtn}
+                            onPress={() => setEditingItemId(null)}
+                          >
+                            <Text style={styles.inlineCancelText}>취소</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.inlineSaveBtn}
+                            onPress={() => handleSaveInlineEdit(contribution)}
+                          >
+                            <Text style={styles.inlineSaveText}>저장</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={{ flex: 1 }}>
+                        {/* 상단: 아바타 + 이름/관계 + 금액/상태 */}
+                        <View style={styles.flatItemTop}>
+                          <View style={[
+                            styles.flatAvatar,
+                            contribution.is_verified && styles.flatAvatarVerified,
+                          ]}>
+                            <Text style={styles.flatAvatarText}>
+                              {(contribution.guest_name || '이').charAt(0)}
+                            </Text>
+                          </View>
+
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.flatName}>
+                              {contribution.guest_name || '이름 없음'}
+                            </Text>
+                            <Text style={styles.flatMeta}>
+                              {timeStr ? `${timeStr} · ` : ''}{displayCategory} {displayDetail}
+                            </Text>
+                          </View>
+
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={[
+                              styles.flatAmount,
+                              !contribution.amount && styles.flatAmountEmpty,
+                            ]}>
+                              {contribution.amount ? `+${formatAmountCard(contribution.amount)}원` : '금액 미입력'}
+                            </Text>
+                            <Text style={[
+                              styles.flatStatus,
+                              contribution.is_verified && styles.flatStatusDone,
+                            ]}>
+                              {contribution.is_verified ? '확정완료' : '미확정'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* 하단: 풀너비 액션 버튼 */}
+                        {isRealItem && (
+                          <View style={styles.flatActBtnRow}>
+                            {contribution.is_verified ? (
+                              <TouchableOpacity
+                                style={[styles.flatActBtnFull, { flex: 1 }]}
+                                onPress={() => handleToggleVerification(contribution)}
+                              >
+                                <Text style={[styles.flatActBtnFullText, { color: '#8B95A1' }]}>확정취소</Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <>
+                                <TouchableOpacity
+                                  style={[styles.flatActBtnFull, styles.flatActBtnFullConfirm]}
+                                  onPress={() => handleToggleVerification(contribution)}
+                                >
+                                  <Text style={[styles.flatActBtnFullText, { color: '#3182F6' }]}>확정</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.flatActBtnFull}
+                                  onPress={() => handleEditContribution(contribution)}
+                                >
+                                  <Text style={styles.flatActBtnFullText}>수정</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.flatActBtnFull}
+                                  onPress={() => handleDeleteContribution(contribution)}
+                                >
+                                  <Text style={[styles.flatActBtnFullText, { color: '#F04452' }]}>삭제</Text>
+                                </TouchableOpacity>
+                              </>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </View>
                 );
               })}
 
@@ -1085,144 +1194,6 @@ export default function EventDetailScreen({ navigation, route }) {
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
-
-      {/* 토스 스타일 부조 수정 모달 */}
-      <Modal
-        visible={editModalVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setEditModalVisible(false)}
-      >
-        <SafeAreaView style={styles.tossFormModalContainer}>
-          <View style={styles.tossFormModalContent}>
-            <KeyboardAvoidingView 
-              style={{ flex: 1 }} 
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-            >
-            {/* 토스 스타일 헤더 */}
-            <View style={styles.tossFormModalHeader}>
-              <TouchableOpacity
-                style={styles.tossFormModalCloseButton}
-                onPress={() => setEditModalVisible(false)}
-              >
-                <Ionicons name="chevron-back" size={24} color="#191F28" />
-              </TouchableOpacity>
-              <Text style={styles.tossFormModalTitle}>부조 수정</Text>
-              <TouchableOpacity
-                style={[
-                  styles.tossFormModalSaveButton, 
-                  editingContribution && styles.tossFormModalSaveButtonDisabled
-                ]}
-                onPress={handleUpdateContribution}
-                disabled={editingContribution}
-              >
-                <Text style={[
-                  styles.tossFormModalSaveText, 
-                  editingContribution && styles.tossFormModalSaveTextDisabled
-                ]}>
-                  {editingContribution ? '수정 중...' : '완료'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView 
-              style={styles.tossFormModalScrollView}
-              contentContainerStyle={{ flexGrow: 1 }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {/* 성함 입력 */}
-              <View style={styles.tossFormSection}>
-                <View style={styles.tossFormInputContainer}>
-                  <Text style={styles.tossFormLabel}>성함</Text>
-                  <TextInput
-                    style={styles.tossFormInput}
-                    placeholder="성함을 입력해주세요"
-                    value={editData.guest_name}
-                    onChangeText={(text) => setEditData(prev => ({ ...prev, guest_name: text }))}
-                    placeholderTextColor="#A0A8B5"
-                  />
-                </View>
-              </View>
-
-              {/* 금액 입력 */}
-              <View style={styles.tossFormSection}>
-                <View style={styles.tossFormInputContainer}>
-                  <Text style={styles.tossFormLabel}>부조금</Text>
-                  <TextInput
-                    style={styles.tossFormInput}
-                    placeholder="금액을 입력해주세요"
-                    value={editData.amount}
-                    onChangeText={(text) => setEditData(prev => ({ 
-                      ...prev, 
-                      amount: formatAmountInput(text) 
-                    }))}
-                    keyboardType="numeric"
-                    placeholderTextColor="#A0A8B5"
-                  />
-                </View>
-              </View>
-
-              {/* 관계 선택 */}
-              <View style={styles.tossFormSection}>
-                <View style={styles.tossFormInputContainer}>
-                  <Text style={styles.tossFormLabel}>관계</Text>
-                  <View style={styles.tossRelationContainer}>
-                    <View style={styles.tossRelationGroup}>
-                      <Text style={styles.tossRelationGroupLabel}>측</Text>
-                      <View style={styles.tossRelationButtons}>
-                        {['신랑측', '신부측'].map((category) => (
-                          <TouchableOpacity
-                            key={category}
-                            style={[
-                              styles.tossRelationButton,
-                              editData.relation_category === category && styles.tossRelationButtonActive
-                            ]}
-                            onPress={() => setEditData(prev => ({ ...prev, relation_category: category }))}
-                          >
-                            <Text style={[
-                              styles.tossRelationButtonText,
-                              editData.relation_category === category && styles.tossRelationButtonTextActive
-                            ]}>
-                              {category}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                    
-                    <View style={styles.tossRelationGroup}>
-                      <Text style={styles.tossRelationGroupLabel}>관계</Text>
-                      <View style={styles.tossRelationButtons}>
-                        {['친구', '동료', '가족', '친척', '기타'].map((detail) => (
-                          <TouchableOpacity
-                            key={detail}
-                            style={[
-                              styles.tossRelationButton,
-                              editData.relation_detail === detail && styles.tossRelationButtonActive
-                            ]}
-                            onPress={() => setEditData(prev => ({ ...prev, relation_detail: detail }))}
-                          >
-                            <Text style={[
-                              styles.tossRelationButtonText,
-                              editData.relation_detail === detail && styles.tossRelationButtonTextActive
-                            ]}>
-                              {detail}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              </View>
-              <View style={{ height: 20 }} />
-            </ScrollView>
-            </KeyboardAvoidingView>
-          </View>
-        </SafeAreaView>
       </Modal>
 
       {/* ── 통계 바텀 시트 ── */}
@@ -1675,66 +1646,69 @@ export default function EventDetailScreen({ navigation, route }) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* ── 디지털 방명록 측 선택 모달 ── */}
+      {/* ── 하객 접수 바텀시트 ── */}
       <Modal
         visible={sideSelectVisible}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setSideSelectVisible(false)}
       >
-        <View style={styles.sideSelectOverlay}>
-          <View style={styles.sideSelectCard}>
-            {/* 상단 아이콘 */}
-            <View style={styles.sideSelectIconWrap}>
-              <Text style={styles.sideSelectIcon}>📋</Text>
-            </View>
+        <View style={styles.bsOverlay}>
+          <TouchableOpacity style={styles.bsBackdrop} activeOpacity={1} onPress={() => setSideSelectVisible(false)} />
+          <View style={styles.bsContainer}>
+            <View style={styles.bsHandle} />
 
-            <Text style={styles.sideSelectTitle}>방명록 접수대 선택</Text>
-            <Text style={styles.sideSelectSub}>
-              담당자가 한 번만 선택하면 됩니다.
-            </Text>
-
-            {/* 카드 2개 가로 배치 */}
-            <View style={styles.sideSelectRow}>
-              <TouchableOpacity
-                style={styles.sideCardGroom}
-                onPress={() => {
-                  setSideSelectVisible(false);
-                  navigation.navigate('GuestWriting', { event, side: 'groom' });
-                }}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.sideCardEmoji}>🤵</Text>
-                <Text style={styles.sideCardTitle}>신랑측</Text>
-                <Text style={styles.sideCardDesc}>신랑 가족·친구{'\n'}동료 하객</Text>
-                <View style={styles.sideCardTag}>
-                  <Text style={styles.sideCardTagText}>선택</Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.sideCardBride}
-                onPress={() => {
-                  setSideSelectVisible(false);
-                  navigation.navigate('GuestWriting', { event, side: 'bride' });
-                }}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.sideCardEmoji}>👰</Text>
-                <Text style={[styles.sideCardTitle, { color: '#EC4899' }]}>신부측</Text>
-                <Text style={styles.sideCardDesc}>신부 가족·친구{'\n'}동료 하객</Text>
-                <View style={[styles.sideCardTag, { backgroundColor: '#EC4899' }]}>
-                  <Text style={styles.sideCardTagText}>선택</Text>
-                </View>
+            {/* 헤더 */}
+            <View style={styles.bsHeader}>
+              <Text style={styles.bsTitle}>하객 접수대 선택</Text>
+              <TouchableOpacity onPress={() => setSideSelectVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={22} color="#8B95A1" />
               </TouchableOpacity>
             </View>
 
+            <Text style={styles.sideSelectDesc}>담당자가 접수할 측을 선택해주세요</Text>
+
+            {/* 신랑측 행 */}
             <TouchableOpacity
-              style={styles.sideSelectCancelBtn}
-              onPress={() => setSideSelectVisible(false)}
+              style={styles.sideRow}
+              onPress={() => {
+                setSideSelectVisible(false);
+                navigation.navigate('GuestWriting', { event, side: 'groom' });
+              }}
+              activeOpacity={0.7}
             >
-              <Text style={styles.sideSelectCancelText}>취소</Text>
+              <View style={[styles.sideRowIcon, { backgroundColor: '#EBF3FF' }]}>
+                <Text style={{ fontSize: 22 }}>🤵</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sideRowTitle}>신랑측</Text>
+                <Text style={styles.sideRowSub}>신랑 가족 · 친구 · 동료 하객</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#C5CCD5" />
             </TouchableOpacity>
+
+            <View style={styles.sideRowDivider} />
+
+            {/* 신부측 행 */}
+            <TouchableOpacity
+              style={styles.sideRow}
+              onPress={() => {
+                setSideSelectVisible(false);
+                navigation.navigate('GuestWriting', { event, side: 'bride' });
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.sideRowIcon, { backgroundColor: '#FFF0F6' }]}>
+                <Text style={{ fontSize: 22 }}>👰</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sideRowTitle, { color: '#EC4899' }]}>신부측</Text>
+                <Text style={styles.sideRowSub}>신부 가족 · 친구 · 동료 하객</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#C5CCD5" />
+            </TouchableOpacity>
+
+            <View style={{ height: 24 }} />
           </View>
         </View>
       </Modal>
@@ -2118,18 +2092,209 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   flatActBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
     backgroundColor: '#F2F4F6',
   },
   flatActBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     color: '#4E5968',
   },
   flatActSep: {
-    width: 6,
+    width: 8,
+  },
+
+  // ── 풀너비 액션 버튼 ──────────────────────────────
+  flatItemTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  flatActBtnRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  flatActBtnFull: {
+    flex: 1,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F2F4F6',
+    borderRadius: 12,
+  },
+  flatActBtnFullConfirm: {
+    backgroundColor: '#EBF3FF',
+  },
+  flatActBtnFullText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4E5968',
+  },
+  flatActBtnDivider: {
+    width: 1,
+    backgroundColor: '#E5E8EB',
+    marginVertical: 8,
+  },
+
+  // ── 인라인 수정 ──────────────────────────────────
+  flatItemEditing: {
+    backgroundColor: '#F8F9FA',
+  },
+  inlineEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  inlineInput: {
+    height: 38,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: '#191F28',
+  },
+  inlineAmountWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  inlineAmountUnit: {
+    fontSize: 13,
+    color: '#4E5968',
+    fontWeight: '500',
+  },
+
+  // ── 금액 터치 칩 ──────────────────────────────────
+  amountChipSection: {
+    marginBottom: 12,
+  },
+  amountDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  amountDisplayText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#191F28',
+  },
+  amountResetBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#F2F4F6',
+  },
+  amountResetText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8B95A1',
+  },
+  amountChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 6,
+  },
+  amountChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#F2F4F6',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  amountChipActive: {
+    backgroundColor: '#EBF3FF',
+    borderColor: '#3182F6',
+  },
+  amountChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4E5968',
+  },
+  amountChipTextActive: {
+    color: '#3182F6',
+  },
+  amountAddChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#F8F9FA',
+    borderWidth: 1,
+    borderColor: '#D1D6DB',
+  },
+  amountAddChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333D4B',
+  },
+
+  inlineChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 12,
+  },
+  inlineChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#F2F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  inlineChipActive: {
+    backgroundColor: '#EBF3FF',
+    borderColor: '#3182F6',
+  },
+  inlineChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#8B95A1',
+  },
+  inlineChipTextActive: {
+    color: '#3182F6',
+    fontWeight: '600',
+  },
+  inlineActRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  inlineCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#F2F4F6',
+  },
+  inlineCancelText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8B95A1',
+  },
+  inlineSaveBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#3182F6',
+  },
+  inlineSaveText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 
   // ── 총 부조금 요약 카드 ─────────────────────────
@@ -2274,83 +2439,43 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
 
-  // 측 선택 모달
-  sideSelectOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+  // 하객 접수 바텀시트
+  sideSelectDesc: {
+    fontSize: 13,
+    color: '#8B95A1',
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    marginTop: -4,
+  },
+  sideRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 14,
+  },
+  sideRowIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
   },
-  sideSelectCard: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 28,
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 10,
+  sideRowTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#191F28',
+    marginBottom: 2,
   },
-  sideSelectIconWrap: {
-    width: 56, height: 56, borderRadius: 16,
-    backgroundColor: '#F0F0F5',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 16,
+  sideRowSub: {
+    fontSize: 13,
+    color: '#8B95A1',
   },
-  sideSelectIcon: { fontSize: 28 },
-  sideSelectTitle: {
-    fontSize: 19, fontWeight: '700', color: '#1C1C1E',
-    textAlign: 'center', marginBottom: 6,
+  sideRowDivider: {
+    height: 1,
+    backgroundColor: '#F2F4F6',
+    marginHorizontal: 20,
   },
-  sideSelectSub: {
-    fontSize: 14, color: '#8E8E93', textAlign: 'center',
-    lineHeight: 20, marginBottom: 24,
-  },
-  sideSelectRow: {
-    flexDirection: 'row', gap: 12, width: '100%', marginBottom: 8,
-  },
-  sideCardGroom: {
-    flex: 1,
-    backgroundColor: '#EBF5FF',
-    borderRadius: 20,
-    padding: 20,
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 2, borderColor: '#3B82F6',
-  },
-  sideCardBride: {
-    flex: 1,
-    backgroundColor: '#FFF0F6',
-    borderRadius: 20,
-    padding: 20,
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 2, borderColor: '#EC4899',
-  },
-  sideCardEmoji: { fontSize: 36, marginBottom: 2 },
-  sideCardTitle: {
-    fontSize: 18, fontWeight: '800', color: '#3B82F6',
-  },
-  sideCardDesc: {
-    fontSize: 12, color: '#6B7280', textAlign: 'center', lineHeight: 18,
-  },
-  sideCardTag: {
-    marginTop: 6,
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 16, paddingVertical: 6,
-    borderRadius: 999,
-  },
-  sideCardTagText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
-  sideSelectCancelBtn: {
-    marginTop: 10, height: 44, alignItems: 'center', justifyContent: 'center',
-    width: '100%',
-  },
-  sideSelectCancelText: { fontSize: 15, color: '#8E8E93' },
 
   // 디지털 방명록 아이콘 박스
   guestbookIconBox: {

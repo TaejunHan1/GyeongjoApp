@@ -1,5 +1,5 @@
 // src/screens/main/MyEventsScreen.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,1031 +8,852 @@ import {
   SafeAreaView,
   ScrollView,
   RefreshControl,
-  Alert,
+  Modal,
   Image,
   Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { Colors } from '../../styles/constants';
-import { getUserEvents, getEventStatistics, deleteEvent, getEventContributions } from '../../lib/supabaseHelper';
+import { getUserEvents, getEventStatistics, deleteEvent } from '../../lib/supabaseHelper';
 import { supabase } from '../../lib/supabase';
 
-export default function MyEventsScreen({ navigation, userInfo, session, isAuthenticated }) {
-  const [activeTab, setActiveTab] = useState('hosted'); // hosted, participated
+export default function MyEventsScreen({ navigation, userInfo }) {
+  const [activeTab, setActiveTab] = useState('hosted');
   const [hostedEvents, setHostedEvents] = useState([]);
   const [participatedEvents, setParticipatedEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [hostedFilter, setHostedFilter] = useState('all'); // all, active, completed
+  const [hostedFilter, setHostedFilter] = useState('all');
   const [dataLoaded, setDataLoaded] = useState(false);
   const [lastLoadTime, setLastLoadTime] = useState(0);
-  const CACHE_DURATION = 30000; // 30초 캐시
+  const CACHE_DURATION = 30000;
 
-  // 화면 포커스 시 데이터 새로고침 (캐시 적용)
+  // iOS 스타일 커스텀 삭제 확인 모달
+  const [deleteAlert, setDeleteAlert] = useState({ visible: false, eventId: null, eventName: '' });
+
   useFocusEffect(
     React.useCallback(() => {
       const now = Date.now();
-      if (dataLoaded && (now - lastLoadTime < CACHE_DURATION)) {
-        return; // 캐시 유효 → 로딩 건너뛰기
-      }
+      if (dataLoaded && now - lastLoadTime < CACHE_DURATION) return;
       loadAllData();
     }, [dataLoaded, lastLoadTime])
   );
 
-  // 디버그: 테스트 데이터 확인/생성
-  const debugCreateTestContribution = async () => {
-    try {
-      
-      if (!userInfo || !userInfo.userId) {
-        Alert.alert('오류', '사용자 정보를 찾을 수 없습니다.');
-        return;
-      }
-
-
-      // 테스트 personal_schedule 항목 생성
-      const testPersonalSchedule = {
-        user_id: userInfo.userId,
-        title: '테스트 결혼식',
-        event_type: 'wedding',
-        event_date: '2025-08-30',
-        location: '테스트 웨딩홀',
-        notes: '테스트용 개인 일정입니다',
-        is_reminder_set: false
-      };
-
-      const { data: newSchedule, error: createError } = await supabase
-        .from('personal_schedules')
-        .insert([testPersonalSchedule])
-        .select();
-
-      if (createError) {
-        Alert.alert('오류', `테스트 데이터 생성 실패: ${createError.message}`);
-      } else {
-        Alert.alert('성공', '테스트 개인 일정이 생성되었습니다!');
-        // 데이터 새로고침
-        loadParticipatedEvents();
-      }
-    } catch (error) {
-      Alert.alert('오류', `오류 발생: ${error.message}`);
-    }
+  const determineEventStatus = (eventDate) => {
+    if (!eventDate) return 'active';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(eventDate);
+    d.setHours(0, 0, 0, 0);
+    return d >= today ? 'active' : 'completed';
   };
 
   const loadAllData = async () => {
     try {
       setLoading(true);
-      await Promise.all([
-        loadHostedEvents(),
-        loadParticipatedEvents()
-      ]);
+      await Promise.all([loadHostedEvents(), loadParticipatedEvents()]);
       setDataLoaded(true);
       setLastLoadTime(Date.now());
-    } catch (error) {
     } finally {
       setLoading(false);
     }
   };
 
-  // 날짜 기반으로 이벤트 상태 자동 판별
-  const determineEventStatus = (eventDate) => {
-    if (!eventDate) return 'active';
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const eventDateObj = new Date(eventDate);
-    eventDateObj.setHours(0, 0, 0, 0);
-
-    return eventDateObj >= today ? 'active' : 'completed';
-  };
-
   const loadHostedEvents = async () => {
     try {
       const result = await getUserEvents();
-      
-      if (result.success) {
-        // 🔥 개인 일정 제외하고 실제 경조사만 필터링
-        const hostedEventsOnly = (result.data || []).filter(event => 
-          !event.is_personal_schedule && !event.isPersonalSchedule && event.source !== 'personal'
-        );
-        
-        // 통계 정보를 포함한 이벤트 데이터 가져오기
-        const eventsWithStats = await Promise.all(
-          hostedEventsOnly.map(async (event) => {
-            try {
-              const statsResult = await getEventStatistics(event.id);
-              // 날짜 기반으로 상태 자동 판별
-              const autoStatus = determineEventStatus(event.event_date);
-              
-              return {
-                ...event,
-                status: autoStatus, // 자동 판별된 상태로 업데이트
-                stats: {
-                  totalContributions: statsResult.data?.totalContributions || 0,
-                  totalAmount: statsResult.data?.totalAmount || 0,
-                  averageAmount: statsResult.data?.averageAmount || 0,
-                  participantCount: statsResult.data?.totalContributions || 0 // totalContributions가 실제 참여자 수
-                }
-              };
-            } catch (error) {
-              const autoStatus = determineEventStatus(event.event_date);
-              return {
-                ...event,
-                status: autoStatus,
-                stats: {
-                  totalContributions: 0,
-                  totalAmount: 0,
-                  averageAmount: 0,
-                  participantCount: 0
-                }
-              };
-            }
-          })
-        );
-        setHostedEvents(eventsWithStats);
-      } else {
-        setHostedEvents([]);
-      }
-    } catch (error) {
+      if (!result.success) { setHostedEvents([]); return; }
+      const only = (result.data || []).filter(e =>
+        !e.is_personal_schedule && !e.isPersonalSchedule && e.source !== 'personal'
+      );
+      const withStats = await Promise.all(only.map(async (event) => {
+        try {
+          const s = await getEventStatistics(event.id);
+          return {
+            ...event,
+            status: determineEventStatus(event.event_date),
+            stats: {
+              totalContributions: s.data?.totalContributions || 0,
+              totalAmount: s.data?.totalAmount || 0,
+              averageAmount: s.data?.averageAmount || 0,
+              verifiedCount: s.data?.verifiedCount || 0,
+            },
+          };
+        } catch {
+          return { ...event, status: determineEventStatus(event.event_date), stats: { totalContributions: 0, totalAmount: 0, averageAmount: 0, verifiedCount: 0 } };
+        }
+      }));
+      setHostedEvents(withStats);
+    } catch {
       setHostedEvents([]);
     }
   };
 
   const loadParticipatedEvents = async () => {
     try {
-      if (!userInfo?.userId) {
-        setParticipatedEvents([]);
-        return;
-      }
-
-      const { data: personalSchedules, error: schedulesError } = await supabase
+      if (!userInfo?.userId) { setParticipatedEvents([]); return; }
+      const { data, error } = await supabase
         .from('personal_schedules')
         .select('*')
         .eq('user_id', userInfo.userId)
         .order('created_at', { ascending: false });
-
-      if (schedulesError) {
-        setParticipatedEvents([]);
-        return;
-      }
-
-      if (!personalSchedules || personalSchedules.length === 0) {
-        setParticipatedEvents([]);
-        return;
-      }
-
-      const participatedEventsArray = personalSchedules.map(schedule => ({
-        id: schedule.id,
-        event_name: schedule.title,
-        event_type: schedule.event_type,
-        event_date: schedule.event_date,
-        location: schedule.location,
+      if (error || !data?.length) { setParticipatedEvents([]); return; }
+      setParticipatedEvents(data.map(s => ({
+        id: s.id,
+        event_name: s.title,
+        event_type: s.event_type,
+        event_date: s.event_date,
+        location: s.location,
         main_person_name: '개인 일정',
-        participationInfo: {
-          contributedAmount: 0,
-          contributionDate: schedule.created_at,
-          relation: '개인 참여',
-          message: schedule.notes
-        },
-        source: 'personal'
-      }));
-
-      setParticipatedEvents(participatedEventsArray);
-    } catch (error) {
+        participationInfo: { contributedAmount: 0, contributionDate: s.created_at, relation: '개인 참여', message: s.notes },
+        source: 'personal',
+      })));
+    } catch {
       setParticipatedEvents([]);
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    setDataLoaded(false); // 캐시 무효화
+    setDataLoaded(false);
     await loadAllData();
     setRefreshing(false);
   };
 
   const handleDeleteEvent = (eventId, eventName) => {
-    Alert.alert(
-      '경조사 삭제',
-      `"${eventName}"을(를) 삭제하시겠어요?\n이 작업은 되돌릴 수 없습니다.`,
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '삭제',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await deleteEvent(eventId);
-              if (result.success) {
-                Alert.alert('완료', '경조사가 삭제되었습니다.');
-                loadHostedEvents(); // 목록 새로고침
-              } else {
-                Alert.alert('오류', result.error || '삭제에 실패했습니다.');
-              }
-            } catch (error) {
-              Alert.alert('오류', '삭제 중 오류가 발생했습니다.');
-            }
-          },
-        },
-      ]
-    );
+    setDeleteAlert({ visible: true, eventId, eventName });
   };
 
-  // 주최 이벤트 필터링
-  const filteredHostedEvents = hostedEvents.filter(event => {
-    if (hostedFilter === 'all') return true;
-    if (hostedFilter === 'active') return event.status === 'active';
-    if (hostedFilter === 'completed') return event.status === 'completed';
+  const confirmDelete = async () => {
+    const { eventId } = deleteAlert;
+    setDeleteAlert({ visible: false, eventId: null, eventName: '' });
+    try {
+      const result = await deleteEvent(eventId);
+      if (result.success) loadHostedEvents();
+    } catch {}
+  };
+
+  const filteredHostedEvents = hostedEvents.filter(e => {
+    if (hostedFilter === 'active') return e.status === 'active';
+    if (hostedFilter === 'completed') return e.status === 'completed';
     return true;
   });
 
-  const renderTabButton = (tab, title, count) => (
-    <TouchableOpacity
-      style={[
-        styles.tabButton,
-        activeTab === tab && styles.tabButtonActive
-      ]}
-      onPress={() => setActiveTab(tab)}
-    >
-      <Text style={[
-        styles.tabText,
-        activeTab === tab && styles.tabTextActive
-      ]}>
-        {title}
-      </Text>
-      <Text style={[
-        styles.tabCount,
-        activeTab === tab && styles.tabCountActive
-      ]}>
-        ({count})
-      </Text>
-    </TouchableOpacity>
-  );
+  const formatAmount = (amount) => {
+    if (!amount || amount === 0) return '0원';
+    if (amount >= 100000000) return `${Math.floor(amount / 100000000)}억원`;
+    if (amount >= 10000) return `${Math.floor(amount / 10000).toLocaleString()}만원`;
+    return `${amount.toLocaleString()}원`;
+  };
 
-  const renderHostedEvents = () => (
-    <>
-      {/* 필터 */}
-      <View style={styles.filterSection}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterContainer}
-        >
-          {[
-            { id: 'all', label: '전체', count: hostedEvents.length },
-            { id: 'active', label: '진행중', count: hostedEvents.filter(e => e.status === 'active').length },
-            { id: 'completed', label: '완료', count: hostedEvents.filter(e => e.status === 'completed').length }
-          ].map(filter => (
-            <TouchableOpacity
-              key={filter.id}
-              style={[
-                styles.filterButton,
-                hostedFilter === filter.id && styles.filterButtonActive
-              ]}
-              onPress={() => setHostedFilter(filter.id)}
-            >
-              <Text style={[
-                styles.filterText,
-                hostedFilter === filter.id && styles.filterTextActive
-              ]}>
-                {filter.label} ({filter.count})
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+  const formatDate = (dateString) => {
+    if (!dateString) return '날짜 미정';
+    const d = new Date(dateString);
+    return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`;
+  };
 
-      {/* 주최 이벤트 목록 */}
-      <View style={styles.eventsList}>
-        {filteredHostedEvents.length > 0 ? (
-          filteredHostedEvents.map((event) => (
-            <HostedEventCard
-              key={event.id}
-              event={event}
-              onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
-              onDelete={() => handleDeleteEvent(event.id, event.event_name)}
-            />
-          ))
-        ) : (
-          <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={64} color={Colors.gray300} />
-            <Text style={styles.emptyTitle}>
-              {hostedFilter === 'all' ? '주최한 경조사가 없어요' 
-               : hostedFilter === 'active' ? '진행중인 경조사가 없어요'
-               : '완료된 경조사가 없어요'}
-            </Text>
-            <Text style={styles.emptySubtitle}>
-              홈 화면에서 첫 번째 경조사를 만들어보세요
-            </Text>
-          </View>
-        )}
-      </View>
-    </>
-  );
-
-  const renderParticipatedEvents = () => (
-    <View style={styles.eventsList}>
-      {participatedEvents.length > 0 ? (
-        participatedEvents.map((event) => (
-          <ParticipatedEventCard
-            key={event.id}
-            event={event}
-            onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
-          />
-        ))
-      ) : (
-        <View style={styles.emptyState}>
-          <Ionicons name="gift-outline" size={64} color={Colors.gray300} />
-          <Text style={styles.emptyTitle}>참여한 경조사가 없어요</Text>
-          <Text style={styles.emptySubtitle}>
-            다른 분의 경조사에 참여하여 부조금을 기록해보세요
-          </Text>
-          
-          {/* 디버그 버튼 - 개발용 */}
-          <TouchableOpacity 
-            style={[styles.addParticipationButton, { backgroundColor: Colors.error, marginBottom: 12 }]}
-            onPress={debugCreateTestContribution}
-          >
-            <Ionicons name="bug" size={20} color={Colors.white} />
-            <Text style={styles.addParticipationText}>테스트 데이터 생성</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.addParticipationButton}
-            onPress={() => {
-              // TODO: 참여 경조사 추가 화면으로 이동
-              Alert.alert('준비중', '참여 경조사 추가 기능을 준비중입니다.');
-            }}
-          >
-            <Ionicons name="add" size={20} color={Colors.white} />
-            <Text style={styles.addParticipationText}>참여 기록 추가</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
-  );
+  const getTypeLabel = (type) => {
+    switch (type) {
+      case 'wedding': return '결혼식';
+      case 'funeral': return '장례식';
+      case 'birthday': return '생일';
+      default: return '기타';
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      
+
       {/* 헤더 */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>내 경조사</Text>
-        <Text style={styles.headerSubtitle}>경조사 관리 및 부조금 기록</Text>
       </View>
 
       {/* 탭 */}
-      <View style={styles.tabContainer}>
-        {renderTabButton('hosted', '주최한 경조사', hostedEvents.length)}
-        {renderTabButton('participated', '참여한 경조사', participatedEvents.length)}
+      <View style={styles.tabRow}>
+        <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('hosted')} activeOpacity={0.7}>
+          <Text style={[styles.tabText, activeTab === 'hosted' && styles.tabTextActive]}>
+            주최한 경조사
+          </Text>
+          {hostedEvents.length > 0 && (
+            <View style={[styles.tabBadge, activeTab === 'hosted' && styles.tabBadgeActive]}>
+              <Text style={[styles.tabBadgeText, activeTab === 'hosted' && styles.tabBadgeTextActive]}>
+                {hostedEvents.length}
+              </Text>
+            </View>
+          )}
+          {activeTab === 'hosted' && <View style={styles.tabUnderline} />}
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('participated')} activeOpacity={0.7}>
+          <Text style={[styles.tabText, activeTab === 'participated' && styles.tabTextActive]}>
+            참여한 경조사
+          </Text>
+          {participatedEvents.length > 0 && (
+            <View style={[styles.tabBadge, activeTab === 'participated' && styles.tabBadgeActive]}>
+              <Text style={[styles.tabBadgeText, activeTab === 'participated' && styles.tabBadgeTextActive]}>
+                {participatedEvents.length}
+              </Text>
+            </View>
+          )}
+          {activeTab === 'participated' && <View style={styles.tabUnderline} />}
+        </TouchableOpacity>
       </View>
 
-      {/* 콘텐츠 */}
-      <ScrollView 
+      <ScrollView
         style={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[Colors.primary]}
-            tintColor={Colors.primary}
-          />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3182F6" />}
         showsVerticalScrollIndicator={false}
       >
         {loading ? (
-          <View style={styles.loadingContainer}>
-            <Ionicons name="refresh" size={32} color={Colors.gray400} />
+          <View style={styles.loadingBox}>
+            <Ionicons name="refresh" size={28} color="#C5CCD5" />
             <Text style={styles.loadingText}>불러오는 중...</Text>
           </View>
         ) : activeTab === 'hosted' ? (
-          renderHostedEvents()
+          <>
+            {/* 필터 칩 */}
+            <View style={styles.filterChipRow}>
+              {[
+                { key: 'all', label: '전체', count: hostedEvents.length },
+                { key: 'active', label: '진행중', count: hostedEvents.filter(e => e.status === 'active').length },
+                { key: 'completed', label: '완료', count: hostedEvents.filter(e => e.status === 'completed').length },
+              ].map(f => (
+                <TouchableOpacity
+                  key={f.key}
+                  style={[styles.filterChip, hostedFilter === f.key && styles.filterChipActive]}
+                  onPress={() => setHostedFilter(f.key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.filterChipText, hostedFilter === f.key && styles.filterChipTextActive]}>
+                    {f.label} {f.count}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* 이벤트 목록 */}
+            {filteredHostedEvents.length > 0 ? (
+              <View style={styles.listSection}>
+                {filteredHostedEvents.map((event, index) => {
+                    const unverified = (event.stats?.totalContributions || 0) - (event.stats?.verifiedCount || 0);
+                    const navParams = {
+                      eventId: event.id,
+                      initialEvent: event,
+                      initialStats: {
+                        totalAmount: event.stats?.totalAmount || 0,
+                        totalCount: event.stats?.totalContributions || 0,
+                        averageAmount: event.stats?.averageAmount || 0,
+                        confirmedCount: event.stats?.verifiedCount || 0,
+                      },
+                    };
+                    return (
+                      <View key={event.id} style={styles.eventCardWrap}>
+                        <TouchableOpacity
+                          style={[styles.eventItem, unverified > 0 && styles.eventItemWithBanner]}
+                          onPress={() => navigation.navigate('EventDetail', navParams)}
+                          activeOpacity={0.6}
+                        >
+                          {/* 아이콘 + 이름 + 삭제+상태 */}
+                          <View style={styles.eventTopRow}>
+                            <View style={[styles.eventTypeIcon, event.event_type === 'funeral' && styles.eventTypeIconFuneral]}>
+                              {event.event_type === 'wedding' ? (
+                                <Image source={require('../../../assets/images/Wedding.png')} style={styles.eventTypeImage} resizeMode="contain" />
+                              ) : event.event_type === 'funeral' ? (
+                                <Image source={require('../../../assets/images/Funeral.png')} style={styles.eventTypeImage} resizeMode="contain" />
+                              ) : (
+                                <Ionicons name="calendar" size={18} color="#FFFFFF" />
+                              )}
+                            </View>
+
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.eventName} numberOfLines={1}>{event.event_name}</Text>
+                              <Text style={styles.eventMeta}>{formatDate(event.event_date)}</Text>
+                            </View>
+
+                            <View style={styles.eventRightCol}>
+                              <TouchableOpacity
+                                style={styles.cardDeleteBtn}
+                                onPress={() => handleDeleteEvent(event.id, event.event_name)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Ionicons name="trash-outline" size={15} color="#C5CCD5" />
+                              </TouchableOpacity>
+                              <View style={styles.statusRow}>
+                                <View style={[styles.statusDot, event.status === 'active' ? styles.statusDotActive : styles.statusDotDone]} />
+                                <Text style={[styles.statusLabel, event.status === 'active' ? styles.statusLabelActive : styles.statusLabelDone]}>
+                                  {event.status === 'active' ? '진행중' : '완료'}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+
+                          {/* 통계 행 */}
+                          <View style={styles.eventStatsRow}>
+                            <View style={styles.eventStatItem}>
+                              <Text style={styles.eventStatValue}>{(event.stats?.totalContributions || 0)}명</Text>
+                              <Text style={styles.eventStatLabel}>참여</Text>
+                            </View>
+                            <View style={styles.eventStatSep} />
+                            <View style={styles.eventStatItem}>
+                              <Text style={styles.eventStatValue}>{formatAmount(event.stats?.totalAmount)}</Text>
+                              <Text style={styles.eventStatLabel}>총 부조금</Text>
+                            </View>
+                            <View style={styles.eventStatSep} />
+                            <View style={styles.eventStatItem}>
+                              <Text style={styles.eventStatValue}>{formatAmount(Math.round(event.stats?.averageAmount || 0))}</Text>
+                              <Text style={styles.eventStatLabel}>평균</Text>
+                            </View>
+                          </View>
+
+                          {/* 하단 행 */}
+                          <View style={styles.eventBottomRow}>
+                            <Text style={styles.eventHostText}>주최 · {event.main_person_name || '미입력'}</Text>
+                            <View style={styles.eventBottomRight}>
+                              <Text style={styles.detailText}>상세보기</Text>
+                              <Ionicons name="chevron-forward" size={15} color="#C5CCD5" />
+                            </View>
+                          </View>
+
+                          {/* 미확정 배너 — 카드 내부 하단에 붙임 */}
+                          {unverified > 0 && (
+                            <TouchableOpacity
+                              style={styles.unverifiedBanner}
+                              onPress={() => navigation.navigate('EventDetail', navParams)}
+                              activeOpacity={0.7}
+                            >
+                              <View style={styles.unverifiedIconBox}>
+                                <Ionicons name="flash" size={16} color="#8B95A1" />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.unverifiedBannerSub}>아직 정리되지 않은 부조금</Text>
+                                <Text style={styles.unverifiedBannerMain}>미확정 내역이 {unverified}건 있어요</Text>
+                              </View>
+                              <Ionicons name="chevron-forward" size={16} color="#C5CCD5" />
+                            </TouchableOpacity>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+              </View>
+            ) : (
+              <View style={styles.emptyBox}>
+                <View style={styles.emptyIconWrap}>
+                  <Ionicons name="calendar-outline" size={36} color="#C5CCD5" />
+                </View>
+                <Text style={styles.emptyTitle}>
+                  {hostedFilter === 'all' ? '주최한 경조사가 없어요' : hostedFilter === 'active' ? '진행중인 경조사가 없어요' : '완료된 경조사가 없어요'}
+                </Text>
+                <Text style={styles.emptySub}>홈 화면에서 경조사를 만들어보세요</Text>
+              </View>
+            )}
+          </>
         ) : (
-          renderParticipatedEvents()
+          /* 참여한 경조사 탭 */
+          participatedEvents.length > 0 ? (
+            <View style={styles.listSection}>
+              {participatedEvents.map((event, index) => (
+                <TouchableOpacity
+                  key={event.id}
+                  style={[styles.eventItem, index < participatedEvents.length - 1 && styles.eventItemBorder]}
+                  onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
+                  activeOpacity={0.6}
+                >
+                  <View style={styles.eventTopRow}>
+                    <View style={[styles.eventTypeIcon, event.event_type === 'funeral' && styles.eventTypeIconFuneral]}>
+                      {event.event_type === 'wedding' ? (
+                        <Image source={require('../../../assets/images/Wedding.png')} style={styles.eventTypeImage} resizeMode="contain" />
+                      ) : event.event_type === 'funeral' ? (
+                        <Image source={require('../../../assets/images/Funeral.png')} style={styles.eventTypeImage} resizeMode="contain" />
+                      ) : (
+                        <Ionicons name="calendar" size={18} color="#FFFFFF" />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.eventName} numberOfLines={1}>{event.event_name}</Text>
+                      <Text style={styles.eventMeta}>{formatDate(event.event_date)}</Text>
+                    </View>
+                    <View style={[styles.participatedBadge]}>
+                      <Text style={styles.participatedBadgeText}>참여</Text>
+                    </View>
+                  </View>
+
+                  {event.participationInfo?.message ? (
+                    <Text style={styles.memoText} numberOfLines={1}>📝 {event.participationInfo.message}</Text>
+                  ) : null}
+
+                  <View style={styles.eventBottomRow}>
+                    <Text style={styles.eventHostText}>주최 · {event.main_person_name || '미입력'}</Text>
+                    <View style={styles.eventBottomRight}>
+                      <Text style={styles.detailText}>상세보기</Text>
+                      <Ionicons name="chevron-forward" size={15} color="#C5CCD5" />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyBox}>
+              <View style={styles.emptyIconWrap}>
+                <Ionicons name="gift-outline" size={36} color="#C5CCD5" />
+              </View>
+              <Text style={styles.emptyTitle}>참여한 경조사가 없어요</Text>
+              <Text style={styles.emptySub}>다른 분의 경조사에 참여해보세요</Text>
+            </View>
+          )
         )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* iOS 스타일 삭제 확인 모달 */}
+      <Modal
+        visible={deleteAlert.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteAlert({ visible: false, eventId: null, eventName: '' })}
+      >
+        <View style={styles.alertOverlay}>
+          <View style={styles.alertBox}>
+            <Text style={styles.alertTitle}>경조사 삭제</Text>
+            <Text style={styles.alertMessage}>
+              {`"${deleteAlert.eventName}"을(를) 삭제하시겠어요?\n이 작업은 되돌릴 수 없습니다.`}
+            </Text>
+            <View style={styles.alertDividerH} />
+            <View style={styles.alertBtnRow}>
+              <TouchableOpacity
+                style={styles.alertBtnLeft}
+                onPress={() => setDeleteAlert({ visible: false, eventId: null, eventName: '' })}
+                activeOpacity={0.6}
+              >
+                <Text style={styles.alertCancelText}>취소</Text>
+              </TouchableOpacity>
+              <View style={styles.alertDividerV} />
+              <TouchableOpacity
+                style={styles.alertBtnRight}
+                onPress={confirmDelete}
+                activeOpacity={0.6}
+              >
+                <Text style={styles.alertDeleteText}>삭제</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-// 주최 이벤트 카드 컴포넌트
-const HostedEventCard = ({ event, onPress, onDelete }) => {
-  const getEventIcon = () => {
-    switch (event.event_type) {
-      case 'wedding': return 'heart';
-      case 'funeral': return 'flower';
-      case 'birthday': return 'gift';
-      default: return 'calendar';
-    }
-  };
-
-  const getEventColor = () => {
-    switch (event.event_type) {
-      case 'wedding': return Colors.wedding;
-      case 'funeral': return Colors.funeral;
-      case 'birthday': return Colors.celebration;
-      default: return Colors.other;
-    }
-  };
-
-  const getStatusBadge = () => {
-    const isActive = event.status === 'active';
-    return {
-      backgroundColor: isActive ? Colors.success : Colors.gray300,
-      text: isActive ? '진행중' : '완료',
-      textColor: isActive ? Colors.white : Colors.textSecondary,
-    };
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '날짜 미정';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('ko-KR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-  const formatAmount = (amount) => {
-    if (!amount || amount === 0) return '0원';
-    
-    // 백만원 이상이면 만원 단위로 표시
-    if (amount >= 1000000) {
-      const manWon = Math.floor(amount / 10000);
-      return `${manWon.toLocaleString()}만원`;
-    }
-    
-    return `${amount.toLocaleString()}원`;
-  };
-
-  const statusBadge = getStatusBadge();
-  const stats = event.stats || {};
-
-  return (
-    <TouchableOpacity style={styles.eventCard} onPress={onPress}>
-      <View style={styles.eventHeader}>
-        <View style={styles.eventIconContainer}>
-          <View style={[styles.eventIcon, { backgroundColor: getEventColor() }]}>
-            {event.event_type === 'wedding' ? (
-              <Image 
-                source={require('../../../assets/images/Wedding.png')}
-                style={styles.eventIconImage}
-                resizeMode="contain"
-              />
-            ) : event.event_type === 'funeral' ? (
-              <Image 
-                source={require('../../../assets/images/Funeral.png')}
-                style={styles.eventIconImage}
-                resizeMode="contain"
-              />
-            ) : (
-              <Ionicons name={getEventIcon()} size={20} color={Colors.white} />
-            )}
-          </View>
-          <View style={styles.eventBasicInfo}>
-            <Text style={styles.eventTitle} numberOfLines={1}>
-              {event.event_name}
-            </Text>
-            <View style={styles.eventSubInfo}>
-              <Text style={styles.eventType}>
-                {event.event_type === 'wedding' ? '결혼식' : 
-                 event.event_type === 'funeral' ? '장례식' : 
-                 event.event_type === 'birthday' ? '생일' : '기타'}
-              </Text>
-              <Text style={styles.eventTypeDivider}>·</Text>
-              <Text style={styles.eventDate}>
-                {formatDate(event.event_date)}
-              </Text>
-            </View>
-          </View>
-        </View>
-        
-        <View style={styles.eventActions}>
-          <View style={[styles.statusBadge, { backgroundColor: statusBadge.backgroundColor }]}>
-            <Text style={[styles.statusText, { color: statusBadge.textColor }]}>
-              {statusBadge.text}
-            </Text>
-          </View>
-          <TouchableOpacity 
-            style={styles.deleteButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-          >
-            <Ionicons name="trash-outline" size={16} color={Colors.error} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* 부조금 통계 */}
-      <View style={styles.eventStats}>
-        <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{stats.participantCount || 0}명</Text>
-          <Text style={styles.statLabel}>참여자</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{formatAmount(stats.totalAmount)}</Text>
-          <Text style={styles.statLabel}>총 부조금</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{formatAmount(Math.round(stats.averageAmount))}</Text>
-          <Text style={styles.statLabel}>평균</Text>
-        </View>
-      </View>
-
-      <View style={styles.eventFooter}>
-        <Text style={styles.eventHost}>
-          주최: {event.main_person_name || '미입력'}
-        </Text>
-        <View style={styles.eventFooterRight}>
-          <Text style={styles.viewDetailsText}>부조금 상세보기</Text>
-          <Ionicons name="chevron-forward" size={16} color={Colors.gray400} />
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-};
-
-// 참여 이벤트 카드 컴포넌트
-const ParticipatedEventCard = ({ event, onPress }) => {
-  const getEventIcon = () => {
-    switch (event.event_type) {
-      case 'wedding': return 'heart';
-      case 'funeral': return 'flower';
-      case 'birthday': return 'gift';
-      default: return 'calendar';
-    }
-  };
-
-  const getEventColor = () => {
-    switch (event.event_type) {
-      case 'wedding': return Colors.wedding;
-      case 'funeral': return Colors.funeral;
-      case 'birthday': return Colors.celebration;
-      default: return Colors.other;
-    }
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '날짜 미정';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('ko-KR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-  const formatAmount = (amount) => {
-    if (!amount || amount === 0) return '0원';
-    
-    // 백만원 이상이면 만원 단위로 표시
-    if (amount >= 1000000) {
-      const manWon = Math.floor(amount / 10000);
-      return `${manWon.toLocaleString()}만원`;
-    }
-    
-    return `${amount.toLocaleString()}원`;
-  };
-
-  const participationInfo = event.participationInfo || {};
-
-  return (
-    <TouchableOpacity style={styles.participatedEventCard} onPress={onPress}>
-      <View style={styles.eventHeader}>
-        <View style={styles.eventIconContainer}>
-          <View style={[styles.eventIcon, { backgroundColor: getEventColor() }]}>
-            {event.event_type === 'wedding' ? (
-              <Image 
-                source={require('../../../assets/images/Wedding.png')}
-                style={styles.eventIconImage}
-                resizeMode="contain"
-              />
-            ) : event.event_type === 'funeral' ? (
-              <Image 
-                source={require('../../../assets/images/Funeral.png')}
-                style={styles.eventIconImage}
-                resizeMode="contain"
-              />
-            ) : (
-              <Ionicons name={getEventIcon()} size={20} color={Colors.white} />
-            )}
-          </View>
-          <View style={styles.eventBasicInfo}>
-            <Text style={styles.eventTitle} numberOfLines={1}>
-              {event.event_name}
-            </Text>
-            <View style={styles.eventSubInfo}>
-              <Text style={styles.eventType}>
-                {event.event_type === 'wedding' ? '결혼식' : 
-                 event.event_type === 'funeral' ? '장례식' : 
-                 event.event_type === 'birthday' ? '생일' : '기타'}
-              </Text>
-              <Text style={styles.eventTypeDivider}>·</Text>
-              <Text style={styles.eventDate}>
-                {formatDate(event.event_date)}
-              </Text>
-            </View>
-          </View>
-        </View>
-        
-        <View style={styles.participatedBadge}>
-          <Text style={styles.participatedBadgeText}>참여</Text>
-        </View>
-      </View>
-
-      {/* 참여 정보 */}
-      <View style={styles.participationInfoSection}>
-        {/* 개인 일정이 아닌 경우에만 부조금 표시 */}
-        {event.source !== 'personal' && (
-          <View style={styles.participationRow}>
-            <Text style={styles.participationLabel}>내 부조금</Text>
-            <Text style={styles.participationAmount}>
-              {formatAmount(participationInfo.contributedAmount)}
-            </Text>
-          </View>
-        )}
-        {participationInfo.relation && (
-          <View style={styles.participationRow}>
-            <Text style={styles.participationLabel}>
-              {event.source === 'personal' ? '일정 타입' : '관계'}
-            </Text>
-            <Text style={styles.participationValue}>
-              {participationInfo.relation}
-            </Text>
-          </View>
-        )}
-        {participationInfo.contributionDate && (
-          <View style={styles.participationRow}>
-            <Text style={styles.participationLabel}>
-              {event.source === 'personal' ? '등록 일자' : '참여 일자'}
-            </Text>
-            <Text style={styles.participationValue}>
-              {formatDate(participationInfo.contributionDate)}
-            </Text>
-          </View>
-        )}
-        {participationInfo.message && (
-          <View style={styles.participationRow}>
-            <Text style={styles.participationLabel}>메모</Text>
-            <Text style={styles.participationValue}>
-              {participationInfo.message}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.eventFooter}>
-        <Text style={styles.eventHost}>
-          주최: {event.main_person_name || '미입력'}
-        </Text>
-        <View style={styles.eventFooterRight}>
-          <Text style={styles.viewDetailsText}>상세보기</Text>
-          <Ionicons name="chevron-forward" size={16} color={Colors.gray400} />
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-};
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.gray50,
+    backgroundColor: '#F2F4F6',
   },
-  
+
   // 헤더
   header: {
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 8 : 50,
-    paddingBottom: 16,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
+    paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 4,
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#191F28',
+    letterSpacing: -0.5,
   },
-  headerSubtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  
+
   // 탭
-  tabContainer: {
+  tabRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.white,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
+    borderBottomColor: '#F2F4F6',
   },
-  tabButton: {
+  tab: {
     flex: 1,
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginHorizontal: 4,
-    backgroundColor: Colors.gray50,
-  },
-  tabButtonActive: {
-    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 6,
+    position: 'relative',
   },
   tabText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textSecondary,
-    marginRight: 4,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#8B95A1',
   },
   tabTextActive: {
-    color: Colors.white,
+    color: '#191F28',
   },
-  tabCount: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textSecondary,
+  tabBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#E5E8EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
   },
-  tabCountActive: {
-    color: Colors.white,
+  tabBadgeActive: {
+    backgroundColor: '#191F28',
   },
-  
-  // 필터 (주최 이벤트용)
-  filterSection: {
-    backgroundColor: Colors.white,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
+  tabBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8B95A1',
   },
-  filterContainer: {
-    paddingHorizontal: 20,
-    gap: 12,
+  tabBadgeTextActive: {
+    color: '#FFFFFF',
   },
-  filterButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.gray100,
+  tabUnderline: {
+    position: 'absolute',
+    bottom: 0,
+    left: 16,
+    right: 16,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#191F28',
   },
-  filterButtonActive: {
-    backgroundColor: Colors.primary,
-  },
-  filterText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textSecondary,
-  },
-  filterTextActive: {
-    color: Colors.white,
-  },
-  
-  // 콘텐츠
+
   content: {
     flex: 1,
   },
-  
-  // 이벤트 목록
-  eventsList: {
+
+  // 필터 칩
+  filterChipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  filterChipActive: {
+    backgroundColor: '#191F28',
+    borderColor: '#191F28',
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8B95A1',
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // 리스트 섹션
+  listSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  eventCardWrap: {
+    marginBottom: 16,
+  },
+  eventItem: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     paddingHorizontal: 20,
     paddingTop: 20,
-    gap: 16,
-  },
-  eventCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 20,
+    paddingBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
     elevation: 3,
+    overflow: 'hidden',
   },
-  eventHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
+  eventItemWithBanner: {
+    paddingBottom: 0,
   },
-  eventIconContainer: {
+  eventItemBorder: {},
+
+  // 미확정 배너 — 카드 내부 하단
+  unverifiedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    backgroundColor: '#F8F9FA',
+    borderTopWidth: 1,
+    borderTopColor: '#F2F4F6',
+    marginHorizontal: -20,
+    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
   },
-  eventIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  unverifiedIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#E5E8EB',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    overflow: 'hidden', // 동그라미 경계를 벗어나는 이미지 잘라내기
   },
-  eventIconImage: {
-    width: 80,
-    height: 80,
-  },
-  eventBasicInfo: {
-    flex: 1,
-  },
-  eventTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 4,
-  },
-  eventSubInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  eventType: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: '500',
-  },
-  eventTypeDivider: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginHorizontal: 6,
-  },
-  eventDate: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  eventActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
+  unverifiedBannerSub: {
     fontSize: 12,
-    fontWeight: '500',
-  },
-  deleteButton: {
-    padding: 4,
-  },
-  
-  // 통계
-  eventStats: {
-    flexDirection: 'row',
-    backgroundColor: Colors.gray50,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.primary,
+    color: '#8B95A1',
     marginBottom: 2,
   },
-  statLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
+  unverifiedBannerMain: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#191F28',
   },
-  statDivider: {
+
+  // 이벤트 상단 행
+  eventTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  eventTypeIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFB3C6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  eventTypeIconFuneral: {
+    backgroundColor: '#5C6472',
+  },
+  eventTypeImage: {
+    width: 60,
+    height: 60,
+  },
+  eventName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#191F28',
+    marginBottom: 3,
+  },
+  eventMeta: {
+    fontSize: 13,
+    color: '#8B95A1',
+    fontWeight: '400',
+  },
+  eventRightCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  cardDeleteBtn: {
+    padding: 2,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusDotActive: {
+    backgroundColor: '#2ACB6E',
+  },
+  statusDotDone: {
+    backgroundColor: '#C5CCD5',
+  },
+  statusLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  statusLabelActive: {
+    color: '#2ACB6E',
+  },
+  statusLabelDone: {
+    color: '#C5CCD5',
+  },
+
+  // 통계 행
+  eventStatsRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginBottom: 14,
+  },
+  eventStatItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+  },
+  eventStatSep: {
     width: 1,
-    backgroundColor: Colors.gray200,
-    marginHorizontal: 16,
+    backgroundColor: '#E5E8EB',
+    marginVertical: 4,
   },
-  
-  // 푸터
-  eventFooter: {
+  eventStatValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#191F28',
+  },
+  eventStatLabel: {
+    fontSize: 11,
+    color: '#8B95A1',
+    fontWeight: '500',
+  },
+
+  // 하단 행
+  eventBottomRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  eventHost: {
-    fontSize: 14,
-    color: Colors.textSecondary,
+  eventHostText: {
+    fontSize: 13,
+    color: '#8B95A1',
   },
-  eventFooterRight: {
+  eventBottomRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
-  viewDetailsText: {
-    fontSize: 14,
-    color: Colors.primary,
+  detailText: {
+    fontSize: 13,
     fontWeight: '500',
-    marginRight: 4,
+    color: '#C5CCD5',
   },
-  
-  // 빈 상태
-  emptyState: {
-    alignItems: 'center',
-    paddingTop: 60,
-    paddingHorizontal: 40,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-    marginTop: 20,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  
-  // 참여 추가 버튼
-  addParticipationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  addParticipationText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.white,
-  },
-  
-  // 참여 이벤트 카드
-  participatedEventCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.secondary,
-  },
+
+  // 참여 뱃지
   participatedBadge: {
-    backgroundColor: Colors.secondary,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 20,
+    backgroundColor: '#EBF3FF',
   },
   participatedBadgeText: {
     fontSize: 12,
-    fontWeight: '500',
-    color: Colors.white,
+    fontWeight: '600',
+    color: '#3182F6',
   },
-  participationInfoSection: {
-    backgroundColor: Colors.gray50,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    gap: 8,
+  memoText: {
+    fontSize: 13,
+    color: '#8B95A1',
+    marginBottom: 12,
+    marginLeft: 56,
   },
-  participationRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+
+  // 빈 상태
+  emptyBox: {
     alignItems: 'center',
+    paddingTop: 72,
+    paddingHorizontal: 40,
   },
-  participationLabel: {
-    fontSize: 14,
-    color: Colors.textSecondary,
+  emptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  participationAmount: {
-    fontSize: 16,
+  emptyTitle: {
+    fontSize: 17,
     fontWeight: '700',
-    color: Colors.secondary,
+    color: '#191F28',
+    marginBottom: 8,
+    textAlign: 'center',
   },
-  participationValue: {
+  emptySub: {
     fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textPrimary,
+    color: '#8B95A1',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
+
+  // iOS 스타일 삭제 확인 모달
+  alertOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertBox: {
+    width: 270,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  alertTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000000',
+    textAlign: 'center',
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    marginBottom: 6,
+  },
+  alertMessage: {
+    fontSize: 13,
+    color: '#3C3C43',
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  alertDividerH: {
+    height: 0.5,
+    backgroundColor: 'rgba(60,60,67,0.29)',
+  },
+  alertBtnRow: {
+    flexDirection: 'row',
+    height: 44,
+  },
+  alertBtnLeft: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertBtnRight: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertDividerV: {
+    width: 0.5,
+    backgroundColor: 'rgba(60,60,67,0.29)',
+  },
+  alertCancelText: {
+    fontSize: 17,
+    fontWeight: '400',
+    color: '#007AFF',
+  },
+  alertDeleteText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#FF3B30',
   },
 
   // 로딩
-  loadingContainer: {
+  loadingBox: {
     alignItems: 'center',
     paddingTop: 80,
-    gap: 16,
+    gap: 12,
   },
   loadingText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
+    fontSize: 15,
+    color: '#8B95A1',
   },
 });
