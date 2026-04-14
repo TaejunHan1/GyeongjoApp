@@ -41,6 +41,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
   const [recognizing, setRecognizing] = useState(true);
   const [candidates, setCandidates] = useState([]);
   const [selectedName, setSelectedName] = useState('');
+  const [debugLog, setDebugLog] = useState('');
   const [nameConfirmed, setNameConfirmed] = useState(false);
 
   // 금액
@@ -74,6 +75,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
     setRecognizing(true);
     try {
       if (!TextRecognition) {
+        console.warn('[MLKit] TextRecognition 모듈 null — 네이티브 링크 실패');
         setCandidates([]);
         setSelectedName('');
         setRecognizing(false);
@@ -87,10 +89,11 @@ export default function GuestConfirmScreen({ navigation, route }) {
       const uniqueCandidates = [...new Set([raw, ...blockTexts])]
         .filter((t) => t.length > 0)
         .slice(0, 3);
+      setDebugLog(`raw: "${raw}" | blocks: ${JSON.stringify(blockTexts)}`);
       setCandidates(uniqueCandidates);
       setSelectedName(uniqueCandidates[0] || '');
     } catch (err) {
-      console.warn('TextRecognition unavailable:', err?.message);
+      setDebugLog(`오류: ${err?.message}`);
       setCandidates([]);
       setSelectedName('');
     } finally {
@@ -288,15 +291,28 @@ export default function GuestConfirmScreen({ navigation, route }) {
                 <View style={[s.panelIcon, { backgroundColor: sideColor + '20' }]}>
                   <Text style={s.panelIconText}>👤</Text>
                 </View>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={s.panelTitle}>이름 확인</Text>
                   <Text style={s.panelSub}>
                     {candidates.length > 0
                       ? '인식된 이름을 선택하거나 직접 수정하세요'
-                      : '아래에 직접 이름을 입력해주세요'}
+                      : '성함을 직접 입력해주세요'}
                   </Text>
                 </View>
               </View>
+
+              {candidates.length === 0 && (
+                <View style={s.recognizeFailBanner}>
+                  <Text style={s.recognizeFailText}>✏️  아래에 성함을 입력 후 확인 버튼을 눌러주세요</Text>
+                </View>
+              )}
+
+              {/* 디버그 — 다음 빌드 후 확인되면 제거 */}
+              {!!debugLog && (
+                <View style={{ backgroundColor: '#222', borderRadius: 8, padding: 8, marginBottom: 8 }}>
+                  <Text style={{ color: '#0f0', fontSize: 10 }}>{debugLog}</Text>
+                </View>
+              )}
 
               {candidates.length > 0 && (
                 <View style={s.candidateRow}>
@@ -324,6 +340,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
                   placeholder="성함을 입력하세요"
                   placeholderTextColor="#C0B8AC"
                   maxLength={20}
+                  autoFocus={candidates.length === 0}
                 />
               </View>
 
@@ -633,6 +650,16 @@ const s = StyleSheet.create({
   panelIconText: { fontSize: 22 },
   panelTitle: { fontSize: 17, fontWeight: '700', color: '#1A1209' },
   panelSub: { fontSize: 12, color: '#9C9185', marginTop: 2 },
+  recognizeFailBanner: {
+    backgroundColor: '#FFF8E7',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#FFE082',
+  },
+  recognizeFailText: { fontSize: 13, color: '#7A6000', fontWeight: '500' },
 
   // 후보 버튼
   candidateRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

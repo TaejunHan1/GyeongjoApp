@@ -18,7 +18,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-const INACTIVITY_MS = 10000;
+const INACTIVITY_MS = 5000;
 
 // 웹 버전과 동일한 경로 사용 (viewBox 0 0 250 120 기준)
 // strokeDasharray=200 통일 — 모든 획이 200 미만이므로 정상 동작
@@ -69,11 +69,13 @@ export default function GuestWritingScreen({ navigation, route }) {
   const hintAnims = useRef(HINT_STROKES.map(() => new Animated.Value(0))).current;
   const hintOpacity = useRef(new Animated.Value(1)).current;
   // 팜 리젝션
+  const hasStrokesRef = useRef(false);
   const drawingTouchId = useRef(null);
   // 아직 어느 터치가 펜인지 결정 못한 후보들 { id → {x, y} }
   const pendingTouches = useRef(new Map());
 
   const hasStrokes = strokes.length > 0 || currentPath.length > 0;
+  hasStrokesRef.current = hasStrokes;
 
   // 획 하나씩 그려지는 힌트 애니메이션 (웹 버전과 동일한 로직)
   useEffect(() => {
@@ -110,6 +112,14 @@ export default function GuestWritingScreen({ navigation, route }) {
       hintOpacity.stopAnimation();
     };
   }, [hasStrokes, mode]);
+
+  // 획이 있으면 버튼 항상 완전히 표시, 없어지면 타이머 허용
+  useEffect(() => {
+    if (hasStrokes) {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      Animated.timing(controlsOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    }
+  }, [hasStrokes]);
 
   // 화면 크기 변경 감지 (회전 후)
   useEffect(() => {
@@ -171,7 +181,10 @@ export default function GuestWritingScreen({ navigation, route }) {
     setControlsVisible(true);
     Animated.timing(controlsOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     hideTimerRef.current = setTimeout(() => {
-      Animated.timing(controlsOpacity, { toValue: 0.15, duration: 600, useNativeDriver: true }).start();
+      // 획이 그려져 있으면 버튼 숨기지 않음
+      if (!hasStrokesRef.current) {
+        Animated.timing(controlsOpacity, { toValue: 0.15, duration: 600, useNativeDriver: true }).start();
+      }
     }, 3000);
   }, [controlsOpacity]);
 
