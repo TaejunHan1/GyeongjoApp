@@ -184,12 +184,12 @@ export default function TossStyleTemplate({ eventData = {}, categorizedImages = 
   const brideFatherContact = eventData.brideFatherContact || ai.bride_father_contact || '';
   const brideMotherContact = eventData.brideMotherContact || ai.bride_mother_contact || '';
   // 계좌번호 (camelCase 미리보기 + snake_case DB 둘 다 대응)
-  const groomAccount      = { num: eventData.groomAccountNumber      || groomAccount.num,       bank: eventData.groomBankName      || groomAccount.bank };
-  const groomFatherAccount= { num: eventData.groomFatherAccountNumber|| groomFatherAccount.num, bank: eventData.groomFatherBankName|| groomFatherAccount.bank };
-  const groomMotherAccount= { num: eventData.groomMotherAccountNumber|| groomMotherAccount.num, bank: eventData.groomMotherBankName|| groomMotherAccount.bank };
-  const brideAccount      = { num: eventData.brideAccountNumber      || brideAccount.num,       bank: eventData.brideBankName      || brideAccount.bank };
-  const brideFatherAccount= { num: eventData.brideFatherAccountNumber|| brideFatherAccount.num, bank: eventData.brideFatherBankName|| brideFatherAccount.bank };
-  const brideMotherAccount= { num: eventData.brideMotherAccountNumber|| brideMotherAccount.num, bank: eventData.brideMotherBankName|| brideMotherAccount.bank };
+  const groomAccount      = { num: eventData.groomAccountNumber       || ai.groom_account_number        || '', bank: eventData.groomBankName       || ai.groom_bank_name        || '' };
+  const groomFatherAccount= { num: eventData.groomFatherAccountNumber || ai.groom_father_account_number || '', bank: eventData.groomFatherBankName || ai.groom_father_bank_name || '' };
+  const groomMotherAccount= { num: eventData.groomMotherAccountNumber || ai.groom_mother_account_number || '', bank: eventData.groomMotherBankName || ai.groom_mother_bank_name || '' };
+  const brideAccount      = { num: eventData.brideAccountNumber       || ai.bride_account_number        || '', bank: eventData.brideBankName       || ai.bride_bank_name        || '' };
+  const brideFatherAccount= { num: eventData.brideFatherAccountNumber || ai.bride_father_account_number || '', bank: eventData.brideFatherBankName || ai.bride_father_bank_name || '' };
+  const brideMotherAccount= { num: eventData.brideMotherAccountNumber || ai.bride_mother_account_number || '', bank: eventData.brideMotherBankName || ai.bride_mother_bank_name || '' };
 
   const hasGiftSection = groomAccount.num || groomFatherAccount.num || groomMotherAccount.num
     || brideAccount.num || brideFatherAccount.num || brideMotherAccount.num

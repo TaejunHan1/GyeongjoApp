@@ -45,8 +45,12 @@ import HostFAQScreen from '../screens/main/guides/host/HostFAQScreen';
 // 🆕 참여자용 FAQ 화면
 import ParticipantFAQScreen from '../screens/main/guides/participant/ParticipantFAQScreen';
 
-import SettingsScreen from '../screens/main/SettingsScreen'; 
+import SettingsScreen from '../screens/main/SettingsScreen';
 import ContributionSettingsScreen from '../screens/main/ContributionSettingsScreen';
+
+// 디지털 방명록 화면
+import GuestWritingScreen from '../screens/event/guestbook/GuestWritingScreen';
+import GuestConfirmScreen from '../screens/event/guestbook/GuestConfirmScreen';
 
 // 🆕 장소/업체 관련 화면들
 import VenueSearchScreen from '../screens/venue/VenueSearchScreen';
@@ -278,8 +282,8 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
           )}
         </Stack.Screen>
         
-        <Stack.Screen 
-          name="EventDetail" 
+        <Stack.Screen
+          name="EventDetail"
           options={{
             headerShown: true,
             title: '경조사 상세',
@@ -752,8 +756,30 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
           )}
         </Stack.Screen>
 
-        <Stack.Screen 
-          name="FuneralVenueList" 
+        {/* 디지털 방명록 — 하객 필기 화면 (전체화면, 헤더 없음) */}
+        <Stack.Screen
+          name="GuestWriting"
+          options={{
+            headerShown: false,
+            gestureEnabled: false,
+          }}
+        >
+          {(props) => <GuestWritingScreen {...props} />}
+        </Stack.Screen>
+
+        {/* 디지털 방명록 — 이름 확인 + 금액 입력 */}
+        <Stack.Screen
+          name="GuestConfirm"
+          options={{
+            headerShown: false,
+            gestureEnabled: true,
+          }}
+        >
+          {(props) => <GuestConfirmScreen {...props} />}
+        </Stack.Screen>
+
+        <Stack.Screen
+          name="FuneralVenueList"
           options={{
             headerShown: true,
             title: '장례식장 목록',
