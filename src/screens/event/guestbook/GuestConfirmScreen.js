@@ -15,6 +15,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   StatusBar,
+  Keyboard,
 } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { DeviceEventEmitter } from 'react-native';
@@ -192,7 +193,10 @@ export default function GuestConfirmScreen({ navigation, route }) {
     }
   };
 
-  const handleExit = () => navigation.pop(2);
+  const handleExit = () => {
+    Keyboard.dismiss();
+    setTimeout(() => navigation.pop(2), Platform.OS === 'android' ? 150 : 0);
+  };
 
   const { width: SW, height: SH } = screenSize;
   const isLandscape = SW > SH;

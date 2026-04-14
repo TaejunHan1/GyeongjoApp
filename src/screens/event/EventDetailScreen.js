@@ -472,6 +472,11 @@ export default function EventDetailScreen({ navigation, route }) {
   useFocusEffect(
     React.useCallback(() => {
       loadEventData();
+      // 하객 접수 흐름에서 pop(2)로 돌아왔을 때 모달 상태 초기화
+      setSideSelectVisible(false);
+      setAddModalVisible(false);
+      // Android 키보드 잔상 제거
+      Keyboard.dismiss();
     }, [eventId])
   );
 
@@ -713,10 +718,10 @@ export default function EventDetailScreen({ navigation, route }) {
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.flex1}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         <ScrollView
           ref={scrollViewRef}
@@ -1673,7 +1678,7 @@ export default function EventDetailScreen({ navigation, route }) {
               style={styles.sideRow}
               onPress={() => {
                 setSideSelectVisible(false);
-                navigation.navigate('GuestWriting', { event, side: 'groom' });
+                setTimeout(() => navigation.navigate('GuestWriting', { event, side: 'groom' }), 300);
               }}
               activeOpacity={0.7}
             >
@@ -1694,7 +1699,7 @@ export default function EventDetailScreen({ navigation, route }) {
               style={styles.sideRow}
               onPress={() => {
                 setSideSelectVisible(false);
-                navigation.navigate('GuestWriting', { event, side: 'bride' });
+                setTimeout(() => navigation.navigate('GuestWriting', { event, side: 'bride' }), 300);
               }}
               activeOpacity={0.7}
             >

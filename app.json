@@ -17,6 +17,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.jeongdam.gyeongjoapp",
+      "deploymentTarget": "15.1",
       "infoPlist": {
         "CFBundleURLTypes": [
           {
