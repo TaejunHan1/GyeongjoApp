@@ -387,7 +387,8 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const [dataLoaded, setDataLoaded] = useState(false);
   const CACHE_DURATION = 30000; // 30초 캐시
   const [calendarDate, setCalendarDate] = useState(new Date()); // 🔥 캘린더 현재 날짜 상태
-  const [currentEventPage, setCurrentEventPage] = useState(0); // 🔥 현재 페이지
+  const [currentEventPage, setCurrentEventPage] = useState(0); // 🔥 현재 페이지 (참여할 경조사)
+  const [hostedEventPage, setHostedEventPage] = useState(0); // 🔥 내가 주최한 경조사 페이지
   const eventsPerPage = 3; // 페이지당 표시할 이벤트 수
   
   // 📱 알림 관련 상태
@@ -1335,16 +1336,14 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     return isCompleted;
   });
 
-  // 🔥 최대 3개까지만 표시
-  const currentEvents = selectedTab === 'active' 
-    ? activeEventsFiltered.slice(0, 3) 
-    : completedEventsFiltered.slice(0, 3);
-  
-  const totalCount = selectedTab === 'active' 
-    ? activeEventsFiltered.length 
-    : completedEventsFiltered.length;
-  
-  const hasMore = totalCount > 3;
+  // 🔥 페이지네이션으로 표시
+  const displayedEvents = selectedTab === 'active' ? activeEventsFiltered : completedEventsFiltered;
+  const totalCount = displayedEvents.length;
+  const hostedTotalPages = Math.ceil(totalCount / eventsPerPage);
+  const currentEvents = displayedEvents.slice(
+    hostedEventPage * eventsPerPage,
+    (hostedEventPage + 1) * eventsPerPage
+  );
 
   // 🔥 금액 포맷팅 함수
   const formatAmount = (amount) => {
@@ -1508,7 +1507,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           <View style={styles.tabContainer}>
             <TouchableOpacity
               style={[styles.tabButton, selectedTab === 'active' && styles.activeTabButton]}
-              onPress={() => setSelectedTab('active')}
+              onPress={() => { setSelectedTab('active'); setHostedEventPage(0); }}
             >
               <Text style={[styles.tabText, selectedTab === 'active' && styles.activeTabText]}>
                 진행중 ({activeEventsFiltered.length})
@@ -1516,7 +1515,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.tabButton, selectedTab === 'completed' && styles.activeTabButton]}
-              onPress={() => setSelectedTab('completed')}
+              onPress={() => { setSelectedTab('completed'); setHostedEventPage(0); }}
             >
               <Text style={[styles.tabText, selectedTab === 'completed' && styles.activeTabText]}>
                 최근 완료 ({completedEventsFiltered.length})
@@ -1591,17 +1590,35 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                 </TouchableOpacity>
               ))}
               
-              {/* 🔥 더보기 버튼 */}
-              {hasMore && (
-                <TouchableOpacity 
-                  style={styles.viewMoreButton}
-                  onPress={handleViewMore}
-                >
-                  <Text style={styles.viewMoreText}>
-                    더보기 ({totalCount - 3}개 더)
-                  </Text>
-                  <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-                </TouchableOpacity>
+              {/* 🔥 페이지네이션 컨트롤 */}
+              {hostedTotalPages > 1 && (
+                <View style={styles.paginationContainer}>
+                  <TouchableOpacity
+                    style={[styles.paginationButton, hostedEventPage === 0 && styles.paginationButtonDisabled]}
+                    onPress={() => { if (hostedEventPage > 0) setHostedEventPage(hostedEventPage - 1); }}
+                    disabled={hostedEventPage === 0}
+                  >
+                    <Ionicons name="chevron-back" size={20} color={hostedEventPage === 0 ? Colors.gray300 : Colors.primary} />
+                  </TouchableOpacity>
+
+                  <View style={styles.paginationDots}>
+                    {[...Array(hostedTotalPages)].map((_, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={[styles.paginationDot, index === hostedEventPage && styles.paginationDotActive]}
+                        onPress={() => setHostedEventPage(index)}
+                      />
+                    ))}
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.paginationButton, hostedEventPage === hostedTotalPages - 1 && styles.paginationButtonDisabled]}
+                    onPress={() => { if (hostedEventPage < hostedTotalPages - 1) setHostedEventPage(hostedEventPage + 1); }}
+                    disabled={hostedEventPage === hostedTotalPages - 1}
+                  >
+                    <Ionicons name="chevron-forward" size={20} color={hostedEventPage === hostedTotalPages - 1 ? Colors.gray300 : Colors.primary} />
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           ) : (
