@@ -182,3 +182,35 @@ The app includes AI-powered features via DeepSeek service:
 - **File**: `src/lib/deepseekService.js`
 - **Features**: Contribution analysis, event insights, budget recommendations
 - **Usage**: Integrated in guide screens and budget calculator
+
+---
+
+## Agent Teams 사용 가이드
+
+### 환경 설정 (이미 완료)
+- `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` → `~/.zshrc` + `~/.claude/settings.json` 적용 완료
+
+### 팀 프롬프트 파일 위치
+```
+agents/
+├── README.md              # 사용법 요약
+├── basic-team.md          # 10인 기본 팀 (일반 기능 개발)
+├── simple-team.md         # 5인 간소화 팀 (작은 기능)
+└── large-team.md          # 12인 대규모 팀 (새 앱/리팩토링)
+```
+
+### 실행 방법
+```bash
+# 터미널에서
+claude --model opus
+
+# 프롬프트: agents/basic-team.md 내용 복사 후
+# [기능 설명] 부분만 바꿔서 붙여넣기
+```
+
+### 팀 규모 선택 기준
+| 규모 | 파일 | 사용 시점 |
+|------|------|-----------|
+| 5인 | `simple-team.md` | 버튼 추가, UI 수정 등 작은 변경 |
+| 10인 | `basic-team.md` | 새 화면, API 연동 등 일반 기능 |
+| 12인 | `large-team.md` | 새 앱, 대규모 리팩토링 |

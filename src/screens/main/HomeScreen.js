@@ -17,6 +17,7 @@ import {
   TouchableWithoutFeedback,
   Platform,
   Linking,
+  Share,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -454,30 +455,30 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   }, [userInfo, session, isAuthenticated]);
 
-  // 슬라이드 데이터 - 경조사 종류별로 구성
+  // 슬라이드 데이터 - 경조사 종류별로 구성 (이모지 제거, Toss 스타일)
   const slides = [
     {
       backgroundColor: Colors.primary,
       title: '마음을 나누는\n가장 쉬운 방법',
-      subtitle: '정성스러운 마음을 기록해보세요 💝',
+      subtitle: '정성스러운 마음을 기록해보세요',
       icon: 'people',
     },
     {
       backgroundColor: Colors.wedding,
       title: '소중한 순간을\n함께 기록하세요',
-      subtitle: '결혼식, 돌잔치 등 기쁜 날들 🎉',
+      subtitle: '결혼식, 돌잔치 등 기쁜 날들',
       icon: 'heart',
     },
     {
       backgroundColor: Colors.funeral,
       title: '마지막 인사를\n정중하게 전하세요',
-      subtitle: '고인의 명복을 빌며 🕊️',
+      subtitle: '고인의 명복을 빌며',
       icon: 'flower',
     },
     {
       backgroundColor: Colors.success,
       title: 'QR 코드로\n간편하게 참여하세요',
-      subtitle: '스캔 한 번으로 부조 완료 📱',
+      subtitle: '스캔 한 번으로 부조 완료',
       icon: 'qr-code',
     },
   ];
@@ -1351,11 +1352,241 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     return new Intl.NumberFormat('ko-KR').format(amount) + '원';
   };
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 품앗이 장부 state & 함수 (Supabase 기반)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const [pumasiTab, setPumasiTab] = useState('received'); // 'received' | 'gave'
+  const [pumasiReceived, setPumasiReceived] = useState([]); // guest_book 기반 "내가 받음"
+  const [pumasiGave, setPumasiGave] = useState([]);         // pumasi_gave 테이블 "내가 줬음"
+  const [showPumasiAddModal, setShowPumasiAddModal] = useState(false);
+  const [pumasiGaveForm, setPumasiGaveForm] = useState({
+    recipient_name: '',
+    amount: '',
+    occasion: '',
+    event_date: new Date().toISOString().split('T')[0],
+    linked_guest_id: null,
+  });
+  const [guestBookList, setGuestBookList] = useState([]); // 사람 선택용 guest_book 목록
+
+  // 필터 state
+  const [pumasiFilterEvent, setPumasiFilterEvent] = useState(null);    // { id, event_name, event_type } | null
+  const [pumasiFilterRelation, setPumasiFilterRelation] = useState(null); // string | null
+  const [showPumasiFilterSheet, setShowPumasiFilterSheet] = useState(false);
+  const [pumasiFilterStep, setPumasiFilterStep] = useState(1); // 1=경조사선택, 2=신랑/신부측(wedding만), 3=관계선택
+  const [pumasiFilterSide, setPumasiFilterSide] = useState(null); // '신랑측' | '신부측' | null
+
+  // 줬음 기록 바텀시트 (받음 항목에서 열리는 모달)
+  const [showPumasiGaveSheet, setShowPumasiGaveSheet] = useState(false);
+
+  // 페이지네이션
+  const [pumasiReceivedPage, setPumasiReceivedPage] = useState(0);
+  const [pumasiGavePage, setPumasiGavePage] = useState(0);
+  const PUMASI_PER_PAGE = 5;
+
+  // 줬음 기록된 guest_book id 세트
+  const gaveLinkedIds = new Set(pumasiGave.map(g => g.linked_guest_id).filter(Boolean));
+
+  // 요약 금액용: 줬음 제외 없이 필터 조건만 적용 (총 받은 금액 계산용)
+  const filteredPumasiReceivedAll = pumasiReceived.filter(item => {
+    if (pumasiFilterEvent && item.event_id !== pumasiFilterEvent.id) return false;
+    if (pumasiFilterSide && item.relation_category !== pumasiFilterSide) return false;
+    if (pumasiFilterRelation && item.relation_detail !== pumasiFilterRelation) return false;
+    return true;
+  });
+
+  // 목록용: 이미 줬음 기록된 항목 추가 제외
+  const filteredPumasiReceived = filteredPumasiReceivedAll.filter(item => !gaveLinkedIds.has(item.id));
+
+  // 선택된 경조사의 실제 relation_category 목록 (DB 값 그대로)
+  const availableSides = pumasiFilterEvent
+    ? [...new Set(pumasiReceived
+        .filter(g => g.event_id === pumasiFilterEvent.id)
+        .map(g => g.relation_category)
+        .filter(Boolean))]
+    : [];
+
+  // 선택된 경조사 + 측의 실제 relation_detail 목록 (DB 값 그대로)
+  const availableRelations = pumasiFilterEvent
+    ? [...new Set(pumasiReceived
+        .filter(g => {
+          if (g.event_id !== pumasiFilterEvent.id) return false;
+          if (pumasiFilterSide && g.relation_category !== pumasiFilterSide) return false;
+          return true;
+        })
+        .map(g => g.relation_detail)
+        .filter(Boolean))]
+    : [];
+
+  // 감사 메시지 state
+  const [thankYouSentMap, setThankYouSentMap] = useState({});
+
+  // 내가 받음: 이미 로드된 hostedEvents 기반으로 guest_book 전체 로드
+  const loadPumasiReceived = async () => {
+    try {
+      const userId = user?.id || userInfo?.userId;
+      if (!userId) return;
+
+      // hostedEvents 우선 사용, 없으면 직접 쿼리
+      let eventList = hostedEvents.length > 0
+        ? hostedEvents.map(e => ({ id: e.id, event_name: e.event_name || e.title || '', event_type: e.event_type || '' }))
+        : null;
+
+      if (!eventList || eventList.length === 0) {
+        const { data: evData } = await supabase
+          .from('events')
+          .select('id, event_name, event_type')
+          .eq('user_id', userId)
+          .limit(200);
+        if (!evData || evData.length === 0) return;
+        eventList = evData;
+      }
+
+      const eventIds = eventList.map(e => e.id);
+
+      // limit 10000으로 전체 로드 (Supabase 기본 1000행 제한 우회)
+      const { data: guestData } = await supabase
+        .from('guest_book')
+        .select('id, guest_name, amount, relation_category, relation_detail, event_id, created_at')
+        .in('event_id', eventIds)
+        .order('created_at', { ascending: false })
+        .limit(10000);
+
+      if (guestData) {
+        const enriched = guestData.map(g => ({
+          ...g,
+          event_name: eventList.find(e => e.id === g.event_id)?.event_name || '',
+          event_type: eventList.find(e => e.id === g.event_id)?.event_type || '',
+        }));
+        setPumasiReceived(enriched);
+        setGuestBookList(enriched);
+      }
+    } catch (e) {
+      console.error('loadPumasiReceived error:', e);
+    }
+  };
+
+  // Supabase auth.uid() 가져오기 (폰 인증은 anonymously 세션 사용)
+  const getSupabaseAuthId = async () => {
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    return currentSession?.user?.id || null;
+  };
+
+  // 내가 줬음: pumasi_gave 테이블 로드
+  const loadPumasiGave = async () => {
+    const authId = await getSupabaseAuthId();
+    if (!authId) return;
+    try {
+      const { data } = await supabase
+        .from('pumasi_gave')
+        .select('*')
+        .eq('user_id', authId)
+        .order('created_at', { ascending: false });
+      if (data) setPumasiGave(data);
+    } catch (e) {
+      console.error('loadPumasiGave error:', e);
+    }
+  };
+
+  // 줬음 추가
+  const addPumasiGave = async () => {
+    if (!pumasiGaveForm.recipient_name || !pumasiGaveForm.amount) return;
+    const authId = await getSupabaseAuthId();
+    if (!authId) {
+      Alert.alert('오류', '로그인 상태를 확인해주세요.');
+      return;
+    }
+    try {
+      const { error } = await supabase.from('pumasi_gave').insert({
+        user_id: authId,
+        linked_guest_id: pumasiGaveForm.linked_guest_id,
+        recipient_name: pumasiGaveForm.recipient_name,
+        amount: parseInt(String(pumasiGaveForm.amount).replace(/,/g, ''), 10),
+        occasion: pumasiGaveForm.occasion,
+        event_date: pumasiGaveForm.event_date || null,
+      });
+      if (!error) {
+        setShowPumasiGaveSheet(false);
+        setShowPumasiAddModal(false);
+        setPumasiGaveForm({ recipient_name: '', amount: '', occasion: '', event_date: new Date().toISOString().split('T')[0], linked_guest_id: null });
+        loadPumasiGave();
+      } else {
+        console.error('addPumasiGave DB error:', error);
+        Alert.alert('오류', '저장 중 오류가 발생했습니다.');
+      }
+    } catch (e) {
+      console.error('addPumasiGave error:', e);
+      Alert.alert('오류', '저장 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 정산 완료/취소 토글
+  const togglePumasiSettle = async (id, currentSettled) => {
+    try {
+      await supabase.from('pumasi_gave').update({ settled: !currentSettled }).eq('id', id);
+      loadPumasiGave();
+    } catch (e) {
+      console.error('togglePumasiSettle error:', e);
+    }
+  };
+
+  // 품앗이 필터 이전 버튼 핸들러
+  const handlePumasiBack = () => {
+    if (pumasiFilterStep === 3) {
+      setPumasiFilterStep(pumasiFilterEvent?.event_type === 'wedding' ? 2 : 1);
+    } else if (pumasiFilterStep === 2) {
+      setPumasiFilterStep(1);
+    }
+  };
+
+  // 감사 메시지 발송 처리
+  const loadThankYouSentMap = async () => {
+    try {
+      const userId = user?.id || userInfo?.userId;
+      if (!userId) return;
+      const raw = await AsyncStorage.getItem(`thank_you_sent_${userId}`);
+      if (raw) setThankYouSentMap(JSON.parse(raw));
+    } catch (e) {}
+  };
+
+  const markThankYouSent = async (eventId, guestName) => {
+    try {
+      const userId = user?.id || userInfo?.userId;
+      const current = thankYouSentMap[eventId] || [];
+      const updated = { ...thankYouSentMap, [eventId]: [...current, guestName] };
+      setThankYouSentMap(updated);
+      await AsyncStorage.setItem(`thank_you_sent_${userId}`, JSON.stringify(updated));
+    } catch (e) {}
+  };
+
+  const shareThankYouMessage = async (event) => {
+    const eventName = event.event_name || event.title || '행사';
+    const message = `안녕하세요. 바쁘신 중에도 저희 ${eventName}을 축하해주시고 소중한 마음을 보내주셔서 진심으로 감사드립니다. 덕분에 뜻깊은 자리가 되었습니다. 앞으로도 좋은 인연 이어나가요. 감사합니다 🙏`;
+    try {
+      await Share.share({ message });
+    } catch (e) {}
+  };
+
+  // 품앗이 & 감사 데이터 로드 (events 로드 완료 후)
+  useEffect(() => {
+    if ((user?.id || userInfo?.userId) && events.length > 0) {
+      loadPumasiReceived();
+      loadPumasiGave();
+      loadThankYouSentMap();
+    }
+  }, [user?.id, userInfo?.userId, events.length]);
+
+  // 감사 미발송 계산
+  const getUnsendGuests = (event) => {
+    const sentNames = thankYouSentMap[event.id] || [];
+    const guestNames = (event.guestNames || []);
+    return guestNames.filter(n => !sentNames.includes(n));
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       
-      {/* 헤더 */}
+      {/* 헤더 - Toss 스타일 */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.headerTop}>
@@ -1363,18 +1594,25 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             {userSubscription && (
               <View style={[
                 styles.headerBadge,
-                { backgroundColor: userSubscription.subscription_type === 'premium' ? '#FF6B6B' : '#95A5A6' }
+                userSubscription.subscription_type === 'premium'
+                  ? styles.headerBadgePremium
+                  : styles.headerBadgeFree
               ]}>
-                <Text style={styles.headerBadgeText}>
+                <Text style={[
+                  styles.headerBadgeText,
+                  userSubscription.subscription_type === 'premium'
+                    ? styles.headerBadgeTextPremium
+                    : styles.headerBadgeTextFree
+                ]}>
                   {userSubscription.subscription_type === 'premium' ? 'PREMIUM' : 'FREE'}
                 </Text>
               </View>
             )}
           </View>
           <Text style={styles.headerSubtitle}>
-            {userSubscription?.subscription_type === 'premium' 
-              ? `${userName}님, 프리미엄을 이용중입니다! 🎉`
-              : `${userName}님 안녕하세요!`
+            {userSubscription?.subscription_type === 'premium'
+              ? `${userName}님, 프리미엄을 이용중입니다`
+              : `${userName}님, 안녕하세요`
             }
           </Text>
         </View>
@@ -1407,11 +1645,11 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           </View>
         </View>
 
-        {/* 빠른 시작 - 청첩장과 부고장만 */}
+        {/* 경조사 만들기 - Toss 스타일 카드 그리드 */}
         <View style={styles.quickSection}>
-          <Text style={styles.sectionTitle}>빠른 시작</Text>
+          <Text style={styles.sectionTitle}>경조사 만들기</Text>
           <Text style={styles.sectionSubtitle}>
-            새로운 경조사를 만들어보세요
+            소중한 순간을 기록해보세요
           </Text>
           <View style={styles.quickGrid}>
             <TouchableOpacity 
@@ -1642,183 +1880,318 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           )}
         </View>
 
-        {/* 🔥 참여할 경조사 일정 관리 - 참여자 역할 */}
-        <View style={styles.calendarSection}>
-          <View style={styles.calendarSectionHeader}>
-            <Text style={styles.sectionTitle}>참여할 경조사 일정</Text>
-            <TouchableOpacity 
-              onPress={() => handleCalendarDatePress(new Date())}
-              style={styles.addEventButton}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* 위젯 1: 품앗이 장부 */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        <View style={{ height: 8, backgroundColor: '#F2F4F6', marginHorizontal: -20, marginBottom: 24 }} />
+
+        {/* ━━━━━━━━━━━━━━━━ 품앗이 장부 ━━━━━━━━━━━━━━━━ */}
+        <View style={styles.pmSection}>
+
+          {/* 헤더 */}
+          <View style={styles.pmHeader}>
+            <Text style={styles.pmHeaderTitle}>품앗이 장부</Text>
+            {pumasiTab === 'gave' && (
+              <TouchableOpacity style={styles.pmAddBtn} onPress={() => setShowPumasiAddModal(true)}>
+                <Ionicons name="add" size={14} color="#3182F6" />
+                <Text style={styles.pmAddBtnText}>기록</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* 요약 카드 */}
+          {(() => {
+            const isFiltered = !!(pumasiFilterEvent || pumasiFilterSide || pumasiFilterRelation);
+            // 받은 금액: 줬음 여부 무관하게 필터 조건만 적용한 총액
+            const receivedAmount = filteredPumasiReceivedAll.reduce((s, i) => s + (i.amount || 0), 0);
+            // 낸 금액: 필터된 받음 항목과 linked된 줬음 합계 (필터 없으면 전체)
+            const filteredGaveAmount = isFiltered
+              ? pumasiGave.filter(g => filteredPumasiReceivedAll.some(r => r.id === g.linked_guest_id)).reduce((s, i) => s + (i.amount || 0), 0)
+              : pumasiGave.reduce((s, i) => s + (i.amount || 0), 0);
+            return (
+          <View style={styles.pmSummaryCard}>
+            <View style={styles.pmSummaryItem}>
+              <Text style={styles.pmSummaryLabel}>{isFiltered ? pumasiFilterEvent?.event_name || '필터' : '전체'} 받은 금액</Text>
+              <Text style={styles.pmSummaryAmount}>
+                {receivedAmount.toLocaleString()}원
+              </Text>
+            </View>
+            <View style={styles.pmSummaryDivider} />
+            <View style={styles.pmSummaryItem}>
+              <Text style={styles.pmSummaryLabel}>{isFiltered ? pumasiFilterEvent?.event_name || '필터' : '전체'} 낸 금액</Text>
+              <Text style={[styles.pmSummaryAmount, { color: '#FF3B30' }]}>
+                {filteredGaveAmount.toLocaleString()}원
+              </Text>
+            </View>
+          </View>
+            );
+          })()}
+
+          {/* 탭 */}
+          <View style={styles.pmTabRow}>
+            <TouchableOpacity
+              style={[styles.pmTab, pumasiTab === 'received' && styles.pmTabActive]}
+              onPress={() => { setPumasiTab('received'); setPumasiReceivedPage(0); }}
             >
-              <Ionicons name="add" size={20} color={Colors.white} />
-              <Text style={styles.addEventButtonText}>일정 추가</Text>
+              <Text style={[styles.pmTabText, pumasiTab === 'received' && styles.pmTabTextActive]}>
+                받음{pumasiReceived.length > 0 ? ` ${pumasiReceived.length}` : ''}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.pmTab, pumasiTab === 'gave' && styles.pmTabActive]}
+              onPress={() => { setPumasiTab('gave'); setPumasiGavePage(0); }}
+            >
+              <Text style={[styles.pmTabText, pumasiTab === 'gave' && styles.pmTabTextActive]}>
+                줬음{pumasiGave.length > 0 ? ` ${pumasiGave.length}` : ''}
+              </Text>
             </TouchableOpacity>
           </View>
 
-          {/* 🔥 월별 캘린더 */}
-          <View style={styles.calendarContainer}>
-            <CalendarComponent 
-              events={(() => {
-                // console.log('🔥 캘린더에 전달되는 activeEvents:', activeEvents.length, 'items');
-                activeEvents.forEach((event, i) => {
-                  // console.log(`🔥 Event ${i}:`, {
-                  //   id: event.id,
-                  //   title: event.event_name || event.title,
-                  //   date: event.event_date,
-                  //   source: event.source,
-                  //   is_personal_schedule: event.is_personal_schedule
-                  // });
-                });
-                return activeEvents;
-              })()}
-              onDatePress={handleCalendarDatePress}
-              onEventPress={handleActiveEventPress}
-              currentCalendarDate={calendarDate}
-              onMonthChange={handleCalendarMonthChange}
-            />
-          </View>
+          {/* ── 받음 탭 ── */}
+          {pumasiTab === 'received' && (
+            <View style={styles.pmCard}>
 
-          {/* 🔥 이번 달 경조사 티켓 - 주최자/참여자 분리 */}
-          <View style={styles.monthlyTicketsContainer}>
-            <Text style={styles.monthlyTicketsTitle}>
-              {calendarDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })} 참여 예정 일정
-            </Text>
-            
-            {(() => {
-              const { participantEvents } = getGroupedMonthlyEvents();
-              // 🔥 참여자 일정만 표시
-              const hasEvents = participantEvents.length > 0;
-              
-              if (!hasEvents) {
-                return (
-                  <View style={styles.noEventsContainer}>
-                    <Ionicons name="calendar-outline" size={48} color={Colors.gray200} />
-                    <Text style={styles.noEventsText}>등록된 일정이 없습니다</Text>
-                    <Text style={styles.noEventsSubText}>새로운 경조사 일정을 추가해보세요</Text>
-                  </View>
-                );
-              }
-              
-              // 페이지네이션 계산
-              const totalPages = Math.ceil(participantEvents.length / eventsPerPage);
-              const startIndex = currentEventPage * eventsPerPage;
-              const endIndex = Math.min(startIndex + eventsPerPage, participantEvents.length);
-              const currentPageEvents = participantEvents.slice(startIndex, endIndex);
-              
-              return (
-                <View style={styles.ticketsList}>
-                  {/* 🔥 현재 페이지의 이벤트만 표시 */}
-                  {currentPageEvents.map((event, index) => (
-                        <TouchableOpacity
-                          key={event.id}
-                          style={[
-                            styles.eventTicket,
-                            { borderLeftColor: event.event_type === 'wedding' ? Colors.wedding : Colors.funeral }
-                          ]}
-                          onPress={() => handleActiveEventPress(event, 'calendar')}
-                          activeOpacity={0.8}
-                        >
-                          <View style={styles.ticketDateSection}>
-                            <Text style={styles.ticketDay}>
-                              {event.event_date ? new Date(event.event_date).getDate() : '?'}
-                            </Text>
-                            <Text style={styles.ticketWeekday}>
-                              {event.event_date ? 
-                                new Date(event.event_date).toLocaleDateString('ko-KR', { weekday: 'short' }) : 
-                                '미정'
-                              }
-                            </Text>
-                          </View>
-                          
-                          <View style={styles.ticketContent}>
-                            <View style={styles.ticketHeader}>
-                              <Text style={styles.ticketTitle} numberOfLines={1}>
-                                {event.event_name || event.title}
-                              </Text>
-                              <View style={[
-                                styles.ticketTypeBadge,
-                                { backgroundColor: event.event_type === 'wedding' ? Colors.wedding : Colors.funeral }
-                              ]}>
-                                <Text style={styles.ticketTypeText}>
-                                  {event.event_type === 'wedding' ? '경사' : '조사'}
-                                </Text>
-                              </View>
-                            </View>
-                            
-                            <Text style={styles.ticketLocation} numberOfLines={1}>
-                              {event.location || '장소 미정'}
-                            </Text>
-                            
-                            {event.event_date && (
-                              <Text style={styles.ticketTime}>
-                                {new Date(event.event_date).toLocaleDateString('ko-KR', { 
-                                  month: 'long', 
-                                  day: 'numeric' 
-                                })}
-                              </Text>
-                            )}
-                          </View>
-                          
-                          <View style={styles.ticketAction}>
-                            <Ionicons name="chevron-forward" size={20} color={Colors.gray400} />
-                          </View>
-                        </TouchableOpacity>
-                      ))}
-                  
-                  {/* 페이지네이션 컨트롤 */}
-                  {totalPages > 1 && (
-                    <View style={styles.paginationContainer}>
-                      <TouchableOpacity 
-                        style={[styles.paginationButton, currentEventPage === 0 && styles.paginationButtonDisabled]}
-                        onPress={() => {
-                          if (currentEventPage > 0) {
-                            setCurrentEventPage(currentEventPage - 1);
-                          }
-                        }}
-                        disabled={currentEventPage === 0}
-                      >
-                        <Ionicons 
-                          name="chevron-back" 
-                          size={20} 
-                          color={currentEventPage === 0 ? Colors.gray300 : Colors.primary} 
-                        />
-                      </TouchableOpacity>
-                      
-                      <View style={styles.paginationDots}>
-                        {[...Array(totalPages)].map((_, index) => (
-                          <TouchableOpacity
-                            key={index}
-                            style={[
-                              styles.paginationDot,
-                              index === currentEventPage && styles.paginationDotActive
-                            ]}
-                            onPress={() => setCurrentEventPage(index)}
-                          />
-                        ))}
+              {/* 필터 칩 */}
+              <TouchableOpacity
+                style={styles.pmFilterChip}
+                onPress={() => { setPumasiFilterStep(1); setShowPumasiFilterSheet(true); }}
+              >
+                <Ionicons name="options-outline" size={13} color={pumasiFilterEvent ? '#3182F6' : '#8B95A1'} />
+                <Text style={[styles.pmFilterChipText, pumasiFilterEvent && { color: '#3182F6' }]}>
+                  {pumasiFilterEvent
+                    ? `${pumasiFilterEvent.event_name}${pumasiFilterSide ? ' · ' + pumasiFilterSide : ''}${pumasiFilterRelation ? ' · ' + pumasiFilterRelation : ''}`
+                    : '필터'}
+                </Text>
+                {(pumasiFilterEvent || pumasiFilterSide || pumasiFilterRelation) && (
+                  <TouchableOpacity
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      setPumasiFilterEvent(null);
+                      setPumasiFilterSide(null);
+                      setPumasiFilterRelation(null);
+                      setPumasiReceivedPage(0);
+                    }}
+                  >
+                    <Ionicons name="close-circle" size={14} color="#8B95A1" />
+                  </TouchableOpacity>
+                )}
+              </TouchableOpacity>
+
+              {filteredPumasiReceived.length === 0 ? (
+                <View style={styles.pmEmpty}>
+                  <Ionicons name="wallet-outline" size={32} color="#D1D6DB" />
+                  <Text style={styles.pmEmptyText}>아직 받은 내역이 없어요</Text>
+                </View>
+              ) : (
+                <>
+                  {filteredPumasiReceived
+                    .slice(pumasiReceivedPage * PUMASI_PER_PAGE, (pumasiReceivedPage + 1) * PUMASI_PER_PAGE)
+                    .map((item, idx) => (
+                    <View
+                      key={item.id}
+                      style={[styles.pmRow, idx < PUMASI_PER_PAGE - 1 && styles.pmRowBorder]}
+                    >
+                      {/* 아바타 */}
+                      <View style={styles.pmAvatar}>
+                        <Text style={styles.pmAvatarText}>
+                          {(item.guest_name || '?').charAt(0)}
+                        </Text>
                       </View>
-                      
-                      <TouchableOpacity 
-                        style={[styles.paginationButton, currentEventPage === totalPages - 1 && styles.paginationButtonDisabled]}
-                        onPress={() => {
-                          if (currentEventPage < totalPages - 1) {
-                            setCurrentEventPage(currentEventPage + 1);
-                          }
-                        }}
-                        disabled={currentEventPage === totalPages - 1}
+
+                      {/* 이름 + 관계 */}
+                      <View style={styles.pmRowInfo}>
+                        <Text style={styles.pmRowName}>{item.guest_name}</Text>
+                        <Text style={styles.pmRowSub}>
+                          {item.event_name}
+                          {item.relation_category ? ` · ${item.relation_category}` : ''}
+                          {item.relation_detail ? ` ${item.relation_detail}` : ''}
+                        </Text>
+                      </View>
+
+                      {/* 금액 + 줬음기록 */}
+                      <View style={styles.pmRowRight}>
+                        <Text style={styles.pmRowAmount}>
+                          +{Number(item.amount || 0).toLocaleString()}원
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.pmGaveBtn}
+                          onPress={() => {
+                            setPumasiGaveForm({
+                              recipient_name: item.guest_name,
+                              amount: String(item.amount || ''),
+                              occasion: item.event_type === 'wedding' ? '결혼' : '장례',
+                              event_date: new Date().toISOString().split('T')[0],
+                              linked_guest_id: item.id,
+                            });
+                            setShowPumasiGaveSheet(true);
+                          }}
+                        >
+                          <Text style={styles.pmGaveBtnText}>줬음 기록</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+
+                  {/* 페이지네이션 */}
+                  {filteredPumasiReceived.length > PUMASI_PER_PAGE && (
+                    <View style={styles.pmPagination}>
+                      <TouchableOpacity
+                        style={[styles.pmPageBtn, pumasiReceivedPage === 0 && styles.pmPageBtnDisabled]}
+                        disabled={pumasiReceivedPage === 0}
+                        onPress={() => setPumasiReceivedPage(p => p - 1)}
                       >
-                        <Ionicons 
-                          name="chevron-forward" 
-                          size={20} 
-                          color={currentEventPage === totalPages - 1 ? Colors.gray300 : Colors.primary} 
-                        />
+                        <Ionicons name="chevron-back" size={16} color={pumasiReceivedPage === 0 ? '#D1D6DB' : '#3182F6'} />
+                      </TouchableOpacity>
+                      <Text style={styles.pmPageText}>
+                        {pumasiReceivedPage + 1} / {Math.ceil(filteredPumasiReceived.length / PUMASI_PER_PAGE)}
+                      </Text>
+                      <TouchableOpacity
+                        style={[styles.pmPageBtn, pumasiReceivedPage >= Math.ceil(filteredPumasiReceived.length / PUMASI_PER_PAGE) - 1 && styles.pmPageBtnDisabled]}
+                        disabled={pumasiReceivedPage >= Math.ceil(filteredPumasiReceived.length / PUMASI_PER_PAGE) - 1}
+                        onPress={() => setPumasiReceivedPage(p => p + 1)}
+                      >
+                        <Ionicons name="chevron-forward" size={16} color={pumasiReceivedPage >= Math.ceil(filteredPumasiReceived.length / PUMASI_PER_PAGE) - 1 ? '#D1D6DB' : '#3182F6'} />
                       </TouchableOpacity>
                     </View>
                   )}
-                </View>
-              );
-            })()}
-          </View>
+                </>
+              )}
+            </View>
+          )}
 
+          {/* ── 줬음 탭 ── */}
+          {pumasiTab === 'gave' && (
+            <View style={styles.pmCard}>
+              {pumasiGave.length === 0 ? (
+                <View style={styles.pmEmpty}>
+                  <Ionicons name="arrow-redo-outline" size={32} color="#D1D6DB" />
+                  <Text style={styles.pmEmptyText}>기록된 내역이 없어요</Text>
+                  <Text style={styles.pmEmptySubText}>위 + 기록 버튼으로 추가해보세요</Text>
+                </View>
+              ) : (
+                <>
+                  {pumasiGave
+                    .slice(pumasiGavePage * PUMASI_PER_PAGE, (pumasiGavePage + 1) * PUMASI_PER_PAGE)
+                    .map((item, idx) => (
+                    <View
+                      key={item.id}
+                      style={[styles.pmRow, idx < PUMASI_PER_PAGE - 1 && styles.pmRowBorder]}
+                    >
+                      {/* 상태 바 */}
+                      <View style={[styles.pmStatusBar, { backgroundColor: item.settled ? '#D1D6DB' : '#FF3B30' }]} />
+
+                      {/* 아바타 */}
+                      <View style={[styles.pmAvatar, { backgroundColor: item.settled ? '#F2F4F6' : '#FFF0F0' }]}>
+                        <Text style={[styles.pmAvatarText, { color: item.settled ? '#8B95A1' : '#FF3B30' }]}>
+                          {(item.recipient_name || '?').charAt(0)}
+                        </Text>
+                      </View>
+
+                      {/* 이름 + 경조사 */}
+                      <View style={styles.pmRowInfo}>
+                        <Text style={styles.pmRowName}>{item.recipient_name}</Text>
+                        <Text style={styles.pmRowSub}>
+                          {item.occasion || '경조사'}{item.event_date ? ` · ${item.event_date}` : ''}
+                        </Text>
+                      </View>
+
+                      {/* 금액 + 정산 */}
+                      <View style={styles.pmRowRight}>
+                        <Text style={[styles.pmRowAmount, { color: item.settled ? '#8B95A1' : '#FF3B30' }]}>
+                          -{Number(item.amount || 0).toLocaleString()}원
+                        </Text>
+                        <TouchableOpacity
+                          style={item.settled ? styles.pmSettledBadge : styles.pmSettleBtn}
+                          onPress={() => togglePumasiSettle(item.id, item.settled)}
+                        >
+                          {item.settled ? (
+                            <>
+                              <Ionicons name="checkmark" size={10} color="#8B95A1" />
+                              <Text style={styles.pmSettledText}>완료</Text>
+                            </>
+                          ) : (
+                            <Text style={styles.pmSettleBtnText}>정산완료</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+
+                  {pumasiGave.length > PUMASI_PER_PAGE && (
+                    <View style={styles.pmPagination}>
+                      <TouchableOpacity
+                        style={[styles.pmPageBtn, pumasiGavePage === 0 && styles.pmPageBtnDisabled]}
+                        disabled={pumasiGavePage === 0}
+                        onPress={() => setPumasiGavePage(p => p - 1)}
+                      >
+                        <Ionicons name="chevron-back" size={16} color={pumasiGavePage === 0 ? '#D1D6DB' : '#3182F6'} />
+                      </TouchableOpacity>
+                      <Text style={styles.pmPageText}>
+                        {pumasiGavePage + 1} / {Math.ceil(pumasiGave.length / PUMASI_PER_PAGE)}
+                      </Text>
+                      <TouchableOpacity
+                        style={[styles.pmPageBtn, pumasiGavePage >= Math.ceil(pumasiGave.length / PUMASI_PER_PAGE) - 1 && styles.pmPageBtnDisabled]}
+                        disabled={pumasiGavePage >= Math.ceil(pumasiGave.length / PUMASI_PER_PAGE) - 1}
+                        onPress={() => setPumasiGavePage(p => p + 1)}
+                      >
+                        <Ionicons name="chevron-forward" size={16} color={pumasiGavePage >= Math.ceil(pumasiGave.length / PUMASI_PER_PAGE) - 1 ? '#D1D6DB' : '#3182F6'} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* 위젯 2: 감사 메시지 빠른 발송 */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        <View style={{ height: 8, backgroundColor: '#F2F4F6', marginHorizontal: -20, marginBottom: 24 }} />
+
+        <View style={styles.widgetSection}>
+          <Text style={styles.sectionTitle}>감사 문자</Text>
+
+          <View style={styles.widgetCard}>
+            {hostedEvents.length === 0 ? (
+              <View style={styles.pumasiEmpty}>
+                <Text style={styles.pumasiEmptyText}>주최한 경조사가 없어요</Text>
+              </View>
+            ) : (
+              hostedEvents.slice(0, 3).map((event) => {
+                const unsent = getUnsendGuests(event);
+                return (
+                  <View key={event.id} style={styles.thankYouRow}>
+                    <View style={styles.thankYouRowTop}>
+                      <Text style={styles.thankYouIcon}>📋</Text>
+                      <View style={styles.thankYouInfo}>
+                        <Text style={styles.thankYouTitle} numberOfLines={1}>
+                          {event.event_name || event.title}
+                        </Text>
+                        {unsent.length > 0 ? (
+                          <Text style={styles.thankYouMeta}>
+                            아직 발송 안 한 분 {unsent.length}명
+                          </Text>
+                        ) : (
+                          <Text style={[styles.thankYouMeta, { color: '#4CAF50' }]}>
+                            모두 발송 완료
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.shareButton}
+                      onPress={() => shareThankYouMessage(event)}
+                    >
+                      <Ionicons name="share-outline" size={14} color="#FFFFFF" />
+                      <Text style={styles.shareButtonText}>감사 메시지 복사하기</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })
+            )}
+          </View>
         </View>
 
         <View style={{ height: 100 }} />
@@ -2118,7 +2491,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             ]}
           >
             <View style={styles.tossSuccessIcon}>
-              <Ionicons name="checkmark" size={30} color={Colors.white} />
+              <Ionicons name="checkmark" size={40} color="#4CAF50" />
             </View>
             <Text style={styles.tossSuccessTitle}>일정이 추가되었어요</Text>
             <Text style={styles.tossSuccessSubtitle}>
@@ -2221,7 +2594,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             {/* 헤더 */}
             <View style={styles.premiumModalHeader}>
               <View style={styles.premiumBadge}>
-                <Ionicons name="crown" size={20} color="#FFD700" />
+                <Ionicons name="star" size={20} color="#FFD700" />
                 <Text style={styles.premiumBadgeText}>PREMIUM</Text>
               </View>
               <TouchableOpacity 
@@ -2288,7 +2661,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                 }}
               >
                 <View style={styles.premiumUpgradeContent}>
-                  <Ionicons name="crown" size={16} color="#FFFFFF" />
+                  <Ionicons name="star" size={16} color="#FFFFFF" />
                   <Text style={styles.premiumUpgradeText}>프리미엄 시작하기</Text>
                 </View>
               </TouchableOpacity>
@@ -2303,6 +2676,262 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         onClose={() => setShowNotificationModal(false)}
         userInfo={userInfo}
       />
+
+      {/* 품앗이 줬음 직접추가 모달 (내가 줬음 탭 + 기록 버튼) */}
+      <Modal visible={showPumasiAddModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            activeOpacity={1}
+            onPress={() => setShowPumasiAddModal(false)}
+          />
+          <View style={styles.pumasiModalContainer}>
+            <Text style={styles.pumasiModalTitle}>줬음 기록하기</Text>
+
+            <Text style={styles.pumasiModalLabel}>이름</Text>
+            <TextInput
+              style={styles.pumasiInput}
+              placeholder="받은 사람 이름"
+              value={pumasiGaveForm.recipient_name}
+              onChangeText={v => setPumasiGaveForm(f => ({ ...f, recipient_name: v }))}
+            />
+
+            <Text style={styles.pumasiModalLabel}>금액</Text>
+            <TextInput
+              style={styles.pumasiInput}
+              placeholder="금액 (숫자만)"
+              keyboardType="numeric"
+              value={String(pumasiGaveForm.amount)}
+              onChangeText={v => setPumasiGaveForm(f => ({ ...f, amount: v }))}
+            />
+
+            <Text style={styles.pumasiModalLabel}>경조사 종류</Text>
+            <TextInput
+              style={styles.pumasiInput}
+              placeholder="예: 결혼, 장례, 돌잔치"
+              value={pumasiGaveForm.occasion}
+              onChangeText={v => setPumasiGaveForm(f => ({ ...f, occasion: v }))}
+            />
+
+            <Text style={styles.pumasiModalLabel}>날짜</Text>
+            <TextInput
+              style={styles.pumasiInput}
+              placeholder="YYYY-MM-DD"
+              value={pumasiGaveForm.event_date}
+              onChangeText={v => setPumasiGaveForm(f => ({ ...f, event_date: v }))}
+            />
+
+            <View style={styles.pumasiModalButtons}>
+              <TouchableOpacity style={styles.pumasiCancelBtn} onPress={() => setShowPumasiAddModal(false)}>
+                <Text style={styles.pumasiCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.pumasiSaveBtn} onPress={addPumasiGave}>
+                <Text style={styles.pumasiSaveText}>저장</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 필터 바텀시트 (3단계: 경조사 선택 → 신랑/신부측 → 관계 선택) */}
+      <Modal visible={showPumasiFilterSheet} transparent animationType="slide">
+        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)' }}
+            activeOpacity={1}
+            onPress={() => setShowPumasiFilterSheet(false)}
+          />
+          <View style={styles.tossSheet}>
+            {/* Handle bar */}
+            <View style={styles.tossSheetHandle} />
+
+            {/* 헤더: 이전(좌) + 제목(중) + 취소(우) */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+              {pumasiFilterStep > 1 ? (
+                <TouchableOpacity onPress={handlePumasiBack} style={{ padding: 4, marginRight: 4 }}>
+                  <Ionicons name="chevron-back" size={24} color="#191F28" />
+                </TouchableOpacity>
+              ) : (
+                <View style={{ width: 32 }} />
+              )}
+              <Text style={[styles.tossSheetTitle, { flex: 1, marginBottom: 0 }]}>
+                {pumasiFilterStep === 1 ? '어떤 경조사인가요?' :
+                 pumasiFilterStep === 2 ? '어느 측 하객인가요?' :
+                 '관계를 선택해주세요'}
+              </Text>
+              <TouchableOpacity onPress={() => setShowPumasiFilterSheet(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={24} color="#8B95A1" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Step 1: 경조사 선택 */}
+            {pumasiFilterStep === 1 && (
+              <>
+                <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+                  {(hostedEvents || []).map(event => {
+                    const isSelected = pumasiFilterEvent?.id === event.id;
+                    return (
+                      <TouchableOpacity
+                        key={event.id}
+                        style={styles.tossSheetRow}
+                        onPress={() => setPumasiFilterEvent(event)}
+                      >
+                        {isSelected
+                          ? <View style={styles.tossRadioActive}><View style={styles.tossRadioDot} /></View>
+                          : <View style={styles.tossRadio} />
+                        }
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.tossSheetRowText, isSelected && styles.tossSheetRowTextActive]}>
+                            {event.event_name}
+                          </Text>
+                          <Text style={styles.tossSheetRowSub}>
+                            {event.event_type === 'wedding' ? '결혼식' : event.event_type === 'funeral' ? '장례식' : event.event_type}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <TouchableOpacity
+                  style={[styles.tossNextBtn, !pumasiFilterEvent && styles.tossNextBtnDisabled]}
+                  disabled={!pumasiFilterEvent}
+                  onPress={() => {
+                    setPumasiFilterSide(null);
+                    setPumasiFilterRelation(null);
+                    // availableSides가 있으면 Step 2, 없으면 Step 3으로
+                    setPumasiFilterStep(availableSides.length > 0 ? 2 : 3);
+                  }}
+                >
+                  <Text style={[styles.tossNextBtnText, !pumasiFilterEvent && styles.tossNextBtnTextDisabled]}>
+                    다음
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Step 2: relation_category 선택 (DB 실제 값) */}
+            {pumasiFilterStep === 2 && (
+              <>
+                <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+                  {[{ label: '전체', value: null }, ...availableSides.map(s => ({ label: s, value: s }))].map(item => {
+                    const isSelected = pumasiFilterSide === item.value;
+                    return (
+                      <TouchableOpacity
+                        key={item.label}
+                        style={styles.tossSheetRow}
+                        onPress={() => setPumasiFilterSide(item.value)}
+                      >
+                        {isSelected
+                          ? <View style={styles.tossRadioActive}><View style={styles.tossRadioDot} /></View>
+                          : <View style={styles.tossRadio} />
+                        }
+                        <Text style={[styles.tossSheetRowText, isSelected && styles.tossSheetRowTextActive]}>
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <TouchableOpacity
+                  style={styles.tossNextBtn}
+                  onPress={() => setPumasiFilterStep(3)}
+                >
+                  <Text style={styles.tossNextBtnText}>다음</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Step 3: 관계 선택 */}
+            {pumasiFilterStep === 3 && (
+              <>
+                <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+                  {[{ label: '전체', value: null }, ...availableRelations.map(r => ({ label: r, value: r }))].map(item => {
+                    const isSelected = pumasiFilterRelation === item.value;
+                    return (
+                      <TouchableOpacity
+                        key={item.label}
+                        style={styles.tossSheetRow}
+                        onPress={() => setPumasiFilterRelation(item.value)}
+                      >
+                        {isSelected
+                          ? <View style={styles.tossRadioActive}><View style={styles.tossRadioDot} /></View>
+                          : <View style={styles.tossRadio} />
+                        }
+                        <Text style={[styles.tossSheetRowText, isSelected && styles.tossSheetRowTextActive]}>
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <TouchableOpacity
+                  style={styles.tossNextBtn}
+                  onPress={() => setShowPumasiFilterSheet(false)}
+                >
+                  <Text style={styles.tossNextBtnText}>확인</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* 줬음 기록 바텀시트 (받음 항목의 [줬음 기록] 버튼에서 열림) */}
+      <Modal visible={showPumasiGaveSheet} transparent animationType="slide">
+        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+          {/* 외부 탭 → 닫기 */}
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)' }}
+            activeOpacity={1}
+            onPress={() => setShowPumasiGaveSheet(false)}
+          />
+          {/* 시트 (View 유지 → paddingBottom 정상 적용) */}
+          <View style={styles.tossSheet}>
+            <View style={styles.tossSheetHandle} />
+            <Text style={styles.tossSheetTitle}>줬음 기록</Text>
+
+            <Text style={styles.tossInputLabel}>이름</Text>
+            <TextInput
+              style={styles.tossInput}
+              value={pumasiGaveForm.recipient_name}
+              onChangeText={v => setPumasiGaveForm(f => ({ ...f, recipient_name: v }))}
+            />
+
+            <Text style={styles.tossInputLabel}>금액</Text>
+            <TextInput
+              style={styles.tossInput}
+              keyboardType="numeric"
+              value={String(pumasiGaveForm.amount)}
+              onChangeText={v => setPumasiGaveForm(f => ({ ...f, amount: v }))}
+            />
+
+            <Text style={styles.tossInputLabel}>경조사 종류</Text>
+            <TextInput
+              style={styles.tossInput}
+              placeholder="예: 결혼, 장례, 돌잔치"
+              value={pumasiGaveForm.occasion}
+              onChangeText={v => setPumasiGaveForm(f => ({ ...f, occasion: v }))}
+            />
+
+            <Text style={styles.tossInputLabel}>날짜</Text>
+            <TextInput
+              style={styles.tossInput}
+              placeholder="YYYY-MM-DD"
+              value={pumasiGaveForm.event_date}
+              onChangeText={v => setPumasiGaveForm(f => ({ ...f, event_date: v }))}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <TouchableOpacity style={styles.tossCancelBtn} onPress={() => setShowPumasiGaveSheet(false)}>
+                <Text style={styles.tossCancelBtnText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.tossPrimaryBtn} onPress={addPumasiGave}>
+                <Text style={styles.tossPrimaryBtnText}>저장</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2373,10 +3002,10 @@ const formatDateWithTime = (dateString, timeString) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: '#F2F4F6',
   },
-  
-  // 헤더
+
+  // 헤더 - Toss 표준
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2384,70 +3013,91 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 8 : 50,
     paddingBottom: 16,
-    backgroundColor: Colors.white,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F4F6',
   },
   headerLeft: {},
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
-    color: Colors.textPrimary,
+    color: '#191F28',
+    letterSpacing: -0.3,
   },
   headerBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  headerBadgeFree: {
+    backgroundColor: '#E5E8EB',
+  },
+  headerBadgePremium: {
+    backgroundColor: '#FF5722',
   },
   headerBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  headerBadgeTextFree: {
+    color: '#191F28',
+  },
+  headerBadgeTextPremium: {
     color: '#FFFFFF',
-    letterSpacing: 0.5,
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginTop: 2,
+    fontSize: 13,
+    color: '#8B95A1',
+    marginTop: 4,
+    fontWeight: '400',
   },
 
   // 콘텐츠
   content: {
     flex: 1,
     paddingHorizontal: 20,
+    paddingTop: 16,
+    backgroundColor: '#F2F4F6',
   },
   
-  // 웰컴 섹션
+  // 웰컴 섹션 - Toss 표준 카드
   welcomeSection: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   welcomeCard: {
-    borderRadius: 20,
-    padding: 24,
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 120,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
     shadowRadius: 12,
-    elevation: 5,
+    elevation: 4,
   },
   welcomeContent: {
     flex: 1,
   },
   welcomeTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
-    color: Colors.white,
-    marginBottom: 8,
-    lineHeight: 28,
+    color: '#FFFFFF',
+    marginBottom: 6,
+    lineHeight: 26,
+    letterSpacing: -0.2,
   },
   welcomeSubtitle: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.9)',
+    fontWeight: '500',
     lineHeight: 20,
   },
   welcomeIcon: {
@@ -2457,39 +3107,42 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: 12,
   },
   slideIndicator: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 16,
-    gap: 8,
+    marginTop: 14,
+    gap: 6,
   },
   dot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: Colors.gray300,
+    backgroundColor: '#D1D6DB',
   },
   activeDot: {
-    backgroundColor: Colors.primary,
+    backgroundColor: '#3182F6',
     width: 20,
   },
   
-  // 퀵 액션 - 수정됨
+  // 경조사 만들기 (퀵 액션) - Toss 표준
   quickSection: {
-    marginBottom: 40,
+    marginBottom: 28,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 8,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#191F28',
+    marginBottom: 4,
+    letterSpacing: -0.2,
   },
   sectionSubtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginBottom: 16,
+    fontSize: 13,
+    color: '#8B95A1',
+    marginBottom: 14,
+    fontWeight: '400',
   },
   quickGrid: {
     flexDirection: 'row',
@@ -2497,19 +3150,18 @@ const styles = StyleSheet.create({
   },
   quickItem: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 20,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.gray100,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 3,
     position: 'relative',
-    minHeight: 180,
+    minHeight: 240,
   },
   quickIcon: {
     marginBottom: 12,
@@ -2518,97 +3170,101 @@ const styles = StyleSheet.create({
   },
   quickTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 6,
+    fontWeight: '700',
+    color: '#191F28',
+    marginTop: 8,
+    marginBottom: 4,
   },
   quickSubtitle: {
     fontSize: 12,
-    color: Colors.textSecondary,
+    color: '#8B95A1',
     textAlign: 'center',
-    lineHeight: 16,
-    marginBottom: 16,
+    lineHeight: 17,
+    marginBottom: 14,
     flex: 1,
+    fontWeight: '400',
   },
   quickButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginBottom: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginBottom: 4,
+    minWidth: 100,
+    alignItems: 'center',
   },
   quickButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.white,
+    color: '#FFFFFF',
   },
   quickTypeIndicator: {
-    backgroundColor: Colors.success,
+    backgroundColor: Colors.wedding,
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 6,
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 12,
+    right: 12,
   },
   quickTypeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Colors.white,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
 
-  // 🔥 새로운 경조사 관리 섹션
+  // 내가 주최한 경조사 - Toss 표준
   eventsManagementSection: {
-    marginBottom: 40,
+    marginBottom: 28,
   },
-  
-  // 탭 컨테이너
+
+  // 세그먼트 컨트롤 (Pill)
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: Colors.gray50,
+    backgroundColor: '#F2F4F6',
     borderRadius: 12,
     padding: 4,
-    marginBottom: 20,
+    marginTop: 8,
+    marginBottom: 16,
   },
   tabButton: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: 'center',
   },
   activeTabButton: {
-    backgroundColor: Colors.white,
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
     elevation: 2,
   },
   tabText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textSecondary,
+    fontWeight: '600',
+    color: '#8B95A1',
   },
   activeTabText: {
-    color: Colors.primary,
-    fontWeight: '600',
-  },
-  
-  // 이벤트 리스트
-  eventsList: {
-    gap: 16,
+    color: '#191F28',
+    fontWeight: '700',
   },
 
-  // 새 이벤트 카드 (세로형)
+  // 이벤트 리스트
+  eventsList: {
+    gap: 12,
+  },
+
+  // 이벤트 카드 (Toss)
   eventCardNew: {
-    backgroundColor: Colors.white,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: Colors.gray100,
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
   },
@@ -2618,47 +3274,48 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   eventTypeBadgeNew: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
   eventTypeBadgeTextNew: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   eventDateBadge: {
-    backgroundColor: Colors.gray50,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   eventDateBadgeText: {
     fontSize: 13,
     fontWeight: '500',
-    color: Colors.gray600 || '#475569',
+    color: '#8B95A1',
   },
 
   // 카드 중간: 이벤트명 + 장소
   eventCardTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    color: Colors.textPrimary,
+    color: '#191F28',
     lineHeight: 24,
     marginBottom: 6,
+    letterSpacing: -0.2,
   },
   eventCardLocationRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   eventCardLocation: {
-    fontSize: 14,
-    color: Colors.gray500,
+    fontSize: 13,
+    color: '#8B95A1',
     lineHeight: 18,
+    fontWeight: '400',
   },
 
   // 카드 하단: 통계 바
@@ -2666,10 +3323,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Colors.gray50,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: '#F2F4F6',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   eventCardStatItem: {
     flexDirection: 'row',
@@ -2677,14 +3334,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   eventCardStatText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: Colors.gray600 || '#475569',
+    color: '#4E5968',
   },
   eventCardStatAmount: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    color: Colors.primary,
+    color: '#3182F6',
   },
 
   // 🔥 더보기 버튼
@@ -2704,33 +3361,41 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   
-  // 빈 상태
+  // 빈 상태 - Toss 표준
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: Colors.textSecondary,
-    marginTop: 16,
-    marginBottom: 8,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#191F28',
+    marginTop: 12,
+    marginBottom: 4,
   },
   emptySubtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginBottom: 24,
+    fontSize: 13,
+    color: '#8B95A1',
+    marginBottom: 20,
+    fontWeight: '400',
   },
   createButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: '#3182F6',
     paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 11,
+    borderRadius: 10,
   },
   createButtonText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: Colors.white,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   
   // 로딩
@@ -2744,45 +3409,43 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   
-  // 🔥 캘린더 섹션 스타일
+  // 캘린더 섹션 - Toss 표준
   calendarSection: {
-    marginBottom: 40,
+    marginBottom: 28,
   },
-  
+
   calendarSectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 14,
   },
-  
+
   addEventButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 16,
+    backgroundColor: '#3182F6',
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    gap: 6,
+    gap: 4,
   },
-  
+
   addEventButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.white,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
-  
+
   // 캘린더 컨테이너
   calendarContainer: {
-    backgroundColor: Colors.white,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 20,
-    borderWidth: 1,
-    borderColor: Colors.gray100,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
   },
@@ -2940,19 +3603,13 @@ const styles = StyleSheet.create({
     paddingLeft: 4,
   },
   
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 12,
-    paddingLeft: 4,
-  },
-  
   monthlyTicketsTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 16,
+    fontWeight: '700',
+    color: '#191F28',
+    marginBottom: 12,
+    marginTop: 4,
+    letterSpacing: -0.2,
   },
   
   ticketsList: {
@@ -2960,84 +3617,90 @@ const styles = StyleSheet.create({
   },
   
   eventTicket: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12, // 티켓 간격 추가
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingRight: 12,
+    marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.gray100,
     borderLeftWidth: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 4,
     elevation: 2,
   },
-  
+
   ticketDateSection: {
-    width: 50,
+    width: 54,
     alignItems: 'center',
-    marginRight: 16,
+    marginLeft: 12,
+    marginRight: 12,
   },
-  
+
   ticketDay: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
-    color: Colors.textPrimary,
-    lineHeight: 28,
+    color: '#191F28',
+    lineHeight: 26,
+    letterSpacing: -0.3,
   },
-  
+
   ticketWeekday: {
     fontSize: 12,
-    color: Colors.textSecondary,
+    color: '#8B95A1',
     marginTop: 2,
+    fontWeight: '500',
   },
-  
+
   ticketContent: {
     flex: 1,
   },
-  
+
   ticketHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
-  },
-  
-  ticketTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    flex: 1,
-    marginRight: 8,
-  },
-  
-  ticketTypeBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  
-  ticketTypeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Colors.white,
-  },
-  
-  ticketLocation: {
-    fontSize: 14,
-    color: Colors.textSecondary,
     marginBottom: 4,
   },
-  
+
+  ticketTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#191F28',
+    flex: 1,
+    marginRight: 8,
+    letterSpacing: -0.2,
+  },
+
+  ticketTypeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+
+  ticketTypeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+
+  ticketLocation: {
+    fontSize: 13,
+    color: '#8B95A1',
+    marginBottom: 2,
+    fontWeight: '400',
+  },
+
   ticketTime: {
     fontSize: 12,
-    color: Colors.gray500,
+    color: '#8B95A1',
   },
-  
+
   ticketAction: {
-    marginLeft: 12,
+    marginLeft: 8,
+    paddingHorizontal: 4,
   },
   
   // 티켓 없음 상태
@@ -3631,10 +4294,10 @@ const styles = StyleSheet.create({
   },
 
   tossSuccessIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: Colors.primary,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#E8F5E9',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -3860,25 +4523,532 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // 일정 없음 컨테이너 스타일
-  noEventsContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  
-  noEventsText: {
-    fontSize: 16,
-    color: Colors.gray400,
-    fontWeight: '600',
-    marginTop: 16,
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 위젯 공통
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  widgetSection: {
     marginBottom: 8,
   },
-  
-  noEventsSubText: {
+  widgetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  widgetAddButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3182F6',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 4,
+  },
+  widgetAddButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  widgetCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+
+  // ── 품앗이 장부 (pm prefix) ──
+  pmSection: {
+    paddingBottom: 8,
+  },
+  pmHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  pmHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#191F28',
+  },
+  pmAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: '#EBF3FE',
+    borderRadius: 20,
+  },
+  pmAddBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#3182F6',
+  },
+  pmSummaryCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  pmSummaryItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  pmSummaryDivider: {
+    width: 1,
+    backgroundColor: '#F2F4F6',
+    marginHorizontal: 16,
+  },
+  pmSummaryLabel: {
+    fontSize: 12,
+    color: '#8B95A1',
+    marginBottom: 6,
+    fontWeight: '500',
+  },
+  pmSummaryAmount: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#3182F6',
+    letterSpacing: -0.5,
+  },
+  pmTabRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F2F4F6',
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 14,
+  },
+  pmTab: {
+    flex: 1,
+    paddingVertical: 9,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  pmTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  pmTabText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#8B95A1',
+  },
+  pmTabTextActive: {
+    fontWeight: '700',
+    color: '#191F28',
+  },
+  pmCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  pmFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F4F6',
+  },
+  pmFilterChipText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#8B95A1',
+    fontWeight: '500',
+  },
+  pmRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  pmRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F4F6',
+  },
+  pmStatusBar: {
+    width: 3,
+    height: 36,
+    borderRadius: 2,
+  },
+  pmAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#EBF3FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pmAvatarText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#3182F6',
+  },
+  pmRowInfo: {
+    flex: 1,
+  },
+  pmRowName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#191F28',
+  },
+  pmRowSub: {
+    fontSize: 12,
+    color: '#8B95A1',
+    marginTop: 2,
+  },
+  pmRowRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  pmRowAmount: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#3182F6',
+  },
+  pmGaveBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: '#3182F6',
+    borderRadius: 8,
+    marginTop: 2,
+  },
+  pmGaveBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  pmPagination: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F2F4F6',
+    gap: 16,
+  },
+  pmPageBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#EBF3FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pmPageBtnDisabled: {
+    backgroundColor: '#F2F4F6',
+  },
+  pmPageText: {
     fontSize: 14,
-    color: Colors.gray300,
+    fontWeight: '600',
+    color: '#191F28',
+    minWidth: 50,
+    textAlign: 'center',
+  },
+  pmSettleBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: '#FFF0F0',
+    borderRadius: 6,
+  },
+  pmSettleBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FF3B30',
+  },
+  pmSettledBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    backgroundColor: '#F2F4F6',
+    borderRadius: 6,
+  },
+  pmSettledText: {
+    fontSize: 11,
+    color: '#8B95A1',
+    fontWeight: '500',
+  },
+  pmEmpty: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    gap: 8,
+  },
+  pmEmptyText: {
+    fontSize: 14,
+    color: '#8B95A1',
+    fontWeight: '500',
+  },
+  pmEmptySubText: {
+    fontSize: 12,
+    color: '#B0B8C1',
+  },
+  pmViewAll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F2F4F6',
+    gap: 4,
+  },
+  pmViewAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3182F6',
+  },
+  // 토스 바텀시트 공통
+  tossSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingTop: 12, paddingHorizontal: 20, paddingBottom: 40,
+    maxHeight: '80%',
+  },
+  tossSheetHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: '#E5E8EB',
+    alignSelf: 'center', marginBottom: 20,
+  },
+  tossSheetTitle: {
+    fontSize: 20, fontWeight: '800', color: '#191F28', marginBottom: 8,
+  },
+  tossSheetRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1, borderBottomColor: '#F2F4F6',
+  },
+  tossSheetRowText: { fontSize: 16, color: '#191F28', fontWeight: '500', flex: 1 },
+  tossSheetRowTextActive: { color: '#3182F6', fontWeight: '700' },
+  tossSheetRowSub: { fontSize: 12, color: '#8B95A1', marginTop: 2 },
+  tossRadio: {
+    width: 22, height: 22, borderRadius: 11,
+    borderWidth: 2, borderColor: '#D1D6DB', marginRight: 14,
+  },
+  tossRadioActive: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: '#3182F6', marginRight: 14,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  tossRadioDot: {
+    width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFFFFF',
+  },
+  tossSheetCancel: {
+    paddingVertical: 16, alignItems: 'center', marginTop: 8,
+  },
+  tossSheetBack: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 16, gap: 4, marginTop: 4,
+  },
+  tossSheetCancelText: { fontSize: 16, color: '#8B95A1', fontWeight: '600' },
+  tossNextBtn: {
+    backgroundColor: '#3182F6',
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  tossNextBtnDisabled: {
+    backgroundColor: '#F2F4F6',
+  },
+  tossNextBtnText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  tossNextBtnTextDisabled: {
+    color: '#8B95A1',
+  },
+  // 줬음 기록 입력
+  tossInputLabel: { fontSize: 13, fontWeight: '600', color: '#8B95A1', marginTop: 14, marginBottom: 6 },
+  tossInput: {
+    backgroundColor: '#F2F4F6', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 13,
+    fontSize: 15, color: '#191F28',
+  },
+  tossCancelBtn: {
+    flex: 1, paddingVertical: 15, backgroundColor: '#F2F4F6',
+    borderRadius: 12, alignItems: 'center',
+  },
+  tossCancelBtnText: { fontSize: 15, fontWeight: '700', color: '#8B95A1' },
+  tossPrimaryBtn: {
+    flex: 1, paddingVertical: 15, backgroundColor: '#3182F6',
+    borderRadius: 12, alignItems: 'center',
+  },
+  tossPrimaryBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
+
+  // 품앗이 모달
+  pumasiModalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    marginTop: 'auto',
+  },
+  pumasiModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#191F28',
+    marginBottom: 20,
+  },
+  pumasiModalSection: {
+    marginBottom: 12,
+  },
+  pumasiModalLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8B95A1',
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  pumasiInput: {
+    backgroundColor: '#F2F4F6',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#191F28',
+  },
+  guestChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#F2F4F6',
+    borderRadius: 20,
+    marginRight: 8,
+  },
+  guestChipActive: {
+    backgroundColor: '#3182F6',
+  },
+  guestChipText: {
+    fontSize: 13,
+    color: '#191F28',
+  },
+  guestChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  pumasiModalButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 24,
+  },
+  pumasiCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    backgroundColor: '#F2F4F6',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  pumasiCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#8B95A1',
+  },
+  pumasiSaveBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    backgroundColor: '#3182F6',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  pumasiSaveText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  // 감사 메시지
+  thankYouRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F4F6',
+  },
+  thankYouRowTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 10,
+  },
+  thankYouIcon: {
+    fontSize: 20,
+    marginTop: 2,
+  },
+  thankYouInfo: {
+    flex: 1,
+  },
+  thankYouTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#191F28',
+  },
+  thankYouMeta: {
+    fontSize: 13,
+    color: '#8B95A1',
+    marginTop: 2,
+  },
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3182F6',
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 6,
+  },
+  shareButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  // 일정 없음 컨테이너
+  noEventsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+
+  noEventsText: {
+    fontSize: 15,
+    color: '#191F28',
+    fontWeight: '700',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+
+  noEventsSubText: {
+    fontSize: 13,
+    color: '#8B95A1',
     fontWeight: '400',
   },
 
