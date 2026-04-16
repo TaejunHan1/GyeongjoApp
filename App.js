@@ -28,6 +28,7 @@ import LoadingScreen from './src/screens/LoadingScreen';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import AppNavigator from './src/navigation/AppNavigator';
 
+
 // Expo 네이티브 알림 초기화 (Expo Go에서는 제한됨)
 const initializeNotifications = async () => {
   try {

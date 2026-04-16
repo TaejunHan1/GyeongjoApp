@@ -25,8 +25,15 @@
             "CFBundleURLSchemes": [
               "gyeongjoapp"
             ]
+          },
+          {
+            "CFBundleURLName": "gyeongjoapp",
+            "CFBundleURLSchemes": [
+              "gyeongjoapp"
+            ]
           }
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

@@ -1,0 +1,10 @@
+{
+  "name": "digital-ink-recognition",
+  "version": "1.0.0",
+  "description": "ML Kit Digital Ink Recognition native module for Expo",
+  "main": "src/index.ts",
+  "peerDependencies": {
+    "expo": "*",
+    "expo-modules-core": "*"
+  }
+}

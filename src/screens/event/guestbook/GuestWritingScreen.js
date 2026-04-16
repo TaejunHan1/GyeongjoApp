@@ -10,11 +10,18 @@ import {
   Alert,
   StatusBar,
   Animated,
+  Platform,
 } from 'react-native';
 import Svg, { Path, G } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as ScreenOrientation from 'expo-screen-orientation';
+
+// Digital Ink Recognition — dev client 빌드에서만 동작
+let DigitalInk = null;
+try {
+  DigitalInk = require('digital-ink-recognition');
+} catch (_) {}
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
@@ -60,6 +67,10 @@ export default function GuestWritingScreen({ navigation, route }) {
   const [strokes, setStrokes] = useState([]);
   const [currentPath, setCurrentPath] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Digital Ink용 원시 좌표 수집 (state 아닌 ref — 렌더링 불필요)
+  const inkPointsRef = useRef([]);    // 현재 획의 포인트 [{x, y, t}]
+  const inkStrokesRef = useRef([]);   // 완료된 모든 획
   const [controlsVisible, setControlsVisible] = useState(true);
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   const timerRef = useRef(null);
@@ -152,6 +163,12 @@ export default function GuestWritingScreen({ navigation, route }) {
     } catch (e) {
       console.warn('Orientation lock failed:', e);
     }
+    // 한국어 모델 미리 다운로드 (백그라운드)
+    if (DigitalInk) {
+      DigitalInk.downloadModel('ko').catch((e) =>
+        console.warn('[DigitalInk] 모델 다운로드 실패:', e?.message)
+      );
+    }
     setMode('drawing');
     resetInactivityTimer();
   };
@@ -172,6 +189,8 @@ export default function GuestWritingScreen({ navigation, route }) {
   const clearCanvas = useCallback(() => {
     setStrokes([]);
     setCurrentPath('');
+    inkPointsRef.current = [];
+    inkStrokesRef.current = [];
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
 
@@ -205,6 +224,7 @@ export default function GuestWritingScreen({ navigation, route }) {
         if (stylusTouch) {
           drawingTouchId.current = stylusTouch.identifier;
           pendingTouches.current.clear();
+          inkPointsRef.current = [{ x: stylusTouch.locationX, y: stylusTouch.locationY, t: Date.now() }];
           setCurrentPath(
             `M${stylusTouch.locationX.toFixed(1)},${stylusTouch.locationY.toFixed(1)}`
           );
@@ -219,6 +239,7 @@ export default function GuestWritingScreen({ navigation, route }) {
           const t = touches[0];
           drawingTouchId.current = t.identifier;
           pendingTouches.current.clear();
+          inkPointsRef.current = [{ x: t.locationX, y: t.locationY, t: Date.now() }];
           setCurrentPath(`M${t.locationX.toFixed(1)},${t.locationY.toFixed(1)}`);
           return;
         }
@@ -243,6 +264,7 @@ export default function GuestWritingScreen({ navigation, route }) {
             (t) => t.identifier === drawingTouchId.current
           );
           if (!target) return;
+          inkPointsRef.current.push({ x: target.locationX, y: target.locationY, t: Date.now() });
           setCurrentPath(
             (prev) => `${prev} L${target.locationX.toFixed(1)},${target.locationY.toFixed(1)}`
           );
@@ -274,6 +296,10 @@ export default function GuestWritingScreen({ navigation, route }) {
           const penTouch = touches.find((t) => t.identifier === bestId);
           drawingTouchId.current = bestId;
           pendingTouches.current.clear();
+          inkPointsRef.current = [
+            { x: origin.x, y: origin.y, t: Date.now() - 16 },
+            { x: penTouch.locationX, y: penTouch.locationY, t: Date.now() },
+          ];
           setCurrentPath(
             `M${origin.x.toFixed(1)},${origin.y.toFixed(1)}` +
             ` L${penTouch.locationX.toFixed(1)},${penTouch.locationY.toFixed(1)}`
@@ -292,6 +318,10 @@ export default function GuestWritingScreen({ navigation, route }) {
             if (prev.length > 0) setStrokes((s) => [...s, prev]);
             return '';
           });
+          if (inkPointsRef.current.length > 0) {
+            inkStrokesRef.current.push([...inkPointsRef.current]);
+            inkPointsRef.current = [];
+          }
           drawingTouchId.current = null;
           pendingTouches.current.clear();
         } else {
@@ -307,6 +337,10 @@ export default function GuestWritingScreen({ navigation, route }) {
           if (prev.length > 0) setStrokes((s) => [...s, prev]);
           return '';
         });
+        if (inkPointsRef.current.length > 0) {
+          inkStrokesRef.current.push([...inkPointsRef.current]);
+          inkPointsRef.current = [];
+        }
         drawingTouchId.current = null;
         pendingTouches.current.clear();
       },
@@ -321,9 +355,34 @@ export default function GuestWritingScreen({ navigation, route }) {
     }
     setIsProcessing(true);
     try {
+      // 스크린샷 캡처 (디스플레이용)
       const uri = await viewShotRef.current.capture();
+
+      // 손글씨 인식 — iOS: Apple Vision, Android: MLKit Digital Ink
+      let inkCandidates = [];
+      console.log('[INK] DigitalInk 모듈:', !!DigitalInk, 'Platform:', Platform.OS);
+      if (DigitalInk) {
+        try {
+          if (Platform.OS === 'ios') {
+            console.log('[INK] Apple Vision 시작, uri:', uri);
+            inkCandidates = await DigitalInk.recognizeImage(uri);
+            console.log('[INK] Apple Vision 결과:', inkCandidates);
+          } else {
+            const strokesSnapshot = [...inkStrokesRef.current];
+            console.log('[INK] MLKit 시작, strokes:', strokesSnapshot.length);
+            if (strokesSnapshot.length > 0) {
+              await DigitalInk.downloadModel('ko');
+              inkCandidates = await DigitalInk.recognize(strokesSnapshot, 'ko');
+              console.log('[INK] MLKit 결과:', inkCandidates);
+            }
+          }
+        } catch (e) {
+          console.warn('[INK] 오류:', e?.message, e?.code);
+        }
+      }
+
       clearCanvas();
-      navigation.navigate('GuestConfirm', { event, handwritingUri: uri, side });
+      navigation.navigate('GuestConfirm', { event, handwritingUri: uri, side, inkCandidates });
     } catch (err) {
       console.error('Capture error:', err);
       Alert.alert('오류', '처리 중 오류가 발생했습니다.');

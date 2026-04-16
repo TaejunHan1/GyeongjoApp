@@ -21,16 +21,10 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { DeviceEventEmitter } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 
-// ML Kit은 dev client 빌드에서만 동작
-let TextRecognition = null;
-try {
-  TextRecognition = require('@react-native-ml-kit/text-recognition').default;
-} catch (_) {}
-
 const DEFAULT_AMOUNTS = [30000, 50000, 70000, 100000, 150000, 200000];
 
 export default function GuestConfirmScreen({ navigation, route }) {
-  const { event, handwritingUri, side = 'groom' } = route.params;
+  const { event, handwritingUri, side = 'groom', inkCandidates = [] } = route.params;
   const sideLabel = side === 'groom' ? '신랑측' : '신부측';
   const sideColor = side === 'groom' ? '#3B82F6' : '#EC4899';
   const sideEmoji = side === 'groom' ? '🤵' : '👰';
@@ -41,7 +35,6 @@ export default function GuestConfirmScreen({ navigation, route }) {
   const [recognizing, setRecognizing] = useState(true);
   const [candidates, setCandidates] = useState([]);
   const [selectedName, setSelectedName] = useState('');
-  const [debugLog, setDebugLog] = useState('');
   const [nameConfirmed, setNameConfirmed] = useState(false);
 
   // 금액
@@ -68,38 +61,15 @@ export default function GuestConfirmScreen({ navigation, route }) {
   }, []);
 
   useEffect(() => {
-    recognize();
+    // Digital Ink Recognition 결과는 GuestWritingScreen에서 이미 인식 완료 → 바로 사용
+    const filtered = (inkCandidates || [])
+      .map((t) => t?.trim())
+      .filter((t) => t && t.length > 0)
+      .slice(0, 5);
+    setCandidates(filtered);
+    setSelectedName(filtered[0] || '');
+    setRecognizing(false);
   }, []);
-
-  const recognize = async () => {
-    setRecognizing(true);
-    try {
-      if (!TextRecognition) {
-        console.warn('[MLKit] TextRecognition 모듈 null — 네이티브 링크 실패');
-        setCandidates([]);
-        setSelectedName('');
-        setRecognizing(false);
-        return;
-      }
-      const result = await TextRecognition.recognize(handwritingUri);
-      const raw = result?.text?.trim() || '';
-      const blockTexts = (result?.blocks || [])
-        .map((b) => b.text?.trim())
-        .filter((t) => t && t.length > 0);
-      const uniqueCandidates = [...new Set([raw, ...blockTexts])]
-        .filter((t) => t.length > 0)
-        .slice(0, 3);
-      setDebugLog(`raw: "${raw}" | blocks: ${JSON.stringify(blockTexts)}`);
-      setCandidates(uniqueCandidates);
-      setSelectedName(uniqueCandidates[0] || '');
-    } catch (err) {
-      setDebugLog(`오류: ${err?.message}`);
-      setCandidates([]);
-      setSelectedName('');
-    } finally {
-      setRecognizing(false);
-    }
-  };
 
   const handleConfirmName = () => {
     if (!selectedName.trim()) { Alert.alert('알림', '이름을 확인해주세요.'); return; }
@@ -304,13 +274,6 @@ export default function GuestConfirmScreen({ navigation, route }) {
               {candidates.length === 0 && (
                 <View style={s.recognizeFailBanner}>
                   <Text style={s.recognizeFailText}>✏️  아래에 성함을 입력 후 확인 버튼을 눌러주세요</Text>
-                </View>
-              )}
-
-              {/* 디버그 — 다음 빌드 후 확인되면 제거 */}
-              {!!debugLog && (
-                <View style={{ backgroundColor: '#222', borderRadius: 8, padding: 8, marginBottom: 8 }}>
-                  <Text style={{ color: '#0f0', fontSize: 10 }}>{debugLog}</Text>
                 </View>
               )}
 
