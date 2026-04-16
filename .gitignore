@@ -26,3 +26,7 @@ web-build/
 # Native build folders (Prebuild/CNG)
 /android
 /ios
+
+# Module build artifacts
+modules/*/android/build/
+modules/*/ios/build/

@@ -12,5 +12,6 @@ android {
 }
 
 dependencies {
+  implementation 'com.google.mlkit:text-recognition-korean:16.0.1'
   implementation 'com.google.mlkit:digital-ink-recognition:16.1.0'
 }

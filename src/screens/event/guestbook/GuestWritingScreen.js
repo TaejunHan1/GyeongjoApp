@@ -163,14 +163,12 @@ export default function GuestWritingScreen({ navigation, route }) {
     } catch (e) {
       console.warn('Orientation lock failed:', e);
     }
-    // 한국어 모델 미리 다운로드 (백그라운드)
-    if (DigitalInk) {
-      DigitalInk.downloadModel('ko').catch((e) =>
-        console.warn('[DigitalInk] 모델 다운로드 실패:', e?.message)
-      );
-    }
     setMode('drawing');
     resetInactivityTimer();
+    // Android: Digital Ink 모델 백그라운드 다운로드
+    if (Platform.OS === 'android' && DigitalInk) {
+      DigitalInk.downloadModel('ko').catch(() => {});
+    }
   };
 
   // ── 드로잉 종료 → 세로 복귀 ──────────────────
@@ -358,26 +356,17 @@ export default function GuestWritingScreen({ navigation, route }) {
       // 스크린샷 캡처 (디스플레이용)
       const uri = await viewShotRef.current.capture();
 
-      // 손글씨 인식 — iOS: Apple Vision, Android: MLKit Digital Ink
+      // 손글씨 인식 — iOS: Apple Vision, Android: Digital Ink (stroke)
       let inkCandidates = [];
-      console.log('[INK] DigitalInk 모듈:', !!DigitalInk, 'Platform:', Platform.OS);
       if (DigitalInk) {
         try {
-          if (Platform.OS === 'ios') {
-            console.log('[INK] Apple Vision 시작, uri:', uri);
-            inkCandidates = await DigitalInk.recognizeImage(uri);
-            console.log('[INK] Apple Vision 결과:', inkCandidates);
-          } else {
-            const strokesSnapshot = [...inkStrokesRef.current];
-            console.log('[INK] MLKit 시작, strokes:', strokesSnapshot.length);
-            if (strokesSnapshot.length > 0) {
-              await DigitalInk.downloadModel('ko');
-              inkCandidates = await DigitalInk.recognize(strokesSnapshot, 'ko');
-              console.log('[INK] MLKit 결과:', inkCandidates);
-            }
+          const strokesSnapshot = [...inkStrokesRef.current];
+          if (strokesSnapshot.length > 0) {
+            await DigitalInk.downloadModel('ko');
+            inkCandidates = await DigitalInk.recognize(strokesSnapshot, 'ko');
           }
         } catch (e) {
-          console.warn('[INK] 오류:', e?.message, e?.code);
+          // 인식 실패 시 빈 배열 유지
         }
       }
 
