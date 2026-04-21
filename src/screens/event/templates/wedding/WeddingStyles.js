@@ -234,9 +234,15 @@ const styles = StyleSheet.create({
   imageViewerClose: {
     position: 'absolute',
     top: 50,
-    right: 20,
+    left: 20,
     zIndex: 10,
     padding: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 999,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   imageViewerContent: {
     width: '100%',

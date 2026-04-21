@@ -263,29 +263,6 @@ export default function TossStyleTemplate({ eventData = {}, categorizedImages = 
           />
         </View>
 
-        {/* ── 이름 & 날짜 (사진 아래, 인사말 위) ── */}
-        <View style={ts.introSection}>
-          <View style={ts.heroBadge}>
-            <Text style={ts.heroBadgeText}>Wedding Invitation</Text>
-          </View>
-          <View style={ts.heroNamesRow}>
-            <View style={ts.heroNameItem}>
-              <Text style={ts.heroNameKo}>{groomName || '이민호'}</Text>
-              <Text style={ts.heroNameEn}>{groomEnName}</Text>
-            </View>
-            <Text style={ts.heroAmpersand}>&</Text>
-            <View style={ts.heroNameItem}>
-              <Text style={ts.heroNameKo}>{brideName || '배하윤'}</Text>
-              <Text style={ts.heroNameEn}>{brideEnName}</Text>
-            </View>
-          </View>
-          <View style={ts.heroDateBadge}>
-            <Text style={ts.heroDateText}>{dateStr}</Text>
-            {timeStr ? <Text style={ts.heroDateSep}>·</Text> : null}
-            {timeStr ? <Text style={ts.heroDateText}>{timeStr}</Text> : null}
-          </View>
-        </View>
-
         {/* ── 인사말 ── */}
         <Section style={ts.greetingSection}>
           <SectionTitle subtitle="소중한 분들을 초대합니다">인사말</SectionTitle>
@@ -306,7 +283,7 @@ export default function TossStyleTemplate({ eventData = {}, categorizedImages = 
                 {groomFather || '아버지'}{groomFather && groomMother ? ' · ' : ''}{groomMother || '어머니'}의 아들
               </Text>
             </View>
-            <Text style={ts.coupleCardHeart}>♡</Text>
+            <Text style={ts.coupleCardHeart}>♥</Text>
             <View style={ts.coupleCardItem}>
               <Text style={ts.coupleCardRole}>신부</Text>
               <Text style={ts.coupleCardName}>{brideName}</Text>
@@ -767,7 +744,7 @@ const ts = StyleSheet.create({
   coupleCardRole: { fontSize: 11, fontWeight: '700', color: '#3182F6', letterSpacing: 1 },
   coupleCardName: { fontSize: 20, fontWeight: '700', color: '#1B1B1B', letterSpacing: -0.5 },
   coupleCardParents: { fontSize: 11, color: '#8B95A1', textAlign: 'center', marginTop: 2 },
-  coupleCardHeart: { fontSize: 22, color: '#3182F6', fontWeight: '300' },
+  coupleCardHeart: { fontSize: 22, color: '#EF4444', fontWeight: '300' },
 
   contactCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: '#F2F4F6', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 1 },
   contactLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -864,6 +841,6 @@ const ts = StyleSheet.create({
   toastText: { backgroundColor: 'rgba(25,31,40,0.9)', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 999, fontSize: 15, fontWeight: '700', color: '#fff' },
 
   imageModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
-  imageModalClose: { position: 'absolute', right: 16, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: 999 },
+  imageModalClose: { position: 'absolute', left: 16, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.5)', padding: 10, borderRadius: 999, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   imageModalImg: { width: '100%', height: '80%' },
 });

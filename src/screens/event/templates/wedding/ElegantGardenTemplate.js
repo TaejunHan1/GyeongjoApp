@@ -1101,11 +1101,15 @@ const ap = StyleSheet.create({
   imageModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
   imageModalClose: {
     position: 'absolute',
-    right: 16,
+    left: 16,
     zIndex: 10,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     padding: 10,
     borderRadius: 999,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   imageModalImg: { width: '100%', height: '80%' },
 

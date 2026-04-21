@@ -16,6 +16,7 @@ import Svg, { Path, G } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { useTutorial } from '../../../contexts/TutorialContext';
 
 // Digital Ink Recognition — dev client 빌드에서만 동작
 let DigitalInk = null;
@@ -59,6 +60,10 @@ export default function GuestWritingScreen({ navigation, route }) {
 
   useKeepAwake();
 
+  // ── 튜토리얼 ──
+  const { activeTutorial, step: tutorialStep, registerTarget, advanceStep: tutorialAdvance, pauseTutorial } = useTutorial();
+  const startBtnRef = useRef(null);
+
   // 상태: 'intro' | 'drawing'
   const [mode, setMode] = useState('intro');
   const [screenSize, setScreenSize] = useState(Dimensions.get('window'));
@@ -87,6 +92,25 @@ export default function GuestWritingScreen({ navigation, route }) {
 
   const hasStrokes = strokes.length > 0 || currentPath.length > 0;
   hasStrokesRef.current = hasStrokes;
+
+  // 튜토리얼: 방명록 시작하기 버튼 위치 반복 측정
+  useEffect(() => {
+    if (activeTutorial !== 'myEvents') return;
+    if (tutorialStep?.id !== 'me_guest_writing_start') return;
+    if (mode !== 'intro') return;
+    const measure = () => {
+      if (startBtnRef.current?.measureInWindow) {
+        startBtnRef.current.measureInWindow((x, y, width, height) => {
+          if (width > 0 && height > 0) {
+            registerTarget('guestWritingStartBtn', { x, y, width, height });
+          }
+        });
+      }
+    };
+    measure();
+    const id = setInterval(measure, 500);
+    return () => clearInterval(id);
+  }, [activeTutorial, tutorialStep?.id, mode, registerTarget]);
 
   // 획 하나씩 그려지는 힌트 애니메이션 (웹 버전과 동일한 로직)
   useEffect(() => {
@@ -433,8 +457,15 @@ export default function GuestWritingScreen({ navigation, route }) {
         {/* 하단 버튼 */}
         <View style={intro.footer}>
           <TouchableOpacity
+            ref={startBtnRef}
             style={[intro.startBtn, { backgroundColor: sideColor }]}
-            onPress={enterDrawing}
+            onPress={() => {
+              if (tutorialStep?.id === 'me_guest_writing_start') {
+                tutorialAdvance();
+                pauseTutorial(); // 서명패드에서는 오버레이 숨김 → GuestConfirm에서 재개
+              }
+              enterDrawing();
+            }}
             activeOpacity={0.85}
           >
             <Text style={intro.startBtnText}>방명록 시작하기</Text>

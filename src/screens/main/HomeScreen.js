@@ -40,6 +40,8 @@ import {
 } from '../../lib/supabaseHelper';
 import * as Notifications from 'expo-notifications';
 import NotificationPermissionModal from '../../components/NotificationPermissionModal';
+import { useTutorial } from '../../contexts/TutorialContext';
+import TutorialPulseRing from '../../components/TutorialPulseRing';
 
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
@@ -375,6 +377,11 @@ try {
 }
 
 export default function HomeScreen({ navigation, userInfo, session, isAuthenticated }) {
+  const { startHomeTutorial, registerTarget, registerHandler, onTargetTap, activeTutorial, isActiveStep } = useTutorial();
+  const quickGridRef = useRef(null);
+  const weddingMakeBtnRef = useRef(null);
+  const funeralMakeBtnRef = useRef(null);
+  const tutorialCheckedRef = useRef(false);
   const [user, setUser] = useState(null);
   const [userSubscription, setUserSubscription] = useState(null);
   const [events, setEvents] = useState([]);
@@ -432,6 +439,8 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   });
   
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const bannerScrollRef = useRef(null);
+  const bannerWidth = Dimensions.get('window').width;
   const eventIdsRef = useRef([]);
 
   // 토스 모달 애니메이션 값들
@@ -455,31 +464,39 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   }, [userInfo, session, isAuthenticated]);
 
-  // 슬라이드 데이터 - 경조사 종류별로 구성 (이모지 제거, Toss 스타일)
-  const slides = [
+  // 배너 데이터 - 파스텔 토스 스타일
+  const banners = [
     {
-      backgroundColor: Colors.primary,
-      title: '마음을 나누는\n가장 쉬운 방법',
-      subtitle: '정성스러운 마음을 기록해보세요',
-      icon: 'people',
-    },
-    {
-      backgroundColor: Colors.wedding,
       title: '소중한 순간을\n함께 기록하세요',
-      subtitle: '결혼식, 돌잔치 등 기쁜 날들',
-      icon: 'heart',
+      sub: '결혼식, 돌잔치 등 기쁜 날들',
+      bg: '#FEE3E8',
+      titleColor: '#191F28',
+      subColor: '#4E5968',
+      icon: '🎂',
+      deco1: null,
+      deco2: null,
     },
     {
-      backgroundColor: Colors.funeral,
-      title: '마지막 인사를\n정중하게 전하세요',
-      subtitle: '고인의 명복을 빌며',
-      icon: 'flower',
+      title: '스마트하게\n부조를 기록하세요',
+      sub: '패드에 서명 한 번으로 완료',
+      bg: '#E8F3FF',
+      titleColor: '#191F28',
+      subColor: '#4E5968',
+      icon: null,
+      image: require('../../../assets/toss-banner-pad.png'),
+      deco1: null,
+      deco2: null,
     },
     {
-      backgroundColor: Colors.success,
-      title: 'QR 코드로\n간편하게 참여하세요',
-      subtitle: '스캔 한 번으로 부조 완료',
-      icon: 'qr-code',
+      title: '마음을 나누는\n가장 쉬운 방법',
+      sub: '정성스러운 마음을 기록해보세요',
+      bg: '#DCFCE7',
+      titleColor: '#191F28',
+      subColor: '#4E5968',
+      icon: null,
+      image: require('../../../assets/toss-banner-heart.png'),
+      deco1: null,
+      deco2: null,
     },
   ];
 
@@ -516,25 +533,96 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     eventIdsRef.current = events.map(e => e.id).filter(id => id);
   }, [events]);
 
-  // 자동 슬라이드
+  // 홈 튜토리얼 자동 시작 — 로그인 후 첫 진입 시 1회
+  useEffect(() => {
+    if (!user?.id || tutorialCheckedRef.current) return;
+    tutorialCheckedRef.current = true;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('tutorial_home_completed')
+          .eq('id', user.id)
+          .single();
+        if (!error && data && !data.tutorial_home_completed) {
+          // 튜토리얼 시작 전 더미 행사 없으면 하나 생성 (튜토리얼 중 만들기 건너뛰어도 내 행사에 하나는 보이도록)
+          await ensureDemoEvent(user.id);
+          setTimeout(() => startHomeTutorial(), 800);
+        }
+      } catch (e) {
+        console.warn('튜토리얼 상태 조회 실패:', e);
+      }
+    })();
+  }, [user?.id]);
+
+  // 더미 행사 존재 보장 — 신규 유저가 튜토리얼 시작 전에 하나 생성
+  const ensureDemoEvent = async (uid) => {
+    try {
+      const { data: existing } = await supabase
+        .from('events')
+        .select('id')
+        .eq('user_id', uid)
+        .limit(1);
+      if (existing && existing.length > 0) return;
+
+      await supabase.from('events').insert({
+        user_id: uid,
+        event_type: 'wedding',
+        event_name: '홍길동 · 김영희 결혼식',
+        main_person_name: '홍길동 · 김영희',
+        groom_name: '홍길동',
+        bride_name: '김영희',
+        event_date: '2099-12-31',
+        ceremony_time: '14:00:00',
+        location: '서울 샘플 웨딩홀',
+        status: 'active',
+        template_style: 'modern-dark',
+        allow_messages: true,
+      });
+    } catch (e) {
+      console.warn('더미 행사 생성 실패:', e);
+    }
+  };
+
+  // 튜토리얼 활성 중에는 타겟 위치를 지속 재측정
+  //   - 안드로이드/iPad: 레이아웃 시점 차이로 어긋나는 문제 해결
+  //   - 스크롤/이미지 로드/회전: 어긋난 좌표 자동 복구
+  useEffect(() => {
+    if (activeTutorial !== 'home') return;
+    const measureRef = (ref, key) => {
+      if (ref.current?.measureInWindow) {
+        ref.current.measureInWindow((x, y, width, height) => {
+          if (width > 0 && height > 0) {
+            registerTarget(key, { x, y, width, height });
+          }
+        });
+      }
+    };
+    const measureAll = () => {
+      measureRef(quickGridRef, 'homeCreateSection');
+      measureRef(weddingMakeBtnRef, 'weddingMakeBtn');
+      measureRef(funeralMakeBtnRef, 'funeralMakeBtn');
+    };
+    // 즉시 + 200ms마다 재측정
+    measureAll();
+    const interval = setInterval(measureAll, 200);
+    return () => clearInterval(interval);
+  }, [activeTutorial, registerTarget]);
+
+  // 튜토리얼 handler 등록 — Overlay가 타겟 탭 시 실행
+  useEffect(() => {
+    registerHandler('homeCreateSection', () => handleQuickStart('wedding'));
+  }, [registerHandler]);
+
+  // 자동 배너 슬라이드
   useEffect(() => {
     const interval = setInterval(() => {
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
-        setCurrentSlide((prev) => (prev + 1) % slides.length);
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }).start();
-      });
-    }, 4000);
-
+      const nextIndex = (currentSlide + 1) % banners.length;
+      bannerScrollRef.current?.scrollTo({ x: nextIndex * bannerWidth, animated: true });
+      setCurrentSlide(nextIndex);
+    }, 3500);
     return () => clearInterval(interval);
-  }, [fadeAnim]);
+  }, [currentSlide, bannerWidth]);
 
 
   // 📱 알림 권한 체크 및 설정
@@ -687,17 +775,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   // 📱 축의금 변경 처리 공통 함수
   const handleContributionChange = (eventType, contribution, eventIds) => {
     if (!eventIds.includes(contribution?.event_id)) return;
-
-    const actionText = eventType === 'INSERT' ? '전달' : '수정';
-    Toast.show({
-      type: 'success',
-      text1: `💰 축의금 ${actionText}!`,
-      text2: `${contribution.guest_name}님이 ${contribution.amount?.toLocaleString()}원을 ${actionText}했습니다`,
-      position: 'top',
-      visibilityTime: 4000,
-      autoHide: true,
-      topOffset: 60,
-    });
 
     setDataLoaded(false);
     loadMonthlyStatistics();
@@ -1301,7 +1378,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   };
   
 
-  const currentSlideData = slides[currentSlide];
+  const currentSlideData = banners[currentSlide] || banners[0];
   
   // 사용자 이름 결정 로직 개선
   const getUserName = () => {
@@ -1386,39 +1463,51 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   // 줬음 기록된 guest_book id 세트
   const gaveLinkedIds = new Set(pumasiGave.map(g => g.linked_guest_id).filter(Boolean));
 
-  // 요약 금액용: 줬음 제외 없이 필터 조건만 적용 (총 받은 금액 계산용)
+  // 영어 DB 값 → 한글 변환 (표시용)
+  const koreanCat = (val) => {
+    const map = { 'groom': '신랑측', 'bride': '신부측', 'groom_side': '신랑측', 'bride_side': '신부측',
+      '신랑측': '신랑측', '신부측': '신부측' };
+    return map[val] || val || '';
+  };
+  const koreanDet = (val) => {
+    const map = { 'family': '친척', 'friend': '친구', 'colleague': '직장', 'other': '기타',
+      'groom_family': '친척', 'bride_family': '친척', 'groom_friend': '친구', 'bride_friend': '친구',
+      'groom_colleague': '직장', 'bride_colleague': '직장',
+      '친척': '친척', '친구': '친구', '직장': '직장', '기타': '기타' };
+    return map[val] || val || '';
+  };
+
+  // 요약 금액용: 줬음 제외 없이 필터 조건만 적용 (한글 기준 비교)
   const filteredPumasiReceivedAll = pumasiReceived.filter(item => {
     if (pumasiFilterEvent && item.event_id !== pumasiFilterEvent.id) return false;
-    if (pumasiFilterSide && item.relation_category !== pumasiFilterSide) return false;
-    if (pumasiFilterRelation && item.relation_detail !== pumasiFilterRelation) return false;
+    if (pumasiFilterSide && koreanCat(item.relation_category) !== pumasiFilterSide) return false;
+    if (pumasiFilterRelation && koreanDet(item.relation_detail) !== pumasiFilterRelation) return false;
     return true;
   });
 
   // 목록용: 이미 줬음 기록된 항목 추가 제외
   const filteredPumasiReceived = filteredPumasiReceivedAll.filter(item => !gaveLinkedIds.has(item.id));
 
-  // 선택된 경조사의 실제 relation_category 목록 (DB 값 그대로)
+  // 선택된 경조사의 측 목록 — 한글로 변환 후 중복 제거 (groom/신랑측 통합)
   const availableSides = pumasiFilterEvent
     ? [...new Set(pumasiReceived
         .filter(g => g.event_id === pumasiFilterEvent.id)
-        .map(g => g.relation_category)
+        .map(g => koreanCat(g.relation_category))
         .filter(Boolean))]
     : [];
 
-  // 선택된 경조사 + 측의 실제 relation_detail 목록 (DB 값 그대로)
+  // 선택된 경조사 + 측의 관계 목록 — 한글로 변환 후 중복 제거
   const availableRelations = pumasiFilterEvent
     ? [...new Set(pumasiReceived
         .filter(g => {
           if (g.event_id !== pumasiFilterEvent.id) return false;
-          if (pumasiFilterSide && g.relation_category !== pumasiFilterSide) return false;
+          if (pumasiFilterSide && koreanCat(g.relation_category) !== pumasiFilterSide) return false;
           return true;
         })
-        .map(g => g.relation_detail)
+        .map(g => koreanDet(g.relation_detail))
         .filter(Boolean))]
     : [];
 
-  // 감사 메시지 state
-  const [thankYouSentMap, setThankYouSentMap] = useState({});
 
   // 내가 받음: 이미 로드된 hostedEvents 기반으로 guest_book 전체 로드
   const loadPumasiReceived = async () => {
@@ -1538,49 +1627,13 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     }
   };
 
-  // 감사 메시지 발송 처리
-  const loadThankYouSentMap = async () => {
-    try {
-      const userId = user?.id || userInfo?.userId;
-      if (!userId) return;
-      const raw = await AsyncStorage.getItem(`thank_you_sent_${userId}`);
-      if (raw) setThankYouSentMap(JSON.parse(raw));
-    } catch (e) {}
-  };
-
-  const markThankYouSent = async (eventId, guestName) => {
-    try {
-      const userId = user?.id || userInfo?.userId;
-      const current = thankYouSentMap[eventId] || [];
-      const updated = { ...thankYouSentMap, [eventId]: [...current, guestName] };
-      setThankYouSentMap(updated);
-      await AsyncStorage.setItem(`thank_you_sent_${userId}`, JSON.stringify(updated));
-    } catch (e) {}
-  };
-
-  const shareThankYouMessage = async (event) => {
-    const eventName = event.event_name || event.title || '행사';
-    const message = `안녕하세요. 바쁘신 중에도 저희 ${eventName}을 축하해주시고 소중한 마음을 보내주셔서 진심으로 감사드립니다. 덕분에 뜻깊은 자리가 되었습니다. 앞으로도 좋은 인연 이어나가요. 감사합니다 🙏`;
-    try {
-      await Share.share({ message });
-    } catch (e) {}
-  };
-
-  // 품앗이 & 감사 데이터 로드 (events 로드 완료 후)
+  // 품앗이 데이터 로드 (events 로드 완료 후)
   useEffect(() => {
     if ((user?.id || userInfo?.userId) && events.length > 0) {
       loadPumasiReceived();
       loadPumasiGave();
-      loadThankYouSentMap();
     }
   }, [user?.id, userInfo?.userId, events.length]);
-
-  // 감사 미발송 계산
-  const getUnsendGuests = (event) => {
-    const sentNames = thankYouSentMap[event.id] || [];
-    const guestNames = (event.guestNames || []);
-    return guestNames.filter(n => !sentNames.includes(n));
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1619,24 +1672,59 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* 웰컴 섹션 */}
+        {/* 배너 캐러셀 */}
         <View style={styles.welcomeSection}>
-          <Animated.View style={[
-            styles.welcomeCard,
-            { backgroundColor: currentSlideData.backgroundColor, opacity: fadeAnim }
-          ]}>
-            <View style={styles.welcomeContent}>
-              <Text style={styles.welcomeTitle}>{currentSlideData.title}</Text>
-              <Text style={styles.welcomeSubtitle}>{currentSlideData.subtitle}</Text>
-            </View>
-            <View style={styles.welcomeIcon}>
-              <Ionicons name={currentSlideData.icon} size={32} color={Colors.white} />
-            </View>
-          </Animated.View>
-          
-          {/* 슬라이드 인디케이터 */}
+          <ScrollView
+            ref={bannerScrollRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            scrollEventThrottle={16}
+            style={{ marginHorizontal: -20 }}
+            onScroll={(e) => {
+              const idx = Math.round(e.nativeEvent.contentOffset.x / bannerWidth);
+              if (idx !== currentSlide) setCurrentSlide(idx);
+            }}
+          >
+            {banners.map((banner, idx) => (
+              <View key={idx} style={{ width: bannerWidth, paddingHorizontal: 20, paddingBottom: 4 }}>
+                <View style={[styles.welcomeCard, { backgroundColor: banner.bg }]}>
+                  {/* 텍스트 */}
+                  <View style={styles.welcomeContent}>
+                    <Text style={[styles.welcomeTitle, { color: banner.titleColor }]}>
+                      {banner.title}
+                    </Text>
+                    <Text style={[styles.welcomeSubtitle, { color: banner.subColor }]}>
+                      {banner.sub}
+                    </Text>
+                  </View>
+                  {/* 메인 아이콘 */}
+                  <View style={styles.bannerIconWrap}>
+                    {banner.image ? (
+                      <Image source={banner.image} style={styles.bannerMainImage} resizeMode="contain" />
+                    ) : (
+                      <Text style={styles.bannerMainIcon}>{banner.icon}</Text>
+                    )}
+                  </View>
+                  {/* 데코 이모지 */}
+                  {banner.deco1 && (
+                    <Text style={[styles.bannerDeco, { top: banner.deco1.top, right: banner.deco1.right }]}>
+                      {banner.deco1.emoji}
+                    </Text>
+                  )}
+                  {banner.deco2 && (
+                    <Text style={[styles.bannerDeco, { top: banner.deco2.top, right: banner.deco2.right }]}>
+                      {banner.deco2.emoji}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* 인디케이터 */}
           <View style={styles.slideIndicator}>
-            {slides.map((_, index) => (
+            {banners.map((_, index) => (
               <View
                 key={index}
                 style={[styles.dot, currentSlide === index && styles.activeDot]}
@@ -1651,12 +1739,22 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           <Text style={styles.sectionSubtitle}>
             소중한 순간을 기록해보세요
           </Text>
-          <View style={styles.quickGrid}>
-            <TouchableOpacity 
+          <View
+            ref={quickGridRef}
+            style={styles.quickGrid}
+            onLayout={() => {
+              if (quickGridRef.current?.measureInWindow) {
+                quickGridRef.current.measureInWindow((x, y, width, height) => {
+                  registerTarget('homeCreateSection', { x, y, width, height });
+                });
+              }
+            }}
+          >
+            <TouchableOpacity
               style={styles.quickItem}
               onPress={() => handleQuickStart('wedding')}
               disabled={
-                userSubscription?.subscription_type === 'free' && 
+                userSubscription?.subscription_type === 'free' &&
                 userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events
               }
             >
@@ -1667,24 +1765,25 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               />
               <Text style={styles.quickTitle}>청첩장</Text>
               <Text style={styles.quickSubtitle}>행복한 결혼 소식을 전해보세요</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
+                ref={weddingMakeBtnRef}
                 style={[
-                  styles.quickButton, 
-                  { 
-                    backgroundColor: userSubscription?.subscription_type === 'free' && 
-                    userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events 
-                    ? '#BDC3C7' : Colors.wedding 
+                  styles.quickButton,
+                  {
+                    backgroundColor: userSubscription?.subscription_type === 'free' &&
+                    userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events
+                    ? '#BDC3C7' : Colors.wedding
                   }
                 ]}
                 onPress={() => handleQuickStart('wedding')}
                 disabled={
-                  userSubscription?.subscription_type === 'free' && 
+                  userSubscription?.subscription_type === 'free' &&
                   userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events
                 }
               >
                 <Text style={styles.quickButtonText}>
-                  {userSubscription?.subscription_type === 'free' && 
-                   userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events 
+                  {userSubscription?.subscription_type === 'free' &&
+                   userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events
                    ? '제한됨' : '만들기'}
                 </Text>
               </TouchableOpacity>
@@ -1693,11 +1792,11 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.quickItem}
               onPress={() => handleQuickStart('funeral')}
               disabled={
-                userSubscription?.subscription_type === 'free' && 
+                userSubscription?.subscription_type === 'free' &&
                 userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events
               }
             >
@@ -1708,24 +1807,25 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               />
               <Text style={styles.quickTitle}>부고장</Text>
               <Text style={styles.quickSubtitle}>슬픈 소식을 정중하게 전달하세요</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
+                ref={funeralMakeBtnRef}
                 style={[
-                  styles.quickButton, 
-                  { 
-                    backgroundColor: userSubscription?.subscription_type === 'free' && 
-                    userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events 
-                    ? '#BDC3C7' : Colors.funeral 
+                  styles.quickButton,
+                  {
+                    backgroundColor: userSubscription?.subscription_type === 'free' &&
+                    userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events
+                    ? '#BDC3C7' : Colors.funeral
                   }
                 ]}
                 onPress={() => handleQuickStart('funeral')}
                 disabled={
-                  userSubscription?.subscription_type === 'free' && 
+                  userSubscription?.subscription_type === 'free' &&
                   userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events
                 }
               >
                 <Text style={styles.quickButtonText}>
-                  {userSubscription?.subscription_type === 'free' && 
-                   userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events 
+                  {userSubscription?.subscription_type === 'free' &&
+                   userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events
                    ? '제한됨' : '만들기'}
                 </Text>
               </TouchableOpacity>
@@ -1776,18 +1876,33 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                   onPress={() => handleActiveEventPress(event)}
                   activeOpacity={0.8}
                 >
-                  {/* 상단: 배지 + 날짜 */}
+                  {/* 상단: 배지 + D-day + 날짜 */}
                   <View style={styles.eventCardHeader}>
-                    <View style={[
-                      styles.eventTypeBadgeNew,
-                      { backgroundColor: event.event_type === 'funeral' ? '#F1F5F9' : '#FFF1F2' }
-                    ]}>
-                      <Text style={[
-                        styles.eventTypeBadgeTextNew,
-                        { color: getEventStatusColor(event.event_type) }
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={[
+                        styles.eventTypeBadgeNew,
+                        { backgroundColor: event.event_type === 'funeral' ? '#F1F5F9' : '#FFF1F2' }
                       ]}>
-                        {getEventTypeText(event.event_type)}
-                      </Text>
+                        <Text style={[
+                          styles.eventTypeBadgeTextNew,
+                          { color: getEventStatusColor(event.event_type) }
+                        ]}>
+                          {getEventTypeText(event.event_type)}
+                        </Text>
+                      </View>
+                      {getDDay(event.event_date) && (
+                        <View style={[
+                          styles.eventTypeBadgeNew,
+                          { backgroundColor: event.event_type === 'funeral' ? '#F1F5F9' : '#FFF1F2' }
+                        ]}>
+                          <Text style={[
+                            styles.eventTypeBadgeTextNew,
+                            { color: getEventStatusColor(event.event_type) }
+                          ]}>
+                            {getDDay(event.event_date)}
+                          </Text>
+                        </View>
+                      )}
                     </View>
                     <View style={styles.eventDateBadge}>
                       <Text style={styles.eventDateBadgeText}>
@@ -1883,7 +1998,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         {/* 위젯 1: 품앗이 장부 */}
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <View style={{ height: 8, backgroundColor: '#F2F4F6', marginHorizontal: -20, marginBottom: 24 }} />
+        <View style={{ height: 8, backgroundColor: '#F2F4F6', marginHorizontal: -20, marginTop: -28, marginBottom: 28 }} />
 
         {/* ━━━━━━━━━━━━━━━━ 품앗이 장부 ━━━━━━━━━━━━━━━━ */}
         <View style={styles.pmSection}>
@@ -1951,32 +2066,41 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           {pumasiTab === 'received' && (
             <View style={styles.pmCard}>
 
-              {/* 필터 칩 */}
-              <TouchableOpacity
-                style={styles.pmFilterChip}
-                onPress={() => { setPumasiFilterStep(1); setShowPumasiFilterSheet(true); }}
-              >
-                <Ionicons name="options-outline" size={13} color={pumasiFilterEvent ? '#3182F6' : '#8B95A1'} />
-                <Text style={[styles.pmFilterChipText, pumasiFilterEvent && { color: '#3182F6' }]}>
-                  {pumasiFilterEvent
-                    ? `${pumasiFilterEvent.event_name}${pumasiFilterSide ? ' · ' + pumasiFilterSide : ''}${pumasiFilterRelation ? ' · ' + pumasiFilterRelation : ''}`
-                    : '필터'}
-                </Text>
-                {(pumasiFilterEvent || pumasiFilterSide || pumasiFilterRelation) && (
-                  <TouchableOpacity
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      setPumasiFilterEvent(null);
-                      setPumasiFilterSide(null);
-                      setPumasiFilterRelation(null);
-                      setPumasiReceivedPage(0);
-                    }}
-                  >
-                    <Ionicons name="close-circle" size={14} color="#8B95A1" />
-                  </TouchableOpacity>
-                )}
-              </TouchableOpacity>
+              {/* 필터 바 */}
+              {(() => {
+                const isFiltered = !!(pumasiFilterEvent || pumasiFilterSide || pumasiFilterRelation);
+                return (
+                  <View style={styles.pmFilterBar}>
+                    <TouchableOpacity
+                      style={[styles.pmFilterBtn, isFiltered && styles.pmFilterBtnActive]}
+                      onPress={() => { setPumasiFilterStep(1); setShowPumasiFilterSheet(true); }}
+                      activeOpacity={0.75}
+                    >
+                      <Ionicons name="options" size={15} color={isFiltered ? '#3182F6' : '#4E5968'} />
+                      <Text style={[styles.pmFilterBtnText, isFiltered && styles.pmFilterBtnTextActive]} numberOfLines={1}>
+                        {isFiltered
+                          ? `${pumasiFilterEvent?.event_name || ''}${pumasiFilterSide ? ' · ' + koreanCat(pumasiFilterSide) : ''}${pumasiFilterRelation ? ' · ' + koreanDet(pumasiFilterRelation) : ''}`
+                          : '필터로 보기'}
+                      </Text>
+                      {!isFiltered && <Ionicons name="chevron-down" size={13} color="#8B95A1" />}
+                    </TouchableOpacity>
+                    {isFiltered && (
+                      <TouchableOpacity
+                        style={styles.pmFilterClearBtn}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        onPress={() => {
+                          setPumasiFilterEvent(null);
+                          setPumasiFilterSide(null);
+                          setPumasiFilterRelation(null);
+                          setPumasiReceivedPage(0);
+                        }}
+                      >
+                        <Text style={styles.pmFilterClearText}>초기화</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })()}
 
               {filteredPumasiReceived.length === 0 ? (
                 <View style={styles.pmEmpty}>
@@ -2004,8 +2128,8 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                         <Text style={styles.pmRowName}>{item.guest_name}</Text>
                         <Text style={styles.pmRowSub}>
                           {item.event_name}
-                          {item.relation_category ? ` · ${item.relation_category}` : ''}
-                          {item.relation_detail ? ` ${item.relation_detail}` : ''}
+                          {item.relation_category ? ` · ${koreanCat(item.relation_category)}` : ''}
+                          {item.relation_detail ? ` ${koreanDet(item.relation_detail)}` : ''}
                         </Text>
                       </View>
 
@@ -2034,27 +2158,36 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                   ))}
 
                   {/* 페이지네이션 */}
-                  {filteredPumasiReceived.length > PUMASI_PER_PAGE && (
-                    <View style={styles.pmPagination}>
-                      <TouchableOpacity
-                        style={[styles.pmPageBtn, pumasiReceivedPage === 0 && styles.pmPageBtnDisabled]}
-                        disabled={pumasiReceivedPage === 0}
-                        onPress={() => setPumasiReceivedPage(p => p - 1)}
-                      >
-                        <Ionicons name="chevron-back" size={16} color={pumasiReceivedPage === 0 ? '#D1D6DB' : '#3182F6'} />
-                      </TouchableOpacity>
-                      <Text style={styles.pmPageText}>
-                        {pumasiReceivedPage + 1} / {Math.ceil(filteredPumasiReceived.length / PUMASI_PER_PAGE)}
-                      </Text>
-                      <TouchableOpacity
-                        style={[styles.pmPageBtn, pumasiReceivedPage >= Math.ceil(filteredPumasiReceived.length / PUMASI_PER_PAGE) - 1 && styles.pmPageBtnDisabled]}
-                        disabled={pumasiReceivedPage >= Math.ceil(filteredPumasiReceived.length / PUMASI_PER_PAGE) - 1}
-                        onPress={() => setPumasiReceivedPage(p => p + 1)}
-                      >
-                        <Ionicons name="chevron-forward" size={16} color={pumasiReceivedPage >= Math.ceil(filteredPumasiReceived.length / PUMASI_PER_PAGE) - 1 ? '#D1D6DB' : '#3182F6'} />
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                  {(() => {
+                    const totalPages = Math.ceil(filteredPumasiReceived.length / PUMASI_PER_PAGE);
+                    return totalPages > 1 && (
+                      <View style={styles.paginationContainer}>
+                        <TouchableOpacity
+                          style={[styles.paginationButton, pumasiReceivedPage === 0 && styles.paginationButtonDisabled]}
+                          disabled={pumasiReceivedPage === 0}
+                          onPress={() => setPumasiReceivedPage(p => p - 1)}
+                        >
+                          <Ionicons name="chevron-back" size={20} color={pumasiReceivedPage === 0 ? Colors.gray300 : Colors.primary} />
+                        </TouchableOpacity>
+                        <View style={styles.paginationDots}>
+                          {[...Array(totalPages)].map((_, index) => (
+                            <TouchableOpacity
+                              key={index}
+                              style={[styles.paginationDot, index === pumasiReceivedPage && styles.paginationDotActive]}
+                              onPress={() => setPumasiReceivedPage(index)}
+                            />
+                          ))}
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.paginationButton, pumasiReceivedPage >= totalPages - 1 && styles.paginationButtonDisabled]}
+                          disabled={pumasiReceivedPage >= totalPages - 1}
+                          onPress={() => setPumasiReceivedPage(p => p + 1)}
+                        >
+                          <Ionicons name="chevron-forward" size={20} color={pumasiReceivedPage >= totalPages - 1 ? Colors.gray300 : Colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })()}
                 </>
               )}
             </View>
@@ -2118,80 +2251,40 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                     </View>
                   ))}
 
-                  {pumasiGave.length > PUMASI_PER_PAGE && (
-                    <View style={styles.pmPagination}>
-                      <TouchableOpacity
-                        style={[styles.pmPageBtn, pumasiGavePage === 0 && styles.pmPageBtnDisabled]}
-                        disabled={pumasiGavePage === 0}
-                        onPress={() => setPumasiGavePage(p => p - 1)}
-                      >
-                        <Ionicons name="chevron-back" size={16} color={pumasiGavePage === 0 ? '#D1D6DB' : '#3182F6'} />
-                      </TouchableOpacity>
-                      <Text style={styles.pmPageText}>
-                        {pumasiGavePage + 1} / {Math.ceil(pumasiGave.length / PUMASI_PER_PAGE)}
-                      </Text>
-                      <TouchableOpacity
-                        style={[styles.pmPageBtn, pumasiGavePage >= Math.ceil(pumasiGave.length / PUMASI_PER_PAGE) - 1 && styles.pmPageBtnDisabled]}
-                        disabled={pumasiGavePage >= Math.ceil(pumasiGave.length / PUMASI_PER_PAGE) - 1}
-                        onPress={() => setPumasiGavePage(p => p + 1)}
-                      >
-                        <Ionicons name="chevron-forward" size={16} color={pumasiGavePage >= Math.ceil(pumasiGave.length / PUMASI_PER_PAGE) - 1 ? '#D1D6DB' : '#3182F6'} />
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                  {(() => {
+                    const totalPages = Math.ceil(pumasiGave.length / PUMASI_PER_PAGE);
+                    return totalPages > 1 && (
+                      <View style={styles.paginationContainer}>
+                        <TouchableOpacity
+                          style={[styles.paginationButton, pumasiGavePage === 0 && styles.paginationButtonDisabled]}
+                          disabled={pumasiGavePage === 0}
+                          onPress={() => setPumasiGavePage(p => p - 1)}
+                        >
+                          <Ionicons name="chevron-back" size={20} color={pumasiGavePage === 0 ? Colors.gray300 : Colors.primary} />
+                        </TouchableOpacity>
+                        <View style={styles.paginationDots}>
+                          {[...Array(totalPages)].map((_, index) => (
+                            <TouchableOpacity
+                              key={index}
+                              style={[styles.paginationDot, index === pumasiGavePage && styles.paginationDotActive]}
+                              onPress={() => setPumasiGavePage(index)}
+                            />
+                          ))}
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.paginationButton, pumasiGavePage >= totalPages - 1 && styles.paginationButtonDisabled]}
+                          disabled={pumasiGavePage >= totalPages - 1}
+                          onPress={() => setPumasiGavePage(p => p + 1)}
+                        >
+                          <Ionicons name="chevron-forward" size={20} color={pumasiGavePage >= totalPages - 1 ? Colors.gray300 : Colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })()}
                 </>
               )}
             </View>
           )}
-        </View>
-
-        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        {/* 위젯 2: 감사 메시지 빠른 발송 */}
-        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <View style={{ height: 8, backgroundColor: '#F2F4F6', marginHorizontal: -20, marginBottom: 24 }} />
-
-        <View style={styles.widgetSection}>
-          <Text style={styles.sectionTitle}>감사 문자</Text>
-
-          <View style={styles.widgetCard}>
-            {hostedEvents.length === 0 ? (
-              <View style={styles.pumasiEmpty}>
-                <Text style={styles.pumasiEmptyText}>주최한 경조사가 없어요</Text>
-              </View>
-            ) : (
-              hostedEvents.slice(0, 3).map((event) => {
-                const unsent = getUnsendGuests(event);
-                return (
-                  <View key={event.id} style={styles.thankYouRow}>
-                    <View style={styles.thankYouRowTop}>
-                      <Text style={styles.thankYouIcon}>📋</Text>
-                      <View style={styles.thankYouInfo}>
-                        <Text style={styles.thankYouTitle} numberOfLines={1}>
-                          {event.event_name || event.title}
-                        </Text>
-                        {unsent.length > 0 ? (
-                          <Text style={styles.thankYouMeta}>
-                            아직 발송 안 한 분 {unsent.length}명
-                          </Text>
-                        ) : (
-                          <Text style={[styles.thankYouMeta, { color: '#4CAF50' }]}>
-                            모두 발송 완료
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.shareButton}
-                      onPress={() => shareThankYouMessage(event)}
-                    >
-                      <Ionicons name="share-outline" size={14} color="#FFFFFF" />
-                      <Text style={styles.shareButtonText}>감사 메시지 복사하기</Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              })
-            )}
-          </View>
         </View>
 
         <View style={{ height: 100 }} />
@@ -2817,7 +2910,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                     const isSelected = pumasiFilterSide === item.value;
                     return (
                       <TouchableOpacity
-                        key={item.label}
+                        key={item.value ?? '전체'}
                         style={styles.tossSheetRow}
                         onPress={() => setPumasiFilterSide(item.value)}
                       >
@@ -2849,7 +2942,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                     const isSelected = pumasiFilterRelation === item.value;
                     return (
                       <TouchableOpacity
-                        key={item.label}
+                        key={item.value ?? '전체'}
                         style={styles.tossSheetRow}
                         onPress={() => setPumasiFilterRelation(item.value)}
                       >
@@ -2965,10 +3058,22 @@ const getEventStatusColor = (eventType) => {
 
 const getEventTypeText = (eventType) => {
   switch (eventType) {
-    case 'wedding': return '경사';
-    case 'funeral': return '조사';
+    case 'wedding': return '결혼식';
+    case 'funeral': return '장례식';
     default: return '행사';
   }
+};
+
+const getDDay = (dateString) => {
+  if (!dateString) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const eventDate = new Date(dateString);
+  eventDate.setHours(0, 0, 0, 0);
+  const diff = Math.round((eventDate - today) / (1000 * 60 * 60 * 24));
+  if (diff === 0) return 'D-Day';
+  if (diff > 0) return `D-${diff}`;
+  return `D+${Math.abs(diff)}`;
 };
 
 const formatDate = (dateString) => {
@@ -3066,55 +3171,65 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2F4F6',
   },
   
-  // 웰컴 섹션 - Toss 표준 카드
+  // 배너 섹션
   welcomeSection: {
     marginBottom: 24,
   },
   welcomeCard: {
-    borderRadius: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 24,
+    borderRadius: 20,
+    paddingHorizontal: 22,
+    paddingVertical: 22,
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 120,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    height: 148,
+    overflow: 'hidden',
+    position: 'relative',
   },
   welcomeContent: {
     flex: 1,
+    zIndex: 1,
   },
   welcomeTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 6,
-    lineHeight: 26,
-    letterSpacing: -0.2,
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#191F28',
+    marginBottom: 8,
+    lineHeight: 30,
+    letterSpacing: -0.5,
   },
   welcomeSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '500',
-    lineHeight: 20,
+    fontSize: 13,
+    color: '#4E5968',
+    fontWeight: '600',
+    lineHeight: 18,
+    opacity: 0.85,
   },
-  welcomeIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  bannerIconWrap: {
+    position: 'absolute',
+    right: 16,
+    top: 0,
+    bottom: 0,
+    width: 110,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 12,
+  },
+  bannerMainIcon: {
+    fontSize: 76,
+  },
+  bannerMainImage: {
+    width: 100,
+    height: 100,
+  },
+  bannerDeco: {
+    position: 'absolute',
+    fontSize: 18,
   },
   slideIndicator: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 14,
-    gap: 6,
+    gap: 5,
   },
   dot: {
     width: 6,
@@ -3123,8 +3238,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#D1D6DB',
   },
   activeDot: {
-    backgroundColor: '#3182F6',
-    width: 20,
+    width: 16,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#191F28',
   },
   
   // 경조사 만들기 (퀵 액션) - Toss 표준
@@ -3215,7 +3332,7 @@ const styles = StyleSheet.create({
 
   // 내가 주최한 경조사 - Toss 표준
   eventsManagementSection: {
-    marginBottom: 28,
+    marginBottom: 0,
   },
 
   // 세그먼트 컨트롤 (Pill)
@@ -4662,20 +4779,54 @@ const styles = StyleSheet.create({
     elevation: 3,
     overflow: 'hidden',
   },
-  pmFilterChip: {
+  pmFilterBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F2F4F6',
+    backgroundColor: '#FAFBFC',
   },
-  pmFilterChipText: {
+  pmFilterBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#E5E8EB',
+    backgroundColor: '#FFFFFF',
+  },
+  pmFilterBtnActive: {
+    borderColor: '#3182F6',
+    backgroundColor: '#EBF2FF',
+  },
+  pmFilterBtnText: {
     flex: 1,
     fontSize: 13,
-    color: '#8B95A1',
+    color: '#4E5968',
     fontWeight: '500',
+  },
+  pmFilterBtnTextActive: {
+    color: '#3182F6',
+    fontWeight: '600',
+  },
+  pmFilterClearBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#F2F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  pmFilterClearText: {
+    fontSize: 12,
+    color: '#6B7684',
+    fontWeight: '600',
   },
   pmRow: {
     flexDirection: 'row',
@@ -4744,15 +4895,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 3,
     borderTopWidth: 1,
     borderTopColor: '#F2F4F6',
-    gap: 16,
+    gap: 6,
   },
   pmPageBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: '#EBF3FE',
     alignItems: 'center',
     justifyContent: 'center',
@@ -4976,50 +5127,6 @@ const styles = StyleSheet.create({
   },
   pumasiSaveText: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-
-  // 감사 메시지
-  thankYouRow: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F2F4F6',
-  },
-  thankYouRowTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginBottom: 10,
-  },
-  thankYouIcon: {
-    fontSize: 20,
-    marginTop: 2,
-  },
-  thankYouInfo: {
-    flex: 1,
-  },
-  thankYouTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#191F28',
-  },
-  thankYouMeta: {
-    fontSize: 13,
-    color: '#8B95A1',
-    marginTop: 2,
-  },
-  shareButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#3182F6',
-    paddingVertical: 10,
-    borderRadius: 10,
-    gap: 6,
-  },
-  shareButtonText: {
-    fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
   },

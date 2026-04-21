@@ -1,5 +1,5 @@
 // src/screens/event/wedding/CreateWeddingScreen.js
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, KeyboardAvoidingView, Platform, Image,
@@ -18,6 +18,8 @@ import DaumPostcode from '../../../components/DaumPostcode';
 import WeddingTemplatePreview from '../templates/WeddingTemplatePreview';
 import { GlobalFallingEffect } from '../templates/wedding/WeddingCommonComponents';
 import WeddingIntroSelectModal, { INTRO_OVERLAYS, INTRO_LIST } from './WeddingIntroSelectModal';
+import { useTutorial } from '../../../contexts/TutorialContext';
+import TutorialOverlay from '../../../components/TutorialOverlay';
 
 const { width } = Dimensions.get('window');
 
@@ -666,7 +668,127 @@ function UploadProgressModal({ visible, currentIndex, totalCount, onCancel }) {
 export default function CreateWeddingScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef(null);
+  // 튜토리얼 타겟 ref
+  const namesSectionRef = useRef(null);
+  const dateTimeSectionRef = useRef(null);
+  const photosSectionRef = useRef(null);
+  const nextBtnRef = useRef(null);
+  const modernDarkPreviewBtnRef = useRef(null);
+  const handleTemplatePreviewRef = useRef(null);
+  // 미리보기 모달 내부 컨트롤 ref
+  const previewCloseBtnRef = useRef(null);
+  const previewMusicBtnRef = useRef(null);
+  const previewPetalBtnRef = useRef(null);
+  const previewIntroBtnRef = useRef(null);
+  // 각 선택 모달의 첫 아이템 ref
+  const firstMusicItemRef = useRef(null);
+  const firstPetalItemRef = useRef(null);
+  // 모던 다크 템플릿 카드 ref
+  const modernDarkTemplateCardRef = useRef(null);
+  const handleClosePreviewRef = useRef(null);
+  const { activeTutorial, step: tutorialStep, registerTarget, registerHandler, advanceStep: tutorialAdvance, pauseTutorial, resumeTutorial } = useTutorial();
+  const handleNextRef = useRef(null);
+  // 스크롤 중엔 측정 skip (JS 부하 경감)
+  const isScrollingRef = useRef(false);
   const sectionPositions = useRef({});
+
+  // 튜토리얼 — 타겟 반복 측정
+  useEffect(() => {
+    if (activeTutorial !== 'home') return;
+    if (!tutorialStep || tutorialStep.screen !== 'CreateWedding') return;
+
+    const measure = () => {
+      if (isScrollingRef.current) return; // 스크롤 중엔 skip
+      const pairs = [
+        [namesSectionRef, 'weddingSection_names'],
+        [dateTimeSectionRef, 'weddingSection_datetime'],
+        [photosSectionRef, 'weddingSection_photos'],
+        [nextBtnRef, 'weddingNextBtn'],
+        [modernDarkPreviewBtnRef, 'modernDarkPreviewBtn'],
+        [previewCloseBtnRef, 'previewCloseBtn'],
+        [previewMusicBtnRef, 'previewMusicBtn'],
+        [previewPetalBtnRef, 'previewPetalBtn'],
+        [previewIntroBtnRef, 'previewIntroBtn'],
+        [modernDarkTemplateCardRef, 'modernDarkTemplateCard'],
+      ];
+      pairs.forEach(([ref, key]) => {
+        if (ref.current?.measureInWindow) {
+          ref.current.measureInWindow((x, y, width, height) => {
+            if (width > 0 && height > 0) {
+              registerTarget(key, { x, y, width, height });
+            }
+          });
+        }
+      });
+    };
+    measure();
+    // 500ms 간격으로 줄여서 JS 부하 감소 (스크롤 프레임 끊김 방지)
+    const id = setInterval(measure, 500);
+    return () => clearInterval(id);
+  }, [activeTutorial, tutorialStep, registerTarget]);
+
+  // 튜토리얼 — 스텝 변경 시 자동 스크롤 (스포트라이트는 Overlay가 spring 이동)
+  useEffect(() => {
+    if (activeTutorial !== 'home') return;
+    if (!tutorialStep || tutorialStep.screen !== 'CreateWedding') return;
+
+    const key = tutorialStep.targetKey;
+    let targetY;
+    if (key === 'weddingSection_names') targetY = sectionPositions.current.names;
+    else if (key === 'weddingSection_datetime') targetY = sectionPositions.current.dateTime;
+    else if (key === 'weddingSection_photos') targetY = sectionPositions.current.photos;
+    else if (key === 'weddingNextBtn') targetY = 999999;
+    else if (key === 'modernDarkPreviewBtn') targetY = 0;
+    else if (key === 'modernDarkTemplateCard') targetY = 0; // step 2에서 맨 위
+    // 미리보기 모달 내부 버튼들과 scroll hint, close는 모달 안이라 ScrollView 스크롤 불필요
+
+    if (targetY == null || !scrollRef.current) return;
+
+    // 스크롤 중엔 measure skip → JS 부하 줄여서 프레임 끊김 방지
+    isScrollingRef.current = true;
+    if (targetY === 999999) {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    } else {
+      scrollRef.current?.scrollTo({ y: Math.max(0, targetY - 120), animated: true });
+    }
+    const endTimer = setTimeout(() => {
+      isScrollingRef.current = false;
+    }, 600);
+    return () => clearTimeout(endTimer);
+  }, [tutorialStep?.id, activeTutorial]);
+
+  // 튜토리얼 — 핸들러 등록
+  useEffect(() => {
+    registerHandler('weddingNextBtn', () => handleNextRef.current?.());
+    registerHandler('modernDarkPreviewBtn', () => {
+      const modernDark = TEMPLATES.find(t => t.id === 'modern-dark');
+      if (modernDark) handleTemplatePreviewRef.current?.(modernDark);
+    });
+    registerHandler('previewMusicBtn', () => setShowMusicModal(true));
+    registerHandler('previewPetalBtn', () => setShowPetalModal(true));
+    registerHandler('previewIntroBtn', () => setShowIntroModal(true));
+    registerHandler('previewCloseBtn', () => handleClosePreviewRef.current?.());
+    // 두 번째 음악 (MUSIC_TRACKS[0]은 '음악 없음', [1]은 첫 실제 음악 "웨딩 트레일러")
+    registerHandler('firstMusicItem', () => {
+      const target = MUSIC_TRACKS[1];
+      if (target) {
+        handleSelectMusic(target.id);
+        setShowMusicModal(false);
+      }
+    });
+    // 두 번째 꽃잎 ([0]은 '효과 없음', [1]이 첫 실제 꽃잎)
+    registerHandler('firstPetalItem', () => {
+      const target = PETAL_EFFECTS[1];
+      if (target) {
+        handleSelectPetal(target.id);
+        setShowPetalModal(false);
+      }
+    });
+    registerHandler('modernDarkTemplateCard', () => {
+      const modernDark = TEMPLATES.find(t => t.id === 'modern-dark');
+      if (modernDark) updateForm('selectedTemplate', modernDark);
+    });
+  }, [registerHandler]);
 
   const [step, setStep] = useState(1);
   const [eventData, setEventData] = useState({
@@ -1119,7 +1241,14 @@ export default function CreateWeddingScreen({ navigation, route }) {
     setShowIntroOverlay(false);
     currentPreviewTemplateRef.current = null;
     setShowTemplatePreview(false);
+    // 튜토리얼 preview_scroll 단계에서 X 누르면 자동으로 다음 단계 진행
+    if (activeTutorial === 'home' && tutorialStep?.id === 'preview_scroll') {
+      pauseTutorial();
+      tutorialAdvance();
+      setTimeout(() => resumeTutorial(), 800);
+    }
   };
+  handleClosePreviewRef.current = handleClosePreview;
 
   // ── 템플릿 ──
   const handleTemplatePreview = async (tpl) => {
@@ -1133,7 +1262,9 @@ export default function CreateWeddingScreen({ navigation, route }) {
     setCurrentPreviewPetalSpeed(savedPetal?.speed || 'normal');
     setCurrentPreviewPetalQty(savedPetal?.qty || 'normal');
     setCurrentPreviewPetalColor(savedPetal?.color || 'pink');
-    const savedIntro = templateIntroMap[tpl.id];
+    // 웜 오렌지(vintage-app)는 자체 당근 알림 인트로가 있어 외부 인트로 오버레이 강제 비활성화
+    const isVintageApp = tpl.id === 'vintage-app';
+    const savedIntro = isVintageApp ? null : templateIntroMap[tpl.id];
     setCurrentPreviewIntroId(savedIntro?.id || 'none');
     setPreviewTemplate(tpl);
     if (savedIntro?.id) {
@@ -1146,6 +1277,9 @@ export default function CreateWeddingScreen({ navigation, route }) {
       setTimeout(() => playMusic(musicId), 400);
     }
   };
+  // 튜토리얼용 ref 동기화
+  handleTemplatePreviewRef.current = handleTemplatePreview;
+
   // ── 검증 ──
   const validateStep1 = () => {
     if (!eventData.groomName.trim()) { showAlertWithScroll('필수 입력', '신랑 이름을 입력해주세요', 'names'); return false; }
@@ -1169,6 +1303,8 @@ export default function CreateWeddingScreen({ navigation, route }) {
       handleSave();
     }
   };
+  // 튜토리얼에서 다음 버튼 호출용 — 렌더마다 최신 버전 유지
+  handleNextRef.current = handleNext;
 
   // ── 저장 ──
   const handleSave = async () => {
@@ -1380,7 +1516,10 @@ export default function CreateWeddingScreen({ navigation, route }) {
           {step === 1 && (
             <View>
               {/* 주인공 정보 */}
-              <View onLayout={e => { sectionPositions.current.names = e.nativeEvent.layout.y; }}>
+              <View
+                ref={namesSectionRef}
+                onLayout={e => { sectionPositions.current.names = e.nativeEvent.layout.y; }}
+              >
                 <SectionCard title="주인공 정보" required>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     <View style={{ flex: 1 }}>
@@ -1451,7 +1590,10 @@ export default function CreateWeddingScreen({ navigation, route }) {
               </SectionCard>
 
               {/* 일시 */}
-              <View onLayout={e => { sectionPositions.current.dateTime = e.nativeEvent.layout.y; }}>
+              <View
+                ref={dateTimeSectionRef}
+                onLayout={e => { sectionPositions.current.dateTime = e.nativeEvent.layout.y; }}
+              >
                 <SectionCard title="일시" required>
                   <TouchableOpacity onPress={() => setShowDatePicker(true)}>
                     <TossInput
@@ -1514,7 +1656,10 @@ export default function CreateWeddingScreen({ navigation, route }) {
               </SectionCard>
 
               {/* 사진 업로드 */}
-              <View onLayout={e => { sectionPositions.current.photos = e.nativeEvent.layout.y; }}>
+              <View
+                ref={photosSectionRef}
+                onLayout={e => { sectionPositions.current.photos = e.nativeEvent.layout.y; }}
+              >
                 <SectionCard title="사진 업로드" subtitle="가장 아름다운 순간을 공유해주세요">
                   {PHOTO_CATEGORIES.map(cat => {
                     const count = getCategoryImageCount(cat.key);
@@ -1601,12 +1746,13 @@ export default function CreateWeddingScreen({ navigation, route }) {
                 <Text style={s.step2Sub}>원하는 템플릿을 선택하고 미리보세요</Text>
               </View>
 
-              {TEMPLATES.map(tpl => {
+              {TEMPLATES.map((tpl, tplIdx) => {
                 const isSelected = eventData.selectedTemplate?.id === tpl.id;
                 const isDisabled = tpl.disabled;
                 return (
                   <TouchableOpacity
                     key={tpl.id}
+                    ref={tpl.id === 'modern-dark' ? modernDarkTemplateCardRef : null}
                     style={[s.tplCard, isSelected && s.tplCardSelected, isDisabled && { opacity: 0.5 }]}
                     onPress={() => !isDisabled && updateForm('selectedTemplate', tpl)}
                     activeOpacity={isDisabled ? 1 : 0.9}
@@ -1654,7 +1800,8 @@ export default function CreateWeddingScreen({ navigation, route }) {
                               </Text>
                             </View>
                           )}
-                          {templateIntroMap[tpl.id] && templateIntroMap[tpl.id].id !== 'none' && (
+                          {/* 웜 오렌지(vintage-app)는 자체 인트로라 외부 인트로 뱃지 숨김 */}
+                          {tpl.id !== 'vintage-app' && templateIntroMap[tpl.id] && templateIntroMap[tpl.id].id !== 'none' && (
                             <View style={[s.tplMusicBadge, { backgroundColor: '#f0f4ff' }]}>
                               <Text style={{ fontSize: 11 }}>🎬</Text>
                               <Text style={[s.tplMusicBadgeText, { color: '#3a5bd9' }]} numberOfLines={1}>
@@ -1666,6 +1813,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
                       )}
                       {!isDisabled && (
                         <TouchableOpacity
+                          ref={tpl.id === 'modern-dark' ? modernDarkPreviewBtnRef : null}
                           style={s.previewBtn}
                           onPress={() => handleTemplatePreview(tpl)}
                           activeOpacity={0.8}
@@ -1704,6 +1852,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
               </TouchableOpacity>
             )}
             <TouchableOpacity
+              ref={nextBtnRef}
               style={[s.nextBtn, (isLoading || imageUploadState.isUploading) && { opacity: 0.6 }]}
               onPress={handleNext}
               disabled={isLoading || imageUploadState.isUploading}
@@ -1781,38 +1930,68 @@ export default function CreateWeddingScreen({ navigation, route }) {
             {/* 오른쪽 컨트롤 — X / 음악 / 꽃잎 세로 스택 */}
             <View style={[s.previewControls, { top: insets.top + 12 }]}>
               {/* 닫기 */}
-              <TouchableOpacity style={s.previewCtrlBtn} onPress={handleClosePreview} activeOpacity={0.7}>
+              <TouchableOpacity
+                ref={previewCloseBtnRef}
+                style={s.previewCtrlBtn}
+                onPress={handleClosePreview}
+                activeOpacity={0.7}
+                onLayout={() => {
+                  previewCloseBtnRef.current?.measureInWindow((x, y, w, h) => {
+                    if (w > 0 && h > 0) registerTarget('previewCloseBtn', { x, y, width: w, height: h });
+                  });
+                }}
+              >
                 <Ionicons name="close" size={19} color="#fff" />
               </TouchableOpacity>
 
               {/* 음악 */}
               <TouchableOpacity
+                ref={previewMusicBtnRef}
                 style={[s.previewCtrlBtn, isPlaying && s.previewCtrlBtnMusic]}
                 onPress={() => setShowMusicModal(true)}
                 activeOpacity={0.8}
+                onLayout={() => {
+                  previewMusicBtnRef.current?.measureInWindow((x, y, w, h) => {
+                    if (w > 0 && h > 0) registerTarget('previewMusicBtn', { x, y, width: w, height: h });
+                  });
+                }}
               >
                 <Ionicons name={isPlaying ? 'musical-notes' : 'musical-note'} size={17} color="#fff" />
               </TouchableOpacity>
 
               {/* 꽃잎 */}
               <TouchableOpacity
+                ref={previewPetalBtnRef}
                 style={[s.previewCtrlBtn, currentPreviewPetalId !== 'none' && s.previewCtrlBtnPetal]}
                 onPress={() => setShowPetalModal(true)}
                 activeOpacity={0.8}
+                onLayout={() => {
+                  previewPetalBtnRef.current?.measureInWindow((x, y, w, h) => {
+                    if (w > 0 && h > 0) registerTarget('previewPetalBtn', { x, y, width: w, height: h });
+                  });
+                }}
               >
                 <Text style={{ fontSize: 16, lineHeight: 20 }}>
                   {currentPreviewPetalId !== 'none' ? PETAL_EFFECTS.find(p => p.id === currentPreviewPetalId)?.emoji : '✨'}
                 </Text>
               </TouchableOpacity>
 
-              {/* 인트로 */}
-              <TouchableOpacity
-                style={[s.previewCtrlBtn, currentPreviewIntroId !== 'none' && s.previewCtrlBtnIntro]}
-                onPress={() => setShowIntroModal(true)}
-                activeOpacity={0.8}
-              >
-                <Text style={{ fontSize: 16, lineHeight: 20 }}>🎬</Text>
-              </TouchableOpacity>
+              {/* 인트로 — 웜 오렌지(vintage-app)는 자체 당근 알림 인트로가 있어 별도 선택 불가 */}
+              {previewTemplate?.id !== 'vintage-app' && (
+                <TouchableOpacity
+                  ref={previewIntroBtnRef}
+                  style={[s.previewCtrlBtn, currentPreviewIntroId !== 'none' && s.previewCtrlBtnIntro]}
+                  onPress={() => setShowIntroModal(true)}
+                  activeOpacity={0.8}
+                  onLayout={() => {
+                    previewIntroBtnRef.current?.measureInWindow((x, y, w, h) => {
+                      if (w > 0 && h > 0) registerTarget('previewIntroBtn', { x, y, width: w, height: h });
+                    });
+                  }}
+                >
+                  <Text style={{ fontSize: 16, lineHeight: 20 }}>🎬</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={{ flex: 1 }}>
@@ -1877,11 +2056,14 @@ export default function CreateWeddingScreen({ navigation, route }) {
                 color={currentPreviewPetalColor}
               />
             </View>
+
+            {/* 튜토리얼 오버레이 — 미리보기 모달 내부 */}
+            <TutorialOverlay scope="previewModal" />
           </View>
 
           {/* 음악 선택 모달 */}
           <Modal visible={showMusicModal} transparent animationType="slide" onRequestClose={() => setShowMusicModal(false)}>
-            <View style={s.mOverlay}>
+            <View style={s.mOverlay} onStartShouldSetResponder={() => true}>
               <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => { setShowMusicModal(false); if (previewSoundRef.current) { previewSoundRef.current.stopAsync().catch(()=>{}); previewSoundRef.current = null; setPreviewingId(null); } }} />
               <View style={s.mSheet}>
                 <View style={s.mHandle} />
@@ -1891,16 +2073,23 @@ export default function CreateWeddingScreen({ navigation, route }) {
                     <Ionicons name="close" size={16} color="rgba(60,60,67,0.6)" />
                   </TouchableOpacity>
                 </View>
-                <FlatList
-                  data={MUSIC_TRACKS}
-                  keyExtractor={item => item.id}
-                  style={{ maxHeight: 460 }}
-                  showsVerticalScrollIndicator={false}
-                  renderItem={({ item }) => {
+                <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
+                  {MUSIC_TRACKS.map((item, index) => {
                     const isSelected = currentPreviewMusicId === item.id;
                     const isPreviewing = previewingId === item.id;
                     return (
-                      <TouchableOpacity style={s.mRow} onPress={() => handleSelectMusic(item.id)} activeOpacity={0.5}>
+                      <TouchableOpacity
+                        key={item.id}
+                        ref={index === 1 ? firstMusicItemRef : null}
+                        style={s.mRow}
+                        onPress={() => handleSelectMusic(item.id)}
+                        activeOpacity={0.5}
+                        onLayout={index === 1 ? () => {
+                          firstMusicItemRef.current?.measureInWindow((x, y, w, h) => {
+                            if (w > 0 && h > 0) registerTarget('firstMusicItem', { x, y, width: w, height: h });
+                          });
+                        } : undefined}
+                      >
                         <TouchableOpacity
                           style={[s.mSpeaker, isPreviewing && s.mSpeakerActive]}
                           onPress={(e) => { e.stopPropagation(); item.file ? previewTrack(item.id) : handleSelectMusic(item.id); }}
@@ -1919,15 +2108,17 @@ export default function CreateWeddingScreen({ navigation, route }) {
                         {isSelected && <Ionicons name="checkmark" size={18} color="#0071e3" />}
                       </TouchableOpacity>
                     );
-                  }}
-                />
+                  })}
+                </ScrollView>
               </View>
+              {/* 튜토리얼 오버레이 — 모달 전체 화면 기준 (뱃지가 최상단에 표시되도록) */}
+              <TutorialOverlay scope="musicModal" />
             </View>
           </Modal>
 
           {/* 꽃잎 선택 모달 */}
           <Modal visible={showPetalModal} transparent animationType="slide" onRequestClose={() => setShowPetalModal(false)}>
-            <View style={s.mOverlay}>
+            <View style={s.mOverlay} onStartShouldSetResponder={() => true}>
               <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowPetalModal(false)} />
               <View style={s.mSheet}>
                 <View style={s.mHandle} />
@@ -1938,10 +2129,21 @@ export default function CreateWeddingScreen({ navigation, route }) {
                   </TouchableOpacity>
                 </View>
                 <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 480 }}>
-                  {PETAL_EFFECTS.map(item => {
+                  {PETAL_EFFECTS.map((item, petalIdx) => {
                     const isSelected = currentPreviewPetalId === item.id;
                     return (
-                      <TouchableOpacity key={item.id} style={s.mRow} onPress={() => handleSelectPetal(item.id)} activeOpacity={0.5}>
+                      <TouchableOpacity
+                        key={item.id}
+                        ref={petalIdx === 1 ? firstPetalItemRef : null}
+                        style={s.mRow}
+                        onPress={() => handleSelectPetal(item.id)}
+                        activeOpacity={0.5}
+                        onLayout={petalIdx === 1 ? () => {
+                          firstPetalItemRef.current?.measureInWindow((x, y, w, h) => {
+                            if (w > 0 && h > 0) registerTarget('firstPetalItem', { x, y, width: w, height: h });
+                          });
+                        } : undefined}
+                      >
                         <View style={{ flex: 1 }}>
                           <Text style={[s.mRowName, isSelected && s.mRowNameSelected]}>{item.name}</Text>
                           <Text style={s.mRowDesc}>{item.desc}</Text>
@@ -2015,6 +2217,8 @@ export default function CreateWeddingScreen({ navigation, route }) {
                   <Text style={s.pApplyBtnText}>적용하기</Text>
                 </TouchableOpacity>
               </View>
+              {/* 튜토리얼 오버레이 — 모달 전체 화면 기준 */}
+              <TutorialOverlay scope="petalModal" />
             </View>
           </Modal>
 

@@ -27,6 +27,9 @@ import { supabase } from './src/lib/supabase';
 import LoadingScreen from './src/screens/LoadingScreen';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import AppNavigator from './src/navigation/AppNavigator';
+import { TutorialProvider } from './src/contexts/TutorialContext';
+import TutorialOverlay from './src/components/TutorialOverlay';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 
 // Expo 네이티브 알림 초기화 (Expo Go에서는 제한됨)
@@ -315,21 +318,24 @@ export default function App() {
   }
 
   return (
-    <>
-      <StatusBar style="auto" />
-      {isAuthenticated ? (
-        <AppNavigator 
-          userInfo={userInfo} 
-          session={session}
-          onLogout={handleLogout}
-        />
-      ) : (
-        <AuthNavigator 
-          setUserInfo={setUserInfo}
-          setIsAuthenticated={setIsAuthenticated}
-        />
-      )}
-      <Toast />
-    </>
+    <SafeAreaProvider>
+      <TutorialProvider>
+        <StatusBar style="auto" />
+        {isAuthenticated ? (
+          <AppNavigator
+            userInfo={userInfo}
+            session={session}
+            onLogout={handleLogout}
+          />
+        ) : (
+          <AuthNavigator
+            setUserInfo={setUserInfo}
+            setIsAuthenticated={setIsAuthenticated}
+          />
+        )}
+        {isAuthenticated && <TutorialOverlay scope="app" />}
+        <Toast />
+      </TutorialProvider>
+    </SafeAreaProvider>
   );
 }

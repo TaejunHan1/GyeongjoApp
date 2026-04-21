@@ -1765,12 +1765,15 @@ export const getEventContributions = async (eventId) => {
       .select(`
         id,
         guest_name,
+        guest_phone,
         amount,
         relation_category,
         relation_detail,
+        side,
         message,
         message_type,
         is_verified,
+        alimtalk_sent,
         created_at,
         updated_at
       `)
@@ -2363,6 +2366,7 @@ export const updateGuestBookEntry = async (entryId, updateData) => {
           amount: updateData.amount,
           relation_category: updateData.relation_category,
           relation_detail: updateData.relation_detail,
+          guest_phone: updateData.guest_phone ?? null,
           updated_at: new Date().toISOString()
         })
         .eq('id', entryId)

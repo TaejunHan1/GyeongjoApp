@@ -169,7 +169,7 @@ const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
           />
           
           <View style={styles.korean_heroContent}>
-            <MainPhotoSlideshow 
+            <MainPhotoSlideshow
               images={safeImages.main}
               style={styles.korean_mainPhotoContainer}
               onImagePress={handleImagePress}

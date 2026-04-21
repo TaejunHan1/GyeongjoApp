@@ -1,5 +1,5 @@
 // src/screens/event/EventDetailScreen.js
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import {
   InteractionManager,
   Keyboard,
   Image,
+  Animated,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +26,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../styles/constants';
 import { getEventDetail, getEventContributions, getEventStatistics, addGuestBookEntry, updateGuestBookEntry, deleteGuestBookEntry, toggleGuestBookVerification } from '../../lib/supabaseHelper';
 import { supabase } from '../../lib/supabase';
+import { sendAlimtalkWithCredit, getAlimtalkBalance } from '../../lib/alimtalkCredit';
+import { normalizePhone, samePhone } from '../../lib/phoneUtils';
+import AlimtalkResendButton from '../../components/AlimtalkResendButton';
+import SimpleModal from '../../components/SimpleModal';
+import { useSimpleAlert } from '../../hooks/useSimpleAlert';
+import TutorialOverlay from '../../components/TutorialOverlay';
+import { useTutorial } from '../../contexts/TutorialContext';
 
 export default function EventDetailScreen({ navigation, route }) {
   const { eventId, initialEvent, initialStats } = route.params;
@@ -98,6 +106,33 @@ export default function EventDetailScreen({ navigation, route }) {
   const [verifyManageModalVisible, setVerifyManageModalVisible] = useState(false);
   const [verifyPage, setVerifyPage] = useState(0); // 확정관리 페이지 (5개씩)
 
+  // ── 바텀시트 애니메이션 (배경 fade / 시트 slide 분리) ──
+  const bsAddFade     = useRef(new Animated.Value(0)).current;
+  const bsStatFade    = useRef(new Animated.Value(0)).current;
+  const bsVerifyFade  = useRef(new Animated.Value(0)).current;
+  const bsVmFade      = useRef(new Animated.Value(0)).current;
+  const bsSideFade    = useRef(new Animated.Value(0)).current;
+  const bsAddSlide    = useRef(new Animated.Value(600)).current;
+  const bsStatSlide   = useRef(new Animated.Value(600)).current;
+  const bsVerifySlide = useRef(new Animated.Value(600)).current;
+  const bsVmSlide     = useRef(new Animated.Value(600)).current;
+  const bsSideSlide   = useRef(new Animated.Value(600)).current;
+
+  const openBS = useCallback((setVisible, fade, slide) => {
+    setVisible(true);
+    Animated.parallel([
+      Animated.timing(fade,  { toValue: 1, duration: 220, useNativeDriver: true }),
+      Animated.spring(slide, { toValue: 0, damping: 22, stiffness: 180, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  const closeBS = useCallback((setVisible, fade, slide, extra) => {
+    Animated.parallel([
+      Animated.timing(fade,  { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.timing(slide, { toValue: 600, duration: 220, useNativeDriver: true }),
+    ]).start(() => { setVisible(false); extra?.(); });
+  }, []);
+
   // 아이템 탭 → 액션 버튼 토글
   const [expandedItemId, setExpandedItemId] = useState(null);
   const toggleExpand = (id) => setExpandedItemId(prev => prev === id ? null : id);
@@ -165,14 +200,20 @@ export default function EventDetailScreen({ navigation, route }) {
   const getRelationDisplay = (category, detail) => {
     // category 매핑
     const categoryMap = {
+      'groom': '신랑측',
+      'bride': '신부측',
       'groom_side': '신랑측',
       'bride_side': '신부측',
       '신랑측': '신랑측',
       '신부측': '신부측'
     };
-    
+
     // detail 매핑
     const detailMap = {
+      'family': '친척',
+      'friend': '친구',
+      'colleague': '직장',
+      'other': '기타',
       'groom_family': '친척',
       'bride_family': '친척',
       'groom_friend': '친구',
@@ -204,6 +245,48 @@ export default function EventDetailScreen({ navigation, route }) {
     relation_detail: '친구',
   });
 
+  // 알림톡 재발송 — 로딩 중 UI 블로킹용
+  const [resendingId, setResendingId] = useState(null);
+  // 현재 유저 알림톡 크레딧 잔액
+  const [alimtalkBalance, setAlimtalkBalance] = useState(null);
+  // 공통 Alert 훅
+  const { showAlert, alertProps } = useSimpleAlert();
+
+  // ── 튜토리얼 ──
+  const { activeTutorial, step: tutorialStep, registerTarget, registerHandler, advanceStep: tutorialAdvance } = useTutorial();
+  const guestReceiveBtnRef = useRef(null);
+  const sideSelectRowsRef = useRef(null);
+
+  // 튜토리얼 타겟 반복 측정 (하객 접수 버튼 + 접수대 선택 행)
+  useEffect(() => {
+    if (activeTutorial !== 'myEvents') return;
+    if (tutorialStep?.screen !== 'EventDetail') return;
+    const measureRef = (ref, key) => {
+      if (ref.current?.measureInWindow) {
+        ref.current.measureInWindow((x, y, width, height) => {
+          if (width > 0 && height > 0) {
+            registerTarget(key, { x, y, width, height });
+          }
+        });
+      }
+    };
+    const measure = () => {
+      measureRef(guestReceiveBtnRef, 'eventDetailGuestReceiveBtn');
+      measureRef(sideSelectRowsRef, 'eventDetailSideSelectRows');
+    };
+    measure();
+    const id = setInterval(measure, 500);
+    return () => clearInterval(id);
+  }, [activeTutorial, tutorialStep?.screen, registerTarget]);
+
+  // 하객 접수 버튼 탭 핸들러 — 오버레이 탭 시 바텀시트 열기
+  useEffect(() => {
+    if (activeTutorial !== 'myEvents') return;
+    registerHandler('eventDetailGuestReceiveBtn', () => {
+      openBS(setSideSelectVisible, bsSideFade, bsSideSlide);
+    });
+  }, [activeTutorial, registerHandler]);
+
   // 인라인 수정
   const [editingItemId, setEditingItemId] = useState(null);
   const [inlineEditData, setInlineEditData] = useState({
@@ -211,6 +294,7 @@ export default function EventDetailScreen({ navigation, route }) {
     amount: '',
     relation_category: '신랑측',
     relation_detail: '친구',
+    guest_phone: '',
   });
 
   // 인라인 수정 중 키보드 올라오면 해당 아이템이 키보드 위로 오도록 스크롤
@@ -228,13 +312,13 @@ export default function EventDetailScreen({ navigation, route }) {
   // 부조 추가 처리
   const handleAddContribution = async () => {
     if (!newContribution.guest_name.trim()) {
-      Alert.alert('알림', '성함을 입력해주세요.');
+      showAlert({ title: '알림', message: '성함을 입력해주세요.' });
       return;
     }
     
     const amount = parseInt(newContribution.amount.replace(/[^0-9]/g, ''));
     if (!amount || amount < 1000) {
-      Alert.alert('알림', '부조금을 1,000원 이상 입력해주세요.');
+      showAlert({ title: '알림', message: '부조금을 1,000원 이상 입력해주세요.' });
       return;
     }
 
@@ -253,35 +337,99 @@ export default function EventDetailScreen({ navigation, route }) {
       const result = await addGuestBookEntry(eventId, contributionData);
       
       if (result.success) {
-        Alert.alert(
-          '부조 추가 완료',
-          `${newContribution.guest_name}님의 부조가 등록되었습니다.\n${formatAmount(amount)}`,
-          [{
-            text: '확인',
-            onPress: () => {
-              setAddModalVisible(false);
-              setNewContribution({
-                guest_name: '',
-                amount: '',
-                relation_category: '신랑측',
-                relation_detail: '친구',
-              });
-              loadEventData(); // 데이터 새로고침
-            }
-          }]
-        );
+        showAlert({
+          title: '부조 추가 완료',
+          message: `${newContribution.guest_name}님의 부조가 등록되었습니다.\n${formatAmount(amount)}`,
+          onConfirm: () => {
+            setAddModalVisible(false);
+            setNewContribution({
+              guest_name: '',
+              amount: '',
+              relation_category: '신랑측',
+              relation_detail: '친구',
+            });
+            loadEventData();
+          },
+        });
       } else {
-        Alert.alert('오류', result.error || '부조 등록에 실패했습니다.');
+        showAlert({ title: '오류', message: result.error || '부조 등록에 실패했습니다.' });
       }
     } catch (error) {
       console.error('부조 추가 오류:', error);
-      Alert.alert('오류', '부조 등록 중 오류가 발생했습니다.');
+      showAlert({ title: '오류', message: '부조 등록 중 오류가 발생했습니다.' });
     } finally {
       setAddingContribution(false);
     }
   };
 
   // 인라인 수정 열기
+  const formatPhone = (text) => {
+    const d = text.replace(/[^0-9]/g, '').slice(0, 11);
+    if (d.length <= 3) return d;
+    if (d.length <= 7) return `${d.slice(0,3)}-${d.slice(3)}`;
+    return `${d.slice(0,3)}-${d.slice(3,7)}-${d.slice(7)}`;
+  };
+
+  const handleResendAlimtalk = async (contribution) => {
+    if (!contribution.guest_phone || !contribution.amount) return;
+    if (contribution.alimtalk_sent) return;
+    if (resendingId === contribution.id) return;
+
+    showAlert({
+      title: '알림톡 재발송',
+      message: '크레딧 1건이 차감됩니다.\n발송하시겠어요?',
+      confirmText: '발송',
+      cancelText: '취소',
+      onConfirm: async () => {
+        setResendingId(contribution.id);
+        try {
+          const res = await sendAlimtalkWithCredit({
+            userId: event?.user_id,
+            eventId,
+            contributionId: contribution.id,
+            phone: contribution.guest_phone,
+            guestName: contribution.guest_name,
+            amount: contribution.amount,
+            side: contribution.side || 'groom',
+            relationship: contribution.relation_detail || 'other',
+            isResend: true,
+          });
+
+          if (res?.success) {
+            setContributions(prev => prev.map(c =>
+              c.id === contribution.id ? { ...c, alimtalk_sent: true } : c
+            ));
+            setAlimtalkBalance(res.balance);
+            showAlert({
+              title: '발송 완료',
+              message: `카카오 알림톡 영수증을 재발송했습니다.\n남은 크레딧: ${res.balance}건`,
+            });
+          } else if (res?.error === 'insufficient_balance') {
+            setAlimtalkBalance(res.balance ?? 0);
+            showAlert({
+              title: '크레딧 부족',
+              message: '알림톡 크레딧이 부족합니다.\n충전 후 다시 시도해주세요.',
+            });
+          } else if (res?.error === 'send_failed') {
+            showAlert({
+              title: '발송 실패',
+              message: '알림톡 발송에 실패했습니다.\n크레딧은 자동으로 환불되었습니다.',
+            });
+          } else {
+            showAlert({
+              title: '발송 실패',
+              message: res?.message || '알림톡 발송에 실패했습니다. 잠시 후 다시 시도해주세요.',
+            });
+          }
+        } catch (e) {
+          showAlert({ title: '오류', message: '알림톡 발송 중 오류가 발생했습니다.' });
+        } finally {
+          setResendingId(null);
+        }
+      },
+    });
+  };
+
   const handleEditContribution = (contribution) => {
     setEditingItemId(contribution.id);
     setInlineEditData({
@@ -289,6 +437,7 @@ export default function EventDetailScreen({ navigation, route }) {
       amount: contribution.amount || 0,
       relation_category: contribution.relation_category || '신랑측',
       relation_detail: contribution.relation_detail || '친구',
+      guest_phone: contribution.guest_phone || '',
     });
 
     // 스크롤은 keyboardDidShow 리스너에서 처리
@@ -297,13 +446,27 @@ export default function EventDetailScreen({ navigation, route }) {
   // 인라인 수정 저장 (낙관적 업데이트)
   const handleSaveInlineEdit = async (contribution) => {
     if (!inlineEditData.guest_name.trim()) {
-      Alert.alert('알림', '성함을 입력해주세요.');
+      showAlert({ title: '알림', message: '성함을 입력해주세요.' });
       return;
     }
     const amount = inlineEditData.amount;
     if (!amount || amount < 1000) {
-      Alert.alert('알림', '부조금을 1,000원 이상 입력해주세요.');
+      showAlert({ title: '알림', message: '부조금을 1,000원 이상 입력해주세요.' });
       return;
+    }
+
+    const cleanPhone = normalizePhone(inlineEditData.guest_phone);
+
+    // 같은 이벤트 내 전화번호 중복 체크 (+82, 010, dash 포함 등 다양한 형식 정규화 비교)
+    if (cleanPhone) {
+      const duplicate = contributions.find(c =>
+        c.id !== contribution.id &&
+        samePhone(c.guest_phone, cleanPhone)
+      );
+      if (duplicate) {
+        showAlert({ title: '중복 번호', message: `이미 ${duplicate.guest_name}님이 같은 번호로 등록되어 있습니다.` });
+        return;
+      }
     }
 
     const updated = {
@@ -312,6 +475,7 @@ export default function EventDetailScreen({ navigation, route }) {
       amount,
       relation_category: inlineEditData.relation_category,
       relation_detail: inlineEditData.relation_detail,
+      guest_phone: cleanPhone || null,
     };
 
     // 즉시 UI 반영
@@ -324,15 +488,16 @@ export default function EventDetailScreen({ navigation, route }) {
         amount: updated.amount,
         relation_category: updated.relation_category,
         relation_detail: updated.relation_detail,
+        guest_phone: updated.guest_phone,
       });
       if (!result.success) {
         // 실패 시 원래 값으로 되돌리기
         setContributions(prev => prev.map(c => c.id === contribution.id ? contribution : c));
-        Alert.alert('오류', result.error || '부조 수정에 실패했습니다.');
+        showAlert({ title: '오류', message: result.error || '부조 수정에 실패했습니다.' });
       }
     } catch (error) {
       setContributions(prev => prev.map(c => c.id === contribution.id ? contribution : c));
-      Alert.alert('오류', '부조 수정 중 오류가 발생했습니다.');
+      showAlert({ title: '오류', message: '부조 수정 중 오류가 발생했습니다.' });
     }
   };
 
@@ -340,31 +505,26 @@ export default function EventDetailScreen({ navigation, route }) {
   const handleDeleteContribution = (contribution) => {
     console.log('🔍 삭제할 contribution 객체:', contribution);
     console.log('🔍 contribution.id:', contribution.id);
-    Alert.alert(
-      '부조 삭제',
-      `${contribution.guest_name}님의 부조 내역을 정말 삭제하시겠어요?\n\n삭제된 내역은 복구할 수 없습니다.`,
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '삭제',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await deleteGuestBookEntry(contribution.id);
-              
-              if (result.success) {
-                loadEventData(); // 데이터 새로고침
-              } else {
-                Alert.alert('삭제 실패', result.error || '부조 삭제에 실패했습니다.');
-              }
-            } catch (error) {
-              console.error('부조 삭제 오류:', error);
-              Alert.alert('삭제 실패', '부조 삭제 중 오류가 발생했습니다.');
-            }
+    showAlert({
+      title: '부조 삭제',
+      message: `${contribution.guest_name}님의 부조 내역을 정말 삭제하시겠어요?\n\n삭제된 내역은 복구할 수 없습니다.`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      dangerous: true,
+      onConfirm: async () => {
+        try {
+          const result = await deleteGuestBookEntry(contribution.id);
+          if (result.success) {
+            loadEventData();
+          } else {
+            showAlert({ title: '삭제 실패', message: result.error || '부조 삭제에 실패했습니다.' });
           }
+        } catch (error) {
+          console.error('부조 삭제 오류:', error);
+          showAlert({ title: '삭제 실패', message: '부조 삭제 중 오류가 발생했습니다.' });
         }
-      ]
-    );
+      },
+    });
   };
 
 
@@ -392,7 +552,7 @@ export default function EventDetailScreen({ navigation, route }) {
           ...prev,
           confirmedCount: prev.confirmedCount + (newVerified ? -1 : 1),
         }));
-        Alert.alert('오류', result.error || '확정 상태 변경에 실패했습니다.');
+        showAlert({ title: '오류', message: result.error || '확정 상태 변경에 실패했습니다.' });
       }
     } catch (error) {
       // 실패 시 되돌리기
@@ -403,7 +563,7 @@ export default function EventDetailScreen({ navigation, route }) {
         ...prev,
         confirmedCount: prev.confirmedCount + (newVerified ? -1 : 1),
       }));
-      Alert.alert('오류', '확정 상태 변경 중 오류가 발생했습니다.');
+      showAlert({ title: '오류', message: '확정 상태 변경 중 오류가 발생했습니다.' });
     }
   };
 
@@ -415,11 +575,11 @@ export default function EventDetailScreen({ navigation, route }) {
       if (result.success) {
         loadEventData();
       } else {
-        Alert.alert('오류', result.error || '확정 상태 변경에 실패했습니다.');
+        showAlert({ title: '오류', message: result.error || '확정 상태 변경에 실패했습니다.' });
       }
     } catch (error) {
       console.error('확정 상태 변경 오류:', error);
-      Alert.alert('오류', '확정 상태 변경 중 오류가 발생했습니다.');
+      showAlert({ title: '오류', message: '확정 상태 변경 중 오류가 발생했습니다.' });
     }
   };
 
@@ -472,6 +632,10 @@ export default function EventDetailScreen({ navigation, route }) {
   useFocusEffect(
     React.useCallback(() => {
       loadEventData();
+      // 알림톡 크레딧 잔액도 같이 갱신
+      getAlimtalkBalance().then(res => {
+        if (res?.success) setAlimtalkBalance(res.balance);
+      });
       // 하객 접수 흐름에서 pop(2)로 돌아왔을 때 모달 상태 초기화
       setSideSelectVisible(false);
       setAddModalVisible(false);
@@ -479,6 +643,36 @@ export default function EventDetailScreen({ navigation, route }) {
       Keyboard.dismiss();
     }, [eventId])
   );
+
+  // users 테이블 realtime 구독 — 차감/환불 즉시 반영
+  useEffect(() => {
+    let channel = null;
+    (async () => {
+      const { getCurrentUserInfo } = await import('../../lib/supabaseHelper');
+      const info = await getCurrentUserInfo();
+      const uid = info?.user?.id;
+      if (!uid) return;
+      channel = supabase
+        .channel(`eventdetail_balance_${uid}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'users',
+            filter: `id=eq.${uid}`,
+          },
+          (payload) => {
+            const next = payload?.new?.alimtalk_balance;
+            if (typeof next === 'number') setAlimtalkBalance(next);
+          },
+        )
+        .subscribe();
+    })();
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, []);
 
   // ── 방명록 실시간 반영 ────────────────────────
   // ① DeviceEventEmitter: 같은 기기에서 등록 시 즉시 반영
@@ -567,8 +761,11 @@ export default function EventDetailScreen({ navigation, route }) {
         setEvent(eventResult.data);
         navigation.setOptions({ title: eventResult.data.event_name || '경조사 상세' });
       } else {
-        Alert.alert('오류', eventResult.error || '경조사 정보를 불러올 수 없습니다.');
-        navigation.goBack();
+        showAlert({
+          title: '오류',
+          message: eventResult.error || '경조사 정보를 불러올 수 없습니다.',
+          onConfirm: () => navigation.goBack(),
+        });
         return;
       }
 
@@ -592,7 +789,7 @@ export default function EventDetailScreen({ navigation, route }) {
       }
     } catch (error) {
       console.error('Event detail loading error:', error);
-      Alert.alert('오류', '데이터를 불러오는 중 오류가 발생했습니다.');
+      showAlert({ title: '오류', message: '데이터를 불러오는 중 오류가 발생했습니다.' });
     } finally {
       setLoading(false);
     }
@@ -746,7 +943,7 @@ export default function EventDetailScreen({ navigation, route }) {
             <Text style={styles.heroEventName}>{event.event_name}</Text>
             <TouchableOpacity
               style={styles.heroStatBtn}
-              onPress={() => setStatisticsModalVisible(true)}
+              onPress={() => openBS(setStatisticsModalVisible, bsStatFade, bsStatSlide)}
               activeOpacity={0.7}
             >
               <Ionicons name="bar-chart-outline" size={15} color="#4E5968" />
@@ -763,14 +960,15 @@ export default function EventDetailScreen({ navigation, route }) {
           <View style={styles.heroBtnRow}>
             <TouchableOpacity
               style={styles.heroBtnGray}
-              onPress={() => setAddModalVisible(true)}
+              onPress={() => openBS(setAddModalVisible, bsAddFade, bsAddSlide)}
               activeOpacity={0.75}
             >
               <Text style={styles.heroBtnGrayText}>부조 추가</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              ref={guestReceiveBtnRef}
               style={styles.heroBtnBlue}
-              onPress={() => setSideSelectVisible(true)}
+              onPress={() => openBS(setSideSelectVisible, bsSideFade, bsSideSlide)}
               activeOpacity={0.85}
             >
               <Text style={styles.heroBtnBlueText}>하객 접수</Text>
@@ -781,7 +979,7 @@ export default function EventDetailScreen({ navigation, route }) {
           {contributions.filter(c => !c.is_verified).length > 0 && (
             <TouchableOpacity
               style={styles.unverifiedBanner}
-              onPress={() => setVerifyManageModalVisible(true)}
+              onPress={() => openBS(setVerifyManageModalVisible, bsVmFade, bsVmSlide)}
               activeOpacity={0.7}
             >
               <View style={styles.unverifiedIconBox}>
@@ -796,6 +994,39 @@ export default function EventDetailScreen({ navigation, route }) {
               <Ionicons name="chevron-forward" size={18} color="#C5CCD5" />
             </TouchableOpacity>
           )}
+
+          {/* 알림톡 크레딧 카드 */}
+          <View style={styles.creditBanner}>
+            {(() => {
+              const n = alimtalkBalance;
+              const color = n == null ? '#8B95A1' : n < 10 ? '#EF4444' : n < 50 ? '#F59E0B' : '#3182F6';
+              return (
+                <>
+                  <View style={[styles.creditIconBox, { backgroundColor: color + '1A' }]}>
+                    <Ionicons name="chatbubble-ellipses" size={18} color={color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.creditLabel}>알림톡 크레딧</Text>
+                    <Text style={[styles.creditValue, { color }]}>
+                      {n == null ? '-' : `${n}건 남음`}
+                    </Text>
+                    {n != null && n < 10 && (
+                      <Text style={styles.creditWarning}>
+                        {n === 0 ? '크레딧이 모두 소진되었어요' : '곧 소진됩니다'}
+                      </Text>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    style={styles.chargeBtn}
+                    onPress={() => showAlert({ title: '알림톡 크레딧 충전', message: '충전 기능은 곧 제공될 예정입니다.' })}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.chargeBtnText}>충전</Text>
+                  </TouchableOpacity>
+                </>
+              );
+            })()}
+          </View>
 
         </View>
 
@@ -932,6 +1163,19 @@ export default function EventDetailScreen({ navigation, route }) {
                           </View>
                         </View>
 
+                        {/* 전화번호 */}
+                        <View style={styles.inlineEditRow}>
+                          <TextInput
+                            style={[styles.inlineInput, { flex: 1 }]}
+                            value={inlineEditData.guest_phone}
+                            onChangeText={t => setInlineEditData(p => ({ ...p, guest_phone: formatPhone(t) }))}
+                            placeholder="010-0000-0000 (선택)"
+                            placeholderTextColor="#C5CCD5"
+                            keyboardType="phone-pad"
+                            maxLength={13}
+                          />
+                        </View>
+
                         {/* 측 칩 */}
                         <View style={styles.inlineChipRow}>
                           {['신랑측', '신부측'].map(cat => (
@@ -991,20 +1235,31 @@ export default function EventDetailScreen({ navigation, route }) {
                             <Text style={styles.flatMeta}>
                               {timeStr ? `${timeStr} · ` : ''}{displayCategory} {displayDetail}
                             </Text>
+                            {contribution.guest_phone ? (
+                              <Text style={styles.flatPhone}>{contribution.guest_phone}</Text>
+                            ) : null}
                           </View>
 
                           <View style={{ alignItems: 'flex-end' }}>
+                            {contribution.guest_phone && contribution.amount && (
+                              contribution.alimtalk_sent ? (
+                                <View style={[styles.alimtalkSentBadge, { marginBottom: 6 }]}>
+                                  <Text style={styles.alimtalkSentBadgeText}>✓ 발송완료</Text>
+                                </View>
+                              ) : (
+                                <View style={{ marginBottom: 10 }}>
+                                  <AlimtalkResendButton
+                                    onPress={() => handleResendAlimtalk(contribution)}
+                                    loading={resendingId === contribution.id}
+                                  />
+                                </View>
+                              )
+                            )}
                             <Text style={[
                               styles.flatAmount,
                               !contribution.amount && styles.flatAmountEmpty,
                             ]}>
                               {contribution.amount ? `+${formatAmountCard(contribution.amount)}원` : '금액 미입력'}
-                            </Text>
-                            <Text style={[
-                              styles.flatStatus,
-                              contribution.is_verified && styles.flatStatusDone,
-                            ]}>
-                              {contribution.is_verified ? '확정완료' : '미확정'}
                             </Text>
                           </View>
                         </View>
@@ -1095,21 +1350,23 @@ export default function EventDetailScreen({ navigation, route }) {
       <Modal
         visible={addModalVisible}
         transparent={true}
-        animationType="slide"
-        onRequestClose={() => setAddModalVisible(false)}
+        animationType="none"
+        onRequestClose={() => closeBS(setAddModalVisible, bsAddFade, bsAddSlide)}
       >
         <KeyboardAvoidingView
           style={styles.bsOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <TouchableOpacity style={styles.bsBackdrop} activeOpacity={1} onPress={() => setAddModalVisible(false)} />
-          <View style={styles.bsContainer}>
+          <Animated.View style={[StyleSheet.absoluteFill, styles.bsBackdropAnim, { opacity: bsAddFade }]}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => closeBS(setAddModalVisible, bsAddFade, bsAddSlide)} />
+          </Animated.View>
+          <Animated.View style={[styles.bsContainer, { transform: [{ translateY: bsAddSlide }] }]}>
             <View style={styles.bsHandle} />
 
             {/* 헤더 */}
             <View style={styles.bsHeader}>
               <Text style={styles.bsTitle}>부조 추가</Text>
-              <TouchableOpacity onPress={() => setAddModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={() => closeBS(setAddModalVisible, bsAddFade, bsAddSlide)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={22} color="#8B95A1" />
               </TouchableOpacity>
             </View>
@@ -1197,7 +1454,7 @@ export default function EventDetailScreen({ navigation, route }) {
                 <Text style={styles.bsSaveBtnText}>{addingContribution ? '저장 중...' : '부조 추가'}</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -1205,16 +1462,18 @@ export default function EventDetailScreen({ navigation, route }) {
       <Modal
         visible={statisticsModalVisible}
         transparent={true}
-        animationType="slide"
-        onRequestClose={() => setStatisticsModalVisible(false)}
+        animationType="none"
+        onRequestClose={() => closeBS(setStatisticsModalVisible, bsStatFade, bsStatSlide)}
       >
         <View style={styles.bsOverlay}>
-          <TouchableOpacity style={styles.bsBackdrop} activeOpacity={1} onPress={() => setStatisticsModalVisible(false)} />
-          <View style={[styles.bsContainer, { maxHeight: '88%' }]}>
+          <Animated.View style={[StyleSheet.absoluteFill, styles.bsBackdropAnim, { opacity: bsStatFade }]}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => closeBS(setStatisticsModalVisible, bsStatFade, bsStatSlide)} />
+          </Animated.View>
+          <Animated.View style={[styles.bsContainer, { maxHeight: '88%', transform: [{ translateY: bsStatSlide }] }]}>
             <View style={styles.bsHandle} />
             <View style={styles.bsHeader}>
               <Text style={styles.bsTitle}>부조 통계</Text>
-              <TouchableOpacity onPress={() => setStatisticsModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={() => closeBS(setStatisticsModalVisible, bsStatFade, bsStatSlide)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={22} color="#8B95A1" />
               </TouchableOpacity>
             </View>
@@ -1317,7 +1576,7 @@ export default function EventDetailScreen({ navigation, route }) {
                 </View>
               </View>
             </ScrollView>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
 
@@ -1325,16 +1584,18 @@ export default function EventDetailScreen({ navigation, route }) {
       <Modal
         visible={verifyManageModalVisible}
         transparent={true}
-        animationType="slide"
-        onRequestClose={() => { setVerifyManageModalVisible(false); setVerifyPage(0); }}
+        animationType="none"
+        onRequestClose={() => closeBS(setVerifyManageModalVisible, bsVmFade, bsVmSlide, () => setVerifyPage(0))}
       >
         <View style={styles.bsOverlay}>
-          <TouchableOpacity style={styles.bsBackdrop} activeOpacity={1} onPress={() => { setVerifyManageModalVisible(false); setVerifyPage(0); }} />
-          <View style={[styles.bsContainer, { maxHeight: '88%' }]}>
+          <Animated.View style={[StyleSheet.absoluteFill, styles.bsBackdropAnim, { opacity: bsVmFade }]}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => closeBS(setVerifyManageModalVisible, bsVmFade, bsVmSlide, () => setVerifyPage(0))} />
+          </Animated.View>
+          <Animated.View style={[styles.bsContainer, { maxHeight: '88%', transform: [{ translateY: bsVmSlide }] }]}>
             <View style={styles.bsHandle} />
             <View style={styles.bsHeader}>
               <Text style={styles.bsTitle}>확정 관리</Text>
-              <TouchableOpacity onPress={() => { setVerifyManageModalVisible(false); setVerifyPage(0); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={() => closeBS(setVerifyManageModalVisible, bsVmFade, bsVmSlide, () => setVerifyPage(0))} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={22} color="#8B95A1" />
               </TouchableOpacity>
             </View>
@@ -1370,14 +1631,17 @@ export default function EventDetailScreen({ navigation, route }) {
                       <Text style={styles.vmListTitle}>미확정 부조</Text>
                       <TouchableOpacity
                         style={styles.vmAllBtn}
-                        onPress={() => Alert.alert('전체 확정', '모든 미확정 부조를 확정하시겠어요?', [
-                          { text: '취소', style: 'cancel' },
-                          { text: '확정', onPress: async () => {
+                        onPress={() => showAlert({
+                          title: '전체 확정',
+                          message: '모든 미확정 부조를 확정하시겠어요?',
+                          confirmText: '확정',
+                          cancelText: '취소',
+                          onConfirm: async () => {
                             for (const item of unverified) await toggleGuestBookVerification(item.id);
                             await loadEventData();
                             setVerifyPage(0);
-                          }}
-                        ])}
+                          },
+                        })}
                       >
                         <Text style={styles.vmAllBtnText}>전체 확정</Text>
                       </TouchableOpacity>
@@ -1455,7 +1719,7 @@ export default function EventDetailScreen({ navigation, route }) {
                 </View>
               )}
             </ScrollView>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
 
@@ -1463,16 +1727,14 @@ export default function EventDetailScreen({ navigation, route }) {
       <Modal
         visible={verificationModalVisible}
         transparent={true}
-        animationType="slide"
-        onRequestClose={() => setVerificationModalVisible(false)}
+        animationType="none"
+        onRequestClose={() => closeBS(setVerificationModalVisible, bsVerifyFade, bsVerifySlide)}
       >
         <View style={styles.tossBottomSheetOverlay}>
-          <TouchableOpacity 
-            style={styles.tossBottomSheetBackground}
-            activeOpacity={1}
-            onPress={() => setVerificationModalVisible(false)}
-          />
-          <View style={styles.tossBottomSheetContainer}>
+          <Animated.View style={[StyleSheet.absoluteFill, styles.bsBackdropAnim, { opacity: bsVerifyFade }]}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => closeBS(setVerificationModalVisible, bsVerifyFade, bsVerifySlide)} />
+          </Animated.View>
+          <Animated.View style={[styles.tossBottomSheetContainer, { transform: [{ translateY: bsVerifySlide }] }]}>
             {/* 핸들바 */}
             <View style={styles.tossBottomSheetHandle} />
             
@@ -1526,11 +1788,11 @@ export default function EventDetailScreen({ navigation, route }) {
             {/* 취소 버튼 */}
             <TouchableOpacity
               style={styles.tossBottomSheetCancelButton}
-              onPress={() => setVerificationModalVisible(false)}
+              onPress={() => closeBS(setVerificationModalVisible, bsVerifyFade, bsVerifySlide)}
             >
               <Text style={styles.tossBottomSheetCancelText}>취소</Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
 
@@ -1599,7 +1861,7 @@ export default function EventDetailScreen({ navigation, route }) {
                   const filteredCount = contributions.filter(c => 
                     c.guest_name?.toLowerCase().includes(tempSearchQuery.toLowerCase())
                   ).length;
-                  console.log(`🔍 검색 결과 개수: ${filteredCount}개, 검색어: "${tempSearchQuery}"`);
+                  // console.log(`🔍 검색 결과 개수: ${filteredCount}개, 검색어: "${tempSearchQuery}"`);
                   return filteredCount;
                 })()}명)
               </Text>
@@ -1655,68 +1917,83 @@ export default function EventDetailScreen({ navigation, route }) {
       <Modal
         visible={sideSelectVisible}
         transparent
-        animationType="slide"
-        onRequestClose={() => setSideSelectVisible(false)}
+        animationType="none"
+        onRequestClose={() => closeBS(setSideSelectVisible, bsSideFade, bsSideSlide)}
       >
         <View style={styles.bsOverlay}>
-          <TouchableOpacity style={styles.bsBackdrop} activeOpacity={1} onPress={() => setSideSelectVisible(false)} />
-          <View style={styles.bsContainer}>
+          <Animated.View style={[StyleSheet.absoluteFill, styles.bsBackdropAnim, { opacity: bsSideFade }]}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => closeBS(setSideSelectVisible, bsSideFade, bsSideSlide)} />
+          </Animated.View>
+          <Animated.View style={[styles.bsContainer, { transform: [{ translateY: bsSideSlide }] }]}>
             <View style={styles.bsHandle} />
 
             {/* 헤더 */}
             <View style={styles.bsHeader}>
               <Text style={styles.bsTitle}>하객 접수대 선택</Text>
-              <TouchableOpacity onPress={() => setSideSelectVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={() => closeBS(setSideSelectVisible, bsSideFade, bsSideSlide)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={22} color="#8B95A1" />
               </TouchableOpacity>
             </View>
 
             <Text style={styles.sideSelectDesc}>담당자가 접수할 측을 선택해주세요</Text>
 
-            {/* 신랑측 행 */}
-            <TouchableOpacity
-              style={styles.sideRow}
-              onPress={() => {
-                setSideSelectVisible(false);
-                setTimeout(() => navigation.navigate('GuestWriting', { event, side: 'groom' }), 300);
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.sideRowIcon, { backgroundColor: '#EBF3FF' }]}>
-                <Text style={{ fontSize: 22 }}>🤵</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sideRowTitle}>신랑측</Text>
-                <Text style={styles.sideRowSub}>신랑 가족 · 친구 · 동료 하객</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#C5CCD5" />
-            </TouchableOpacity>
+            {/* 접수대 선택 영역 — 튜토리얼 스포트라이트 대상 */}
+            <View ref={sideSelectRowsRef} collapsable={false}>
+              {/* 신랑측 행 */}
+              <TouchableOpacity
+                style={styles.sideRow}
+                onPress={() => {
+                  if (tutorialStep?.id === 'me_side_select') tutorialAdvance();
+                  closeBS(setSideSelectVisible, bsSideFade, bsSideSlide, () => {
+                    setTimeout(() => navigation.navigate('GuestWriting', { event, side: 'groom' }), 50);
+                  });
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.sideRowIcon, { backgroundColor: '#EBF3FF' }]}>
+                  <Text style={{ fontSize: 22 }}>🤵</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sideRowTitle}>신랑측</Text>
+                  <Text style={styles.sideRowSub}>신랑 가족 · 친구 · 동료 하객</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#C5CCD5" />
+              </TouchableOpacity>
 
-            <View style={styles.sideRowDivider} />
+              <View style={styles.sideRowDivider} />
 
-            {/* 신부측 행 */}
-            <TouchableOpacity
-              style={styles.sideRow}
-              onPress={() => {
-                setSideSelectVisible(false);
-                setTimeout(() => navigation.navigate('GuestWriting', { event, side: 'bride' }), 300);
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.sideRowIcon, { backgroundColor: '#FFF0F6' }]}>
-                <Text style={{ fontSize: 22 }}>👰</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.sideRowTitle, { color: '#EC4899' }]}>신부측</Text>
-                <Text style={styles.sideRowSub}>신부 가족 · 친구 · 동료 하객</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#C5CCD5" />
-            </TouchableOpacity>
+              {/* 신부측 행 */}
+              <TouchableOpacity
+                style={styles.sideRow}
+                onPress={() => {
+                  if (tutorialStep?.id === 'me_side_select') tutorialAdvance();
+                  closeBS(setSideSelectVisible, bsSideFade, bsSideSlide, () => {
+                    setTimeout(() => navigation.navigate('GuestWriting', { event, side: 'bride' }), 50);
+                  });
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.sideRowIcon, { backgroundColor: '#FFF0F6' }]}>
+                  <Text style={{ fontSize: 22 }}>👰</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.sideRowTitle, { color: '#EC4899' }]}>신부측</Text>
+                  <Text style={styles.sideRowSub}>신부 가족 · 친구 · 동료 하객</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#C5CCD5" />
+              </TouchableOpacity>
+            </View>
 
             <View style={{ height: 24 }} />
-          </View>
+          </Animated.View>
+
+          {/* 튜토리얼 오버레이 — 하객 접수대 선택 바텀시트 내부 */}
+          <TutorialOverlay scope="sideSelectModal" />
         </View>
       </Modal>
+
+      {/* 공통 커스텀 Alert (iOS/안드 통일) */}
+      <SimpleModal {...alertProps} />
     </SafeAreaView>
   );
 }
@@ -2068,6 +2345,60 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#8B95A1',
     fontWeight: '400',
+  },
+  flatPhone: {
+    fontSize: 12,
+    color: '#3182F6',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  alimtalkBadge: {
+    backgroundColor: '#FEE500',
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  alimtalkBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#3A1D00',
+  },
+  // 알림톡 전용 영역 (카드 하단)
+  alimtalkRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F2F4F6',
+  },
+  // 재발송 — 액션 버튼 (검정 bg + 카카오 노랑 텍스트로 임팩트)
+  alimtalkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#191F28',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  alimtalkBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FEE500',
+    letterSpacing: -0.2,
+  },
+  alimtalkSentBadge: {
+    backgroundColor: '#E8F3FF',
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  alimtalkSentBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#3182F6',
   },
   flatAmount: {
     fontSize: 15,
@@ -3184,7 +3515,6 @@ const styles = StyleSheet.create({
   tossBottomSheetOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
   },
   tossBottomSheetBackground: {
     position: 'absolute',
@@ -3910,6 +4240,8 @@ const styles = StyleSheet.create({
   bsOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
+  },
+  bsBackdropAnim: {
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   bsBackdrop: {
@@ -4158,5 +4490,54 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#4E5968',
+  },
+
+  // 알림톡 크레딧 배너 (히어로 섹션 내)
+  creditBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    marginTop: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#EEF2F7',
+    gap: 12,
+  },
+  creditIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creditLabel: {
+    fontSize: 12,
+    color: '#8B95A1',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  creditValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  creditWarning: {
+    fontSize: 11,
+    color: '#EF4444',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  chargeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#3182F6',
+    borderRadius: 10,
+  },
+  chargeBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

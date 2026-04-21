@@ -11,14 +11,27 @@ import {
   Modal,
   Image,
   Platform,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { getUserEvents, getEventStatistics, deleteEvent } from '../../lib/supabaseHelper';
 import { supabase } from '../../lib/supabase';
+import { getAlimtalkBalance } from '../../lib/alimtalkCredit';
+import { getCurrentUserInfo } from '../../lib/supabaseHelper';
+import { normalizePhone, samePhone, isValidKoreanMobile } from '../../lib/phoneUtils';
+import SimpleModal from '../../components/SimpleModal';
+import ReceiptModal from '../../components/ReceiptModal';
+import { useSimpleAlert } from '../../hooks/useSimpleAlert';
+import { useTutorial } from '../../contexts/TutorialContext';
 
 export default function MyEventsScreen({ navigation, userInfo }) {
+  const { startMyEventsTutorial, registerTarget, registerHandler, activeTutorial, step: tutorialStep } = useTutorial();
+  const creditBannerRef = React.useRef(null);
+  const firstEventCardRef = React.useRef(null);
+  const tutorialCheckedRef = React.useRef(false);
+
   const [activeTab, setActiveTab] = useState('hosted');
   const [hostedEvents, setHostedEvents] = useState([]);
   const [participatedEvents, setParticipatedEvents] = useState([]);
@@ -32,6 +45,15 @@ export default function MyEventsScreen({ navigation, userInfo }) {
   // iOS 스타일 커스텀 삭제 확인 모달
   const [deleteAlert, setDeleteAlert] = useState({ visible: false, eventId: null, eventName: '' });
 
+  // 알림톡 크레딧 잔액
+  const [alimtalkBalance, setAlimtalkBalance] = useState(null);
+  // 크레딧 realtime 구독용 userId
+  const [currentUserId, setCurrentUserId] = useState(null);
+  // 공통 Alert 훅
+  const { showAlert, alertProps } = useSimpleAlert();
+  // 영수증 모달
+  const [receiptModal, setReceiptModal] = useState({ visible: false, receipt: null });
+
   useFocusEffect(
     React.useCallback(() => {
       const now = Date.now();
@@ -39,6 +61,71 @@ export default function MyEventsScreen({ navigation, userInfo }) {
       loadAllData();
     }, [dataLoaded, lastLoadTime])
   );
+
+  // 내 행사 튜토리얼 자동 시작 — 최초 진입 시 1회
+  useFocusEffect(
+    React.useCallback(() => {
+      if (tutorialCheckedRef.current) return;
+      (async () => {
+        try {
+          const info = await getCurrentUserInfo();
+          const uid = info?.user?.id;
+          if (!uid) return;
+          tutorialCheckedRef.current = true;
+          const { data } = await supabase
+            .from('users')
+            .select('tutorial_my_events_completed')
+            .eq('id', uid)
+            .single();
+          if (data && !data.tutorial_my_events_completed) {
+            setTimeout(() => startMyEventsTutorial(), 600);
+          }
+        } catch (e) {
+          console.warn('내 행사 튜토리얼 상태 조회 실패:', e);
+        }
+      })();
+    }, [startMyEventsTutorial])
+  );
+
+  // 튜토리얼 활성 중에는 타겟 반복 측정 (크레딧 배너 + 첫 행사 카드)
+  React.useEffect(() => {
+    if (activeTutorial !== 'myEvents') return;
+    const measureRef = (ref, key) => {
+      if (ref.current?.measureInWindow) {
+        ref.current.measureInWindow((x, y, width, height) => {
+          if (width > 0 && height > 0) {
+            registerTarget(key, { x, y, width, height });
+          }
+        });
+      }
+    };
+    const measure = () => {
+      measureRef(creditBannerRef, 'myEventsCreditBanner');
+      measureRef(firstEventCardRef, 'myEventsFirstEventCard');
+    };
+    measure();
+    const id = setInterval(measure, 500);
+    return () => clearInterval(id);
+  }, [activeTutorial, registerTarget]);
+
+  // 첫 행사 카드 탭 핸들러 등록 — 튜토리얼 오버레이가 호출 → EventDetail로 이동
+  React.useEffect(() => {
+    if (activeTutorial !== 'myEvents') return;
+    const first = filteredHostedEvents[0];
+    if (!first) return;
+    registerHandler('myEventsFirstEventCard', () => {
+      navigation.navigate('EventDetail', {
+        eventId: first.id,
+        initialEvent: first,
+        initialStats: {
+          totalAmount: first.stats?.totalAmount || 0,
+          totalCount: first.stats?.totalContributions || 0,
+          averageAmount: first.stats?.averageAmount || 0,
+          confirmedCount: first.stats?.verifiedCount || 0,
+        },
+      });
+    });
+  }, [activeTutorial, hostedEvents, hostedFilter, registerHandler, navigation]);
 
   const determineEventStatus = (eventDate) => {
     if (!eventDate) return 'active';
@@ -52,12 +139,63 @@ export default function MyEventsScreen({ navigation, userInfo }) {
   const loadAllData = async () => {
     try {
       setLoading(true);
-      await Promise.all([loadHostedEvents(), loadParticipatedEvents()]);
+      await Promise.all([loadHostedEvents(), loadParticipatedEvents(), loadAlimtalkBalance()]);
       setDataLoaded(true);
       setLastLoadTime(Date.now());
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadAlimtalkBalance = async () => {
+    try {
+      const res = await getAlimtalkBalance();
+      if (res?.success) setAlimtalkBalance(res.balance);
+    } catch (e) {
+      console.warn('alimtalk balance load failed:', e);
+    }
+  };
+
+  // users 테이블 realtime 구독 — 같은 기기/다른 기기 어디서 차감돼도 즉시 반영
+  React.useEffect(() => {
+    let channel = null;
+    (async () => {
+      const { getCurrentUserInfo } = await import('../../lib/supabaseHelper');
+      const info = await getCurrentUserInfo();
+      const uid = info?.user?.id;
+      if (!uid) return;
+      setCurrentUserId(uid);
+      channel = supabase
+        .channel(`myevents_balance_${uid}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'users',
+            filter: `id=eq.${uid}`,
+          },
+          (payload) => {
+            const next = payload?.new?.alimtalk_balance;
+            if (typeof next === 'number') setAlimtalkBalance(next);
+          },
+        )
+        .subscribe();
+    })();
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const handleChargePress = () => {
+    showAlert({ title: '알림톡 크레딧 충전', message: '충전 기능은 곧 제공될 예정입니다.' });
+  };
+
+  const getBalanceColor = (n) => {
+    if (n == null) return '#8B95A1';
+    if (n < 10) return '#EF4444';   // 빨강
+    if (n < 50) return '#F59E0B';   // 주황
+    return '#3182F6';               // 파랑
   };
 
   const loadHostedEvents = async () => {
@@ -92,26 +230,113 @@ export default function MyEventsScreen({ navigation, userInfo }) {
 
   const loadParticipatedEvents = async () => {
     try {
-      if (!userInfo?.userId) { setParticipatedEvents([]); return; }
-      const { data, error } = await supabase
-        .from('personal_schedules')
-        .select('*')
-        .eq('user_id', userInfo.userId)
-        .order('created_at', { ascending: false });
-      if (error || !data?.length) { setParticipatedEvents([]); return; }
-      setParticipatedEvents(data.map(s => ({
-        id: s.id,
-        event_name: s.title,
-        event_type: s.event_type,
-        event_date: s.event_date,
-        location: s.location,
-        main_person_name: '개인 일정',
-        participationInfo: { contributedAmount: 0, contributionDate: s.created_at, relation: '개인 참여', message: s.notes },
-        source: 'personal',
-      })));
-    } catch {
+      // 1. 현재 유저 전화번호 확인
+      const info = await getCurrentUserInfo();
+      const myPhone = info?.user?.phone || userInfo?.phone;
+      const myNormalized = normalizePhone(myPhone);
+
+      const merged = [];
+
+      // 2. guest_book에서 내 번호로 등록된 부조 내역 조회 (= 참여한 경조사)
+      if (myNormalized && isValidKoreanMobile(myNormalized)) {
+        const last8 = myNormalized.slice(-8);
+        const { data: gbRows, error: gbError } = await supabase
+          .from('guest_book')
+          .select(`
+            id, event_id, guest_name, guest_phone, amount, side,
+            relation_category, relation_detail, alimtalk_sent, created_at,
+            events:event_id (id, event_name, event_type, event_date, main_person_name, user_id)
+          `)
+          .ilike('guest_phone', `%${last8}%`)
+          .order('created_at', { ascending: false });
+
+        if (!gbError && gbRows?.length) {
+          // 뒷자리만 같은 가짜 매칭 걸러내기 — 정규화 비교로 확정
+          const matched = gbRows.filter(r => samePhone(r.guest_phone, myNormalized));
+          matched.forEach(row => {
+            if (!row.events) return; // 이벤트 정보 없으면 스킵
+            merged.push({
+              id: `gb_${row.id}`,
+              event_id: row.event_id,
+              event_name: row.events.event_name || '행사',
+              event_type: row.events.event_type,
+              event_date: row.events.event_date,
+              main_person_name: row.events.main_person_name,
+              contributionId: row.id,
+              contributionAmount: row.amount,
+              contributionGuestName: row.guest_name,
+              contributionSide: row.side,
+              contributionCategory: row.relation_category,
+              contributionDetail: row.relation_detail,
+              contributionDate: row.created_at,
+              alimtalkSent: row.alimtalk_sent,
+              source: 'guestbook',
+            });
+          });
+        }
+      }
+
+      // 3. (기존 유지) personal_schedules — 직접 추가한 개인 일정
+      if (userInfo?.userId) {
+        const { data: psRows } = await supabase
+          .from('personal_schedules')
+          .select('*')
+          .eq('user_id', userInfo.userId)
+          .order('created_at', { ascending: false });
+        if (psRows?.length) {
+          psRows.forEach(s => {
+            merged.push({
+              id: `ps_${s.id}`,
+              event_name: s.title,
+              event_type: s.event_type,
+              event_date: s.event_date,
+              main_person_name: '개인 일정',
+              contributionDate: s.created_at,
+              memo: s.notes,
+              source: 'personal',
+            });
+          });
+        }
+      }
+
+      // 4. 날짜 내림차순 정렬 (참여한 시점 기준)
+      merged.sort((a, b) =>
+        new Date(b.contributionDate || b.event_date || 0) -
+        new Date(a.contributionDate || a.event_date || 0)
+      );
+
+      setParticipatedEvents(merged);
+    } catch (e) {
+      console.warn('참여한 경조사 로딩 실패:', e);
       setParticipatedEvents([]);
     }
+  };
+
+  // 영수증 모달 열기
+  const openReceipt = (event) => {
+    if (!event) return;
+    setReceiptModal({
+      visible: true,
+      receipt: {
+        contributionId: event.contributionId,
+        eventName: event.event_name,
+        eventDate: event.event_date,
+        eventType: event.event_type,
+        mainPersonName: event.main_person_name,
+        guestName: event.contributionGuestName,
+        amount: event.contributionAmount,
+        category: event.contributionCategory,
+        detail: event.contributionDetail,
+        contributionDate: event.contributionDate,
+        alimtalkSent: event.alimtalkSent,
+      },
+    });
+  };
+  const closeReceipt = () => setReceiptModal(r => ({ ...r, visible: false }));
+
+  const formatKrw = (n) => {
+    if (!n) return '0원';
+    return `${new Intl.NumberFormat('ko-KR').format(Math.round(n))}원`;
   };
 
   const onRefresh = async () => {
@@ -206,6 +431,28 @@ export default function MyEventsScreen({ navigation, userInfo }) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3182F6" />}
         showsVerticalScrollIndicator={false}
       >
+        {activeTab === 'hosted' && !loading && (
+          <View ref={creditBannerRef} style={styles.creditBanner}>
+            <View style={[styles.creditIconBox, { backgroundColor: getBalanceColor(alimtalkBalance) + '1A' }]}>
+              <Ionicons name="chatbubble-ellipses" size={18} color={getBalanceColor(alimtalkBalance)} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.creditLabel}>알림톡 크레딧</Text>
+              <Text style={[styles.creditValue, { color: getBalanceColor(alimtalkBalance) }]}>
+                {alimtalkBalance == null ? '-' : `${alimtalkBalance}건 남음`}
+              </Text>
+              {alimtalkBalance != null && alimtalkBalance < 10 && (
+                <Text style={styles.creditWarning}>
+                  {alimtalkBalance === 0 ? '크레딧이 모두 소진되었어요' : '곧 소진됩니다'}
+                </Text>
+              )}
+            </View>
+            <TouchableOpacity style={styles.chargeBtn} onPress={handleChargePress} activeOpacity={0.8}>
+              <Text style={styles.chargeBtnText}>충전</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {loading ? (
           <View style={styles.loadingBox}>
             <Ionicons name="refresh" size={28} color="#C5CCD5" />
@@ -249,7 +496,11 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                       },
                     };
                     return (
-                      <View key={event.id} style={styles.eventCardWrap}>
+                      <View
+                        key={event.id}
+                        style={styles.eventCardWrap}
+                        ref={index === 0 ? firstEventCardRef : null}
+                      >
                         <TouchableOpacity
                           style={[styles.eventItem, unverified > 0 && styles.eventItemWithBanner]}
                           onPress={() => navigation.navigate('EventDetail', navParams)}
@@ -354,45 +605,73 @@ export default function MyEventsScreen({ navigation, userInfo }) {
           /* 참여한 경조사 탭 */
           participatedEvents.length > 0 ? (
             <View style={styles.listSection}>
-              {participatedEvents.map((event, index) => (
-                <TouchableOpacity
-                  key={event.id}
-                  style={[styles.eventItem, index < participatedEvents.length - 1 && styles.eventItemBorder]}
-                  onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
-                  activeOpacity={0.6}
-                >
-                  <View style={styles.eventTopRow}>
-                    <View style={[styles.eventTypeIcon, event.event_type === 'funeral' && styles.eventTypeIconFuneral]}>
-                      {event.event_type === 'wedding' ? (
-                        <Image source={require('../../../assets/images/Wedding.png')} style={styles.eventTypeImage} resizeMode="contain" />
-                      ) : event.event_type === 'funeral' ? (
-                        <Image source={require('../../../assets/images/Funeral.png')} style={styles.eventTypeImage} resizeMode="contain" />
-                      ) : (
-                        <Ionicons name="calendar" size={18} color="#FFFFFF" />
+              {participatedEvents.map((event, index) => {
+                const isGuestBook = event.source === 'guestbook';
+                return (
+                  <View key={event.id} style={styles.eventCardWrap}>
+                    <View style={[styles.eventItem, index < participatedEvents.length - 1 && styles.eventItemBorder]}>
+                      {/* 상단: 아이콘 + 행사명/날짜 + 참여 뱃지 */}
+                      <View style={styles.eventTopRow}>
+                        <View style={[styles.eventTypeIcon, event.event_type === 'funeral' && styles.eventTypeIconFuneral]}>
+                          {event.event_type === 'wedding' ? (
+                            <Image source={require('../../../assets/images/Wedding.png')} style={styles.eventTypeImage} resizeMode="contain" />
+                          ) : event.event_type === 'funeral' ? (
+                            <Image source={require('../../../assets/images/Funeral.png')} style={styles.eventTypeImage} resizeMode="contain" />
+                          ) : (
+                            <Ionicons name="calendar" size={18} color="#FFFFFF" />
+                          )}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.eventName} numberOfLines={1}>{event.event_name}</Text>
+                          <Text style={styles.eventMeta}>{formatDate(event.event_date)}</Text>
+                        </View>
+                        <View style={[styles.participatedBadge]}>
+                          <Text style={styles.participatedBadgeText}>
+                            {isGuestBook ? '참여' : '개인'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* 부조 내역 박스 (guest_book에서 온 경우만) */}
+                      {isGuestBook && event.contributionAmount != null && (
+                        <View style={styles.participatedContribBox}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.participatedContribLabel}>내 부조</Text>
+                            <Text style={styles.participatedContribSub}>
+                              {event.contributionCategory || '-'}{event.contributionDetail ? ` · ${event.contributionDetail}` : ''}
+                            </Text>
+                          </View>
+                          <Text style={styles.participatedContribAmount}>
+                            {formatKrw(event.contributionAmount)}
+                          </Text>
+                        </View>
                       )}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.eventName} numberOfLines={1}>{event.event_name}</Text>
-                      <Text style={styles.eventMeta}>{formatDate(event.event_date)}</Text>
-                    </View>
-                    <View style={[styles.participatedBadge]}>
-                      <Text style={styles.participatedBadgeText}>참여</Text>
+
+                      {/* 개인 일정 메모 */}
+                      {!isGuestBook && event.memo ? (
+                        <Text style={styles.memoText} numberOfLines={1}>📝 {event.memo}</Text>
+                      ) : null}
+
+                      {/* 하단 */}
+                      <View style={styles.eventBottomRow}>
+                        <Text style={styles.eventHostText}>주최 · {event.main_person_name || '미입력'}</Text>
+                        {isGuestBook ? (
+                          <TouchableOpacity
+                            style={styles.receiptBtn}
+                            onPress={() => openReceipt(event)}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="receipt-outline" size={13} color="#3182F6" />
+                            <Text style={styles.receiptBtnText}>영수증 보기</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={{ flex: 0 }} />
+                        )}
+                      </View>
                     </View>
                   </View>
-
-                  {event.participationInfo?.message ? (
-                    <Text style={styles.memoText} numberOfLines={1}>📝 {event.participationInfo.message}</Text>
-                  ) : null}
-
-                  <View style={styles.eventBottomRow}>
-                    <Text style={styles.eventHostText}>주최 · {event.main_person_name || '미입력'}</Text>
-                    <View style={styles.eventBottomRight}>
-                      <Text style={styles.detailText}>상세보기</Text>
-                      <Ionicons name="chevron-forward" size={15} color="#C5CCD5" />
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
+                );
+              })}
             </View>
           ) : (
             <View style={styles.emptyBox}>
@@ -400,7 +679,7 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                 <Ionicons name="gift-outline" size={36} color="#C5CCD5" />
               </View>
               <Text style={styles.emptyTitle}>참여한 경조사가 없어요</Text>
-              <Text style={styles.emptySub}>다른 분의 경조사에 참여해보세요</Text>
+              <Text style={styles.emptySub}>다른 분의 경조사에 참여하면 여기에 표시돼요</Text>
             </View>
           )
         )}
@@ -442,6 +721,16 @@ export default function MyEventsScreen({ navigation, userInfo }) {
           </View>
         </View>
       </Modal>
+
+      {/* 공통 커스텀 Alert (iOS/안드 통일) */}
+      <SimpleModal {...alertProps} />
+
+      {/* 참여한 경조사 영수증 모달 */}
+      <ReceiptModal
+        visible={receiptModal.visible}
+        receipt={receiptModal.receipt}
+        onClose={closeReceipt}
+      />
     </SafeAreaView>
   );
 }
@@ -855,5 +1144,101 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 15,
     color: '#8B95A1',
+  },
+
+  // 알림톡 크레딧 배너
+  creditBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 20,
+    marginTop: 14,
+    marginBottom: 4,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#EEF2F7',
+    gap: 12,
+  },
+  creditIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creditLabel: {
+    fontSize: 12,
+    color: '#8B95A1',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  creditValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  creditWarning: {
+    fontSize: 11,
+    color: '#EF4444',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  chargeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#3182F6',
+    borderRadius: 10,
+  },
+  chargeBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  // 참여한 경조사 — 부조 내역 박스
+  participatedContribBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 10,
+    gap: 10,
+  },
+  participatedContribLabel: {
+    fontSize: 12,
+    color: '#8B95A1',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  participatedContribSub: {
+    fontSize: 12,
+    color: '#4E5968',
+    fontWeight: '500',
+  },
+  participatedContribAmount: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#191F28',
+    letterSpacing: -0.3,
+  },
+  // 영수증 보기 버튼
+  receiptBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#EBF3FF',
+    borderRadius: 8,
+  },
+  receiptBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#3182F6',
   },
 });

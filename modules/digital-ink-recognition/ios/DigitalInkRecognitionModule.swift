@@ -108,7 +108,8 @@ public class DigitalInkRecognitionModule: Module {
           if !points.isEmpty { inkStrokes.append(Stroke(points: points)) }
         }
         let ink = Ink(strokes: inkStrokes)
-        recognizer.recognize(ink: ink) { result, error in
+        recognizer.recognize(ink: ink) { [recognizer] result, error in
+          _ = recognizer // strong reference 유지 — ARC 해제 방지
           if let error = error {
             promise.reject("RECOGNIZE_ERROR", error.localizedDescription)
           } else if let result = result {

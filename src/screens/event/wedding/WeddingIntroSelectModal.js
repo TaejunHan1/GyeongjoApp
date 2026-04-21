@@ -6,6 +6,8 @@ import {
 } from 'react-native';
 const SERIF = Platform.OS === 'ios' ? 'Georgia' : 'serif';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import TutorialOverlay from '../../../components/TutorialOverlay';
+import { useTutorial } from '../../../contexts/TutorialContext';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const PHONE_W = Math.min(SCREEN_W - 48, 270);
@@ -588,6 +590,44 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
   const [tapToOpen, setTapToOpen] = useState(false);
   const [playKey,   setPlayKey]   = useState(0);
 
+  // 튜토리얼 연동 — 포커스만 잡고 탭 시 수동 advance (handler 자동화 X, 사용자 조작 자유)
+  const { step: tutorialStep, registerTarget, advanceStep: tutorialAdvance } = useTutorial();
+  const grandItemRef = useRef(null);
+  const applyBtnRef = useRef(null);
+  const scrollRef = useRef(null);
+
+  // intro 스텝일 때만 타겟 좌표 측정 (반복)
+  useEffect(() => {
+    if (!visible) return;
+    const id = tutorialStep?.id;
+    if (id !== 'intro_grand_item' && id !== 'intro_apply_btn') return;
+
+    const measure = () => {
+      grandItemRef.current?.measureInWindow?.((x, y, w, h) => {
+        if (w > 0 && h > 0) registerTarget('introGrandItem', { x, y, width: w, height: h });
+      });
+      applyBtnRef.current?.measureInWindow?.((x, y, w, h) => {
+        if (w > 0 && h > 0) registerTarget('introApplyBtn', { x, y, width: w, height: h });
+      });
+    };
+
+    // intro_grand_item에서 그랜드 위치로 자동 스크롤
+    if (id === 'intro_grand_item') {
+      setTimeout(() => {
+        grandItemRef.current?.measureInWindow?.((gx, gy) => {
+          scrollRef.current?.measureInWindow?.((sx, sy) => {
+            const relative = gy - sy;
+            scrollRef.current?.scrollTo({ y: Math.max(0, relative - 80), animated: true });
+          });
+        });
+      }, 200);
+    }
+
+    measure();
+    const interval = setInterval(measure, 500);
+    return () => clearInterval(interval);
+  }, [visible, tutorialStep?.id, registerTarget]);
+
   useEffect(() => {
     if (visible) {
       const id  = typeof selectedId === 'string' ? selectedId : selectedId?.id || 'none';
@@ -617,7 +657,9 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
           <View style={{ width: 60 }} />
         </View>
 
-        <ScrollView contentContainerStyle={[s.scroll, { paddingBottom: (insets.bottom || 16) + 90 }]}
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[s.scroll, { paddingBottom: (insets.bottom || 16) + 90 }]}
           showsVerticalScrollIndicator={false}>
           <View style={s.hero}>
             <Text style={s.heroTitle}>{'어떤 문을 열고\n초대하시겠습니까?'}</Text>
@@ -658,10 +700,21 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
             <View style={s.listCard}>
               {INTRO_LIST.map((intro, i) => {
                 const isSel = selected === intro.id;
+                const isGrand = intro.id === 'grand';
                 return (
-                  <View key={intro.id}>
-                    <TouchableOpacity style={[s.listItem, isSel && s.listItemSel]}
-                      onPress={() => { setSelected(intro.id); setPlayKey(p => p + 1); }} activeOpacity={0.85}>
+                  <View key={intro.id} ref={isGrand ? grandItemRef : null}>
+                    <TouchableOpacity
+                      style={[s.listItem, isSel && s.listItemSel]}
+                      onPress={() => {
+                        setSelected(intro.id);
+                        setPlayKey(p => p + 1);
+                        // 튜토리얼: 그랜드 탭 시 다음 스텝
+                        if (isGrand && tutorialStep?.id === 'intro_grand_item') {
+                          tutorialAdvance();
+                        }
+                      }}
+                      activeOpacity={0.85}
+                    >
                       <View style={[s.listIcon, isSel && s.listIconSel]}>
                         <Text style={{ fontSize: 18 }}>{intro.emoji}</Text>
                       </View>
@@ -680,13 +733,26 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
         </ScrollView>
 
         <View style={[s.cta, { paddingBottom: (insets.bottom || 0) + 16 }]}>
-          <TouchableOpacity style={s.ctaBtn} activeOpacity={0.88}
-            onPress={() => { onSelect({ id: selected, tapToOpen }); onClose(); }}>
+          <TouchableOpacity
+            ref={applyBtnRef}
+            style={s.ctaBtn}
+            activeOpacity={0.88}
+            onPress={() => {
+              onSelect({ id: selected, tapToOpen });
+              onClose();
+              // 튜토리얼: 적용 탭 시 다음 스텝
+              if (tutorialStep?.id === 'intro_apply_btn') {
+                tutorialAdvance();
+              }
+            }}
+          >
             <Text style={s.ctaBtnText}>
               {selected === 'none' ? '인트로 없이 적용하기' : '이 도어로 적용하기'}
             </Text>
           </TouchableOpacity>
         </View>
+        {/* 튜토리얼 오버레이 — 인트로 모달 전용 (그랜드/적용 포커스) */}
+        <TutorialOverlay scope="introModal" />
       </View>
     </Modal>
   );

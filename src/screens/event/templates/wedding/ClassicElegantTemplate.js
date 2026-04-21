@@ -86,11 +86,12 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
   const safeImages = getCategorizedImagesSafe(categorizedImages);
 
   // ── 인트로 상태 ──
-  const [showIntro, setShowIntro] = useState(true);
-  const introOpacity = useRef(new Animated.Value(1)).current;
-  const mainOpacity = useRef(new Animated.Value(0)).current;
-  const doorLeftRotate = useRef(new Animated.Value(0)).current;
-  const doorRightRotate = useRef(new Animated.Value(0)).current;
+  // 자체 인트로 제거 — mainOpacity를 1로 초기화해 메인 콘텐츠 즉시 노출
+  const [showIntro, setShowIntro] = useState(false);
+  const introOpacity = useRef(new Animated.Value(0)).current;
+  const mainOpacity = useRef(new Animated.Value(1)).current;
+  const doorLeftRotate = useRef(new Animated.Value(1)).current;
+  const doorRightRotate = useRef(new Animated.Value(1)).current;
 
   // ── 기타 상태 ──
   const [activeAccount, setActiveAccount] = useState(null);
@@ -152,21 +153,40 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
   const firstDow = new Date(calYear, calMonth - 1, 1).getDay();
   const daysInMonth = new Date(calYear, calMonth, 0).getDate();
 
-  // ── 계좌 정보 ──
+  // ── 계좌 & 연락처 (통합) ──
   const ai = eventData.additional_info || {};
+  const groomContact = eventData.groomContact || eventData.groom_contact || '';
+  const brideContact = eventData.brideContact || eventData.bride_contact || '';
+  const groomFatherContact = eventData.groomFatherContact || ai.groom_father_contact || '';
+  const groomMotherContact = eventData.groomMotherContact || ai.groom_mother_contact || '';
+  const brideFatherContact = eventData.brideFatherContact || ai.bride_father_contact || '';
+  const brideMotherContact = eventData.brideMotherContact || ai.bride_mother_contact || '';
+
+  const buildPerson = (name, role, bank, number, contact) => {
+    if (!number && !contact) return null;
+    return { name: name || role, role, bank: bank || '', number: number || '', contact: contact || '' };
+  };
   const accounts = {
     groom: [
-      ai.groom_account_number && { bank: ai.groom_bank_name || '', number: ai.groom_account_number, name: groomName },
-      ai.groom_father_account_number && { bank: ai.groom_father_bank_name || '', number: ai.groom_father_account_number, name: groomFather ? `${groomFather} 아버님` : '아버님' },
-      ai.groom_mother_account_number && { bank: ai.groom_mother_bank_name || '', number: ai.groom_mother_account_number, name: groomMother ? `${groomMother} 어머님` : '어머님' },
+      buildPerson(groomName || '신랑', '신랑', ai.groom_bank_name, ai.groom_account_number, groomContact),
+      buildPerson(groomFather ? `${groomFather} 아버님` : '아버님', '아버님', ai.groom_father_bank_name, ai.groom_father_account_number, groomFatherContact),
+      buildPerson(groomMother ? `${groomMother} 어머님` : '어머님', '어머님', ai.groom_mother_bank_name, ai.groom_mother_account_number, groomMotherContact),
     ].filter(Boolean),
     bride: [
-      ai.bride_account_number && { bank: ai.bride_bank_name || '', number: ai.bride_account_number, name: brideName },
-      ai.bride_father_account_number && { bank: ai.bride_father_bank_name || '', number: ai.bride_father_account_number, name: brideFather ? `${brideFather} 아버님` : '아버님' },
-      ai.bride_mother_account_number && { bank: ai.bride_mother_bank_name || '', number: ai.bride_mother_account_number, name: brideMother ? `${brideMother} 어머님` : '어머님' },
+      buildPerson(brideName || '신부', '신부', ai.bride_bank_name, ai.bride_account_number, brideContact),
+      buildPerson(brideFather ? `${brideFather} 아버님` : '아버님', '아버님', ai.bride_father_bank_name, ai.bride_father_account_number, brideFatherContact),
+      buildPerson(brideMother ? `${brideMother} 어머님` : '어머님', '어머님', ai.bride_mother_bank_name, ai.bride_mother_account_number, brideMotherContact),
     ].filter(Boolean),
   };
   const hasAnyAccount = accounts.groom.length > 0 || accounts.bride.length > 0;
+
+  // 전화번호 포맷
+  const formatPhone = (phone) => {
+    const d = (phone || '').replace(/\D/g, '');
+    if (d.length === 11) return `${d.slice(0,3)}-${d.slice(3,7)}-${d.slice(7)}`;
+    if (d.length === 10) return `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6)}`;
+    return phone || '';
+  };
 
   // ── 갤러리 ──
   const galleryImages = safeImages.gallery || safeImages.all || [];
@@ -309,15 +329,14 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
             <View style={s.heroInnerFrame} />
           </View>
         </View>
-        {/* 이름/날짜 - 사진 아래 */}
+        {/* 이름 - 사진 아래 */}
         <View style={s.heroTextSection}>
           <View style={s.heroLabelBg}>
             <Text style={s.heroLabelText}>Invitation</Text>
           </View>
           <Text style={s.heroNamesText}>
-            {groomName}  <Text style={s.heroBar}>|</Text>  {brideName}
+            {groomName}  <Text style={s.heroHeart}>♥</Text>  {brideName}
           </Text>
-          <Text style={s.heroDateText}>{dateStr} {timeStr}</Text>
         </View>
 
         {/* ── 인사말 ── */}
@@ -348,43 +367,12 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
           )}
         </View>
 
-        {/* ── 연락처 ── */}
-        {(groomName || brideName) && (
-          <View style={[s.section, { backgroundColor: C.surface }]}>
-            <View style={s.contactRow}>
-              <TouchableOpacity
-                style={s.contactBtn}
-                activeOpacity={0.8}
-                onPress={() => {
-                  const phone = eventData.groomContact || eventData.groom_contact;
-                  if (phone) Linking.openURL(`tel:${phone}`);
-                  else showToast('연락처 정보가 없습니다');
-                }}
-              >
-                <Text style={s.contactBtnText}>📞 신랑에게 연락</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.contactBtn}
-                activeOpacity={0.8}
-                onPress={() => {
-                  const phone = eventData.brideContact || eventData.bride_contact;
-                  if (phone) Linking.openURL(`tel:${phone}`);
-                  else showToast('연락처 정보가 없습니다');
-                }}
-              >
-                <Text style={s.contactBtnText}>📞 신부에게 연락</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
         {/* ── 달력 ── */}
         {weddingDate && (
           <View style={s.section}>
             <Text style={s.sectionLabel}>Date</Text>
             <View style={s.divider} />
-            <Text style={s.calFullDate}>{dateStr} {timeStr}</Text>
-            <Text style={s.calMonthYear}>{String(calMonth).padStart(2, '0')} / {calYear}</Text>
+            <Text style={s.calMonthYear}>{calYear} / {String(calMonth).padStart(2, '0')}</Text>
             <View style={s.calendarWrap}>
               {/* 요일 헤더 */}
               <View style={s.calDayHeaderRow}>
@@ -395,7 +383,7 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
                 ))}
               </View>
               <View style={s.calDayHeaderDivider} />
-              {/* 날짜 그리드 */}
+              {/* 날짜 그리드 — 결혼일은 하트로 표시 */}
               <View style={s.calGrid}>
                 {Array.from({ length: firstDow }).map((_, i) => (
                   <View key={`e${i}`} style={s.calCell} />
@@ -405,14 +393,20 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
                   const isWedding = day === calDay;
                   const dow = (firstDow + i) % 7;
                   const isSunday = dow === 0;
+                  if (isWedding) {
+                    return (
+                      <View key={i} style={s.calCell}>
+                        <View style={s.calHeartWrap}>
+                          <Text style={s.calHeartText}>♥</Text>
+                          <Text style={s.calHeartDay}>{day}</Text>
+                        </View>
+                      </View>
+                    );
+                  }
                   return (
                     <View key={i} style={s.calCell}>
-                      <View style={[s.calDayCircle, isWedding && s.calDayCircleActive]}>
-                        <Text style={[
-                          s.calDayText,
-                          isSunday && !isWedding && { color: '#E8A0A0' },
-                          isWedding && s.calDayTextActive,
-                        ]}>{day}</Text>
+                      <View style={s.calDayCircle}>
+                        <Text style={[s.calDayText, isSunday && { color: '#E8A0A0' }]}>{day}</Text>
                       </View>
                     </View>
                   );
@@ -431,29 +425,54 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
           </View>
         )}
 
-        {/* ── 갤러리 ── */}
+        {/* ── 갤러리 (2행 × N열 가로 스크롤, 4장씩 보임) ── */}
         {galleryImages.length > 0 && (
           <View style={s.section}>
             <Text style={s.sectionLabel}>Gallery</Text>
             <View style={s.divider} />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.galleryScroll}>
-              {galleryImages.map((img, idx) => (
-                <TouchableOpacity key={idx} onPress={() => setSelectedImage(img)} activeOpacity={0.9}>
-                  <View style={s.galleryCard}>
-                    <Image
-                      source={typeof img === 'string' ? { uri: img } : img}
-                      style={s.galleryImage}
-                      resizeMode="cover"
-                    />
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity style={s.galleryMoreBtn} activeOpacity={0.8} onPress={() => {
-              if (galleryImages.length > 0) setSelectedImage(galleryImages[0]);
-            }}>
-              <Text style={s.galleryMoreText}>더 많은 사진 보기</Text>
-            </TouchableOpacity>
+            <View style={s.galleryOuter}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.galleryScrollContent}
+              >
+                {Array.from({ length: Math.ceil(galleryImages.length / 2) }).map((_, colIdx) => {
+                  const top = galleryImages[colIdx * 2];
+                  const bottom = galleryImages[colIdx * 2 + 1];
+                  const renderCard = (img, key) => {
+                    if (!img) return <View key={key} style={{ width: 160, height: 200 }} />;
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        onPress={() => setSelectedImage(img)}
+                        activeOpacity={0.9}
+                        style={s.galleryCardNew}
+                      >
+                        <Image
+                          source={typeof img === 'string' ? { uri: img } : img}
+                          style={s.galleryImageNew}
+                          resizeMode="cover"
+                        />
+                      </TouchableOpacity>
+                    );
+                  };
+                  return (
+                    <View key={colIdx} style={s.galleryColumn}>
+                      {renderCard(top, `t${colIdx}`)}
+                      <View style={{ height: 12 }} />
+                      {renderCard(bottom, `b${colIdx}`)}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
+            {galleryImages.length > 4 && (
+              <View style={s.galleryHint}>
+                <Text style={s.galleryHintText}>
+                  옆으로 밀면 사진 {galleryImages.length - 4}장이 더 있어요
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -538,7 +557,63 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
           </View>
         )}
 
-        {/* ── 방명록 ── */}
+        {/* ── 계좌 + 연락처 (방명록보다 먼저 노출) ── */}
+        {hasAnyAccount && (
+          <View style={s.section}>
+            <Text style={s.sectionLabel}>Mind</Text>
+            <View style={s.divider} />
+            <Text style={s.accountDesc}>
+              계좌번호는 터치하면 복사되고,{'\n'}연락처는 터치하면 전화가 연결됩니다.
+            </Text>
+            {['groom', 'bride'].map(side => {
+              const list = accounts[side];
+              if (list.length === 0) return null;
+              const anim = side === 'groom' ? groomAnim : brideAnim;
+              const chevAnim = side === 'groom' ? chevronGroomAnim : chevronBrideAnim;
+              // 한 사람당 계좌+연락처 합쳐서 ~140px
+              const h = anim.interpolate({ inputRange: [0, 1], outputRange: [0, Math.max(list.length * 140 + 16, 140)] });
+              const chevronRotate = chevAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+              return (
+                <View key={side} style={s.accordionCard}>
+                  <TouchableOpacity style={s.accordionHeader} onPress={() => toggleAccount(side)} activeOpacity={0.85}>
+                    <Text style={s.accordionTitle}>{side === 'groom' ? '신랑측 계좌·연락처' : '신부측 계좌·연락처'}</Text>
+                    <Animated.Text style={[s.accordionChevron, { transform: [{ rotate: chevronRotate }] }]}>▼</Animated.Text>
+                  </TouchableOpacity>
+                  <Animated.View style={[s.accordionBody, { height: h, overflow: 'hidden' }]}>
+                    {list.map((p, idx) => (
+                      <View key={idx} style={s.personCard}>
+                        <Text style={s.personCardLabel}>{p.name}</Text>
+                        {p.number ? (
+                          <TouchableOpacity style={s.personRow} onPress={() => copyToClipboard(p.number)} activeOpacity={0.7}>
+                            <Text style={s.personRowValue}>{p.bank} {p.number}</Text>
+                            <View style={s.copyBtn}>
+                              <Text style={s.copyBtnText}>복사</Text>
+                            </View>
+                          </TouchableOpacity>
+                        ) : null}
+                        {p.number && p.contact ? <View style={s.personDivider} /> : null}
+                        {p.contact ? (
+                          <TouchableOpacity
+                            style={s.personRow}
+                            onPress={() => Linking.openURL(`tel:${p.contact.replace(/\D/g, '')}`)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={s.personRowValue}>📞 {formatPhone(p.contact)}</Text>
+                            <View style={s.callBtn}>
+                              <Text style={s.callBtnText}>전화</Text>
+                            </View>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    ))}
+                  </Animated.View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* ── 방명록 (계좌 아래) ── */}
         {allowMessages && (
           <View style={[s.section, { backgroundColor: C.surface }]}>
             <Text style={s.sectionLabel}>Guestbook</Text>
@@ -555,46 +630,6 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
             <TouchableOpacity style={s.gbWriteBtn} activeOpacity={0.8} onPress={() => setGuestBookOpen(true)}>
               <Text style={s.gbWriteBtnText}>✏️ 메시지 작성하기</Text>
             </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ── 계좌 ── */}
-        {hasAnyAccount && (
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>Mind</Text>
-            <View style={s.divider} />
-            <Text style={s.accountDesc}>
-              참석이 어려우신 분들을 위해{'\n'}축하의 마음을 전달할 수 있습니다.
-            </Text>
-            {['groom', 'bride'].map(side => {
-              const list = accounts[side];
-              if (list.length === 0) return null;
-              const anim = side === 'groom' ? groomAnim : brideAnim;
-              const chevAnim = side === 'groom' ? chevronGroomAnim : chevronBrideAnim;
-              const h = accordionHeight(anim, list.length);
-              const chevronRotate = chevAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
-              return (
-                <View key={side} style={s.accordionCard}>
-                  <TouchableOpacity style={s.accordionHeader} onPress={() => toggleAccount(side)} activeOpacity={0.85}>
-                    <Text style={s.accordionTitle}>{side === 'groom' ? '신랑측 계좌번호' : '신부측 계좌번호'}</Text>
-                    <Animated.Text style={[s.accordionChevron, { transform: [{ rotate: chevronRotate }] }]}>▼</Animated.Text>
-                  </TouchableOpacity>
-                  <Animated.View style={[s.accordionBody, { height: h, overflow: 'hidden' }]}>
-                    {list.map((acc, idx) => (
-                      <View key={idx} style={s.accountBox}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.accountBank}>{acc.bank} (예금주: {acc.name})</Text>
-                          <Text style={s.accountNum}>{acc.number}</Text>
-                        </View>
-                        <TouchableOpacity style={s.copyBtn} onPress={() => copyToClipboard(acc.number)} activeOpacity={0.85}>
-                          <Text style={s.copyBtnText}>복사</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </Animated.View>
-                </View>
-              );
-            })}
           </View>
         )}
 
@@ -803,6 +838,7 @@ const s = StyleSheet.create({
     fontSize: 24, fontWeight: '300', color: C.main, letterSpacing: 4, marginBottom: 8,
   },
   heroBar: { fontWeight: '200', color: C.sub },
+  heroHeart: { fontWeight: '400', color: '#E8A0A0', fontSize: 20, letterSpacing: 0 },
   heroDateText: {
     fontSize: 13, fontWeight: '400', color: C.sub, letterSpacing: 1,
   },
@@ -847,41 +883,67 @@ const s = StyleSheet.create({
     fontSize: 28, fontWeight: '200', color: C.main, textAlign: 'center',
     letterSpacing: 2, marginBottom: 24,
   },
-  calendarWrap: { maxWidth: 280, alignSelf: 'center', width: '100%' },
-  calDayHeaderRow: { flexDirection: 'row', marginBottom: 8 },
+  calendarWrap: { alignSelf: 'center', width: '100%', paddingHorizontal: 4 },
+  calDayHeaderRow: { flexDirection: 'row', marginBottom: 10 },
   calDayHeaderCell: { flex: 1, alignItems: 'center' },
-  calDayHeaderText: { fontSize: 12, fontWeight: '500', color: C.sub },
-  calDayHeaderDivider: { height: 1, backgroundColor: C.border, marginBottom: 8 },
+  calDayHeaderText: { fontSize: 13, fontWeight: '600', color: C.sub },
+  calDayHeaderDivider: { height: 1, backgroundColor: C.border, marginBottom: 10 },
   calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  calCell: { width: `${100 / 7}%`, alignItems: 'center', paddingVertical: 3 },
+  calCell: { width: `${100 / 7}%`, alignItems: 'center', paddingVertical: 6 },
   calDayCircle: {
-    width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
+    width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
   },
-  calDayCircleActive: {
-    backgroundColor: C.main,
+  calDayText: { fontSize: 15, fontWeight: '400', color: C.main },
+  // 결혼일 하트 표시
+  calHeartWrap: {
+    width: 38, height: 38, alignItems: 'center', justifyContent: 'center', position: 'relative',
   },
-  calDayText: { fontSize: 14, fontWeight: '400', color: C.main },
-  calDayTextActive: { color: '#fff' },
+  calHeartText: {
+    fontSize: 34, color: '#E8A0A0', position: 'absolute',
+  },
+  calHeartDay: {
+    fontSize: 12, fontWeight: '700', color: '#fff', zIndex: 2,
+  },
   calFooter: {
     marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.border,
     alignItems: 'center',
   },
   calFooterText: { fontSize: 13, color: C.sub, fontWeight: '300' },
 
-  // ── 갤러리 ──
-  galleryScroll: { paddingRight: 24, gap: 12, paddingBottom: 16 },
-  galleryCard: {
-    width: 256, height: 340, borderRadius: 2, borderWidth: 4,
+  // ── 갤러리 (2행 × N열 가로 스크롤) ──
+  galleryOuter: { marginHorizontal: -24, marginTop: 4, position: 'relative' },
+  galleryScrollContent: { paddingHorizontal: 20, paddingVertical: 8, flexDirection: 'row' },
+  galleryColumn: { width: 160, marginRight: 12 },
+  galleryCardNew: {
+    width: 160, height: 200, borderRadius: 2, borderWidth: 3,
     borderColor: '#fff', overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6,
     elevation: 2,
+    backgroundColor: C.surface,
   },
-  galleryImage: { width: '100%', height: '100%' },
-  galleryMoreBtn: {
-    borderWidth: 1, borderColor: C.border, paddingVertical: 14,
-    alignItems: 'center', marginTop: 8, borderRadius: 2,
+  galleryImageNew: { width: '100%', height: '100%' },
+  galleryHint: {
+    alignSelf: 'center', marginTop: 16, paddingHorizontal: 14, paddingVertical: 10,
+    backgroundColor: C.surface, borderRadius: 999, borderWidth: 1, borderColor: C.border,
   },
-  galleryMoreText: { fontSize: 14, fontWeight: '400', color: C.main },
+  galleryHintText: { fontSize: 13, fontWeight: '500', color: C.main },
+
+  // ── 계좌 + 연락처 통합 카드 ──
+  personCard: {
+    backgroundColor: C.surface, borderRadius: 2, padding: 14, marginBottom: 10,
+    borderWidth: 1, borderColor: C.border,
+  },
+  personCardLabel: { fontSize: 14, fontWeight: '600', color: C.main, marginBottom: 10 },
+  personRow: {
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 8,
+  },
+  personRowValue: { flex: 1, fontSize: 14, color: C.main, fontWeight: '400' },
+  personDivider: { height: 1, backgroundColor: C.border, marginVertical: 2 },
+  callBtn: {
+    backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 2, borderWidth: 1, borderColor: C.border,
+  },
+  callBtnText: { fontSize: 12, fontWeight: '500', color: C.accent, letterSpacing: 0.5 },
 
   // ── 오시는 길 ──
   locationName: {
@@ -1017,8 +1079,9 @@ const s = StyleSheet.create({
   // ── 이미지 모달 ──
   imageModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
   imageModalClose: {
-    position: 'absolute', right: 16, zIndex: 10,
-    backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: 999,
+    position: 'absolute', left: 16, zIndex: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)', padding: 10, borderRadius: 999,
+    width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
   },
   imageModalImg: { width: '100%', height: '80%' },
 });

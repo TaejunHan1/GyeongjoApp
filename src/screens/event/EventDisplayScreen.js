@@ -19,6 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
+import Constants from 'expo-constants';
 import QRCode from 'react-native-qrcode-svg';
 import { Colors } from '../../styles/constants';
 import { getEventDetail, getEventMessages, createEventMessage, updateEvent } from '../../lib/supabaseHelper';
@@ -56,7 +57,7 @@ export default function EventDisplayScreen({ navigation, route }) {
 
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showExitButton, setShowExitButton] = useState(false);
+  const [showExitButton, setShowExitButton] = useState(true);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [eventMessages, setEventMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -98,12 +99,7 @@ export default function EventDisplayScreen({ navigation, route }) {
 
     startAnimations();
 
-    const exitTimer = setTimeout(() => {
-      setShowExitButton(true);
-    }, 8000);
-
     return () => {
-      clearTimeout(exitTimer);
       stopProgressTracking();
       stopAllSounds();
     };
@@ -569,9 +565,14 @@ export default function EventDisplayScreen({ navigation, route }) {
   // 🔥 QR 코드 관련 함수들
   const getQRValue = () => {
     if (!event) return '';
-    const WEB_BASE_URL = __DEV__
-      ? 'http://192.168.219.46:3000'
-      : 'https://contribution-web-srgt.vercel.app';
+    // dev 모드: Expo Metro가 알고 있는 현재 Mac의 IP를 그대로 재사용 (매번 재연결 시 자동 반영)
+    // prod 모드: Vercel 도메인
+    let WEB_BASE_URL = 'https://contribution-web-srgt.vercel.app';
+    if (__DEV__) {
+      const hostUri = Constants.expoConfig?.hostUri || Constants.manifest?.hostUri || '';
+      const devIp = hostUri.split(':')[0];
+      if (devIp) WEB_BASE_URL = `http://${devIp}:3000`;
+    }
     const templateStyle = getFinalTemplateStyle();
     return `${WEB_BASE_URL}/template/${event.id}?template=${templateStyle}`;
   };
