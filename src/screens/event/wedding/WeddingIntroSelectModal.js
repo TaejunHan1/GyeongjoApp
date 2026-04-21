@@ -99,7 +99,7 @@ function TapHintInline({ textColor = '#fff', pillBg = 'rgba(0,0,0,0.32)' }) {
         backgroundColor: pillBg, borderRadius: 20,
         borderWidth: StyleSheet.hairlineWidth, borderColor: textColor }}>
         <Text style={{ fontSize: 11, letterSpacing: 2.5, color: textColor, fontWeight: '600' }}>
-          터치해주세요
+          초대장 열기
         </Text>
       </View>
     </Animated.View>
@@ -130,7 +130,7 @@ function TapHintAbsolute({ textColor = '#fff', pillBg = 'rgba(0,0,0,0.32)' }) {
         backgroundColor: pillBg, borderRadius: 20,
         borderWidth: StyleSheet.hairlineWidth, borderColor: textColor }}>
         <Text style={{ fontSize: 11, letterSpacing: 2.5, color: textColor, fontWeight: '600' }}>
-          터치해주세요
+          초대장 열기
         </Text>
       </View>
     </Animated.View>
