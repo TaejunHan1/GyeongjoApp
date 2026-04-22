@@ -1,5 +1,5 @@
 // src/screens/main/ProfileScreen.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,276 +10,250 @@ import {
   Alert,
   Share,
   Modal,
-  Dimensions,
+  Linking,
   Platform,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../styles/constants';
 import { supabase } from '../../lib/supabase';
+import { getAlimtalkBalance } from '../../lib/alimtalkCredit';
+
+// 스마트패스 카카오톡 채널
+const KAKAO_CHANNEL_URL = 'https://pf.kakao.com/_WsUuX/chat';
+const KAKAO_CHANNEL_WEB_URL = 'https://pf.kakao.com/_WsUuX';
 
 export default function ProfileScreen({ navigation, userInfo, onLogout }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [balance, setBalance] = useState(0);
 
-  useEffect(() => {
-    loadUserData();
-  }, [userInfo]);
+  // 이름 편집 모달
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
-  const loadUserData = async () => {
+  const loadUserData = useCallback(async () => {
     try {
       setLoading(true);
-      
-      console.log('🔍 ProfileScreen userInfo:', userInfo);
-      
-      // phone authentication 사용자의 경우 userInfo에서 직접 정보 사용
       if (!userInfo || !userInfo.userId) {
-        console.error('🔴 ProfileScreen: userInfo가 없거나 userId가 없음:', userInfo);
         setLoading(false);
         return;
       }
 
-      // 사용자 프로필 정보 가져오기 (users 테이블에서)
-      const { data: profileData, error: profileError } = await supabase
+      const { data: profileData } = await supabase
         .from('users')
         .select('*')
         .eq('id', userInfo.userId)
         .single();
 
-      if (profileError && profileError.code !== 'PGRST116') {
-        console.error('Profile data error:', profileError);
-      } else if (profileData) {
-        console.log('🟢 Profile data loaded:', profileData);
-        setProfile(profileData);
-      } else {
-        console.log('🟡 No profile data found, using userInfo');
-      }
+      if (profileData) setProfile(profileData);
 
+      const balRes = await getAlimtalkBalance(userInfo.userId);
+      if (balRes?.success) setBalance(balRes.balance || 0);
     } catch (error) {
       console.error('Load user data error:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [userInfo]);
 
-  const handleLogout = () => {
-    setShowLogoutModal(true);
-  };
+  useEffect(() => {
+    loadUserData();
+  }, [loadUserData]);
 
-  const confirmLogout = async () => {
-    try {
-      console.log('🔍 ProfileScreen 로그아웃 시작...');
-      setShowLogoutModal(false);
-      
-      // phone authentication의 경우 onLogout prop 사용
-      if (onLogout) {
-        await onLogout();
-      } else {
-        // 백업용: Supabase auth 로그아웃
-        await supabase.auth.signOut();
+  // 크레딧 페이지에서 돌아올 때 잔액 갱신
+  useFocusEffect(
+    useCallback(() => {
+      if (userInfo?.userId) {
+        getAlimtalkBalance(userInfo.userId).then((r) => {
+          if (r?.success) setBalance(r.balance || 0);
+        });
       }
-      
-      console.log('🟢 로그아웃 완료');
-    } catch (error) {
-      console.error('Logout error:', error);
-      Alert.alert('오류', '로그아웃 중 오류가 발생했습니다.');
+    }, [userInfo?.userId])
+  );
+
+  const userName = profile?.name || userInfo?.userName || '사용자';
+  const userPhone = formatPhone(profile?.phone || userInfo?.phone?.replace('+82', '0') || userInfo?.phone || '');
+  const joinDate = profile?.created_at
+    ? new Date(profile.created_at).toLocaleDateString('ko-KR')
+    : userInfo?.loginTime
+      ? new Date(userInfo.loginTime).toLocaleDateString('ko-KR')
+      : '—';
+
+  // ── 이름 편집 ──
+  const openEdit = () => {
+    setEditName(profile?.name || userInfo?.userName || '');
+    setEditOpen(true);
+  };
+  const saveName = async () => {
+    const trimmed = editName.trim();
+    if (!trimmed) {
+      Alert.alert('오류', '이름을 입력해주세요');
+      return;
+    }
+    if (!userInfo?.userId) return;
+    setEditSaving(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ name: trimmed })
+        .eq('id', userInfo.userId);
+      if (error) throw error;
+      setProfile((prev) => ({ ...(prev || {}), name: trimmed }));
+      setEditOpen(false);
+    } catch (e) {
+      Alert.alert('오류', '저장 중 오류가 발생했습니다');
+    } finally {
+      setEditSaving(false);
     }
   };
 
-  const cancelLogout = () => {
-    setShowLogoutModal(false);
-  };
-
+  // ── 공유 ──
   const handleShareApp = async () => {
     try {
       await Share.share({
         message: '정담 - 마음을 나누는 가장 쉬운 방법\n경조사 관리를 쉽고 체계적으로 해보세요!',
         title: '정담 앱 공유',
       });
-    } catch (error) {
-      console.error('Share error:', error);
+    } catch {}
+  };
+
+  // ── 카카오톡 채널 ──
+  const openKakaoChannel = async () => {
+    try {
+      const canOpen = await Linking.canOpenURL(KAKAO_CHANNEL_URL);
+      if (canOpen) {
+        await Linking.openURL(KAKAO_CHANNEL_URL);
+        return;
+      }
+    } catch {}
+    try {
+      await Linking.openURL(KAKAO_CHANNEL_WEB_URL);
+    } catch {
+      Alert.alert('오류', '카카오톡 채널을 열 수 없어요');
     }
   };
 
-  const showComingSoon = (feature) => {
-    Alert.alert('준비중', `${feature} 기능을 준비 중입니다.`);
+  // ── 로그아웃 ──
+  const confirmLogout = async () => {
+    try {
+      setShowLogoutModal(false);
+      if (onLogout) await onLogout();
+      else await supabase.auth.signOut();
+    } catch {
+      Alert.alert('오류', '로그아웃 중 오류가 발생했습니다');
+    }
   };
 
-  // phone authentication 사용자 정보 가져오기
-  const userName = profile?.name || userInfo?.userName || '사용자';
-  const userPhone = profile?.phone || userInfo?.phone?.replace('+82', '0') || userInfo?.phone || '미설정';
-  const userCarrier = profile?.carrier || '미설정';
-  const joinDate = userInfo?.loginTime ? new Date(userInfo.loginTime).toLocaleDateString('ko-KR') : profile?.created_at ? new Date(profile.created_at).toLocaleDateString('ko-KR') : '알 수 없음';
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Ionicons name="person-circle" size={64} color={Colors.gray300} />
-          <Text style={styles.loadingText}>프로필을 불러오는 중...</Text>
-        </View>
-      </SafeAreaView>
+  // ── 계정 삭제 ──
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      '계정 삭제',
+      '정말 계정을 삭제하시겠습니까?\n모든 경조사 데이터가 영구적으로 삭제됩니다.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: () => Alert.alert('안내', '계정 삭제 요청은 문의하기를 통해 접수됩니다.\n카카오톡 채널로 연결할게요.', [
+            { text: '취소', style: 'cancel' },
+            { text: '문의하기', onPress: openKakaoChannel },
+          ]),
+        },
+      ]
     );
-  }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      
+
       {/* 헤더 */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>프로필</Text>
-        <TouchableOpacity onPress={() => showComingSoon('설정')}>
-          <Ionicons name="settings-outline" size={24} color={Colors.textPrimary} />
-        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+
         {/* 사용자 정보 카드 */}
         <View style={styles.userCard}>
-          <View style={styles.userInfo}>
+          <View style={styles.userRow}>
             <View style={styles.avatar}>
-              <Ionicons name="person" size={32} color={Colors.primary} />
+              <Ionicons name="person" size={30} color={Colors.primary} />
             </View>
-            <View style={styles.userDetails}>
+            <View style={styles.userInfo}>
               <Text style={styles.userName}>{userName}</Text>
-              <Text style={styles.userContact}>{userPhone}</Text>
-              <Text style={styles.userMeta}>
-                {userCarrier} • {joinDate} 가입
-              </Text>
+              <Text style={styles.userPhone}>{userPhone || '전화번호 미설정'}</Text>
+              <Text style={styles.userMeta}>{joinDate} 가입</Text>
             </View>
-          </View>
-          <TouchableOpacity 
-            style={styles.editButton}
-            onPress={() => showComingSoon('프로필 편집')}
-          >
-            <Text style={styles.editButtonText}>편집</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* 활동 통계 */}
-        <View style={styles.statsCard}>
-          <Text style={styles.statsTitle}>나의 활동</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>0</Text>
-              <Text style={styles.statLabel}>총 경조사</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>0원</Text>
-              <Text style={styles.statLabel}>총 부조금</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>0명</Text>
-              <Text style={styles.statLabel}>총 참석자</Text>
-            </View>
+            <TouchableOpacity style={styles.editBtn} onPress={openEdit} activeOpacity={0.8}>
+              <Ionicons name="create-outline" size={16} color={Colors.primary} />
+              <Text style={styles.editBtnText}>편집</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* 메뉴 섹션 */}
-        <View style={styles.menuSection}>
-          <Text style={styles.sectionTitle}>관리</Text>
-          
+        {/* 계정 */}
+        <SectionLabel>계정</SectionLabel>
+        <View style={styles.menuCard}>
           <MenuItem
             icon="heart-outline"
             title="내 경조사"
             subtitle="등록한 경조사 관리"
             onPress={() => navigation.navigate('MyEvents')}
           />
-          
+          <Divider />
           <MenuItem
-            icon="receipt-outline"
-            title="부조 기록"
-            subtitle="축의금, 조의금 내역"
-            onPress={() => showComingSoon('부조 기록')}
-          />
-          
-          <MenuItem
-            icon="notifications-outline"
-            title="알림 설정"
-            subtitle="기일 알림, 푸시 알림"
-            onPress={() => showComingSoon('알림 설정')}
-          />
-          
-          <MenuItem
-            icon="bar-chart-outline"
-            title="통계 보기"
-            subtitle="연도별 부조 현황"
-            onPress={() => showComingSoon('통계 보기')}
+            icon="chatbubble-ellipses-outline"
+            title="알림톡 크레딧"
+            subtitle={`잔액 ${balance.toLocaleString('ko-KR')}건 · 충전 및 사용 내역`}
+            onPress={() => navigation.navigate('Credit')}
+            badge={balance < 5 ? '부족' : null}
           />
         </View>
 
-        {/* 도구 섹션 */}
-        <View style={styles.menuSection}>
-          <Text style={styles.sectionTitle}>도구</Text>
-          
-          <MenuItem
-            icon="qr-code-outline"
-            title="QR 코드"
-            subtitle="경조사 참석용 QR 생성"
-            onPress={() => showComingSoon('QR 코드')}
-          />
-          
-          <MenuItem
-            icon="download-outline"
-            title="데이터 내보내기"
-            subtitle="Excel, PDF로 내보내기"
-            onPress={() => showComingSoon('데이터 내보내기')}
-          />
-          
-          <MenuItem
-            icon="cloud-upload-outline"
-            title="백업 및 복원"
-            subtitle="데이터 백업 관리"
-            onPress={() => showComingSoon('백업 및 복원')}
-          />
-        </View>
-
-        {/* 기타 섹션 */}
-        <View style={styles.menuSection}>
-          <Text style={styles.sectionTitle}>기타</Text>
-          
+        {/* 정보 */}
+        <SectionLabel>정보</SectionLabel>
+        <View style={styles.menuCard}>
           <MenuItem
             icon="share-outline"
             title="앱 공유하기"
             subtitle="친구에게 정담 추천"
             onPress={handleShareApp}
           />
-          
+          <Divider />
           <MenuItem
-            icon="help-circle-outline"
-            title="도움말"
-            subtitle="사용법, FAQ"
-            onPress={() => showComingSoon('도움말')}
+            icon="chatbubble-outline"
+            title="문의하기"
+            subtitle="카카오톡 채널 스마트패스로 연결"
+            onPress={openKakaoChannel}
           />
-          
+          <Divider />
           <MenuItem
             icon="document-text-outline"
-            title="약관 및 정책"
-            subtitle="이용약관, 개인정보처리방침"
-            onPress={() => showComingSoon('약관 및 정책')}
+            title="이용약관"
+            onPress={() => navigation.navigate('Terms')}
           />
-          
+          <Divider />
           <MenuItem
-            icon="mail-outline"
-            title="문의하기"
-            subtitle="건의사항, 버그 신고"
-            onPress={() => showComingSoon('문의하기')}
+            icon="shield-checkmark-outline"
+            title="개인정보 처리방침"
+            onPress={() => navigation.navigate('Privacy')}
           />
         </View>
 
         {/* 계정 관리 */}
         <View style={styles.accountSection}>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={20} color={Colors.error} />
+          <TouchableOpacity style={styles.logoutBtn} onPress={() => setShowLogoutModal(true)} activeOpacity={0.85}>
+            <Ionicons name="log-out-outline" size={18} color={Colors.error} />
             <Text style={styles.logoutText}>로그아웃</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.deleteButton} 
-            onPress={() => showComingSoon('계정 삭제')}
-          >
+          <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteAccount} activeOpacity={0.7}>
             <Text style={styles.deleteText}>계정 삭제</Text>
           </TouchableOpacity>
         </View>
@@ -287,392 +261,282 @@ export default function ProfileScreen({ navigation, userInfo, onLogout }) {
         {/* 앱 정보 */}
         <View style={styles.appInfo}>
           <Text style={styles.appVersion}>정담 v1.0.0</Text>
-          <Text style={styles.copyright}>© 2024 정담. All rights reserved.</Text>
+          <Text style={styles.copyright}>© 2026 정담. All rights reserved.</Text>
         </View>
-
-        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* 커스텀 로그아웃 모달 */}
-      <Modal
-        visible={showLogoutModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={cancelLogout}
-      >
+      {/* 로그아웃 모달 */}
+      <Modal visible={showLogoutModal} transparent animationType="fade" onRequestClose={() => setShowLogoutModal(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              {/* 아이콘 */}
-              <View style={styles.modalIcon}>
-                <Ionicons name="log-out-outline" size={32} color={Colors.error} />
-              </View>
-              
-              {/* 제목 */}
-              <Text style={styles.modalTitle}>로그아웃</Text>
-              
-              {/* 메시지 */}
-              <Text style={styles.modalMessage}>
-                정말 로그아웃하시겠어요?{'\n'}
-                다시 로그인하실 때 전화번호 인증이 필요합니다.
-              </Text>
-              
-              {/* 버튼들 */}
-              <View style={styles.modalButtons}>
-                <TouchableOpacity 
-                  style={styles.cancelButton} 
-                  onPress={cancelLogout}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.cancelButtonText}>취소</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.confirmButton} 
-                  onPress={confirmLogout}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.confirmButtonText}>로그아웃</Text>
-                </TouchableOpacity>
-              </View>
+          <View style={styles.modalCard}>
+            <View style={styles.modalIcon}>
+              <Ionicons name="log-out-outline" size={30} color={Colors.error} />
+            </View>
+            <Text style={styles.modalTitle}>로그아웃</Text>
+            <Text style={styles.modalMessage}>
+              정말 로그아웃하시겠어요?{'\n'}다시 로그인하실 때 전화번호 인증이 필요합니다.
+            </Text>
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowLogoutModal(false)} activeOpacity={0.7}>
+                <Text style={styles.modalCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalConfirmBtn} onPress={confirmLogout} activeOpacity={0.85}>
+                <Text style={styles.modalConfirmText}>로그아웃</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* 이름 편집 바텀시트 */}
+      <Modal visible={editOpen} transparent animationType="slide" onRequestClose={() => setEditOpen(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setEditOpen(false)}>
+            <TouchableOpacity style={styles.sheetBody} activeOpacity={1} onPress={() => {}}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>이름 변경</Text>
+              <Text style={styles.sheetSub}>청첩장에 표시될 이름을 입력해주세요</Text>
+
+              <TextInput
+                style={styles.sheetInput}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="이름"
+                placeholderTextColor={Colors.gray400}
+                maxLength={20}
+                autoFocus
+              />
+
+              <TouchableOpacity
+                style={[styles.sheetSaveBtn, (!editName.trim() || editSaving) && { opacity: 0.5 }]}
+                onPress={saveName}
+                disabled={!editName.trim() || editSaving}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.sheetSaveText}>{editSaving ? '저장 중...' : '저장'}</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
 }
 
-// 메뉴 아이템 컴포넌트
-const MenuItem = ({ icon, title, subtitle, onPress, showChevron = true }) => (
-  <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+// ───── 서브 컴포넌트 ─────
+const SectionLabel = ({ children }) => (
+  <Text style={styles.sectionLabel}>{children}</Text>
+);
+const Divider = () => <View style={styles.divider} />;
+const MenuItem = ({ icon, title, subtitle, onPress, badge }) => (
+  <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
     <View style={styles.menuIcon}>
       <Ionicons name={icon} size={20} color={Colors.primary} />
     </View>
-    <View style={styles.menuContent}>
-      <Text style={styles.menuTitle}>{title}</Text>
-      <Text style={styles.menuSubtitle}>{subtitle}</Text>
+    <View style={styles.menuTextWrap}>
+      <View style={styles.menuTitleRow}>
+        <Text style={styles.menuTitle}>{title}</Text>
+        {badge ? (
+          <View style={styles.menuBadge}>
+            <Text style={styles.menuBadgeText}>{badge}</Text>
+          </View>
+        ) : null}
+      </View>
+      {subtitle ? <Text style={styles.menuSubtitle}>{subtitle}</Text> : null}
     </View>
-    {showChevron && (
-      <Ionicons name="chevron-forward" size={16} color={Colors.gray400} />
-    )}
+    <Ionicons name="chevron-forward" size={16} color={Colors.gray400} />
   </TouchableOpacity>
 );
 
+// ───── 유틸 ─────
+const formatPhone = (phone) => {
+  const d = (phone || '').replace(/\D/g, '');
+  if (d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  return phone || '';
+};
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.gray50,
-  },
-  
+  container: { flex: 1, backgroundColor: Colors.gray50 },
+
   // 헤더
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 8 : 50,
-    paddingBottom: 16,
+    paddingBottom: 14,
     backgroundColor: Colors.white,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray100,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  
-  // 콘텐츠
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  
+  headerTitle: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
+
   // 사용자 카드
   userCard: {
     backgroundColor: Colors.white,
+    marginHorizontal: 16,
+    marginTop: 16,
     borderRadius: 16,
-    padding: 20,
-    marginTop: 20,
-    marginBottom: 16,
+    padding: 18,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
+  userRow: { flexDirection: 'row', alignItems: 'center' },
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.gray50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-    borderWidth: 2,
-    borderColor: Colors.primary,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 14,
   },
-  userDetails: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 4,
-  },
-  userContact: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    marginBottom: 2,
-  },
-  userMeta: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  editButton: {
-    backgroundColor: Colors.gray100,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-  },
-  editButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-  },
-  
-  // 통계 카드
-  statsCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  statsTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 16,
-  },
-  statsGrid: {
+  userInfo: { flex: 1 },
+  userName: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary, marginBottom: 4 },
+  userPhone: { fontSize: 13, color: Colors.textSecondary, marginBottom: 2 },
+  userMeta: { fontSize: 11, color: Colors.gray400 },
+
+  editBtn: {
     flexDirection: 'row',
-  },
-  statItem: {
-    flex: 1,
     alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: Colors.primary + '40',
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: Colors.primary + '08',
   },
-  statNumber: {
-    fontSize: 24,
+  editBtnText: { color: Colors.primary, fontSize: 12, fontWeight: '600' },
+
+  // 섹션 라벨
+  sectionLabel: {
+    fontSize: 13,
     fontWeight: '700',
-    color: Colors.primary,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
     color: Colors.textSecondary,
-    fontWeight: '500',
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 8,
+    letterSpacing: 0.3,
   },
-  
-  // 메뉴 섹션
-  menuSection: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 12,
-    paddingLeft: 4,
+
+  // 메뉴 카드
+  menuCard: {
+    backgroundColor: Colors.white,
+    marginHorizontal: 16,
+    borderRadius: 14,
+    overflow: 'hidden',
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
   },
   menuIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.gray50,
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: Colors.primary + '10',
+    alignItems: 'center', justifyContent: 'center',
     marginRight: 12,
   },
-  menuContent: {
-    flex: 1,
+  menuTextWrap: { flex: 1 },
+  menuTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  menuTitle: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
+  menuSubtitle: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+  menuBadge: {
+    backgroundColor: Colors.error + '15',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
   },
-  menuTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-    marginBottom: 2,
-  },
-  menuSubtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  
+  menuBadgeText: { color: Colors.error, fontSize: 10, fontWeight: '700' },
+  divider: { height: 1, backgroundColor: Colors.gray100, marginLeft: 64 },
+
   // 계정 관리
   accountSection: {
-    marginBottom: 32,
-    gap: 12,
+    marginHorizontal: 16,
+    marginTop: 28,
+    gap: 10,
   },
-  logoutButton: {
+  logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
     backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
     borderWidth: 1,
-    borderColor: Colors.error,
+    borderColor: Colors.error + '30',
+    paddingVertical: 14,
+    borderRadius: 12,
   },
-  logoutText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: Colors.error,
-  },
-  deleteButton: {
-    alignItems: 'center',
-    padding: 12,
-  },
-  deleteText: {
-    fontSize: 14,
-    color: Colors.gray400,
-    textDecorationLine: 'underline',
-  },
-  
+  logoutText: { color: Colors.error, fontSize: 14, fontWeight: '600' },
+  deleteBtn: { alignItems: 'center', paddingVertical: 8 },
+  deleteText: { color: Colors.gray500, fontSize: 12, textDecorationLine: 'underline' },
+
   // 앱 정보
-  appInfo: {
-    alignItems: 'center',
-    marginBottom: 40,
-    gap: 4,
-  },
-  appVersion: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-  },
-  copyright: {
-    fontSize: 12,
-    color: Colors.gray400,
-  },
-  
-  // 로딩
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-  },
-  
+  appInfo: { alignItems: 'center', marginTop: 24, gap: 4 },
+  appVersion: { fontSize: 12, color: Colors.gray500 },
+  copyright: { fontSize: 11, color: Colors.gray400 },
+
   // 로그아웃 모달
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 32,
   },
-  modalContainer: {
-    backgroundColor: Colors.white,
-    borderRadius: 20,
+  modalCard: {
     width: '100%',
-    maxWidth: 320,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  modalContent: {
-    paddingTop: 32,
-    paddingHorizontal: 24,
-    paddingBottom: 20,
+    backgroundColor: Colors.white,
+    borderRadius: 18,
+    padding: 24,
     alignItems: 'center',
   },
   modalIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.gray50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: Colors.error,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: Colors.textPrimary,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: Colors.error + '15',
+    alignItems: 'center', justifyContent: 'center',
     marginBottom: 12,
-    textAlign: 'center',
   },
-  modalMessage: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  cancelButton: {
+  modalTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary, marginBottom: 6 },
+  modalMessage: { fontSize: 13, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
+  modalBtnRow: { flexDirection: 'row', gap: 8, width: '100%' },
+  modalCancelBtn: { flex: 1, paddingVertical: 13, alignItems: 'center', backgroundColor: Colors.gray100, borderRadius: 10 },
+  modalCancelText: { color: Colors.textPrimary, fontSize: 14, fontWeight: '600' },
+  modalConfirmBtn: { flex: 1, paddingVertical: 13, alignItems: 'center', backgroundColor: Colors.error, borderRadius: 10 },
+  modalConfirmText: { color: Colors.white, fontSize: 14, fontWeight: '700' },
+
+  // 이름 편집 바텀시트
+  sheetOverlay: {
     flex: 1,
-    backgroundColor: Colors.gray100,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+  sheetBody: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  sheetHandle: { width: 36, height: 4, backgroundColor: Colors.gray200, borderRadius: 2, alignSelf: 'center', marginBottom: 18 },
+  sheetTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary, marginBottom: 4 },
+  sheetSub: { fontSize: 12, color: Colors.textSecondary, marginBottom: 18 },
+  sheetInput: {
+    backgroundColor: Colors.gray50,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 15,
     color: Colors.textPrimary,
+    marginBottom: 16,
   },
-  confirmButton: {
-    flex: 1,
-    backgroundColor: Colors.error,
+  sheetSaveBtn: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 15,
     borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
     alignItems: 'center',
   },
-  confirmButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.white,
-  },
+  sheetSaveText: { color: '#fff', fontSize: 15, fontWeight: '700', letterSpacing: 0.3 },
 });

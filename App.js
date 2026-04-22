@@ -30,6 +30,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { TutorialProvider } from './src/contexts/TutorialContext';
 import TutorialOverlay from './src/components/TutorialOverlay';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 
 // Expo 네이티브 알림 초기화 (Expo Go에서는 제한됨)
@@ -318,24 +319,26 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <TutorialProvider>
-        <StatusBar style="auto" />
-        {isAuthenticated ? (
-          <AppNavigator
-            userInfo={userInfo}
-            session={session}
-            onLogout={handleLogout}
-          />
-        ) : (
-          <AuthNavigator
-            setUserInfo={setUserInfo}
-            setIsAuthenticated={setIsAuthenticated}
-          />
-        )}
-        {isAuthenticated && <TutorialOverlay scope="app" />}
-        <Toast />
-      </TutorialProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <TutorialProvider>
+          <StatusBar style="auto" />
+          {isAuthenticated ? (
+            <AppNavigator
+              userInfo={userInfo}
+              session={session}
+              onLogout={handleLogout}
+            />
+          ) : (
+            <AuthNavigator
+              setUserInfo={setUserInfo}
+              setIsAuthenticated={setIsAuthenticated}
+            />
+          )}
+          {isAuthenticated && <TutorialOverlay scope="app" />}
+          <Toast />
+        </TutorialProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

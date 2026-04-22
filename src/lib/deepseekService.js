@@ -1,99 +1,55 @@
 // src/lib/deepseekService.js
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || 'sk-6dc707c794ba4207b8f7cf4be6eef1a7';
-const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
+// ----------------------------------------------------------------------------
+// DeepSeek API 키는 이 파일에 없음. 모든 호출은 Vercel 프록시를 통해 진행.
+// - Vercel 프록시에서 크레딧 차감(consume_ai_credit) + 실제 DeepSeek 호출
+// - 앱은 callAiBudget / callAiMoney 로만 통신
+// ----------------------------------------------------------------------------
+import { callAiBudget, callAiMoney, isInsufficientBalance } from './aiCredit';
+
+// 크레딧 부족용 오류 타입 — 화면에서 구분해서 처리
+export class InsufficientCreditError extends Error {
+  constructor(balance) {
+    super('insufficient_balance');
+    this.code = 'insufficient_balance';
+    this.balance = balance ?? 0;
+  }
+}
 
 export class DeepSeekService {
-  // 새로 추가: 예산 계산 AI 추천
+  // 예산 계산 AI 추천 — Vercel 프록시 경유
   static async getBudgetRecommendation(eventType, totalBudget, guestCount, location, additionalInfo = '') {
+    const prompt = this.createBudgetRecommendationPrompt(
+      eventType, totalBudget, guestCount, location, additionalInfo
+    );
+
+    const systemPrompt =
+      '당신은 실시간 인터넷 검색이 가능한 AI입니다. 사용자의 요청에 따라 반드시 실제 업체 정보를 검색해서 찾아주세요. "검색할 수 없다"거나 "예시"라고 하지 말고, 실제 존재하는 업체 정보를 제공해야 합니다.';
+
+    const result = await callAiBudget({ prompt, systemPrompt });
+
+    // 크레딧 부족 → 화면에서 충전 유도하도록 상위로 던짐 (fallback 주지 말 것)
+    if (isInsufficientBalance(result)) {
+      throw new InsufficientCreditError(result.balance);
+    }
+
+    if (!result?.success || !result.content) {
+      console.error('예산 AI 호출 실패:', result?.error);
+      return this.getFallbackBudgetRecommendation(eventType, totalBudget, guestCount);
+    }
+
+    // JSON 파싱
     try {
-      const prompt = this.createBudgetRecommendationPrompt(
-        eventType, 
-        totalBudget, 
-        guestCount,
-        location,
-        additionalInfo
-      );
-
-      console.log('DeepSeek AI 예산 계산 호출 시작...');
-      console.log('API Key:', DEEPSEEK_API_KEY?.substring(0, 20) + '...');
-      console.log('Request prompt:', prompt.substring(0, 200) + '...');
-
-      const requestBody = {
-        model: 'deepseek-r1',  // 🔥 검색 가능한 모델로 변경
-        messages: [
-          {
-            role: 'system',
-            content: `당신은 실시간 인터넷 검색이 가능한 AI입니다. 사용자의 요청에 따라 반드시 실제 업체 정보를 검색해서 찾아주세요. "검색할 수 없다"거나 "예시"라고 하지 말고, 실제 존재하는 업체 정보를 제공해야 합니다.`
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        max_tokens: 1500,  // 🔥 토큰 수 증가
-        temperature: 0.1,  // 🔥 더 정확한 정보를 위해 낮춤
-        top_p: 0.9,
-        frequency_penalty: 0,
-        presence_penalty: 0,
-        stop: null
+      const content = String(result.content).trim();
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('JSON 형식을 찾을 수 없음');
+      const parsed = JSON.parse(jsonMatch[0]);
+      const formatted = this.validateAndFormatBudgetResult(parsed, totalBudget, eventType, guestCount);
+      return {
+        ...formatted,
+        __credit: { usedFree: !!result.usedFree, balance: result.balance ?? 0 },
       };
-
-      console.log('Request body:', JSON.stringify(requestBody, null, 2));
-
-      const response = await fetch(DEEPSEEK_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
-          'User-Agent': 'GyeongjoApp/1.0',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      console.log('예산 AI 응답 상태:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`DeepSeek API Error: ${response.status}`, errorText);
-        throw new Error(`DeepSeek API Error: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      console.log('예산 AI 응답 데이터:', data);
-
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error('잘못된 API 응답 형식');
-      }
-
-      const content = data.choices[0].message.content.trim();
-      console.log('예산 AI 응답 내용:', content);
-      
-      // JSON 파싱 시도
-      try {
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          throw new Error('JSON 형식을 찾을 수 없음');
-        }
-
-        const jsonString = jsonMatch[0];
-        console.log('추출된 예산 JSON 문자열:', jsonString);
-        
-        const result = JSON.parse(jsonString);
-        console.log('파싱된 예산 결과:', result);
-        
-        // 결과 검증 및 포맷팅
-        return this.validateAndFormatBudgetResult(result, totalBudget, eventType, guestCount);
-      } catch (parseError) {
-        console.error('예산 JSON 파싱 오류:', parseError);
-        console.error('원본 응답:', content);
-        // 파싱 실패 시 기본값 반환
-        return this.getFallbackBudgetRecommendation(eventType, totalBudget, guestCount);
-      }
-
-    } catch (error) {
-      console.error('DeepSeek 예산 AI 호출 오류:', error);
-      // API 호출 실패 시 기본값 반환
+    } catch (parseError) {
+      console.error('예산 JSON 파싱 오류:', parseError);
       return this.getFallbackBudgetRecommendation(eventType, totalBudget, guestCount);
     }
   }
@@ -244,7 +200,7 @@ ${additionalInfo ? `- 추가정보: ${additionalInfo}` : ''}
 
     // DeepSeek API 응답 구조 분석 및 업체 정보 추출
     let venues = [];
-    let marketReality = '정보 부족';
+    let marketReality = '';
     
     try {
       // 다양한 응답 구조 지원
@@ -483,7 +439,7 @@ ${additionalInfo ? `- 추가정보: ${additionalInfo}` : ''}
         phone: '',
         location: '전국 주요 도시',
         price_range: '1인당 8-15만원 (평균)',
-        description: 'AI 추천을 위해 인터넷 연결을 확인하고 다시 시도해보세요'
+        description: '지역별 실제 업체 견적은 AI 추천을 다시 시도해 확인하실 수 있어요'
       }
     ] : [
       {
@@ -491,7 +447,7 @@ ${additionalInfo ? `- 추가정보: ${additionalInfo}` : ''}
         phone: '',
         location: '전국 주요 지역',
         price_range: '기본 패키지 300-800만원',
-        description: 'AI 추천을 위해 인터넷 연결을 확인하고 다시 시도해보세요'
+        description: '지역별 실제 업체 견적은 AI 추천을 다시 시도해 확인하실 수 있어요'
       }
     ];
 
@@ -499,113 +455,62 @@ ${additionalInfo ? `- 추가정보: ${additionalInfo}` : ''}
       breakdown: {},
       detailed,
       insights: [
-        { type: 'warning', message: 'AI 예산 분석에 실패했습니다. 인터넷 연결을 확인해주세요', priority: 'high' },
+        { type: 'info', message: '기본 예산 비율로 계산된 추천입니다', priority: 'high' },
         { type: 'tip', message: '예산의 10-15%는 예비비로 남겨두세요', priority: 'high' },
         { type: 'tip', message: '여러 업체에서 견적을 받아 비교해보세요', priority: 'medium' },
-        { type: 'info', message: '일반적인 예산 기준에 따른 기본 추천입니다', priority: 'low' }
       ],
-      confidence: 65, // AI 실패 시 신뢰도 낮춤
+      confidence: 65,
       recommendedVenues: fallbackVenues,
-      marketReality: '정보 부족 - AI 분석 재시도 필요',
+      marketReality: '',
       metadata: {
         calculatedAt: new Date().toISOString(),
         source: 'fallback',
         totalBudget: totalBudgetNum,
         venueCount: fallbackVenues.length,
         hasRealData: false,
-        errorReason: 'AI API 호출 실패'
       }
     };
   }
 
   static async getMoneyRecommendation(eventType, relationshipType, intimacyLevel, additionalInfo = '') {
+    const prompt = this.createMoneyRecommendationPrompt(
+      eventType, relationshipType, intimacyLevel, additionalInfo
+    );
+
+    const systemPrompt =
+      `당신은 한국의 경조사 예절과 축의금 문화에 대한 전문가입니다.\n` +
+      `사용자의 상황에 맞는 적절한 축의금을 추천해주세요.\n\n` +
+      `응답은 반드시 다음과 같은 JSON 형태로만 제공하고, 다른 텍스트는 절대 포함하지 마세요:\n` +
+      `{"recommendedAmount": 100000, "minAmount": 80000, "maxAmount": 120000, "reasoning": "추천 이유", "tips": ["팁1", "팁2", "팁3"]}\n\n` +
+      `주의사항:\n` +
+      `- JSON 외의 다른 텍스트 절대 금지\n` +
+      `- 마크다운이나 코드블록 사용 금지\n` +
+      `- 모든 금액은 숫자로만 표기\n` +
+      `- 짝수 금액으로 추천 (20,000원 단위)`;
+
+    const result = await callAiMoney({ prompt, systemPrompt });
+
+    if (isInsufficientBalance(result)) {
+      throw new InsufficientCreditError(result.balance);
+    }
+
+    if (!result?.success || !result.content) {
+      console.error('축의금 AI 호출 실패:', result?.error);
+      return this.getFallbackRecommendation(eventType, relationshipType, intimacyLevel);
+    }
+
     try {
-      const prompt = this.createMoneyRecommendationPrompt(
-        eventType, 
-        relationshipType, 
-        intimacyLevel, 
-        additionalInfo
-      );
-
-      console.log('DeepSeek API 호출 시작...');
-
-      const response = await fetch(DEEPSEEK_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'deepseek-r1',
-          messages: [
-            {
-              role: 'system',
-              content: `당신은 한국의 경조사 예절과 축의금 문화에 대한 전문가입니다. 
-              사용자의 상황에 맞는 적절한 축의금을 추천해주세요. 
-              
-              응답은 반드시 다음과 같은 JSON 형태로만 제공하고, 다른 텍스트는 절대 포함하지 마세요:
-              {"recommendedAmount": 100000, "minAmount": 80000, "maxAmount": 120000, "reasoning": "추천 이유를 한국어로 설명", "tips": ["팁1", "팁2", "팁3"]}
-              
-              주의사항:
-              - JSON 외의 다른 텍스트 절대 금지
-              - 마크다운이나 코드블록 사용 금지
-              - 모든 금액은 숫자로만 표기 (쉼표나 원 단위 제외)
-              - 짝수 금액으로 추천 (20,000원 단위)`
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 500,
-          temperature: 0.1,
-          stream: false
-        })
-      });
-
-      console.log('API 응답 상태:', response.status);
-
-      if (!response.ok) {
-        console.error(`DeepSeek API Error: ${response.status}`);
-        throw new Error(`DeepSeek API Error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('API 응답 데이터:', data);
-
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error('잘못된 API 응답 형식');
-      }
-
-      const content = data.choices[0].message.content.trim();
-      console.log('API 응답 내용:', content);
-      
-      // JSON 파싱 시도
-      try {
-        // 응답에서 JSON 부분만 추출
-        const jsonMatch = content.match(/\{.*\}/s);
-        if (!jsonMatch) {
-          throw new Error('JSON 형식을 찾을 수 없음');
-        }
-
-        const jsonString = jsonMatch[0];
-        console.log('추출된 JSON 문자열:', jsonString);
-        
-        const result = JSON.parse(jsonString);
-        console.log('파싱된 결과:', result);
-        
-        // 결과 검증 및 보정
-        return this.validateAndCorrectResult(result, eventType);
-      } catch (parseError) {
-        console.error('JSON 파싱 오류:', parseError);
-        console.error('원본 응답:', content);
-        // 파싱 실패 시 기본값 반환
-        return this.getFallbackRecommendation(eventType, relationshipType, intimacyLevel);
-      }
-
-    } catch (error) {
-      console.error('DeepSeek API 호출 오류:', error);
-      // API 호출 실패 시 기본값 반환
+      const content = String(result.content).trim();
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('JSON 형식을 찾을 수 없음');
+      const parsed = JSON.parse(jsonMatch[0]);
+      const validated = this.validateAndCorrectResult(parsed, eventType);
+      return {
+        ...validated,
+        __credit: { usedFree: !!result.usedFree, balance: result.balance ?? 0 },
+      };
+    } catch (parseError) {
+      console.error('축의금 JSON 파싱 오류:', parseError);
       return this.getFallbackRecommendation(eventType, relationshipType, intimacyLevel);
     }
   }

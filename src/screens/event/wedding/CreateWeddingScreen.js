@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, KeyboardAvoidingView, Platform, Image,
-  Dimensions, Modal, Animated, Easing, FlatList,
+  Dimensions, Modal, Animated, Easing, FlatList, DeviceEventEmitter,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -239,18 +239,33 @@ const TEMPLATES = [
     features: ['콜라주 갤러리', '웜톤 디자인', '빈티지 감성'],
   },
   {
-    id: 'elegant-garden', name: '오로라 블랙',
-    description: '고급스러운 오로라 스타일',
-    preview: require('../../../../assets/images/aa1.png'),
-    style: 'elegant-garden',
-    features: ['오로라 효과', '글래스모피즘', '프리미엄'],
-  },
-  {
     id: 'classic-elegant', name: '클래식 엘레강스',
     description: '프리미엄 호텔 예식 스타일',
     preview: require('../../../../assets/images/aa1.png'),
     style: 'classic-elegant',
     features: ['클래식', '화이트 톤', '호텔 예식'],
+  },
+  {
+    id: 'ticket-flight', name: '러브 티켓',
+    description: '밀어서 탑승하는 비행 티켓 컨셉',
+    preview: require('../../../../assets/images/aa2.png'),
+    style: 'ticket-flight',
+    features: ['티켓 테마', '인트로 인터랙션', '폭죽 애니메이션'],
+  },
+  {
+    id: 'cinema-romance', name: '시네마 로맨스',
+    description: '클래퍼보드를 눌러 시작하는 영화 컨셉',
+    preview: require('../../../../assets/images/aa1.png'),
+    style: 'cinema-romance',
+    features: ['클래퍼보드', '영화 포스터', '다크 골드'],
+  },
+  {
+    id: 'elegant-garden', name: '오로라 블랙',
+    description: '준비중입니다',
+    preview: require('../../../../assets/images/aa1.png'),
+    style: 'elegant-garden',
+    features: ['준비중'],
+    disabled: true,
   },
   {
     id: 'romantic-arch', name: '로맨틱 아치',
@@ -827,6 +842,18 @@ export default function CreateWeddingScreen({ navigation, route }) {
   const [showAddressSearch, setShowAddressSearch] = useState(false);
   const [showTemplatePreview, setShowTemplatePreview] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState(null);
+  // 러브 티켓 템플릿의 탑승 완료 여부 — 탑승 후에만 음악/꽃잎 버튼 노출
+  const [ticketFlightBoarded, setTicketFlightBoarded] = useState(false);
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('ticket-flight-boarded', (v) => {
+      setTicketFlightBoarded(!!v);
+    });
+    return () => sub.remove();
+  }, []);
+  // 프리뷰 닫히면 초기화
+  useEffect(() => {
+    if (!showTemplatePreview) setTicketFlightBoarded(false);
+  }, [showTemplatePreview]);
   const [showMusicModal, setShowMusicModal] = useState(false);
   const [templateMusicMap, setTemplateMusicMap] = useState({}); // { templateId: { id, name } }
   const [currentPreviewMusicId, setCurrentPreviewMusicId] = useState('none');
@@ -1262,9 +1289,9 @@ export default function CreateWeddingScreen({ navigation, route }) {
     setCurrentPreviewPetalSpeed(savedPetal?.speed || 'normal');
     setCurrentPreviewPetalQty(savedPetal?.qty || 'normal');
     setCurrentPreviewPetalColor(savedPetal?.color || 'pink');
-    // 웜 오렌지(vintage-app)는 자체 당근 알림 인트로가 있어 외부 인트로 오버레이 강제 비활성화
-    const isVintageApp = tpl.id === 'vintage-app';
-    const savedIntro = isVintageApp ? null : templateIntroMap[tpl.id];
+    // 웜 오렌지·시네마 로맨스는 자체 인트로가 있어 외부 인트로 오버레이 강제 비활성화
+    const hasOwnIntro = tpl.id === 'vintage-app' || tpl.id === 'cinema-romance';
+    const savedIntro = hasOwnIntro ? null : templateIntroMap[tpl.id];
     setCurrentPreviewIntroId(savedIntro?.id || 'none');
     setPreviewTemplate(tpl);
     if (savedIntro?.id) {
@@ -1944,40 +1971,44 @@ export default function CreateWeddingScreen({ navigation, route }) {
                 <Ionicons name="close" size={19} color="#fff" />
               </TouchableOpacity>
 
-              {/* 음악 */}
-              <TouchableOpacity
-                ref={previewMusicBtnRef}
-                style={[s.previewCtrlBtn, isPlaying && s.previewCtrlBtnMusic]}
-                onPress={() => setShowMusicModal(true)}
-                activeOpacity={0.8}
-                onLayout={() => {
-                  previewMusicBtnRef.current?.measureInWindow((x, y, w, h) => {
-                    if (w > 0 && h > 0) registerTarget('previewMusicBtn', { x, y, width: w, height: h });
-                  });
-                }}
-              >
-                <Ionicons name={isPlaying ? 'musical-notes' : 'musical-note'} size={17} color="#fff" />
-              </TouchableOpacity>
+              {/* 음악 — 러브 티켓은 탑승 완료 후에만 노출 */}
+              {(previewTemplate?.id !== 'ticket-flight' || ticketFlightBoarded) && (
+                <TouchableOpacity
+                  ref={previewMusicBtnRef}
+                  style={[s.previewCtrlBtn, isPlaying && s.previewCtrlBtnMusic]}
+                  onPress={() => setShowMusicModal(true)}
+                  activeOpacity={0.8}
+                  onLayout={() => {
+                    previewMusicBtnRef.current?.measureInWindow((x, y, w, h) => {
+                      if (w > 0 && h > 0) registerTarget('previewMusicBtn', { x, y, width: w, height: h });
+                    });
+                  }}
+                >
+                  <Ionicons name={isPlaying ? 'musical-notes' : 'musical-note'} size={17} color="#fff" />
+                </TouchableOpacity>
+              )}
 
-              {/* 꽃잎 */}
-              <TouchableOpacity
-                ref={previewPetalBtnRef}
-                style={[s.previewCtrlBtn, currentPreviewPetalId !== 'none' && s.previewCtrlBtnPetal]}
-                onPress={() => setShowPetalModal(true)}
-                activeOpacity={0.8}
-                onLayout={() => {
-                  previewPetalBtnRef.current?.measureInWindow((x, y, w, h) => {
-                    if (w > 0 && h > 0) registerTarget('previewPetalBtn', { x, y, width: w, height: h });
-                  });
-                }}
-              >
-                <Text style={{ fontSize: 16, lineHeight: 20 }}>
-                  {currentPreviewPetalId !== 'none' ? PETAL_EFFECTS.find(p => p.id === currentPreviewPetalId)?.emoji : '✨'}
-                </Text>
-              </TouchableOpacity>
+              {/* 꽃잎 — 러브 티켓은 탑승 완료 후에만 노출 */}
+              {(previewTemplate?.id !== 'ticket-flight' || ticketFlightBoarded) && (
+                <TouchableOpacity
+                  ref={previewPetalBtnRef}
+                  style={[s.previewCtrlBtn, currentPreviewPetalId !== 'none' && s.previewCtrlBtnPetal]}
+                  onPress={() => setShowPetalModal(true)}
+                  activeOpacity={0.8}
+                  onLayout={() => {
+                    previewPetalBtnRef.current?.measureInWindow((x, y, w, h) => {
+                      if (w > 0 && h > 0) registerTarget('previewPetalBtn', { x, y, width: w, height: h });
+                    });
+                  }}
+                >
+                  <Text style={{ fontSize: 16, lineHeight: 20 }}>
+                    {currentPreviewPetalId !== 'none' ? PETAL_EFFECTS.find(p => p.id === currentPreviewPetalId)?.emoji : '✨'}
+                  </Text>
+                </TouchableOpacity>
+              )}
 
-              {/* 인트로 — 웜 오렌지(vintage-app)는 자체 당근 알림 인트로가 있어 별도 선택 불가 */}
-              {previewTemplate?.id !== 'vintage-app' && (
+              {/* 인트로 — 웜 오렌지·러브 티켓·시네마 로맨스는 자체 인트로가 있어 별도 선택 불가 */}
+              {previewTemplate?.id !== 'vintage-app' && previewTemplate?.id !== 'ticket-flight' && previewTemplate?.id !== 'cinema-romance' && (
                 <TouchableOpacity
                   ref={previewIntroBtnRef}
                   style={[s.previewCtrlBtn, currentPreviewIntroId !== 'none' && s.previewCtrlBtnIntro]}

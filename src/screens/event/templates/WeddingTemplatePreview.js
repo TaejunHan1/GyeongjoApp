@@ -12,6 +12,8 @@ import ElegantGardenTemplate from './wedding/ElegantGardenTemplate';
 import ClassicElegantTemplate from './wedding/ClassicElegantTemplate';
 import RomanticArchTemplate from './wedding/RomanticArchTemplate';
 import EditorialMagazineTemplate from './wedding/EditorialMagazineTemplate';
+import TicketFlightTemplate from './wedding/TicketFlightTemplate';
+import CinemaTemplate from './wedding/CinemaTemplate';
 
 // 메인 렌더링 컴포넌트
 export default function WeddingTemplatePreview({
@@ -60,6 +62,10 @@ export default function WeddingTemplatePreview({
       return <ElegantGardenTemplate {...commonProps} />;
     case 'classic-elegant':
       return <ClassicElegantTemplate {...commonProps} />;
+    case 'ticket-flight':
+      return <TicketFlightTemplate {...commonProps} />;
+    case 'cinema-romance':
+      return <CinemaTemplate {...commonProps} />;
     case 'romantic-arch':
       return <RomanticArchTemplate {...commonProps} />;
     case 'editorial-magazine':

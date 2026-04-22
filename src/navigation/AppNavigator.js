@@ -13,6 +13,9 @@ import MyEventsScreen from '../screens/main/MyEventsScreen';
 import GuideScreen from '../screens/main/GuideScreenToss'; // 토스 스타일
 import BenefitsScreen from '../screens/main/BenefitsScreen'; // 🆕 혜택 화면
 import ProfileScreen from '../screens/main/ProfileScreen';
+import CreditScreen from '../screens/main/CreditScreen';
+import TermsScreen from '../screens/legal/TermsScreen';
+import PrivacyScreen from '../screens/legal/PrivacyScreen';
 import CreateEventScreen from '../screens/event/CreateEventScreen';
 
 // 🆕 새로 추가된 결혼식 전용 스크린
@@ -39,12 +42,7 @@ import WeddingPrepGuideScreen from '../screens/main/guides/host/WeddingPrepGuide
 import FuneralPrepGuideScreen from '../screens/main/guides/host/FuneralPrepGuideScreen';
 import BudgetCalculatorScreen from '../screens/main/guides/host/BudgetCalculatorScreen';
 import VendorListScreen from '../screens/main/guides/host/VendorListScreen';
-import ChecklistManagerScreen from '../screens/main/guides/host/ChecklistManagerScreen';
-import TimelineScreen from '../screens/main/guides/host/TimelineScreen';
-import HostFAQScreen from '../screens/main/guides/host/HostFAQScreen';
-
-// 🆕 참여자용 FAQ 화면
-import ParticipantFAQScreen from '../screens/main/guides/participant/ParticipantFAQScreen';
+import FAQScreen from '../screens/main/guides/FAQScreen';
 
 import SettingsScreen from '../screens/main/SettingsScreen';
 import ContributionSettingsScreen from '../screens/main/ContributionSettingsScreen';
@@ -197,6 +195,9 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
         screenOptions={{
           headerShown: false,
           gestureEnabled: true,
+          headerBackTitleVisible: false,
+          headerBackTitle: '',
+          headerBackButtonDisplayMode: 'minimal',
         }}
       >
         <Stack.Screen name="MainTabs">
@@ -587,90 +588,12 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
           )}
         </Stack.Screen>
 
-        <Stack.Screen 
-          name="ChecklistManager" 
-          options={{
-            headerShown: true,
-            title: '체크리스트 관리',
-            headerStyle: {
-              backgroundColor: Colors.white,
-              borderBottomWidth: 1,
-              borderBottomColor: Colors.gray100,
-            },
-            headerTitleStyle: {
-              fontSize: 18,
-              fontWeight: '600',
-              color: Colors.textPrimary,
-            },
-            headerTintColor: Colors.textPrimary,
-          }}
-        >
-          {(props) => (
-            <ChecklistManagerScreen 
-              {...props} 
-              userInfo={userInfo}
-              session={session}
-            />
-          )}
-        </Stack.Screen>
-
-        <Stack.Screen 
-          name="Timeline" 
-          options={{
-            headerShown: true,
-            title: '준비 타임라인',
-            headerStyle: {
-              backgroundColor: Colors.white,
-              borderBottomWidth: 1,
-              borderBottomColor: Colors.gray100,
-            },
-            headerTitleStyle: {
-              fontSize: 18,
-              fontWeight: '600',
-              color: Colors.textPrimary,
-            },
-            headerTintColor: Colors.textPrimary,
-          }}
-        >
-          {(props) => (
-            <TimelineScreen 
-              {...props} 
-              userInfo={userInfo}
-              session={session}
-            />
-          )}
-        </Stack.Screen>
-
-        {/* 🆕 FAQ 화면들 */}
-        <Stack.Screen 
-          name="HostFAQ" 
-          options={{
-            headerShown: false,
-          }}
-        >
-          {(props) => (
-            <HostFAQScreen 
-              {...props} 
-              userInfo={userInfo}
-              session={session}
-            />
-          )}
-        </Stack.Screen>
-
-        <Stack.Screen 
-          name="ParticipantFAQ" 
-          options={{
-            headerShown: false,
-          }}
-        >
-          {(props) => (
-            <ParticipantFAQScreen 
-              {...props} 
-              userInfo={userInfo}
-              session={session}
-            />
-          )}
-        </Stack.Screen>
+        {/* 통합 FAQ — route.params.role 로 주최자/참여자 분기 */}
+        <Stack.Screen
+          name="FAQ"
+          component={FAQScreen}
+          options={{ headerShown: false }}
+        />
 
         {/* 설정 관련 화면들 */}
         <Stack.Screen 
@@ -798,14 +721,33 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
           }}
         >
           {(props) => (
-            <FuneralVenueListScreen 
-              {...props} 
+            <FuneralVenueListScreen
+              {...props}
               userInfo={userInfo}
               session={session}
               isAuthenticated={isAuthenticated}
             />
           )}
         </Stack.Screen>
+
+        {/* 알림톡 크레딧 */}
+        <Stack.Screen
+          name="Credit"
+          options={{ headerShown: false }}
+        >
+          {(props) => (
+            <CreditScreen
+              {...props}
+              userInfo={userInfo}
+              session={session}
+              isAuthenticated={isAuthenticated}
+            />
+          )}
+        </Stack.Screen>
+
+        {/* 이용약관 / 개인정보 처리방침 */}
+        <Stack.Screen name="Terms" component={TermsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="Privacy" component={PrivacyScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -11,12 +11,11 @@ import {
   Platform,
   StatusBar as RNStatusBar,
   BackHandler,
-  Modal,
-  Animated,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { getAiStatus, AI_COST } from '../../lib/aiCredit';
 
 const { width } = Dimensions.get('window');
 const STATUSBAR_HEIGHT = Platform.OS === 'ios' ? 44 : RNStatusBar.currentHeight || 24;
@@ -49,14 +48,72 @@ const TossColors = {
   error: '#FF5A5F',
 };
 
+// 크레딧 뱃지 컴포넌트
+function CreditBadge({ balance, onPress, compact }) {
+  const low = balance <= 2;
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      style={[
+        creditBadgeStyles.wrap,
+        low && creditBadgeStyles.wrapLow,
+        compact && creditBadgeStyles.wrapCompact,
+      ]}
+    >
+      <Ionicons
+        name="diamond-outline"
+        size={compact ? 13 : 14}
+        color={low ? TossColors.error : TossColors.primary}
+      />
+      <Text style={[creditBadgeStyles.text, low && creditBadgeStyles.textLow]}>
+        {balance}
+      </Text>
+      {!compact && (
+        <Text style={[creditBadgeStyles.sub, low && creditBadgeStyles.textLow]}>
+          크레딧
+        </Text>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+const creditBadgeStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: TossColors.primaryLight,
+    borderRadius: 14,
+  },
+  wrapCompact: { paddingHorizontal: 8, paddingVertical: 4 },
+  wrapLow: { backgroundColor: '#FFEDED' },
+  text: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TossColors.primary,
+  },
+  sub: {
+    fontSize: 11,
+    color: TossColors.primary,
+    fontWeight: '500',
+  },
+  textLow: { color: TossColors.error },
+});
+
 export default function GuideScreenToss({ navigation, userInfo, session, isAuthenticated }) {
   const [selectedUserType, setSelectedUserType] = useState(null);
-  const [showPreparingModal, setShowPreparingModal] = useState(false);
-  const [modalAnimation] = useState(new Animated.Value(0));
   const [displayedHostFAQ, setDisplayedHostFAQ] = useState([]);
   const [displayedParticipantFAQ, setDisplayedParticipantFAQ] = useState([]);
   const [currentHostTip, setCurrentHostTip] = useState('');
   const [currentParticipantTip, setCurrentParticipantTip] = useState('');
+  const [aiStatus, setAiStatus] = useState({
+    balance: 0,
+    budgetFreeAvailable: true,
+    moneyFreeAvailable: true,
+  });
 
   // 주최자 꿀팁 데이터
   const hostTips = [
@@ -101,6 +158,14 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
   };
 
 
+  // 다른 탭으로 이동하면 역할 선택 화면으로 리셋 (blur 이벤트만 사용 — focus 루프 방지)
+  useEffect(() => {
+    const unsub = navigation.addListener('blur', () => {
+      setSelectedUserType(null);
+    });
+    return unsub;
+  }, [navigation]);
+
   // 화면 포커스 시 랜덤 데이터 생성 및 하드웨어 뒤로가기 처리
   useFocusEffect(
     React.useCallback(() => {
@@ -123,6 +188,17 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
       
       setCurrentHostTip(randomHostTip);
       setCurrentParticipantTip(randomParticipantTip);
+
+      // AI 크레딧 상태 로드
+      getAiStatus().then((status) => {
+        if (status?.success) {
+          setAiStatus({
+            balance: status.balance,
+            budgetFreeAvailable: status.budgetFreeAvailable,
+            moneyFreeAvailable: status.moneyFreeAvailable,
+          });
+        }
+      });
 
       // Android에서만 동작하는 하드웨어 뒤로가기 버튼 처리
       if (Platform.OS === 'android') {
@@ -182,15 +258,9 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
       subtitle: 'AI 예산 추천',
       icon: 'calculator-outline',
       screen: 'BudgetCalculator',
-      isPreparing: true,
-    },
-    {
-      id: 'vendor-list',
-      title: '업체 찾기',
-      subtitle: '검증된 파트너사',
-      icon: 'business-outline',
-      screen: 'VendorList',
-      isPreparing: true,
+      isAi: true,
+      aiFeature: 'budget',
+      aiCost: AI_COST.budget,
     },
   ];
 
@@ -202,7 +272,9 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
       subtitle: 'AI가 추천하는 적정 금액',
       icon: 'cash-outline',
       screen: 'MoneyGuide',
-      isPopular: true,
+      isAi: true,
+      aiFeature: 'money',
+      aiCost: AI_COST.money,
     },
     {
       id: 'manner',
@@ -217,14 +289,6 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
       subtitle: '꼭 알아야 할 예절',
       icon: 'book-outline',
       screen: 'EtiquetteGuide',
-    },
-    {
-      id: 'service',
-      title: '추천 서비스',
-      subtitle: '편리한 서비스 모음',
-      icon: 'sparkles-outline',
-      screen: 'RecommendService',
-      isPreparing: true,
     },
   ];
 
@@ -406,38 +470,6 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
     },
   ];
 
-  // 인기 서비스 섹션 (하단 추가 콘텐츠)
-  const popularServices = [
-    {
-      title: '모바일 청첩장',
-      description: '카톡으로 간편하게',
-      icon: '📱',
-      badge: '준비중',
-      isPreparing: true,
-    },
-    {
-      title: '웨딩 사진 촬영',
-      description: '전문 작가 매칭',
-      icon: '📸',
-      badge: '준비중',
-      isPreparing: true,
-    },
-    {
-      title: '부조금 관리',
-      description: '자동 정산 서비스',
-      icon: '💳',
-      badge: '준비중',
-      isPreparing: true,
-    },
-    {
-      title: '화환/근조화환',
-      description: '당일 배송 가능',
-      icon: '🌸',
-      badge: '준비중',
-      isPreparing: true,
-    },
-  ];
-
   const handleUserTypeSelect = (userType) => {
     setSelectedUserType(userType);
   };
@@ -447,32 +479,7 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
   };
 
   const handleCategoryPress = (category) => {
-    // 준비중인 메뉴 체크 (예산 계산기, 업체 찾기)
-    if (category.id === 'budget-calc' || category.id === 'vendor-list') {
-      showModal();
-      return;
-    }
     navigation.navigate(category.screen);
-  };
-
-  const showModal = () => {
-    setShowPreparingModal(true);
-    Animated.spring(modalAnimation, {
-      toValue: 1,
-      tension: 65,
-      friction: 11,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const hideModal = () => {
-    Animated.timing(modalAnimation, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowPreparingModal(false);
-    });
   };
 
   // 사용자 타입 선택 화면 - 토스 스타일
@@ -484,6 +491,10 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
         {/* 헤더 - 토스 스타일 */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>경조사 가이드</Text>
+          <CreditBadge
+            balance={aiStatus.balance}
+            onPress={() => navigation.navigate('Credit')}
+          />
         </View>
 
         <ScrollView 
@@ -542,18 +553,29 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
             
             {/* 주최자 FAQ */}
             <View style={styles.faqTabSection}>
-              <Text style={styles.faqTabTitle}>👑 주최자 FAQ</Text>
-              <ScrollView 
-                horizontal 
+              <View style={styles.faqTabHeader}>
+                <Text style={styles.faqTabTitle}>👑 주최자 FAQ</Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('FAQ', { role: 'host' })}
+                  style={styles.faqMoreBtn}
+                >
+                  <Text style={styles.faqMoreText}>더 보기</Text>
+                  <Ionicons name="chevron-forward" size={14} color={TossColors.primary} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                horizontal
                 showsHorizontalScrollIndicator={false}
                 style={styles.quickScroll}
                 contentContainerStyle={styles.quickScrollContent}
               >
                 {displayedHostFAQ.map((item, index) => (
-                  <TouchableOpacity 
-                    key={index} 
+                  <TouchableOpacity
+                    key={index}
                     style={styles.quickCard}
                     activeOpacity={0.7}
+                    onPress={() => navigation.navigate('FAQ', { role: 'host' })}
                   >
                     <View style={styles.quickCardHeader}>
                       <Text style={styles.quickIcon}>{item.icon}</Text>
@@ -571,18 +593,29 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
 
             {/* 참여자 FAQ */}
             <View style={[styles.faqTabSection, { marginTop: 20 }]}>
-              <Text style={styles.faqTabTitle}>👥 참여자 FAQ</Text>
-              <ScrollView 
-                horizontal 
+              <View style={styles.faqTabHeader}>
+                <Text style={styles.faqTabTitle}>👥 참여자 FAQ</Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('FAQ', { role: 'participant' })}
+                  style={styles.faqMoreBtn}
+                >
+                  <Text style={styles.faqMoreText}>더 보기</Text>
+                  <Ionicons name="chevron-forward" size={14} color={TossColors.primary} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                horizontal
                 showsHorizontalScrollIndicator={false}
                 style={styles.quickScroll}
                 contentContainerStyle={styles.quickScrollContent}
               >
                 {displayedParticipantFAQ.map((item, index) => (
-                  <TouchableOpacity 
-                    key={index} 
+                  <TouchableOpacity
+                    key={index}
                     style={styles.quickCard}
                     activeOpacity={0.7}
+                    onPress={() => navigation.navigate('FAQ', { role: 'participant' })}
                   >
                     <View style={styles.quickCardHeader}>
                       <Text style={styles.quickIcon}>{item.icon}</Text>
@@ -596,46 +629,6 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-            </View>
-          </View>
-
-          {/* 인기 서비스 섹션 - 토스 스타일 */}
-          <View style={styles.servicesSection}>
-            <Text style={styles.servicesTitle}>인기 서비스</Text>
-            <View style={styles.servicesGrid}>
-              {popularServices.map((service, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.serviceItem,
-                    service.isPreparing && styles.serviceItemDisabled
-                  ]}
-                  activeOpacity={service.isPreparing ? 1 : 0.7}
-                  onPress={() => service.isPreparing && showModal()}
-                >
-                  <View style={styles.serviceIconContainer}>
-                    <Text style={styles.serviceIcon}>{service.icon}</Text>
-                    {service.badge && (
-                      <View style={[
-                        styles.serviceBadge,
-                        service.badge === 'HOT' && styles.hotBadge,
-                        service.badge === 'NEW' && styles.newBadge,
-                        service.badge === '준비중' && styles.preparingServiceBadge,
-                      ]}>
-                        <Text style={styles.serviceBadgeText}>{service.badge}</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={[
-                    styles.serviceTitle,
-                    service.isPreparing && styles.serviceTitleDisabled
-                  ]}>{service.title}</Text>
-                  <Text style={[
-                    styles.serviceDescription,
-                    service.isPreparing && styles.serviceDescriptionDisabled
-                  ]}>{service.description}</Text>
-                </TouchableOpacity>
-              ))}
             </View>
           </View>
 
@@ -663,58 +656,9 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       
-      {/* 준비중 모달 */}
-      <Modal
-        transparent={true}
-        visible={showPreparingModal}
-        onRequestClose={hideModal}
-        animationType="none"
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay} 
-          activeOpacity={1} 
-          onPress={hideModal}
-        >
-          <Animated.View 
-            style={[
-              styles.modalContainer,
-              {
-                opacity: modalAnimation,
-                transform: [{
-                  scale: modalAnimation.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.9, 1],
-                  }),
-                }],
-              },
-            ]}
-          >
-            <TouchableOpacity activeOpacity={1}>
-              <View style={styles.modalContent}>
-                <View style={styles.modalIconContainer}>
-                  <Ionicons name="construct-outline" size={48} color={TossColors.primary} />
-                </View>
-                <Text style={styles.modalTitle}>준비중이에요</Text>
-                <Text style={styles.modalDescription}>
-                  더 나은 서비스를 위해 열심히 준비하고 있어요.{'\n'}
-                  조금만 기다려주세요!
-                </Text>
-                <TouchableOpacity 
-                  style={styles.modalButton}
-                  onPress={hideModal}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.modalButtonText}>확인</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          </Animated.View>
-        </TouchableOpacity>
-      </Modal>
-      
       {/* 헤더 with 뒤로가기 - 토스 스타일 */}
       <View style={styles.headerWithBack}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={handleBackToSelection}
           activeOpacity={0.7}
@@ -722,7 +666,11 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
           <Ionicons name="arrow-back" size={24} color={TossColors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitleWithBack}>{currentTitle}</Text>
-        <View style={{ width: 24 }} />
+        <CreditBadge
+          balance={aiStatus.balance}
+          onPress={() => navigation.navigate('Credit')}
+          compact
+        />
       </View>
 
       <ScrollView 
@@ -775,6 +723,19 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
                         <Text style={styles.popularBadgeText}>인기</Text>
                       </View>
                     )}
+                    {category.isAi && !category.isPreparing && (() => {
+                      const free =
+                        (category.aiFeature === 'budget' && aiStatus.budgetFreeAvailable) ||
+                        (category.aiFeature === 'money'  && aiStatus.moneyFreeAvailable);
+                      return (
+                        <View style={[styles.aiBadge, free && styles.aiBadgeFree]}>
+                          <Text style={styles.aiBadgeIcon}>💎</Text>
+                          <Text style={[styles.aiBadgeText, free && styles.aiBadgeTextFree]}>
+                            {free ? '첫 회 무료' : `${category.aiCost} 크레딧`}
+                          </Text>
+                        </View>
+                      );
+                    })()}
                   </View>
                   <Text style={[
                     styles.menuSubtitle,
@@ -792,23 +753,40 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
         </View>
 
         {/* 추가 정보 카드 - 토스 스타일 */}
-        <View style={styles.bottomCard}>
+        <TouchableOpacity
+          style={styles.bottomCard}
+          activeOpacity={0.85}
+          onPress={() => {
+            // 카드 탭하면 꿀팁 새로고침
+            if (selectedUserType === 'host') {
+              setCurrentHostTip(hostTips[Math.floor(Math.random() * hostTips.length)]);
+            } else {
+              setCurrentParticipantTip(participantTips[Math.floor(Math.random() * participantTips.length)]);
+            }
+          }}
+        >
           <View style={styles.bottomCardHeader}>
             <Ionicons name="bulb-outline" size={20} color={TossColors.primary} />
             <Text style={styles.bottomCardTitle}>
               {selectedUserType === 'host' ? '준비 꿀팁' : '참석 꿀팁'}
             </Text>
+            <View style={{ flex: 1 }} />
+            <Text style={styles.bottomCardRefreshHint}>탭하면 새 팁</Text>
           </View>
           <Text style={styles.bottomCardText}>
-            {selectedUserType === 'host' 
+            {selectedUserType === 'host'
               ? currentHostTip
               : currentParticipantTip}
           </Text>
-          <TouchableOpacity style={styles.bottomCardButton} activeOpacity={0.7}>
-            <Text style={styles.bottomCardButtonText}>더 알아보기</Text>
+          <TouchableOpacity
+            style={styles.bottomCardButton}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('FAQ', { role: selectedUserType })}
+          >
+            <Text style={styles.bottomCardButtonText}>FAQ 전체 보기</Text>
             <Ionicons name="arrow-forward" size={16} color={TossColors.primary} />
           </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -825,12 +803,14 @@ const styles = StyleSheet.create({
   // 헤더 - 토스 스타일
   header: {
     height: 56,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 20,
     backgroundColor: TossColors.background,
     borderBottomWidth: 1,
     borderBottomColor: TossColors.border,
-    marginTop: Platform.OS === 'ios' ? 0 : STATUSBAR_HEIGHT, // SafeAreaView가 iOS 상단 처리
+    marginTop: Platform.OS === 'ios' ? 0 : STATUSBAR_HEIGHT,
   },
   headerTitle: {
     fontSize: 17,
@@ -952,12 +932,29 @@ const styles = StyleSheet.create({
   faqTabSection: {
     marginTop: 8,
   },
+  faqTabHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
   faqTabTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: TossColors.text.primary,
-    paddingHorizontal: 20,
-    marginBottom: 12,
+  },
+  faqMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+  },
+  faqMoreText: {
+    fontSize: 12,
+    color: TossColors.primary,
+    fontWeight: '600',
   },
   quickScroll: {
     paddingLeft: 20,
@@ -1184,7 +1181,33 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: TossColors.background,
   },
-  
+
+  // AI 크레딧 뱃지
+  aiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: TossColors.primaryLight,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  aiBadgeFree: {
+    backgroundColor: '#E9F8F0',
+  },
+  aiBadgeIcon: {
+    fontSize: 10,
+  },
+  aiBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: TossColors.primary,
+    letterSpacing: -0.2,
+  },
+  aiBadgeTextFree: {
+    color: TossColors.success,
+  },
+
   // 준비중 스타일
   preparingBadge: {
     backgroundColor: TossColors.gray[300],
@@ -1282,6 +1305,11 @@ const styles = StyleSheet.create({
     color: TossColors.text.primary,
     letterSpacing: -0.2,
     marginLeft: 8,
+  },
+  bottomCardRefreshHint: {
+    fontSize: 11,
+    color: TossColors.text.tertiary,
+    fontWeight: '500',
   },
   bottomCardText: {
     fontSize: 14,

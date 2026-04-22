@@ -16,7 +16,9 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../../../styles/constants';
-import { DeepSeekService } from '../../../../lib/deepseekService';
+import { DeepSeekService, InsufficientCreditError } from '../../../../lib/deepseekService';
+import { getAiStatus, AI_COST } from '../../../../lib/aiCredit';
+import AiLoadingOverlay from '../../../../components/AiLoadingOverlay';
 
 const { width } = Dimensions.get('window');
 
@@ -33,6 +35,7 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
   const [location, setLocation] = useState('seoul');
   const [recommendedVenues, setRecommendedVenues] = useState([]);
   const [marketReality, setMarketReality] = useState('');
+  const [aiStatus, setAiStatus] = useState({ balance: 0, budgetFreeAvailable: true });
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -40,6 +43,20 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
       duration: 600,
       useNativeDriver: true,
     }).start();
+  }, []);
+
+  // AI 크레딧 상태 로드
+  React.useEffect(() => {
+    let cancelled = false;
+    getAiStatus().then((status) => {
+      if (!cancelled && status?.success) {
+        setAiStatus({
+          balance: status.balance,
+          budgetFreeAvailable: status.budgetFreeAvailable,
+        });
+      }
+    });
+    return () => { cancelled = true; };
   }, []);
 
   // 결혼식 예산 항목들
@@ -208,6 +225,14 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
       setAiConfidence(aiResult.confidence);
       setShowAIRecommendation(true);
 
+      // AI 상태 즉시 반영 (무료 체험 소진 / 잔액 변화)
+      if (aiResult.__credit) {
+        setAiStatus({
+          balance: aiResult.__credit.balance ?? 0,
+          budgetFreeAvailable: false,
+        });
+      }
+
       // 성공 메시지
       Alert.alert(
         '🤖 DeepSeek AI 예산 계산 완료',
@@ -217,51 +242,53 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
 
     } catch (error) {
       console.error('🔴 DeepSeek AI 예산 계산 오류:', error);
-      
-      // 에러 종류에 따른 상세 메시지
+
+      // 크레딧 부족 → 충전 유도
+      if (error instanceof InsufficientCreditError || error?.code === 'insufficient_balance') {
+        setIsCalculating(false);
+        Alert.alert(
+          '크레딧이 부족해요',
+          `AI 예산 계산은 크레딧 ${AI_COST.budget}건이 필요해요.\n현재 잔액: ${error.balance ?? 0}건`,
+          [
+            { text: '취소', style: 'cancel' },
+            { text: '충전하러 가기', onPress: () => navigation?.navigate('Credit') },
+          ]
+        );
+        return;
+      }
+
+      // 일반 에러 메시지 분기
       let errorTitle = 'AI 계산 오류';
       let errorMessage = 'AI 예산 계산에 실패했습니다. 다시 시도해주세요.';
-      
-      if (error.message.includes('Network')) {
+      const msg = error?.message || '';
+      if (msg.includes('Network')) {
         errorTitle = '인터넷 연결 오류';
         errorMessage = '인터넷 연결을 확인하고 다시 시도해주세요.';
-      } else if (error.message.includes('API Error')) {
+      } else if (msg.includes('API') || msg.includes('upstream')) {
         errorTitle = 'AI 서비스 오류';
         errorMessage = 'AI 서비스에 일시적 문제가 있습니다. 잠시 후 다시 시도해주세요.';
-      } else if (error.message.includes('JSON')) {
+      } else if (msg.includes('JSON')) {
         errorTitle = 'AI 응답 처리 오류';
         errorMessage = 'AI 응답을 처리하는 중 문제가 발생했습니다. 다시 시도해주세요.';
       }
-      
-      // 에러 시에도 기본 결과는 표시 (fallback이 작동했을 경우)
+
       if (error.fallbackResult) {
-        console.log('🔄 기본값 결과 사용:', error.fallbackResult);
         setBudgetItems(error.fallbackResult.budgetItems || {});
         setAiInsights(error.fallbackResult.insights || []);
         setAiConfidence(error.fallbackResult.confidence || 65);
         setRecommendedVenues(error.fallbackResult.recommendedVenues || []);
-        setMarketReality(error.fallbackResult.marketReality || '정보 부족');
+        setMarketReality(error.fallbackResult.marketReality || '');
         setShowAIRecommendation(true);
       }
-      
-      // 에러 알림
-      Alert.alert(
-        errorTitle,
-        errorMessage,
-        [
-          { text: '확인', style: 'default' },
-          { 
-            text: '다시 시도', 
-            onPress: () => {
-              // 잠시 후 자동 재시도
-              setTimeout(() => {
-                calculateAIRecommendation();
-              }, 1000);
-            },
-            style: 'cancel' 
-          }
-        ]
-      );
+
+      Alert.alert(errorTitle, errorMessage, [
+        { text: '확인', style: 'default' },
+        {
+          text: '다시 시도',
+          onPress: () => setTimeout(() => calculateAIRecommendation(), 1000),
+          style: 'cancel',
+        },
+      ]);
     } finally {
       setIsCalculating(false);
     }
@@ -448,7 +475,11 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
               <Ionicons name="bulb" size={20} color={Colors.white} />
             )}
             <Text style={styles.aiButtonText}>
-              {isCalculating ? 'AI 계산 중...' : 'AI 추천 예산 계산하기'}
+              {isCalculating
+                ? 'AI 계산 중...'
+                : aiStatus.budgetFreeAvailable
+                  ? 'AI 추천 예산 계산하기 (무료 체험)'
+                  : `AI 추천 예산 계산하기 (${AI_COST.budget} 크레딧)`}
             </Text>
           </TouchableOpacity>
         </View>
@@ -590,7 +621,7 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
             )}
 
             {/* 시장 현실성 평가 - 개선된 버전 */}
-            {marketReality && marketReality !== '정보 부족' && (
+            {marketReality && marketReality.length > 0 && (
               <View style={styles.marketCard}>
                 <View style={styles.marketHeader}>
                   <View style={[styles.marketIcon, {
@@ -771,7 +802,7 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
                       <View key={item.id} style={styles.budgetItem}>
                         <View style={styles.budgetItemHeader}>
                           <Text style={styles.budgetItemName}>{item.name}</Text>
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             style={styles.editButton}
                             onPress={() => {
                               Alert.prompt(
@@ -779,17 +810,18 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
                                 `${item.name} 예산을 입력하세요 (원)`,
                                 [
                                   { text: '취소', style: 'cancel' },
-                                  { 
-                                    text: '확인', 
-                                    onPress: (value) => updateBudgetItem(item.id, value) 
+                                  {
+                                    text: '확인',
+                                    onPress: (value) => updateBudgetItem(item.id, value)
                                   }
                                 ],
                                 'plain-text',
                                 budgetItems[item.id]?.toString() || '0'
                               );
                             }}
+                            activeOpacity={0.7}
                           >
-                            <Ionicons name="pencil" size={16} color={Colors.primary} />
+                            <Text style={styles.editButtonText}>수정</Text>
                           </TouchableOpacity>
                         </View>
                         <Text style={styles.budgetItemDescription}>{item.description}</Text>
@@ -831,6 +863,18 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
         {/* 하단 여백 */}
         <View style={{ height: 100 }} />
       </Animated.ScrollView>
+
+      {/* AI 로딩 풀스크린 오버레이 */}
+      <AiLoadingOverlay
+        visible={isCalculating}
+        title="AI가 예산을 계산하고 있어요"
+        messages={[
+          '🤖 AI가 예산을 분석 중',
+          '🏢 지역 업체 정보를 조사 중',
+          '💰 항목별 금액을 산정 중',
+          '📋 맞춤 조언을 준비 중',
+        ]}
+      />
     </SafeAreaView>
   );
 }
@@ -1183,7 +1227,18 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   editButton: {
-    padding: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: Colors.primary + '12',
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+  },
+  editButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.primary,
+    letterSpacing: -0.2,
   },
   budgetItemDescription: {
     fontSize: 12,

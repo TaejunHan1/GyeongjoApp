@@ -87,7 +87,8 @@ export default function ElegantGardenTemplate({ eventData = {}, categorizedImage
   const insets = useSafeAreaInsets();
 
   // ── Intro state ──
-  const [showIntro, setShowIntro] = useState(true);
+  // 자체 인트로 제거 — 바로 본문 노출
+  const [showIntro, setShowIntro] = useState(false);
   const [showFlowers, setShowFlowers] = useState(false);
 
   // 꽃잎 지연 마운트 (이미지 먼저 렌더링 후)
@@ -96,10 +97,11 @@ export default function ElegantGardenTemplate({ eventData = {}, categorizedImage
     return () => clearTimeout(t);
   }, []);
   const introScale = useRef(new Animated.Value(1)).current;
-  const introOpacity = useRef(new Animated.Value(1)).current;
-  const mainScale = useRef(new Animated.Value(0.95)).current;
-  const mainOpacity = useRef(new Animated.Value(0)).current;
-  const bottomBarSlide = useRef(new Animated.Value(100)).current;
+  const introOpacity = useRef(new Animated.Value(0)).current;
+  // 자체 인트로 제거 — 메인 즉시 표시 (scale 1, opacity 1)
+  const mainScale = useRef(new Animated.Value(1)).current;
+  const mainOpacity = useRef(new Animated.Value(1)).current;
+  const bottomBarSlide = useRef(new Animated.Value(0)).current;
 
   // 인트로 콘텐츠 페이드인
   const introContentOpacity = useRef(new Animated.Value(0)).current;

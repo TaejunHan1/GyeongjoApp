@@ -10,6 +10,10 @@ import {
   Dimensions,
   Animated,
   Alert,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +25,10 @@ export default function FuneralPrepGuideScreen({ navigation, userInfo, session }
   const [fadeAnim] = useState(new Animated.Value(0));
   const [selectedPhase, setSelectedPhase] = useState('immediate');
   const [checkedItems, setCheckedItems] = useState({});
+  const [customItems, setCustomItems] = useState({});
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newItemTitle, setNewItemTitle] = useState('');
+  const [newItemDesc, setNewItemDesc] = useState('');
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -116,7 +124,56 @@ export default function FuneralPrepGuideScreen({ navigation, userInfo, session }
     }
   };
 
-  const currentChecklist = checklistData[selectedPhase] || [];
+  // 내 항목 추가
+  const addCustomItem = () => {
+    const title = newItemTitle.trim();
+    if (!title) {
+      Alert.alert('알림', '할 일 제목을 입력해주세요');
+      return;
+    }
+    const newItem = {
+      id: `custom_${Date.now()}`,
+      task: title,
+      description: newItemDesc.trim() || '직접 추가한 항목',
+      priority: 'medium',
+      estimated: '',
+      contact: '',
+      isCustom: true,
+    };
+    setCustomItems(prev => ({
+      ...prev,
+      [selectedPhase]: [...(prev[selectedPhase] || []), newItem],
+    }));
+    setNewItemTitle('');
+    setNewItemDesc('');
+    setShowAddModal(false);
+  };
+
+  const removeCustomItem = (itemId) => {
+    Alert.alert('삭제 확인', '이 항목을 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => {
+          setCustomItems(prev => ({
+            ...prev,
+            [selectedPhase]: (prev[selectedPhase] || []).filter(i => i.id !== itemId),
+          }));
+          setCheckedItems(prev => {
+            const copy = { ...prev };
+            delete copy[itemId];
+            return copy;
+          });
+        },
+      },
+    ]);
+  };
+
+  const currentChecklist = [
+    ...(checklistData[selectedPhase] || []),
+    ...(customItems[selectedPhase] || []),
+  ];
   const completedCount = currentChecklist.filter(item => checkedItems[item.id]).length;
   const totalCount = currentChecklist.length;
   const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
@@ -211,14 +268,26 @@ export default function FuneralPrepGuideScreen({ navigation, userInfo, session }
 
         {/* 체크리스트 */}
         <View style={styles.checklistSection}>
+          {/* 내 항목 추가 버튼 */}
+          <TouchableOpacity
+            style={styles.addCustomBtn}
+            onPress={() => setShowAddModal(true)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="add-circle-outline" size={18} color={Colors.primary} />
+            <Text style={styles.addCustomBtnText}>내 항목 추가하기</Text>
+          </TouchableOpacity>
+
           {currentChecklist.map((item) => (
             <TouchableOpacity
               key={item.id}
               style={[
                 styles.checklistItem,
-                checkedItems[item.id] && styles.checklistItemCompleted
+                checkedItems[item.id] && styles.checklistItemCompleted,
+                item.isCustom && styles.checklistItemCustom,
               ]}
               onPress={() => toggleCheckItem(item.id)}
+              onLongPress={item.isCustom ? () => removeCustomItem(item.id) : undefined}
               activeOpacity={0.8}
             >
               <View style={styles.checklistItemHeader}>
@@ -332,6 +401,70 @@ export default function FuneralPrepGuideScreen({ navigation, userInfo, session }
         {/* 하단 여백 */}
         <View style={{ height: 100 }} />
       </Animated.ScrollView>
+
+      {/* 내 항목 추가 모달 */}
+      <Modal
+        visible={showAddModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowAddModal(false)}
+          >
+            <TouchableOpacity activeOpacity={1} style={styles.modalSheet} onPress={() => {}}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>내 항목 추가</Text>
+              <Text style={styles.modalSub}>
+                {preparationPhases.find(p => p.id === selectedPhase)?.period} 에 추가됩니다
+              </Text>
+
+              <TextInput
+                style={styles.modalInput}
+                placeholder="할 일 제목"
+                placeholderTextColor={Colors.gray400}
+                value={newItemTitle}
+                onChangeText={setNewItemTitle}
+                maxLength={40}
+                autoFocus
+              />
+              <TextInput
+                style={[styles.modalInput, { height: 80, textAlignVertical: 'top' }]}
+                placeholder="설명 (선택)"
+                placeholderTextColor={Colors.gray400}
+                value={newItemDesc}
+                onChangeText={setNewItemDesc}
+                multiline
+                maxLength={120}
+              />
+
+              <View style={styles.modalBtnRow}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setShowAddModal(false)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.modalCancelText}>취소</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalConfirmBtn, !newItemTitle.trim() && { opacity: 0.5 }]}
+                  onPress={addCustomItem}
+                  disabled={!newItemTitle.trim()}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.modalConfirmText}>추가</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -670,5 +803,102 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#FFB800',
+  },
+
+  // 내 항목 추가 버튼 + 커스텀 아이템
+  addCustomBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    marginBottom: 12,
+    backgroundColor: Colors.primary + '10',
+  },
+  addCustomBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.primary,
+    letterSpacing: 0.2,
+  },
+  checklistItemCustom: {
+    borderColor: Colors.primary,
+    borderWidth: 1,
+  },
+
+  // 모달
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: Colors.gray200,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 18,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  modalSub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 18,
+  },
+  modalInput: {
+    backgroundColor: Colors.gray50,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 14,
+    color: Colors.textPrimary,
+    marginBottom: 10,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: Colors.gray100,
+    borderRadius: 12,
+  },
+  modalCancelText: {
+    color: Colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+  },
+  modalConfirmText: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

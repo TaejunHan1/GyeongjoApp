@@ -10,6 +10,10 @@ import {
   Dimensions,
   Animated,
   Alert,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +25,11 @@ export default function WeddingPrepGuideScreen({ navigation, userInfo, session }
   const [fadeAnim] = useState(new Animated.Value(0));
   const [selectedPeriod, setSelectedPeriod] = useState('6months');
   const [checkedItems, setCheckedItems] = useState({});
+  const [viewMode, setViewMode] = useState('checklist'); // 'checklist' | 'timeline'
+  const [customItems, setCustomItems] = useState({}); // { [periodId]: [items] }
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newItemTitle, setNewItemTitle] = useState('');
+  const [newItemDesc, setNewItemDesc] = useState('');
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -30,13 +39,13 @@ export default function WeddingPrepGuideScreen({ navigation, userInfo, session }
     }).start();
   }, []);
 
-  // 준비 기간별 체크리스트
+  // 준비 기간별 체크리스트 (타임라인 뷰 색상/아이콘 포함)
   const preparationPeriods = [
-    { id: '6months', label: '6개월 전', period: '6개월 전' },
-    { id: '3months', label: '3개월 전', period: '3개월 전' },
-    { id: '1month', label: '1개월 전', period: '1개월 전' },
-    { id: '1week', label: '1주일 전', period: '1주일 전' },
-    { id: 'day', label: '당일', period: '결혼식 당일' },
+    { id: '6months', label: '6개월 전', period: '6개월 전',  color: '#FF6B6B', icon: 'calendar-outline' },
+    { id: '3months', label: '3개월 전', period: '3개월 전',  color: '#FFB800', icon: 'card-outline' },
+    { id: '1month',  label: '1개월 전', period: '1개월 전',  color: '#26C976', icon: 'send-outline' },
+    { id: '1week',   label: '1주일 전', period: '1주일 전',  color: '#4A88FF', icon: 'checkmark-done-outline' },
+    { id: 'day',     label: '당일',     period: '결혼식 당일', color: '#9966FF', icon: 'heart-outline' },
   ];
 
   const checklistData = {
@@ -106,7 +115,55 @@ export default function WeddingPrepGuideScreen({ navigation, userInfo, session }
     }
   };
 
-  const currentChecklist = checklistData[selectedPeriod] || [];
+  // 내 항목 추가
+  const addCustomItem = () => {
+    const title = newItemTitle.trim();
+    if (!title) {
+      Alert.alert('알림', '할 일 제목을 입력해주세요');
+      return;
+    }
+    const newItem = {
+      id: `custom_${Date.now()}`,
+      task: title,
+      description: newItemDesc.trim() || '직접 추가한 항목',
+      priority: 'medium',
+      estimated: '',
+      isCustom: true,
+    };
+    setCustomItems(prev => ({
+      ...prev,
+      [selectedPeriod]: [...(prev[selectedPeriod] || []), newItem],
+    }));
+    setNewItemTitle('');
+    setNewItemDesc('');
+    setShowAddModal(false);
+  };
+
+  const removeCustomItem = (itemId) => {
+    Alert.alert('삭제 확인', '이 항목을 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => {
+          setCustomItems(prev => ({
+            ...prev,
+            [selectedPeriod]: (prev[selectedPeriod] || []).filter(i => i.id !== itemId),
+          }));
+          setCheckedItems(prev => {
+            const copy = { ...prev };
+            delete copy[itemId];
+            return copy;
+          });
+        },
+      },
+    ]);
+  };
+
+  const currentChecklist = [
+    ...(checklistData[selectedPeriod] || []),
+    ...(customItems[selectedPeriod] || []),
+  ];
   const completedCount = currentChecklist.filter(item => checkedItems[item.id]).length;
   const totalCount = currentChecklist.length;
   const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
@@ -130,31 +187,117 @@ export default function WeddingPrepGuideScreen({ navigation, userInfo, session }
           </Text>
         </View>
 
-        {/* 진행도 */}
-        <View style={styles.progressSection}>
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressTitle}>
-              {preparationPeriods.find(p => p.id === selectedPeriod)?.period} 준비사항
+        {/* 뷰 모드 토글 */}
+        <View style={styles.viewToggleWrap}>
+          <TouchableOpacity
+            style={[styles.viewToggleBtn, viewMode === 'checklist' && styles.viewToggleBtnActive]}
+            onPress={() => setViewMode('checklist')}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="checkmark-done-outline"
+              size={16}
+              color={viewMode === 'checklist' ? Colors.white : Colors.textSecondary}
+            />
+            <Text style={[styles.viewToggleText, viewMode === 'checklist' && styles.viewToggleTextActive]}>
+              체크리스트
             </Text>
-            <Text style={styles.progressText}>
-              {completedCount}/{totalCount} 완료
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.viewToggleBtn, viewMode === 'timeline' && styles.viewToggleBtnActive]}
+            onPress={() => setViewMode('timeline')}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="time-outline"
+              size={16}
+              color={viewMode === 'timeline' ? Colors.white : Colors.textSecondary}
+            />
+            <Text style={[styles.viewToggleText, viewMode === 'timeline' && styles.viewToggleTextActive]}>
+              타임라인
             </Text>
-          </View>
-          <View style={styles.progressBarContainer}>
-            <View style={styles.progressBarBackground}>
-              <View style={[
-                styles.progressBarFill,
-                { width: `${progressPercent}%` }
-              ]} />
-            </View>
-            <Text style={styles.progressPercent}>{Math.round(progressPercent)}%</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
-        {/* 기간 선택 탭 */}
+        {/* 진행도 (체크리스트 모드에서만) */}
+        {viewMode === 'checklist' && (
+          <View style={styles.progressSection}>
+            <View style={styles.progressHeader}>
+              <Text style={styles.progressTitle}>
+                {preparationPeriods.find(p => p.id === selectedPeriod)?.period} 준비사항
+              </Text>
+              <Text style={styles.progressText}>
+                {completedCount}/{totalCount} 완료
+              </Text>
+            </View>
+            <View style={styles.progressBarContainer}>
+              <View style={styles.progressBarBackground}>
+                <View style={[
+                  styles.progressBarFill,
+                  { width: `${progressPercent}%` }
+                ]} />
+              </View>
+              <Text style={styles.progressPercent}>{Math.round(progressPercent)}%</Text>
+            </View>
+          </View>
+        )}
+
+        {/* 타임라인 뷰 */}
+        {viewMode === 'timeline' && (
+          <View style={styles.timelineSection}>
+            <View style={styles.timeline}>
+              {preparationPeriods.map((period, periodIdx) => {
+                const tasks = checklistData[period.id] || [];
+                const isLast = periodIdx === preparationPeriods.length - 1;
+                return (
+                  <View key={period.id} style={styles.timelineRow}>
+                    {/* 연결선 */}
+                    {!isLast && (
+                      <View style={[styles.timelineLine, { backgroundColor: period.color + '40' }]} />
+                    )}
+                    {/* 도트 */}
+                    <View style={[styles.timelineDot, { backgroundColor: period.color }]}>
+                      <Ionicons name={period.icon} size={18} color="#fff" />
+                    </View>
+                    {/* 콘텐츠 */}
+                    <View style={styles.timelineContent}>
+                      <View style={styles.timelineHeader}>
+                        <Text style={styles.timelinePeriodLabel}>{period.period}</Text>
+                        <View style={[styles.timelinePhaseBadge, { backgroundColor: period.color + '20' }]}>
+                          <Text style={[styles.timelinePhaseText, { color: period.color }]}>
+                            {tasks.length}개 항목
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.timelineTasks}>
+                        {tasks.map((task) => (
+                          <View key={task.id} style={styles.timelineTaskRow}>
+                            <View style={[styles.timelineTaskDot, { backgroundColor: period.color }]} />
+                            <Text
+                              style={[
+                                styles.timelineTaskText,
+                                checkedItems[task.id] && styles.timelineTaskTextDone,
+                              ]}
+                              numberOfLines={2}
+                            >
+                              {task.task}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* 기간 선택 탭 (체크리스트 모드만) */}
+        {viewMode === 'checklist' && (
         <View style={styles.periodTabs}>
-          <ScrollView 
-            horizontal 
+          <ScrollView
+            horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.tabsContainer}
           >
@@ -177,17 +320,31 @@ export default function WeddingPrepGuideScreen({ navigation, userInfo, session }
             ))}
           </ScrollView>
         </View>
+        )}
 
-        {/* 체크리스트 */}
+        {/* 체크리스트 (체크리스트 모드만) */}
+        {viewMode === 'checklist' && (
         <View style={styles.checklistSection}>
+          {/* 내 항목 추가 버튼 */}
+          <TouchableOpacity
+            style={styles.addCustomBtn}
+            onPress={() => setShowAddModal(true)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="add-circle-outline" size={18} color="#FF69B4" />
+            <Text style={styles.addCustomBtnText}>내 항목 추가하기</Text>
+          </TouchableOpacity>
+
           {currentChecklist.map((item) => (
             <TouchableOpacity
               key={item.id}
               style={[
                 styles.checklistItem,
-                checkedItems[item.id] && styles.checklistItemCompleted
+                checkedItems[item.id] && styles.checklistItemCompleted,
+                item.isCustom && styles.checklistItemCustom,
               ]}
               onPress={() => toggleCheckItem(item.id)}
+              onLongPress={item.isCustom ? () => removeCustomItem(item.id) : undefined}
               activeOpacity={0.8}
             >
               <View style={styles.checklistItemHeader}>
@@ -241,6 +398,7 @@ export default function WeddingPrepGuideScreen({ navigation, userInfo, session }
             </TouchableOpacity>
           ))}
         </View>
+        )}
 
         {/* 도움말 섹션 */}
         <View style={styles.helpSection}>
@@ -298,6 +456,70 @@ export default function WeddingPrepGuideScreen({ navigation, userInfo, session }
         {/* 하단 여백 */}
         <View style={{ height: 100 }} />
       </Animated.ScrollView>
+
+      {/* 내 항목 추가 모달 */}
+      <Modal
+        visible={showAddModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowAddModal(false)}
+          >
+            <TouchableOpacity activeOpacity={1} style={styles.modalSheet} onPress={() => {}}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>내 항목 추가</Text>
+              <Text style={styles.modalSub}>
+                {preparationPeriods.find(p => p.id === selectedPeriod)?.period} 에 추가됩니다
+              </Text>
+
+              <TextInput
+                style={styles.modalInput}
+                placeholder="할 일 제목"
+                placeholderTextColor={Colors.gray400}
+                value={newItemTitle}
+                onChangeText={setNewItemTitle}
+                maxLength={40}
+                autoFocus
+              />
+              <TextInput
+                style={[styles.modalInput, { height: 80, textAlignVertical: 'top' }]}
+                placeholder="설명 (선택)"
+                placeholderTextColor={Colors.gray400}
+                value={newItemDesc}
+                onChangeText={setNewItemDesc}
+                multiline
+                maxLength={120}
+              />
+
+              <View style={styles.modalBtnRow}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setShowAddModal(false)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.modalCancelText}>취소</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalConfirmBtn, !newItemTitle.trim() && { opacity: 0.5 }]}
+                  onPress={addCustomItem}
+                  disabled={!newItemTitle.trim()}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.modalConfirmText}>추가</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -579,5 +801,216 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#FFB800',
+  },
+
+  // 뷰 모드 토글
+  viewToggleWrap: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: Colors.gray100,
+    borderRadius: 12,
+    padding: 4,
+    gap: 4,
+  },
+  viewToggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 9,
+  },
+  viewToggleBtnActive: {
+    backgroundColor: '#FF69B4',
+  },
+  viewToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  viewToggleTextActive: {
+    color: Colors.white,
+  },
+
+  // 타임라인
+  timelineSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  timeline: {
+    paddingLeft: 4,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    position: 'relative',
+    paddingBottom: 24,
+  },
+  timelineLine: {
+    position: 'absolute',
+    left: 17,
+    top: 38,
+    width: 2,
+    height: '100%',
+  },
+  timelineDot: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  timelineContent: {
+    flex: 1,
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.gray100,
+  },
+  timelineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  timelinePeriodLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  timelinePhaseBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  timelinePhaseText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  timelineTasks: { gap: 7 },
+  timelineTaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  timelineTaskDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  timelineTaskText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    flex: 1,
+    lineHeight: 18,
+  },
+  timelineTaskTextDone: {
+    textDecorationLine: 'line-through',
+    color: Colors.gray400,
+  },
+
+  // 내 항목 추가 버튼 + 커스텀 아이템
+  addCustomBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: '#FF69B4',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    marginBottom: 12,
+    backgroundColor: '#FFF5F9',
+  },
+  addCustomBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FF69B4',
+    letterSpacing: 0.2,
+  },
+  checklistItemCustom: {
+    borderColor: '#FF69B4',
+    borderWidth: 1,
+  },
+
+  // 모달
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: Colors.gray200,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 18,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  modalSub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 18,
+  },
+  modalInput: {
+    backgroundColor: Colors.gray50,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 14,
+    color: Colors.textPrimary,
+    marginBottom: 10,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: Colors.gray100,
+    borderRadius: 12,
+  },
+  modalCancelText: {
+    color: Colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: '#FF69B4',
+    borderRadius: 12,
+  },
+  modalConfirmText: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

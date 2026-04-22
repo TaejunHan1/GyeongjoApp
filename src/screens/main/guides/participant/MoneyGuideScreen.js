@@ -9,16 +9,15 @@ import {
   ScrollView,
   Dimensions,
   Animated,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { callAiMoney, isInsufficientBalance, getAiStatus, AI_COST } from '../../../../lib/aiCredit';
+import AiLoadingOverlay from '../../../../components/AiLoadingOverlay';
 
 const { width } = Dimensions.get('window');
-
-// DeepSeek API 설정
-const DEEPSEEK_API_KEY = 'sk-6dc707c794ba4207b8f7cf4be6eef1a7';
-const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
 
 // 토스 스타일 컬러 시스템
 const TossColors = {
@@ -58,7 +57,24 @@ export default function MoneyGuideScreen({ navigation }) {
   const [apiResult, setApiResult] = useState(null); // API 결과 저장
   const [error, setError] = useState(null); // 에러 상태
   const [loadingMessage, setLoadingMessage] = useState('AI 분석 준비 중'); // 로딩 메시지
-  
+  const [aiStatus, setAiStatus] = useState({ balance: 0, moneyFreeAvailable: true }); // AI 크레딧 상태
+
+  // AI 크레딧 상태 로드 (마운트 시 + AI 호출 이후)
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const status = await getAiStatus();
+      if (!cancelled && status?.success) {
+        setAiStatus({
+          balance: status.balance,
+          moneyFreeAvailable: status.moneyFreeAvailable,
+        });
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
   // 애니메이션 값들
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -593,95 +609,75 @@ ${specificGuideline}
     
     try {
       console.log('AI 추천 시작...');
-      
-      // API 호출
+
       const prompt = createPrompt(selectedEventType, selectedCategory, selectedIntimacy, selectedSalary);
-      
-      const response = await fetch(DEEPSEEK_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'deepseek-chat',
-          messages: [
-            {
-              role: 'system',
-              content: `당신은 한국의 경조사 예절과 축의금 문화에 대한 전문가입니다. 
-              사용자의 상황에 맞는 적절한 축의금을 추천해주세요. 
-              
-              응답은 반드시 다음과 같은 JSON 형태로만 제공하고, 다른 텍스트는 절대 포함하지 마세요:
-              {"recommendedAmount": 100000, "minAmount": 80000, "maxAmount": 120000, "reasoning": "추천 이유를 한국어로 설명", "tips": ["팁1", "팁2", "팁3"]}
-              
-              주의사항:
-              - JSON 외의 다른 텍스트 절대 금지
-              - 마크다운이나 코드블록 사용 금지  
-              - 모든 금액은 숫자로만 표기
-              - 짝수 금액으로 추천 (20,000원 단위)
-              - 월급이 적은 경우 부담 없는 현실적 금액 추천
-              - 월급이 많은 경우 체면을 지킬 수 있는 적절한 금액 추천`
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 500,
-          temperature: 0.1,
-          stream: false
-        })
+
+      const systemPrompt =
+        `당신은 한국의 경조사 예절과 축의금 문화에 대한 전문가입니다.\n` +
+        `사용자의 상황에 맞는 적절한 축의금을 추천해주세요.\n\n` +
+        `응답은 반드시 다음과 같은 JSON 형태로만 제공하고, 다른 텍스트는 절대 포함하지 마세요:\n` +
+        `{"recommendedAmount": 100000, "minAmount": 80000, "maxAmount": 120000, "reasoning": "추천 이유를 한국어로 설명", "tips": ["팁1", "팁2", "팁3"]}\n\n` +
+        `주의사항:\n` +
+        `- JSON 외의 다른 텍스트 절대 금지\n` +
+        `- 마크다운이나 코드블록 사용 금지\n` +
+        `- 모든 금액은 숫자로만 표기\n` +
+        `- 짝수 금액으로 추천 (20,000원 단위)\n` +
+        `- 월급이 적은 경우 부담 없는 현실적 금액 추천\n` +
+        `- 월급이 많은 경우 체면을 지킬 수 있는 적절한 금액 추천`;
+
+      // Vercel 프록시 경유 (consume_ai_credit → DeepSeek)
+      const apiResult = await callAiMoney({ prompt, systemPrompt });
+
+      // 크레딧 부족 → 충전 유도
+      if (isInsufficientBalance(apiResult)) {
+        setIsLoading(false);
+        dotAnim.setValue(0);
+        Alert.alert(
+          '크레딧이 부족해요',
+          `AI 축의금 추천은 크레딧 ${AI_COST.money}건이 필요해요.\n현재 잔액: ${apiResult.balance || 0}건`,
+          [
+            { text: '취소', style: 'cancel' },
+            { text: '충전하러 가기', onPress: () => navigation?.navigate('Credit') },
+          ]
+        );
+        return null;
+      }
+
+      if (!apiResult?.success || !apiResult.content) {
+        throw new Error(apiResult?.error || '서버 오류');
+      }
+
+      // JSON 파싱
+      const content = String(apiResult.content).trim();
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('JSON을 찾을 수 없음');
+
+      const result = JSON.parse(jsonMatch[0]);
+      const validatedResult = validateResult(result);
+
+      if (apiResult.usedFree) {
+        console.log('✅ 무료 체험 사용됨');
+      }
+
+      // 로컬 AI 상태 즉시 반영 (UI 재렌더 용)
+      setAiStatus({
+        balance: apiResult.balance ?? 0,
+        moneyFreeAvailable: false, // 이번 호출로 무료든 유료든 체험 소진 상태
       });
 
-      console.log('API 응답 상태:', response.status);
+      setApiResult(validatedResult);
+      return validatedResult;
 
-      if (!response.ok) {
-        throw new Error(`API 오류: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('API 응답:', data);
-
-      if (!data.choices?.[0]?.message?.content) {
-        throw new Error('잘못된 API 응답');
-      }
-
-      const content = data.choices[0].message.content.trim();
-      console.log('응답 내용:', content);
-      
-      // JSON 파싱
-      try {
-        // JSON 부분만 추출
-        const jsonMatch = content.match(/\{.*\}/s);
-        if (!jsonMatch) {
-          throw new Error('JSON을 찾을 수 없음');
-        }
-
-        const result = JSON.parse(jsonMatch[0]);
-        console.log('파싱 결과:', result);
-        
-        // 결과 검증
-        const validatedResult = validateResult(result);
-        setApiResult(validatedResult);
-        return validatedResult;
-        
-      } catch (parseError) {
-        console.error('JSON 파싱 오류:', parseError);
-        console.error('원본 응답:', content);
-        throw parseError;
-      }
-      
     } catch (error) {
       console.error('AI 추천 오류:', error);
       setError('AI 추천을 가져오는 중 오류가 발생했습니다.');
-      
-      // 에러 시 기본값 반환
+
       const fallbackResult = getFallbackRecommendation();
       setApiResult(fallbackResult);
       return fallbackResult;
     } finally {
       setIsLoading(false);
-      dotAnim.setValue(0); // 애니메이션 초기화
+      dotAnim.setValue(0);
     }
   };
 
@@ -1340,37 +1336,17 @@ ${specificGuideline}
                 end={{ x: 1, y: 0 }}
                 style={styles.btnGradient}
               >
-                {isLoading ? (
-                  <View style={styles.loadingContainer}>
-                    <Animated.Text style={[
-                      styles.btnPrimaryText,
-                      styles.loadingText,
-                      {
-                        opacity: dotAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.5, 1],
-                        })
-                      }
-                    ]}>
-                      {loadingMessage}
-                      <Animated.Text style={{
-                        opacity: dotAnim.interpolate({
-                          inputRange: [0, 0.33, 0.66, 1],
-                          outputRange: [0, 1, 0, 1],
-                        })
-                      }}>
-                        ...
-                      </Animated.Text>
-                    </Animated.Text>
-                  </View>
-                ) : (
-                  <Text style={styles.btnPrimaryText}>
-                    {currentStep === 4 ? 
-                      (selectedSalary ? 'AI 추천받기 🤖' : '월급을 선택해주세요') 
-                      : '다음 →'
-                    }
-                  </Text>
-                )}
+                <Text style={styles.btnPrimaryText}>
+                  {isLoading
+                    ? 'AI 분석 중...'
+                    : currentStep === 4
+                      ? (selectedSalary
+                          ? (aiStatus.moneyFreeAvailable
+                              ? 'AI 추천받기 🤖 (무료 체험)'
+                              : `AI 추천받기 🤖 (${AI_COST.money} 크레딧)`)
+                          : '월급을 선택해주세요')
+                      : '다음 →'}
+                </Text>
               </LinearGradient>
             </TouchableOpacity>
           ) : (
@@ -1384,6 +1360,18 @@ ${specificGuideline}
           )}
         </View>
       </LinearGradient>
+
+      {/* AI 로딩 풀스크린 오버레이 */}
+      <AiLoadingOverlay
+        visible={isLoading}
+        title="AI가 축의금을 계산하고 있어요"
+        messages={[
+          '🤖 AI가 관계 데이터를 분석 중',
+          '📊 소득 수준을 고려하고 있어요',
+          '💰 적정 금액을 계산 중이에요',
+          '✨ 맞춤 팁을 준비하고 있어요',
+        ]}
+      />
     </SafeAreaView>
   );
 }
