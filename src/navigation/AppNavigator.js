@@ -79,7 +79,7 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
           } else if (route.name === 'Guide') {
             iconName = focused ? 'book' : 'book-outline';
           } else if (route.name === 'Benefits') {
-            iconName = focused ? 'gift' : 'gift-outline';
+            iconName = focused ? 'color-palette' : 'color-palette-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           }
@@ -149,7 +149,7 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
       {/* 🆕 혜택 탭 추가 */}
       <Tab.Screen 
         name="Benefits" 
-        options={{ tabBarLabel: '혜택' }}
+        options={{ tabBarLabel: '스튜디오' }}
       >
         {(props) => (
           <BenefitsScreen 
@@ -214,9 +214,9 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
         
         {/* 경조사 관련 화면들 */}
         <Stack.Screen 
-          name="CreateEvent" 
+          name="CreateEvent"
           options={{
-            headerShown: true,
+            headerShown: false,
             title: '경조사 만들기',
             headerStyle: {
               backgroundColor: Colors.white,
@@ -384,9 +384,9 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
 
         {/* 🆕 참여자용 가이드 관련 화면들 */}
         <Stack.Screen 
-          name="MoneyGuide" 
+          name="MoneyGuide"
           options={{
-            headerShown: true,
+            headerShown: false,
             title: '축의금 가이드',
             headerStyle: {
               backgroundColor: Colors.white,
@@ -426,9 +426,9 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
         </Stack.Screen>
 
         <Stack.Screen 
-          name="EtiquetteGuide" 
+          name="EtiquetteGuide"
           options={{
-            headerShown: true,
+            headerShown: false,
             title: '예절 가이드',
             headerStyle: {
               backgroundColor: Colors.white,
@@ -481,9 +481,9 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
 
         {/* 🆕 주최자용 가이드 관련 화면들 */}
         <Stack.Screen 
-          name="WeddingPrepGuide" 
+          name="WeddingPrepGuide"
           options={{
-            headerShown: true,
+            headerShown: false,
             title: '결혼식 준비 가이드',
             headerStyle: {
               backgroundColor: Colors.white,
@@ -508,9 +508,9 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
         </Stack.Screen>
 
         <Stack.Screen 
-          name="FuneralPrepGuide" 
+          name="FuneralPrepGuide"
           options={{
-            headerShown: true,
+            headerShown: false,
             title: '장례식 준비 가이드',
             headerStyle: {
               backgroundColor: Colors.white,
@@ -535,9 +535,9 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
         </Stack.Screen>
 
         <Stack.Screen 
-          name="BudgetCalculator" 
+          name="BudgetCalculator"
           options={{
-            headerShown: true,
+            headerShown: false,
             title: '예산 계산기',
             headerStyle: {
               backgroundColor: Colors.white,

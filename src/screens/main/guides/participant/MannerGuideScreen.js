@@ -1,5 +1,6 @@
 // src/screens/main/guides/participant/MannerGuideScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { TC, PressableCard, StaggerItem, Bubble, ScreenHeader, SectionLabel } from '../tossStyle';
 import {
   View,
   Text,
@@ -9,6 +10,8 @@ import {
   ScrollView,
   Dimensions,
   Platform,
+  Animated,
+  Easing,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,152 +52,251 @@ export default function MannerGuideScreen({ navigation }) {
   const [selectedGender, setSelectedGender] = useState('male');
   const [expandedCategory, setExpandedCategory] = useState(null);
 
-  // 결혼식 복장 가이드
+  // quickTips 페이드 로테이션 (4초마다 교체)
+  const [tipIndex, setTipIndex] = useState(0);
+  const tipOpacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const interval = setInterval(() => {
+      Animated.sequence([
+        Animated.timing(tipOpacity, {
+          toValue: 0,
+          duration: 400,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(tipOpacity, {
+          toValue: 1,
+          duration: 500,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+      setTimeout(() => setTipIndex((i) => i + 1), 400);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 탭·성별 바뀔 때 인덱스 리셋
+  useEffect(() => {
+    setTipIndex(0);
+  }, [selectedTab, selectedGender]);
+
+  // 세그먼트 컨트롤 슬라이딩 애니메이션 (실제 pixel 폭 측정)
+  const segAnim = useRef(new Animated.Value(0)).current;
+  const [trackWidth, setTrackWidth] = useState(0);
+  useEffect(() => {
+    Animated.spring(segAnim, {
+      toValue: selectedTab === 'wedding' ? 0 : 1,
+      useNativeDriver: true,
+      bounciness: 6,
+      speed: 20,
+    }).start();
+  }, [selectedTab]);
+
+  // 결혼식 복장 가이드 (2026 트렌드 반영)
   const weddingDressCode = {
     male: {
-      quickTip: '깔끔한 블레이저 + 셔츠/니트 + 슬랙스 (현대적이고 편안한 포멀)',
+      quickTips: [
+        '세미수트가 기본이에요',
+        '네이비·베이지·파스텔 톤이 인기',
+        '2026 트렌드는 노타이 캐주얼',
+        '포켓치프로 포인트 주기',
+        '겨울엔 브라운·차콜 추천',
+        '무채색 톤으로 맞추기',
+      ],
       recommended: [
-        { 
-          item: '블레이저/재킷', 
-          detail: '네이비, 베이지, 그레이',
-          icon: '🧥', 
-          color: TossColors.primary 
+        {
+          item: '재킷·블레이저',
+          detail: '네이비·베이지·그레이 · 겨울엔 브라운·차콜',
+          icon: '🧥',
+          color: TossColors.primary,
         },
-        { 
-          item: '셔츠/니트', 
-          detail: '화이트 셔츠, 라운드 니트',
-          icon: '👕', 
-          color: '#4A88FF' 
+        {
+          item: '셔츠·니트',
+          detail: '화이트 셔츠 기본 · 겨울엔 자켓+니트+슬랙스 OK',
+          icon: '👕',
+          color: '#4A88FF',
         },
-        { 
-          item: '슬랙스', 
-          detail: '면/울 소재, 차분한 색상',
-          icon: '👖', 
-          color: '#6B7684' 
+        {
+          item: '슬랙스',
+          detail: '면·울 소재 · 차분한 무채색 (재킷과 톤 맞춤)',
+          icon: '👖',
+          color: '#6B7684',
         },
-        { 
-          item: '신발', 
-          detail: '로퍼, 첼시부츠, 드레스슈즈',
-          icon: '👞', 
-          color: '#333D4B' 
+        {
+          item: '신발·양말',
+          detail: '로퍼·드레스슈즈 · 무채색 슬림 스니커즈 (캐주얼 웨딩 한정)',
+          icon: '👞',
+          color: '#333D4B',
+        },
+        {
+          item: '넥타이 (선택)',
+          detail: '노타이 추세 · 하지만 포켓치프·패턴넥타이로 포인트',
+          icon: '👔',
+          color: '#4E5968',
         },
       ],
       avoid: [
-        { item: '흰색 계열 복장', reason: '신랑과 구분되지 않음' },
-        { item: '너무 화려한 패턴', reason: '주인공보다 튀면 안됨' },
-        { item: '운동화/슬리퍼', reason: '격식에 맞지 않음' },
-        { item: '반바지/민소매', reason: '과도한 노출' },
-      ]
+        { item: '화이트·아이보리·밝은 베이지', reason: '신랑과 구분 안 됨' },
+        { item: '청바지·트레이닝복', reason: '격식 X (2026 공통 금기)' },
+        { item: '슬리퍼·운동화 (일반 예식장)', reason: '호텔·일반 웨딩홀엔 부적절' },
+        { item: '반바지·민소매', reason: '과도한 노출' },
+        { item: '너무 화려한 패턴', reason: '신랑보다 튀면 실례' },
+      ],
     },
     female: {
-      quickTip: '단정한 원피스 또는 블라우스 + 스커트/팬츠 조합',
+      quickTips: [
+        '무릎선 아래 길이가 기본',
+        '네이비·톤다운 핑크가 무난해요',
+        '흰색·아이보리는 절대 금지',
+        '7cm 이하 힐이 편안해요',
+        '진주 액세서리가 포인트',
+        '반묶음·리본으로 깔끔하게',
+      ],
       recommended: [
-        { 
-          item: '원피스', 
-          detail: '무릎 길이, 차분한 색상',
-          icon: '👗', 
-          color: '#FF69B4' 
+        {
+          item: '원피스',
+          detail: '무릎선 아래 · 검정·네이비·톤다운 핑크·퍼플',
+          icon: '👗',
+          color: '#F472B6',
         },
-        { 
-          item: '블라우스 세트', 
-          detail: '블라우스 + 스커트/팬츠',
-          icon: '👚', 
-          color: '#6B7684' 
+        {
+          item: '블라우스 세트',
+          detail: '블라우스+스커트 or 슬랙스 (포멀한데 편안)',
+          icon: '👚',
+          color: '#6B7684',
         },
-        { 
-          item: '신발', 
-          detail: '낮은 힐, 플랫슈즈, 로퍼',
-          icon: '👠', 
-          color: '#FF5A5F' 
+        {
+          item: '스타킹',
+          detail: '살색·무광 (짙은 컬러 원피스엔 검정 가능)',
+          icon: '🩰',
+          color: '#8B95A1',
         },
-        { 
-          item: '액세서리', 
-          detail: '단순한 목걸이, 작은 귀걸이',
-          icon: '💍', 
-          color: '#FFB800' 
+        {
+          item: '신발',
+          detail: '낮은 힐·플랫·블록힐 (7cm 이하 · 편안함 우선)',
+          icon: '👠',
+          color: '#FF5A5F',
+        },
+        {
+          item: '액세서리·헤어',
+          detail: '진주·작은 드롭 귀걸이 · 반묶음+리본 포인트',
+          icon: '💍',
+          color: '#FFB800',
         },
       ],
       avoid: [
-        { item: '흰색/아이보리 드레스', reason: '신부와 색상 겹침' },
+        { item: '흰색·아이보리·밝은 베이지', reason: '신부 드레스와 겹침 (가장 큰 금기)' },
+        { item: '페일 핑크·누드톤', reason: '들러리 색상과 혼동' },
         { item: '전신 검은색', reason: '장례식 분위기' },
-        { item: '과도한 노출 의상', reason: '격식에 어긋남' },
-        { item: '지나치게 화려한 옷', reason: '주인공보다 튀면 안됨' },
-      ]
-    }
+        { item: '과한 노출 (미니·딥넥)', reason: '격식 X' },
+        { item: '너무 큰 다이아·화려한 액세', reason: '신부보다 튀면 실례' },
+        { item: '두꺼운 패딩 (겨울)', reason: '단정한 코트 권장' },
+      ],
+    },
   };
 
-  // 장례식 복장 가이드
+  // 장례식 복장 가이드 (2026 기준)
   const funeralDressCode = {
     male: {
-      quickTip: '검은색/다크 그레이 정장 또는 블레이저 + 흰색 셔츠',
+      quickTips: [
+        '검정 정장이 기본이에요',
+        '흰 셔츠 + 검정 넥타이',
+        '네이비·차콜도 허용돼요',
+        '흰 양말은 절대 금지',
+        '코트는 입장 전에 벗기',
+        '여름엔 반팔도 가능해요',
+      ],
       recommended: [
-        { 
-          item: '정장/블레이저', 
-          detail: '검은색, 다크 그레이, 네이비',
-          icon: '🖤', 
-          color: '#191F28' 
+        {
+          item: '정장·재킷',
+          detail: '검정 기본 · 네이비·차콜도 허용',
+          icon: '🖤',
+          color: '#191F28',
         },
-        { 
-          item: '셔츠', 
-          detail: '흰색 (무늬 없는 단정한)',
-          icon: '👕', 
-          color: '#8B95A1' 
+        {
+          item: '셔츠',
+          detail: '흰색 단색 (무늬 없음) · 여름 반팔도 단정하면 허용',
+          icon: '👕',
+          color: '#8B95A1',
         },
-        { 
-          item: '넥타이 (선택)', 
-          detail: '검은색, 다크 톤 (필수 아님)',
-          icon: '🖤', 
-          color: '#191F28' 
+        {
+          item: '넥타이',
+          detail: '검정 or 짙은 무채색 (흰색 X · 과도한 무늬 X)',
+          icon: '👔',
+          color: '#191F28',
         },
-        { 
-          item: '신발', 
-          detail: '검은색 드레스슈즈, 로퍼',
-          icon: '👞', 
-          color: '#333D4B' 
+        {
+          item: '신발·양말',
+          detail: '검정 구두·로퍼 + 검정 양말 (흰 양말 절대 X)',
+          icon: '👞',
+          color: '#333D4B',
+        },
+        {
+          item: '코트',
+          detail: '입장 전 반드시 벗기 · 검정·회색 무채색',
+          icon: '🧥',
+          color: '#4E5968',
         },
       ],
       avoid: [
-        { item: '밝은 색상 옷', reason: '애도 분위기에 부적절' },
-        { item: '화려한 액세서리', reason: '조용한 분위기 방해' },
-        { item: '캐주얼 복장', reason: '격식에 어긋남' },
-        { item: '진한 향수/화장', reason: '장례식장 예의' },
-      ]
+        { item: '밝은 색 옷·화려한 셔츠', reason: '애도 분위기에 부적절' },
+        { item: '흰 넥타이·원색 넥타이', reason: '결혼식용 · 조문엔 X' },
+        { item: '청바지·트레이닝·반바지', reason: '격식 X' },
+        { item: '큰 시계·팔찌·과한 액세서리', reason: '조용한 분위기 방해' },
+        { item: '진한 향수·화장', reason: '좁은 빈소에서 실례' },
+      ],
     },
     female: {
-      quickTip: '검은색/다크 계열 원피스 또는 블라우스 + 스커트 조합',
+      quickTips: [
+        '검정 원피스·정장이 정석',
+        '스타킹은 반드시 검정 무광',
+        '여름에도 맨다리는 실례예요',
+        '진주 액세서리만 허용',
+        '짙은 네이비·차콜도 가능',
+        '가방도 검정으로 맞추기',
+      ],
       recommended: [
-        { 
-          item: '원피스/정장', 
-          detail: '검은색, 다크 그레이 (단정)',
-          icon: '🖤', 
-          color: '#191F28' 
+        {
+          item: '원피스·정장',
+          detail: '검정 기본 · 무늬 없는 단색 · 네이비·차콜 허용',
+          icon: '🖤',
+          color: '#191F28',
         },
-        { 
-          item: '스타킹 (선택)', 
-          detail: '검은색, 살색 (계절에 따라)',
-          icon: '🦵', 
-          color: '#4E5968' 
+        {
+          item: '블라우스+스커트',
+          detail: '흰·검정 블라우스 + 검정 스커트 or 바지',
+          icon: '👚',
+          color: '#6B7684',
         },
-        { 
-          item: '신발', 
-          detail: '낮은 굽, 플랫슈즈',
-          icon: '👠', 
-          color: '#333D4B' 
+        {
+          item: '스타킹 (필수)',
+          detail: '검정 무광 · 맨다리는 실례 · 여름에도 필수',
+          icon: '🩰',
+          color: '#4E5968',
         },
-        { 
-          item: '액세서리', 
-          detail: '진주, 심플한 디자인 (최소)',
-          icon: '⚪', 
-          color: '#8B95A1' 
+        {
+          item: '신발',
+          detail: '검정 플랫·낮은 굽 · 오픈토·반짝이 X',
+          icon: '👠',
+          color: '#333D4B',
+        },
+        {
+          item: '액세서리',
+          detail: '진주 목걸이·귀걸이 OK · 그 외 최소한으로',
+          icon: '⚪',
+          color: '#8B95A1',
         },
       ],
       avoid: [
-        { item: '밝은 색상/화려한 옷', reason: '애도 분위기에 부적절' },
-        { item: '과도한 노출 의상', reason: '엄숙한 분위기 방해' },
-        { item: '큰 액세서리/장식', reason: '소음과 화려함 우려' },
-        { item: '진한 화장/네일', reason: '차분한 분위기 필요' },
-      ]
-    }
+        { item: '밝은 색·화려한 패턴', reason: '애도 분위기 해침' },
+        { item: '미니 스커트·딥넥', reason: '과한 노출 X' },
+        { item: '맨다리·망사 스타킹', reason: '반드시 검정 무광 필요' },
+        { item: '큰 귀걸이·팔찌', reason: '소리·화려함 우려' },
+        { item: '진한 화장·네일·향수', reason: '차분한 분위기 필요' },
+        { item: '컬러풀한 가방', reason: '검정·짙은 무채색 권장' },
+      ],
+    },
   };
 
   // 매너 가이드
@@ -315,12 +417,14 @@ export default function MannerGuideScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* 한 줄 요약 - 토스 스타일 */}
+        {/* 한 줄 요약 - 페이드 로테이션 */}
         <View style={styles.quickTipCard}>
           <View style={styles.quickTipIcon}>
             <Ionicons name="bulb-outline" size={20} color={TossColors.warning} />
           </View>
-          <Text style={styles.quickTipText}>{genderGuide.quickTip}</Text>
+          <Animated.Text style={[styles.quickTipText, { opacity: tipOpacity }]}>
+            {genderGuide.quickTips[tipIndex % genderGuide.quickTips.length]}
+          </Animated.Text>
         </View>
 
         {/* 추천 복장 - 토스 스타일 카드 */}
@@ -427,83 +531,166 @@ export default function MannerGuideScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        {/* 헤더 - 다른 가이드 화면과 동일한 스타일 */}
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-back" size={24} color={TossColors.text.primary} />
-          </TouchableOpacity>
-          <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>복장 & 매너 가이드</Text>
-            <Text style={styles.headerSubtitle}>
-              경조사에 적합한 복장과 행동 매너를 알아보세요
-            </Text>
+        <StaggerItem delay={0}>
+          <ScreenHeader
+            onBack={() => navigation.goBack()}
+            eyebrow="복장·매너 가이드"
+            title="어떤 자리에 가시나요?"
+            subtitle="자리에 맞는 복장과 매너를 알려드려요"
+          />
+        </StaggerItem>
+
+        {/* 자리 선택 - 토스 스타일 세그먼트 컨트롤 */}
+        <StaggerItem delay={80}>
+          <View style={tossSeg.wrap}>
+            <View
+              style={tossSeg.track}
+              onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+            >
+              <Animated.View
+                style={[
+                  tossSeg.thumb,
+                  {
+                    width: trackWidth > 0 ? (trackWidth - 8) / 2 : '50%',
+                    transform: [
+                      {
+                        translateX: segAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, Math.max(0, (trackWidth - 8) / 2)],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              />
+              <TouchableOpacity
+                style={tossSeg.btn}
+                activeOpacity={0.7}
+                onPress={() => setSelectedTab('wedding')}
+              >
+                <Text
+                  style={[
+                    tossSeg.label,
+                    selectedTab === 'wedding' && tossSeg.labelActive,
+                  ]}
+                >
+                  결혼식
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={tossSeg.btn}
+                activeOpacity={0.7}
+                onPress={() => setSelectedTab('funeral')}
+              >
+                <Text
+                  style={[
+                    tossSeg.label,
+                    selectedTab === 'funeral' && tossSeg.labelActive,
+                  ]}
+                >
+                  장례식
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <View style={{ width: 40 }} />
-        </View>
-        {/* 경조사 타입 탭 - 토스 스타일 */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, selectedTab === 'wedding' && styles.tabActive]}
-            onPress={() => setSelectedTab('wedding')}
-            activeOpacity={0.7}
-          >
-            <View style={styles.tabContent}>
-              <Text style={styles.tabEmoji}>💒</Text>
-              <Text style={[styles.tabText, selectedTab === 'wedding' && styles.tabTextActive]}>
-                결혼식
-              </Text>
-            </View>
-            {selectedTab === 'wedding' && <View style={styles.tabIndicator} />}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, selectedTab === 'funeral' && styles.tabActive]}
-            onPress={() => setSelectedTab('funeral')}
-            activeOpacity={0.7}
-          >
-            <View style={styles.tabContent}>
-              <Text style={styles.tabEmoji}>🕯️</Text>
-              <Text style={[styles.tabText, selectedTab === 'funeral' && styles.tabTextActive]}>
-                장례식
-              </Text>
-            </View>
-            {selectedTab === 'funeral' && <View style={styles.tabIndicator} />}
-          </TouchableOpacity>
-        </View>
+        </StaggerItem>
 
         {/* 복장 가이드 */}
-        <View style={styles.guideSection}>
-          <Text style={styles.guideSectionTitle}>👔 복장 가이드</Text>
+        <StaggerItem delay={140}>
+          <SectionLabel>복장 가이드</SectionLabel>
           {renderDressGuide()}
-        </View>
+        </StaggerItem>
 
         {/* 매너 가이드 */}
-        <View style={styles.guideSection}>
-          <Text style={styles.guideSectionTitle}>📌 행동 매너</Text>
+        <StaggerItem delay={220}>
+          <SectionLabel>행동 매너</SectionLabel>
           {renderMannerGuide()}
-        </View>
+        </StaggerItem>
 
-        {/* 하단 팁 카드 - 토스 스타일 */}
-        <View style={styles.bottomTipCard}>
-          <View style={styles.bottomTipHeader}>
-            <Ionicons name="information-circle" size={20} color={TossColors.primary} />
-            <Text style={styles.bottomTipTitle}>알아두면 좋아요</Text>
+        {/* 하단 팁 카드 */}
+        <StaggerItem delay={300}>
+          <View style={tossTip.card}>
+            <View style={tossTip.head}>
+              <View style={tossTip.iconWrap}>
+                <Ionicons name="information-circle" size={14} color={TC.blue} />
+              </View>
+              <Text style={tossTip.label}>알아두면 좋아요</Text>
+            </View>
+            <Text style={tossTip.text}>
+              {selectedTab === 'wedding'
+                ? '결혼식은 신랑신부의 새로운 시작을 축하하는 자리예요. 밝고 단정한 복장으로 기쁜 마음을 표현해 주세요.'
+                : '장례식은 고인을 추모하는 엄숙한 자리예요. 검은색 복장으로 애도의 마음을 표현해 주세요.'}
+            </Text>
           </View>
-          <Text style={styles.bottomTipText}>
-            {selectedTab === 'wedding' 
-              ? '결혼식은 신랑신부의 새로운 시작을 축하하는 자리입니다. 밝고 단정한 복장으로 기쁜 마음을 표현해주세요.'
-              : '장례식은 고인을 추모하는 엄숙한 자리입니다. 검은색 복장으로 애도의 마음을 표현해주세요.'}
-          </Text>
-        </View>
+        </StaggerItem>
 
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+const tossSeg = StyleSheet.create({
+  wrap: { paddingHorizontal: 20, marginBottom: 12 },
+  track: {
+    flexDirection: 'row',
+    backgroundColor: '#F2F4F6',
+    borderRadius: 12,
+    padding: 4,
+    position: 'relative',
+    height: 48,
+  },
+  thumb: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    height: 40,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 9,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  btn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8B95A1',
+    letterSpacing: -0.2,
+  },
+  labelActive: {
+    color: '#191F28',
+    fontWeight: '700',
+  },
+});
+
+const tossTip = StyleSheet.create({
+  card: {
+    marginHorizontal: 20,
+    marginTop: 10,
+    padding: 16,
+    backgroundColor: TC.blueSoft,
+    borderRadius: 14,
+  },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  iconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: TC.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  label: { fontSize: 12, fontWeight: '700', color: TC.blue, letterSpacing: -0.2 },
+  text: { fontSize: 13, color: TC.ink, lineHeight: 20, letterSpacing: -0.2 },
+});
 
 const styles = StyleSheet.create({
   container: {

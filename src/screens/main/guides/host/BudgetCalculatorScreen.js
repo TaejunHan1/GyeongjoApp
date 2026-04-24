@@ -12,6 +12,9 @@ import {
   Dimensions,
   Animated,
   ActivityIndicator,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +22,7 @@ import { Colors } from '../../../../styles/constants';
 import { DeepSeekService, InsufficientCreditError } from '../../../../lib/deepseekService';
 import { getAiStatus, AI_COST } from '../../../../lib/aiCredit';
 import AiLoadingOverlay from '../../../../components/AiLoadingOverlay';
+import { TC, PressableCard, StaggerItem, ScreenHeader } from '../tossStyle';
 
 const { width } = Dimensions.get('window');
 
@@ -36,6 +40,8 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
   const [recommendedVenues, setRecommendedVenues] = useState([]);
   const [marketReality, setMarketReality] = useState('');
   const [aiStatus, setAiStatus] = useState({ balance: 0, budgetFreeAvailable: true });
+  // 예산 항목 수정용 크로스 플랫폼 모달 (iOS/Android 모두 동작)
+  const [editModal, setEditModal] = useState({ visible: false, itemId: null, itemName: '', value: '' });
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -332,20 +338,19 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       
-      <Animated.ScrollView 
-        style={[styles.content, { opacity: fadeAnim }]}
+      <Animated.ScrollView
+        style={[styles.content, { opacity: fadeAnim, backgroundColor: TC.bg }]}
+        contentContainerStyle={{ padding: 20 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* 헤더 정보 */}
-        <View style={styles.headerSection}>
-          <View style={styles.headerIcon}>
-            <Ionicons name="calculator" size={32} color="#26C976" />
-          </View>
-          <Text style={styles.headerTitle}>스마트 예산 계산기</Text>
-          <Text style={styles.headerSubtitle}>
-            AI 추천으로 합리적인 예산을 계획해보세요
-          </Text>
-        </View>
+        <StaggerItem delay={0}>
+          <ScreenHeader
+            onBack={() => navigation.goBack()}
+            eyebrow="AI 예산 계산기"
+            title={'얼마가 필요할지\n미리 계산해봐요'}
+            subtitle="지역·인원에 맞는 맞춤 예산 추천"
+          />
+        </StaggerItem>
 
         {/* 행사 타입 선택 */}
         <View style={styles.eventTypeSection}>
@@ -805,19 +810,12 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
                           <TouchableOpacity
                             style={styles.editButton}
                             onPress={() => {
-                              Alert.prompt(
-                                '예산 수정',
-                                `${item.name} 예산을 입력하세요 (원)`,
-                                [
-                                  { text: '취소', style: 'cancel' },
-                                  {
-                                    text: '확인',
-                                    onPress: (value) => updateBudgetItem(item.id, value)
-                                  }
-                                ],
-                                'plain-text',
-                                budgetItems[item.id]?.toString() || '0'
-                              );
+                              setEditModal({
+                                visible: true,
+                                itemId: item.id,
+                                itemName: item.name,
+                                value: String(budgetItems[item.id] ?? 0),
+                              });
                             }}
                             activeOpacity={0.7}
                           >
@@ -875,9 +873,139 @@ export default function BudgetCalculatorScreen({ navigation, userInfo, session }
           '📋 맞춤 조언을 준비 중',
         ]}
       />
+
+      {/* 예산 항목 수정 모달 (크로스 플랫폼 — iOS/Android 둘 다 동작) */}
+      <Modal
+        visible={editModal.visible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditModal({ visible: false, itemId: null, itemName: '', value: '' })}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity
+            style={editModalStyles.overlay}
+            activeOpacity={1}
+            onPress={() => setEditModal({ visible: false, itemId: null, itemName: '', value: '' })}
+          >
+            <TouchableOpacity activeOpacity={1} style={editModalStyles.sheet} onPress={() => {}}>
+              <View style={editModalStyles.handle} />
+              <Text style={editModalStyles.title}>{editModal.itemName} 예산</Text>
+              <Text style={editModalStyles.sub}>원 단위로 입력해주세요</Text>
+
+              <TextInput
+                style={editModalStyles.input}
+                value={editModal.value}
+                onChangeText={(t) =>
+                  setEditModal((prev) => ({ ...prev, value: t.replace(/[^0-9]/g, '') }))
+                }
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={Colors.gray400}
+                autoFocus
+              />
+
+              <View style={editModalStyles.btnRow}>
+                <TouchableOpacity
+                  style={editModalStyles.cancelBtn}
+                  onPress={() =>
+                    setEditModal({ visible: false, itemId: null, itemName: '', value: '' })
+                  }
+                  activeOpacity={0.85}
+                >
+                  <Text style={editModalStyles.cancelText}>취소</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={editModalStyles.confirmBtn}
+                  onPress={() => {
+                    updateBudgetItem(editModal.itemId, editModal.value);
+                    setEditModal({ visible: false, itemId: null, itemName: '', value: '' });
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={editModalStyles.confirmText}>확인</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
+
+const editModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    backgroundColor: Colors.gray200,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 18,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  sub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 18,
+  },
+  input: {
+    backgroundColor: Colors.gray50,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 16,
+    textAlign: 'right',
+  },
+  btnRow: { flexDirection: 'row', gap: 10 },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: Colors.gray100,
+    borderRadius: 12,
+  },
+  cancelText: {
+    color: Colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  confirmBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+  },
+  confirmText: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+});
 
 const styles = StyleSheet.create({
   container: {

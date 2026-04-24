@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { callAiMoney, isInsufficientBalance, getAiStatus, AI_COST } from '../../../../lib/aiCredit';
 import AiLoadingOverlay from '../../../../components/AiLoadingOverlay';
+import { TC, PressableCard, StaggerItem, ScreenHeader } from '../tossStyle';
 
 const { width } = Dimensions.get('window');
 
@@ -844,39 +845,34 @@ ${specificGuideline}
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="light" />
-      
-      {/* 헤더 */}
-      <LinearGradient
-        colors={['#0064FF', '#4F46E5']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <View style={styles.headerTextContainer}>
-            <Text style={styles.appTitle}>축의금 똑똑하게</Text>
-            <Text style={styles.appSubtitle}>AI가 추천하는 적정 축의금</Text>
-          </View>
-          <View style={styles.headerIcon}>
-            <Text style={styles.headerIconText}>🎁</Text>
-          </View>
-        </View>
-      </LinearGradient>
+    <SafeAreaView style={[styles.container, { backgroundColor: TC.bg }]}>
+      <StatusBar style="dark" />
+
+      {/* 토스 스타일 헤더 */}
+      <View style={moneyHdr.wrap}>
+        <StaggerItem delay={0}>
+          <ScreenHeader
+            onBack={() => navigation.goBack()}
+            eyebrow="AI 축의금 추천"
+            title={'지금 상황에서\n얼마가 적당할까요?'}
+          />
+        </StaggerItem>
+      </View>
 
       {/* 프로그레스 바 */}
-      <View style={styles.progressContainer}>
-        <Animated.View style={[
-          styles.progressBar,
-          {
-            width: progressAnim.interpolate({
-              inputRange: [0, 100],
-              outputRange: ['0%', '100%'],
-              extrapolate: 'clamp',
-            })
-          }
-        ]} />
+      <View style={moneyHdr.progressTrack}>
+        <Animated.View
+          style={[
+            moneyHdr.progressBar,
+            {
+              width: progressAnim.interpolate({
+                inputRange: [0, 100],
+                outputRange: ['0%', '100%'],
+                extrapolate: 'clamp',
+              }),
+            },
+          ]}
+        />
       </View>
 
       <ScrollView 
@@ -1783,5 +1779,21 @@ const styles = StyleSheet.create({
     color: '#F57F17',
     fontWeight: '600',
     textAlign: 'center',
+  },
+});
+
+const moneyHdr = StyleSheet.create({
+  wrap: { paddingHorizontal: 20, backgroundColor: TC.bg },
+  progressTrack: {
+    height: 3,
+    backgroundColor: TC.border,
+    marginHorizontal: 20,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: TC.blue,
+    borderRadius: 2,
   },
 });

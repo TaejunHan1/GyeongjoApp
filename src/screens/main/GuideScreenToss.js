@@ -16,6 +16,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { getAiStatus, AI_COST } from '../../lib/aiCredit';
+import GuideThemeMinimal from './guides/themes/GuideThemeMinimal';
 
 const { width } = Dimensions.get('window');
 const STATUSBAR_HEIGHT = Platform.OS === 'ios' ? 44 : RNStatusBar.currentHeight || 24;
@@ -47,6 +48,82 @@ const TossColors = {
   success: '#00C896',
   error: '#FF5A5F',
 };
+
+// 테마 스위처 (상단 미리보기 칩)
+const THEMES = [
+  { id: 'toss',    label: '기본',   icon: '🎯' },
+  { id: 'minimal', label: '미니멀', icon: '○' },
+];
+
+function ThemePicker({ active, onChange }) {
+  return (
+    <View style={themePickerStyles.wrap}>
+      <Text style={themePickerStyles.label}>디자인 테마 · 탭해서 미리보기</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={themePickerStyles.row}
+      >
+        {THEMES.map((t) => (
+          <TouchableOpacity
+            key={t.id}
+            style={[themePickerStyles.chip, active === t.id && themePickerStyles.chipActive]}
+            onPress={() => onChange(t.id)}
+            activeOpacity={0.85}
+          >
+            <Text style={themePickerStyles.chipIcon}>{t.icon}</Text>
+            <Text style={[themePickerStyles.chipText, active === t.id && themePickerStyles.chipTextActive]}>
+              {t.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+const themePickerStyles = StyleSheet.create({
+  wrap: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    backgroundColor: '#F9FAFB',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F4F6',
+  },
+  label: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#8B95A1',
+    letterSpacing: 1,
+    marginBottom: 6,
+    paddingLeft: 2,
+  },
+  row: { flexDirection: 'row', gap: 6, paddingHorizontal: 2 },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  chipActive: {
+    backgroundColor: '#191F28',
+    borderColor: '#191F28',
+  },
+  chipIcon: { fontSize: 13 },
+  chipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4E5968',
+  },
+  chipTextActive: { color: '#FFFFFF' },
+});
 
 // 크레딧 뱃지 컴포넌트
 function CreditBadge({ balance, onPress, compact }) {
@@ -105,6 +182,7 @@ const creditBadgeStyles = StyleSheet.create({
 
 export default function GuideScreenToss({ navigation, userInfo, session, isAuthenticated }) {
   const [selectedUserType, setSelectedUserType] = useState(null);
+  const [activeTheme, setActiveTheme] = useState('toss'); // 'toss' | 'character' | 'magazine' | 'dashboard'
   const [displayedHostFAQ, setDisplayedHostFAQ] = useState([]);
   const [displayedParticipantFAQ, setDisplayedParticipantFAQ] = useState([]);
   const [currentHostTip, setCurrentHostTip] = useState('');
@@ -482,316 +560,45 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
     navigation.navigate(category.screen);
   };
 
-  // 사용자 타입 선택 화면 - 토스 스타일
-  if (!selectedUserType) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar style="dark" />
-        
-        {/* 헤더 - 토스 스타일 */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>경조사 가이드</Text>
-          <CreditBadge
-            balance={aiStatus.balance}
-            onPress={() => navigation.navigate('Credit')}
-          />
-        </View>
-
-        <ScrollView 
-          style={styles.content}
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-        >
-          {/* 메인 질문 - 토스 스타일 */}
-          <View style={styles.mainQuestion}>
-            <Text style={styles.questionTitle}>어떤 도움이 필요하신가요?</Text>
-            <Text style={styles.questionSubtitle}>상황에 맞는 가이드를 제공해드려요</Text>
-          </View>
-
-          {/* 역할 선택 버튼들 - 토스 스타일 플랫 디자인 */}
-          <View style={styles.roleSelection}>
-            {userTypes.map((type) => (
-              <TouchableOpacity
-                key={type.id}
-                style={styles.roleButton}
-                onPress={() => handleUserTypeSelect(type.id)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.roleIconContainer}>
-                  <Ionicons 
-                    name={type.icon} 
-                    size={24} 
-                    color={TossColors.primary}
-                  />
-                </View>
-                <View style={styles.roleContent}>
-                  <Text style={styles.roleTitle}>{type.title}</Text>
-                  <Text style={styles.roleSubtitle}>{type.subtitle}</Text>
-                </View>
-                <Ionicons 
-                  name="chevron-forward" 
-                  size={20} 
-                  color={TossColors.gray[400]}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* 빠른 답변 섹션 - 토스 스타일 (역할별) */}
-          <View style={styles.quickSection}>
-            <View style={styles.quickHeader}>
-              <View>
-                <Text style={styles.quickTitle}>자주 묻는 질문</Text>
-                <Text style={styles.quickSubtitle}>
-                  역할을 선택하면 맞춤 FAQ를 볼 수 있어요
-                </Text>
-              </View>
-              <TouchableOpacity activeOpacity={0.7}>
-                <Text style={styles.quickMore}>전체보기</Text>
-              </TouchableOpacity>
-            </View>
-            
-            {/* 주최자 FAQ */}
-            <View style={styles.faqTabSection}>
-              <View style={styles.faqTabHeader}>
-                <Text style={styles.faqTabTitle}>👑 주최자 FAQ</Text>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => navigation.navigate('FAQ', { role: 'host' })}
-                  style={styles.faqMoreBtn}
-                >
-                  <Text style={styles.faqMoreText}>더 보기</Text>
-                  <Ionicons name="chevron-forward" size={14} color={TossColors.primary} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.quickScroll}
-                contentContainerStyle={styles.quickScrollContent}
-              >
-                {displayedHostFAQ.map((item, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.quickCard}
-                    activeOpacity={0.7}
-                    onPress={() => navigation.navigate('FAQ', { role: 'host' })}
-                  >
-                    <View style={styles.quickCardHeader}>
-                      <Text style={styles.quickIcon}>{item.icon}</Text>
-                    </View>
-                    <Text style={styles.quickQuestion} numberOfLines={2}>
-                      {item.question}
-                    </Text>
-                    <Text style={styles.quickAnswer} numberOfLines={2}>
-                      {item.answer}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-
-            {/* 참여자 FAQ */}
-            <View style={[styles.faqTabSection, { marginTop: 20 }]}>
-              <View style={styles.faqTabHeader}>
-                <Text style={styles.faqTabTitle}>👥 참여자 FAQ</Text>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => navigation.navigate('FAQ', { role: 'participant' })}
-                  style={styles.faqMoreBtn}
-                >
-                  <Text style={styles.faqMoreText}>더 보기</Text>
-                  <Ionicons name="chevron-forward" size={14} color={TossColors.primary} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.quickScroll}
-                contentContainerStyle={styles.quickScrollContent}
-              >
-                {displayedParticipantFAQ.map((item, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.quickCard}
-                    activeOpacity={0.7}
-                    onPress={() => navigation.navigate('FAQ', { role: 'participant' })}
-                  >
-                    <View style={styles.quickCardHeader}>
-                      <Text style={styles.quickIcon}>{item.icon}</Text>
-                    </View>
-                    <Text style={styles.quickQuestion} numberOfLines={2}>
-                      {item.question}
-                    </Text>
-                    <Text style={styles.quickAnswer} numberOfLines={2}>
-                      {item.answer}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-
-          {/* 안내 메시지 - 토스 스타일 */}
-          <View style={styles.infoCard}>
-            <View style={styles.infoIcon}>
-              <Ionicons name="information-circle" size={20} color={TossColors.primary} />
-            </View>
-            <Text style={styles.infoText}>
-              AI가 관계와 상황을 분석해{'\n'}맞춤형 가이드를 제공합니다
-            </Text>
-          </View>
-
-          <View style={{ height: 40 }} />
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  // 선택된 타입에 따른 가이드 화면 - 토스 스타일
-  const currentCategories = selectedUserType === 'host' ? hostGuideCategories : participantGuideCategories;
-  const currentTitle = selectedUserType === 'host' ? '주최자 가이드' : '참여자 가이드';
+  // ──────────────────────────────────────────────
+  // 미니멀 테마 단일 렌더 — 상단 헤더(경조사 가이드 + 크레딧) + Minimal
+  // ──────────────────────────────────────────────
+  const headerTitle = selectedUserType
+    ? selectedUserType === 'host'
+      ? '주최자 가이드'
+      : '참여자 가이드'
+    : '경조사 가이드';
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      
-      {/* 헤더 with 뒤로가기 - 토스 스타일 */}
-      <View style={styles.headerWithBack}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={handleBackToSelection}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={24} color={TossColors.text.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitleWithBack}>{currentTitle}</Text>
-        <CreditBadge
-          balance={aiStatus.balance}
-          onPress={() => navigation.navigate('Credit')}
-          compact
-        />
-      </View>
-
-      <ScrollView 
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-      >
-        {/* 메뉴 리스트 - 토스 스타일 */}
-        <View style={styles.menuSection}>
-          {currentCategories.map((category, index) => (
-            <TouchableOpacity
-              key={category.id}
-              style={[
-                styles.menuItem,
-                index === 0 && styles.menuItemFirst,
-                index === currentCategories.length - 1 && styles.menuItemLast,
-              ]}
-              onPress={() => handleCategoryPress(category)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.menuLeft}>
-                <View style={[
-                  styles.menuIconContainer,
-                  category.isPreparing && styles.menuIconDisabled
-                ]}>
-                  <Ionicons 
-                    name={category.icon} 
-                    size={22} 
-                    color={category.isPreparing ? TossColors.gray[400] : TossColors.primary}
-                  />
-                </View>
-                <View style={styles.menuContent}>
-                  <View style={styles.menuTitleRow}>
-                    <Text style={[
-                      styles.menuTitle,
-                      category.isPreparing && styles.menuTitleDisabled
-                    ]}>{category.title}</Text>
-                    {category.isPreparing && (
-                      <View style={styles.preparingBadge}>
-                        <Text style={styles.preparingBadgeText}>준비중</Text>
-                      </View>
-                    )}
-                    {category.isNew && !category.isPreparing && (
-                      <View style={styles.newBadge}>
-                        <Text style={styles.newBadgeText}>NEW</Text>
-                      </View>
-                    )}
-                    {category.isPopular && !category.isPreparing && (
-                      <View style={styles.popularBadge}>
-                        <Text style={styles.popularBadgeText}>인기</Text>
-                      </View>
-                    )}
-                    {category.isAi && !category.isPreparing && (() => {
-                      const free =
-                        (category.aiFeature === 'budget' && aiStatus.budgetFreeAvailable) ||
-                        (category.aiFeature === 'money'  && aiStatus.moneyFreeAvailable);
-                      return (
-                        <View style={[styles.aiBadge, free && styles.aiBadgeFree]}>
-                          <Text style={styles.aiBadgeIcon}>💎</Text>
-                          <Text style={[styles.aiBadgeText, free && styles.aiBadgeTextFree]}>
-                            {free ? '첫 회 무료' : `${category.aiCost} 크레딧`}
-                          </Text>
-                        </View>
-                      );
-                    })()}
-                  </View>
-                  <Text style={[
-                    styles.menuSubtitle,
-                    category.isPreparing && styles.menuSubtitleDisabled
-                  ]}>{category.subtitle}</Text>
-                </View>
-              </View>
-              <Ionicons 
-                name="chevron-forward" 
-                size={20} 
-                color={TossColors.gray[400]}
-              />
-            </TouchableOpacity>
-          ))}
+      {!selectedUserType && (
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>{headerTitle}</Text>
+          <View style={{ flex: 1 }} />
+          <CreditBadge
+            balance={aiStatus.balance}
+            onPress={() => navigation.navigate('Credit')}
+            compact
+          />
         </View>
-
-        {/* 추가 정보 카드 - 토스 스타일 */}
-        <TouchableOpacity
-          style={styles.bottomCard}
-          activeOpacity={0.85}
-          onPress={() => {
-            // 카드 탭하면 꿀팁 새로고침
-            if (selectedUserType === 'host') {
-              setCurrentHostTip(hostTips[Math.floor(Math.random() * hostTips.length)]);
-            } else {
-              setCurrentParticipantTip(participantTips[Math.floor(Math.random() * participantTips.length)]);
-            }
-          }}
-        >
-          <View style={styles.bottomCardHeader}>
-            <Ionicons name="bulb-outline" size={20} color={TossColors.primary} />
-            <Text style={styles.bottomCardTitle}>
-              {selectedUserType === 'host' ? '준비 꿀팁' : '참석 꿀팁'}
-            </Text>
-            <View style={{ flex: 1 }} />
-            <Text style={styles.bottomCardRefreshHint}>탭하면 새 팁</Text>
-          </View>
-          <Text style={styles.bottomCardText}>
-            {selectedUserType === 'host'
-              ? currentHostTip
-              : currentParticipantTip}
-          </Text>
-          <TouchableOpacity
-            style={styles.bottomCardButton}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('FAQ', { role: selectedUserType })}
-          >
-            <Text style={styles.bottomCardButtonText}>FAQ 전체 보기</Text>
-            <Ionicons name="arrow-forward" size={16} color={TossColors.primary} />
-          </TouchableOpacity>
-        </TouchableOpacity>
-
-        <View style={{ height: 40 }} />
-      </ScrollView>
+      )}
+      <GuideThemeMinimal
+        navigation={navigation}
+        userTypes={userTypes}
+        hostCategories={hostGuideCategories}
+        participantCategories={participantGuideCategories}
+        hostTips={hostTips}
+        participantTips={participantTips}
+        aiStatus={aiStatus}
+        AI_COST={AI_COST}
+        selectedUserType={selectedUserType}
+        setSelectedUserType={setSelectedUserType}
+        onCreditPress={() => navigation.navigate('Credit')}
+      />
     </SafeAreaView>
   );
+
 }
 
 const styles = StyleSheet.create({
@@ -800,23 +607,24 @@ const styles = StyleSheet.create({
     backgroundColor: TossColors.background,
   },
   
-  // 헤더 - 토스 스타일
+  // 헤더 - 다른 탭(내 경조사, 프로필)과 일치하는 좌측 정렬 큰 타이틀
   header: {
-    height: 56,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    backgroundColor: TossColors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: TossColors.border,
-    marginTop: Platform.OS === 'ios' ? 0 : STATUSBAR_HEIGHT,
+    paddingTop: Platform.OS === 'ios' ? 8 : 50,
+    paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  headerBackBtn: {
+    marginRight: 8,
+    padding: 4,
   },
   headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: TossColors.text.primary,
-    letterSpacing: -0.3,
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#191F28',
+    letterSpacing: -0.5,
   },
   headerWithBack: {
     height: 56,

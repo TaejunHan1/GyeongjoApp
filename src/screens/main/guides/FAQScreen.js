@@ -1,18 +1,30 @@
 // src/screens/main/guides/FAQScreen.js
 // 통합 FAQ 화면 — role 파라미터로 주최자/참여자 분기
+// 토스 디자인 시스템 적용
 import React, { useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
-  StyleSheet,
   ScrollView,
+  StyleSheet,
+  Animated,
+  LayoutAnimation,
+  UIManager,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { Colors } from '../../../styles/constants';
+import {
+  TC,
+  PressableCard,
+  StaggerItem,
+  Bubble,
+  ScreenHeader,
+  SectionLabel,
+  getBubble,
+} from './tossStyle';
 import {
   HOST_FAQS,
   PARTICIPANT_FAQS,
@@ -21,11 +33,27 @@ import {
   shuffleFaqs,
 } from './faqData';
 
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 const DISPLAY_COUNT = 15;
+
+// 카테고리별 아이콘 색상 (faqData 의 category 값)
+const CAT_COLOR_MAP = {
+  wedding:     { bg: TC.pinkSoft,   color: TC.pink },
+  funeral:     { bg: TC.purpleSoft, color: TC.purple },
+  budget:      { bg: TC.orangeSoft, color: TC.orange },
+  preparation: { bg: TC.greenSoft,  color: TC.green },
+  money:       { bg: TC.blueSoft,   color: TC.blue },
+  manner:      { bg: TC.pinkSoft,   color: TC.pink },
+  etiquette:   { bg: TC.greenSoft,  color: TC.green },
+  etc:         { bg: TC.orangeSoft, color: TC.orange },
+  all:         { bg: TC.blueSoft,   color: TC.blue },
+};
 
 export default function FAQScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
-  // host | participant (기본값: host)
   const role = route?.params?.role === 'participant' ? 'participant' : 'host';
   const isHost = role === 'host';
 
@@ -48,7 +76,10 @@ export default function FAQScreen({ navigation, route }) {
       ? displayedFAQ
       : displayedFAQ.filter((item) => item.category === selectedCategory);
 
+  const popularFAQs = selectedCategory === 'all' ? displayedFAQ.filter((i) => i.popular) : [];
+
   const toggleItem = (id) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedItems((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -62,243 +93,239 @@ export default function FAQScreen({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
       <StatusBar style="dark" />
 
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>{isHost ? '주최자 FAQ' : '참여자 FAQ'}</Text>
-          <Text style={styles.headerSubtitle}>
-            {isHost ? '행사 준비 중 자주 묻는 질문들' : '하객·조문객이 궁금해하는 질문들'}
-          </Text>
-        </View>
-        <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
-          <Ionicons name="refresh" size={20} color={Colors.primary} />
-        </TouchableOpacity>
-      </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={s.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        <StaggerItem delay={0}>
+          <ScreenHeader
+            onBack={() => navigation.goBack()}
+            eyebrow={isHost ? '주최자 FAQ' : '참여자 FAQ'}
+            title={isHost ? '준비하며\n자주 궁금한 것' : '참석하며\n자주 궁금한 것'}
+            subtitle={isHost ? `총 ${allFaqs.length}개 · ${DISPLAY_COUNT}개 랜덤 표시` : `총 ${allFaqs.length}개 · ${DISPLAY_COUNT}개 랜덤 표시`}
+            right={
+              <PressableCard style={s.refreshBtn} onPress={handleRefresh} activeScale={0.88}>
+                <Ionicons name="refresh" size={18} color={TC.blue} />
+              </PressableCard>
+            }
+          />
+        </StaggerItem>
 
-      {/* 카테고리 탭 */}
-      <View style={styles.categoryContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryScroll}
-        >
-          {categories.map((category) => {
-            const active = selectedCategory === category.id;
-            return (
-              <TouchableOpacity
-                key={category.id}
-                style={[styles.categoryTab, active && styles.categoryTabActive]}
-                onPress={() => setSelectedCategory(category.id)}
-              >
-                <Ionicons
-                  name={category.icon}
-                  size={18}
-                  color={active ? Colors.white : Colors.textSecondary}
-                />
-                <Text style={[styles.categoryText, active && styles.categoryTextActive]}>
-                  {category.title}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+        {/* 카테고리 탭 */}
+        <StaggerItem delay={80}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={s.catRow}
+          >
+            {categories.map((category) => {
+              const active = selectedCategory === category.id;
+              return (
+                <PressableCard
+                  key={category.id}
+                  style={[s.catChip, active && s.catChipActive]}
+                  onPress={() => setSelectedCategory(category.id)}
+                  activeScale={0.95}
+                >
+                  <Ionicons
+                    name={category.icon}
+                    size={14}
+                    color={active ? TC.card : TC.inkSoft}
+                  />
+                  <Text style={[s.catChipText, active && s.catChipTextActive]}>
+                    {category.title}
+                  </Text>
+                </PressableCard>
+              );
+            })}
+          </ScrollView>
+        </StaggerItem>
 
-      {/* FAQ 리스트 */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.faqContainer}>
-          {/* 인기 질문 */}
-          {selectedCategory === 'all' && displayedFAQ.filter((i) => i.popular).length > 0 && (
-            <View style={styles.popularSection}>
-              <Text style={styles.sectionTitle}>🔥 인기 질문</Text>
-              {displayedFAQ
-                .filter((i) => i.popular)
-                .map((item) => {
-                  const key = `popular-${item.id}`;
-                  const expanded = expandedItems.has(key);
-                  return (
-                    <TouchableOpacity
-                      key={key}
-                      style={[styles.faqItem, styles.popularItem]}
+        {/* 인기 질문 */}
+        {popularFAQs.length > 0 && (
+          <StaggerItem delay={140}>
+            <View style={s.popularWrap}>
+              <SectionLabel>🔥 인기 질문</SectionLabel>
+              {popularFAQs.map((item, idx) => {
+                const key = `popular-${item.id}`;
+                const expanded = expandedItems.has(key);
+                const catColor = CAT_COLOR_MAP[item.category] || CAT_COLOR_MAP.all;
+                return (
+                  <StaggerItem key={key} delay={180 + idx * 50}>
+                    <PressableCard
+                      style={[s.faqCard, s.faqCardPopular]}
                       onPress={() => toggleItem(key)}
-                      activeOpacity={0.8}
                     >
-                      <View style={styles.faqHeader}>
-                        <View style={styles.faqIconContainer}>
-                          <Ionicons name="flame" size={18} color={Colors.orange || '#FF6B35'} />
+                      <View style={s.faqHead}>
+                        <View style={[s.faqFireIcon, { backgroundColor: TC.orangeSoft }]}>
+                          <Ionicons name="flame" size={14} color={TC.orange} />
                         </View>
-                        <Text style={styles.faqQuestion}>{item.question}</Text>
+                        <Text style={s.faqQuestion} numberOfLines={expanded ? 0 : 2}>
+                          {item.question}
+                        </Text>
                         <Ionicons
                           name={expanded ? 'chevron-up' : 'chevron-down'}
-                          size={20}
-                          color={Colors.textSecondary}
+                          size={18}
+                          color={TC.inkMuted}
                         />
                       </View>
                       {expanded && (
-                        <View style={styles.faqAnswer}>
-                          <Text style={styles.faqAnswerText}>{item.answer}</Text>
+                        <View style={s.faqAnswerWrap}>
+                          <Text style={s.faqAnswer}>{item.answer}</Text>
                         </View>
                       )}
-                    </TouchableOpacity>
-                  );
-                })}
-            </View>
-          )}
-
-          {/* 전체 / 카테고리 */}
-          <View style={styles.allSection}>
-            <Text style={styles.sectionTitle}>
-              {selectedCategory === 'all'
-                ? '전체 질문'
-                : `${categories.find((c) => c.id === selectedCategory)?.title || ''} 질문`}
-            </Text>
-            {filteredFAQ.length === 0 ? (
-              <View style={styles.emptyWrap}>
-                <Text style={styles.emptyText}>해당 카테고리 질문이 없어요</Text>
-              </View>
-            ) : (
-              filteredFAQ.map((item) => {
-                const expanded = expandedItems.has(item.id);
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.faqItem}
-                    onPress={() => toggleItem(item.id)}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.faqHeader}>
-                      <Text style={styles.faqQuestion}>{item.question}</Text>
-                      <Ionicons
-                        name={expanded ? 'chevron-up' : 'chevron-down'}
-                        size={20}
-                        color={Colors.textSecondary}
-                      />
-                    </View>
-                    {expanded && (
-                      <View style={styles.faqAnswer}>
-                        <Text style={styles.faqAnswerText}>{item.answer}</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
+                    </PressableCard>
+                  </StaggerItem>
                 );
-              })
-            )}
-          </View>
-        </View>
-        <View style={{ height: 80 }} />
+              })}
+            </View>
+          </StaggerItem>
+        )}
+
+        {/* 전체 / 카테고리 FAQ */}
+        <StaggerItem delay={220}>
+          <SectionLabel count={filteredFAQ.length}>
+            {selectedCategory === 'all'
+              ? '전체 질문'
+              : `${categories.find((c) => c.id === selectedCategory)?.title || ''} 질문`}
+          </SectionLabel>
+        </StaggerItem>
+
+        {filteredFAQ.length === 0 ? (
+          <StaggerItem delay={260}>
+            <View style={s.emptyBox}>
+              <Bubble icon="help-circle-outline" bg={TC.border} color={TC.inkMuted} size="lg" />
+              <Text style={s.emptyText}>해당 카테고리 질문이 없어요</Text>
+            </View>
+          </StaggerItem>
+        ) : (
+          filteredFAQ.map((item, idx) => {
+            const expanded = expandedItems.has(item.id);
+            const catColor = CAT_COLOR_MAP[item.category] || CAT_COLOR_MAP.all;
+            return (
+              <StaggerItem key={item.id} delay={260 + idx * 45}>
+                <PressableCard
+                  style={s.faqCard}
+                  onPress={() => toggleItem(item.id)}
+                >
+                  <View style={s.faqHead}>
+                    <View style={[s.faqCatDot, { backgroundColor: catColor.color }]} />
+                    <Text style={s.faqQuestion} numberOfLines={expanded ? 0 : 2}>
+                      {item.question}
+                    </Text>
+                    <Ionicons
+                      name={expanded ? 'chevron-up' : 'chevron-down'}
+                      size={18}
+                      color={TC.inkMuted}
+                    />
+                  </View>
+                  {expanded && (
+                    <View style={s.faqAnswerWrap}>
+                      <Text style={s.faqAnswer}>{item.answer}</Text>
+                    </View>
+                  )}
+                </PressableCard>
+              </StaggerItem>
+            );
+          })
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.white },
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: TC.bg },
+  scroll: { padding: 20, paddingBottom: 60 },
 
-  header: {
-    backgroundColor: Colors.white,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
+  refreshBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: TC.blueSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // 카테고리 탭
+  catRow: { gap: 8, paddingVertical: 4, marginBottom: 16 },
+  catChip: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  backButton: { marginRight: 8, padding: 4 },
-  headerContent: { flex: 1, alignItems: 'center' },
-  refreshButton: { padding: 8, borderRadius: 20, backgroundColor: Colors.gray50 },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 2,
-  },
-  headerSubtitle: { fontSize: 12, color: Colors.textSecondary },
-
-  categoryContainer: {
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
-  },
-  categoryScroll: { paddingHorizontal: 16, paddingVertical: 14, gap: 8 },
-  categoryTab: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 14,
     paddingVertical: 8,
+    backgroundColor: TC.card,
     borderRadius: 20,
-    backgroundColor: Colors.gray50,
-    gap: 6,
   },
-  categoryTabActive: { backgroundColor: Colors.primary },
-  categoryText: { fontSize: 13, fontWeight: '500', color: Colors.textSecondary },
-  categoryTextActive: { color: Colors.white },
+  catChipActive: { backgroundColor: TC.ink },
+  catChipText: { fontSize: 13, fontWeight: '600', color: TC.inkSoft, letterSpacing: -0.2 },
+  catChipTextActive: { color: TC.card },
 
-  content: { flex: 1 },
-  faqContainer: { paddingHorizontal: 16 },
+  // 인기
+  popularWrap: { marginBottom: 8 },
 
-  popularSection: { marginTop: 20, marginBottom: 24 },
-  allSection: { marginBottom: 24 },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 12,
+  // FAQ 카드
+  faqCard: {
+    backgroundColor: TC.card,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 8,
   },
-
-  faqItem: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    marginBottom: 10,
+  faqCardPopular: {
     borderWidth: 1,
-    borderColor: Colors.gray100,
-    overflow: 'hidden',
+    borderColor: TC.orangeSoft,
   },
-  popularItem: {
-    borderColor: (Colors.orange || '#FF6B35') + '30',
-    backgroundColor: (Colors.orange || '#FF6B35') + '06',
-  },
-  faqHeader: {
+  faqHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
     gap: 10,
   },
-  faqIconContainer: {
+  faqFireIcon: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: (Colors.orange || '#FF6B35') + '20',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  faqCatDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   faqQuestion: {
     flex: 1,
     fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textPrimary,
+    fontWeight: '700',
+    color: TC.ink,
     lineHeight: 20,
+    letterSpacing: -0.3,
+  },
+  faqAnswerWrap: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: TC.border,
   },
   faqAnswer: {
-    paddingHorizontal: 14,
-    paddingBottom: 14,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray100,
-    backgroundColor: Colors.gray50,
-  },
-  faqAnswerText: {
     fontSize: 13,
-    lineHeight: 21,
-    color: Colors.gray700,
-    marginTop: 10,
+    color: TC.inkSoft,
+    lineHeight: 22,
+    letterSpacing: -0.2,
   },
 
-  emptyWrap: { padding: 30, alignItems: 'center' },
-  emptyText: { fontSize: 13, color: Colors.textSecondary },
+  // 빈 상태
+  emptyBox: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  emptyText: {
+    fontSize: 13,
+    color: TC.inkMuted,
+  },
 });

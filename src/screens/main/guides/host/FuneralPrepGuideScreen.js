@@ -18,6 +18,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../../../styles/constants';
+import { TC, PressableCard, StaggerItem, ScreenHeader } from '../tossStyle';
 
 const { width } = Dimensions.get('window');
 
@@ -182,20 +183,19 @@ export default function FuneralPrepGuideScreen({ navigation, userInfo, session }
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       
-      <Animated.ScrollView 
-        style={[styles.content, { opacity: fadeAnim }]}
+      <Animated.ScrollView
+        style={[styles.content, { opacity: fadeAnim, backgroundColor: TC.bg }]}
+        contentContainerStyle={{ padding: 20 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* 헤더 정보 */}
-        <View style={styles.headerSection}>
-          <View style={styles.headerIcon}>
-            <Ionicons name="flower" size={32} color="#9370DB" />
-          </View>
-          <Text style={styles.headerTitle}>장례식 준비 가이드</Text>
-          <Text style={styles.headerSubtitle}>
-            어려운 시기에 차근차근 도움을 드리겠습니다
-          </Text>
-        </View>
+        <StaggerItem delay={0}>
+          <ScreenHeader
+            onBack={() => navigation.goBack()}
+            eyebrow="장례식 준비 가이드"
+            title={'어려운 시기에\n차근차근 함께'}
+            subtitle="임종부터 장례 후까지 안내"
+          />
+        </StaggerItem>
 
         {/* 응급 연락처 */}
         <View style={styles.emergencySection}>

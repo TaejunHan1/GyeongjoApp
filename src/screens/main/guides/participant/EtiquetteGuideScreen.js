@@ -1,5 +1,6 @@
 // src/screens/main/guides/EtiquetteGuideScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { TC, PressableCard, StaggerItem, ScreenHeader, SectionLabel } from '../tossStyle';
 import {
   View,
   Text,
@@ -8,6 +9,7 @@ import {
   SafeAreaView,
   ScrollView,
   Dimensions,
+  Animated,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +20,18 @@ const { width } = Dimensions.get('window');
 export default function EtiquetteGuideScreen({ navigation }) {
   const [selectedTab, setSelectedTab] = useState('wedding');
   const [expandedStep, setExpandedStep] = useState(null);
+
+  // 세그먼트 컨트롤 슬라이딩 애니메이션
+  const segAnim = useRef(new Animated.Value(0)).current;
+  const [trackWidth, setTrackWidth] = useState(0);
+  useEffect(() => {
+    Animated.spring(segAnim, {
+      toValue: selectedTab === 'wedding' ? 0 : 1,
+      useNativeDriver: true,
+      bounciness: 6,
+      speed: 20,
+    }).start();
+  }, [selectedTab]);
 
   // 결혼식 예절 단계별 가이드
   const weddingEtiquette = [
@@ -302,77 +316,113 @@ export default function EtiquetteGuideScreen({ navigation }) {
       <StatusBar style="dark" />
       
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* 헤더 */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>예절 가이드</Text>
-          <Text style={styles.headerSubtitle}>
-            경조사에서 지켜야 할 예절과 순서를 단계별로 알아보세요
-          </Text>
-        </View>
+        <StaggerItem delay={0}>
+          <ScreenHeader
+            onBack={() => navigation.goBack()}
+            eyebrow="예절 가이드"
+            title={'경조사에서\n지켜야 할 예절'}
+            subtitle="단계별로 알아보는 올바른 참석 매너"
+          />
+        </StaggerItem>
 
-        {/* 경조사 타입 탭 */}
-        <View style={styles.eventTabs}>
-          <TouchableOpacity
-            style={[styles.eventTab, selectedTab === 'wedding' && styles.eventTabActive]}
-            onPress={() => setSelectedTab('wedding')}
-          >
-            <Text style={styles.eventTabEmoji}>💒</Text>
-            <Text style={[styles.eventTabText, selectedTab === 'wedding' && styles.eventTabTextActive]}>
-              결혼식 예절
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.eventTab, selectedTab === 'funeral' && styles.eventTabActive]}
-            onPress={() => setSelectedTab('funeral')}
-          >
-            <Text style={styles.eventTabEmoji}>🕯️</Text>
-            <Text style={[styles.eventTabText, selectedTab === 'funeral' && styles.eventTabTextActive]}>
-              장례식 예절
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {/* 자리 선택 - 토스 스타일 세그먼트 컨트롤 */}
+        <StaggerItem delay={80}>
+          <View style={tossSeg.wrap}>
+            <View
+              style={tossSeg.track}
+              onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+            >
+              <Animated.View
+                style={[
+                  tossSeg.thumb,
+                  {
+                    width: trackWidth > 0 ? (trackWidth - 8) / 2 : '50%',
+                    transform: [
+                      {
+                        translateX: segAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, Math.max(0, (trackWidth - 8) / 2)],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              />
+              <TouchableOpacity
+                style={tossSeg.btn}
+                activeOpacity={0.7}
+                onPress={() => setSelectedTab('wedding')}
+              >
+                <Text
+                  style={[
+                    tossSeg.label,
+                    selectedTab === 'wedding' && tossSeg.labelActive,
+                  ]}
+                >
+                  결혼식
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={tossSeg.btn}
+                activeOpacity={0.7}
+                onPress={() => setSelectedTab('funeral')}
+              >
+                <Text
+                  style={[
+                    tossSeg.label,
+                    selectedTab === 'funeral' && tossSeg.labelActive,
+                  ]}
+                >
+                  장례식
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </StaggerItem>
 
         {/* 단계별 예절 가이드 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>단계별 예절 가이드</Text>
-          <Text style={styles.sectionSubtitle}>
-            {selectedTab === 'wedding' ? '결혼식 참석부터 마무리까지' : '조문 절차를 순서대로'}
-          </Text>
-          {renderEtiquetteSteps()}
-        </View>
+        <StaggerItem delay={140}>
+          <View style={ett.section}>
+            <SectionLabel>
+              {selectedTab === 'wedding' ? '결혼식 참석 단계' : '조문 절차'}
+            </SectionLabel>
+            {renderEtiquetteSteps()}
+          </View>
+        </StaggerItem>
 
         {/* 상황별 대처법 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>상황별 대처법</Text>
-          <Text style={styles.sectionSubtitle}>
-            이런 상황에서는 어떻게 해야 할까요?
-          </Text>
-          {renderSituationGuide()}
-        </View>
+        <StaggerItem delay={220}>
+          <View style={ett.section}>
+            <SectionLabel>상황별 대처법</SectionLabel>
+            {renderSituationGuide()}
+          </View>
+        </StaggerItem>
 
 
         {/* 어린이 동반 시 주의사항 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>👶 어린이 동반 시</Text>
-          <View style={styles.childGuide}>
-            <View style={styles.childItem}>
-              <Text style={styles.childIcon}>🍼</Text>
-              <Text style={styles.childText}>수유실이나 조용한 곳 미리 확인</Text>
-            </View>
-            <View style={styles.childItem}>
-              <Text style={styles.childIcon}>🧸</Text>
-              <Text style={styles.childText}>조용한 장난감이나 간식 준비</Text>
-            </View>
-            <View style={styles.childItem}>
-              <Text style={styles.childIcon}>👨‍👩‍👧</Text>
-              <Text style={styles.childText}>한 명은 아이를 돌보고 한 명은 예식 참석</Text>
-            </View>
-            <View style={styles.childItem}>
-              <Text style={styles.childIcon}>🚪</Text>
-              <Text style={styles.childText}>아이가 울면 즉시 밖으로 나가기</Text>
+        <StaggerItem delay={300}>
+          <View style={ett.section}>
+            <SectionLabel>어린이 동반 시</SectionLabel>
+            <View style={styles.childGuide}>
+              <View style={styles.childItem}>
+                <Text style={styles.childIcon}>🍼</Text>
+                <Text style={styles.childText}>수유실이나 조용한 곳 미리 확인</Text>
+              </View>
+              <View style={styles.childItem}>
+                <Text style={styles.childIcon}>🧸</Text>
+                <Text style={styles.childText}>조용한 장난감이나 간식 준비</Text>
+              </View>
+              <View style={styles.childItem}>
+                <Text style={styles.childIcon}>👨‍👩‍👧</Text>
+                <Text style={styles.childText}>한 명은 아이를 돌보고 한 명은 예식 참석</Text>
+              </View>
+              <View style={styles.childItem}>
+                <Text style={styles.childIcon}>🚪</Text>
+                <Text style={styles.childText}>아이가 울면 즉시 밖으로 나가기</Text>
+              </View>
             </View>
           </View>
-        </View>
+        </StaggerItem>
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -618,5 +668,50 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     flex: 1,
     lineHeight: 20,
+  },
+});
+
+const ett = StyleSheet.create({
+  section: { paddingHorizontal: 20, marginTop: 28 },
+});
+
+const tossSeg = StyleSheet.create({
+  wrap: { paddingHorizontal: 20, marginBottom: 12 },
+  track: {
+    flexDirection: 'row',
+    backgroundColor: '#F2F4F6',
+    borderRadius: 12,
+    padding: 4,
+    position: 'relative',
+    height: 48,
+  },
+  thumb: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    height: 40,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 9,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  btn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8B95A1',
+    letterSpacing: -0.2,
+  },
+  labelActive: {
+    color: '#191F28',
+    fontWeight: '700',
   },
 });

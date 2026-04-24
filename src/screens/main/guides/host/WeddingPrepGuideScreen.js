@@ -18,6 +18,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../../../styles/constants';
+import { TC, PressableCard, StaggerItem, ScreenHeader } from '../tossStyle';
 
 const { width } = Dimensions.get('window');
 
@@ -172,20 +173,19 @@ export default function WeddingPrepGuideScreen({ navigation, userInfo, session }
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       
-      <Animated.ScrollView 
-        style={[styles.content, { opacity: fadeAnim }]}
+      <Animated.ScrollView
+        style={[styles.content, { opacity: fadeAnim, backgroundColor: TC.bg }]}
+        contentContainerStyle={{ padding: 20 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* 헤더 정보 */}
-        <View style={styles.headerSection}>
-          <View style={styles.headerIcon}>
-            <Ionicons name="heart" size={32} color="#FF69B4" />
-          </View>
-          <Text style={styles.headerTitle}>결혼식 준비 가이드</Text>
-          <Text style={styles.headerSubtitle}>
-            단계별로 체계적인 결혼식 준비를 도와드려요
-          </Text>
-        </View>
+        <StaggerItem delay={0}>
+          <ScreenHeader
+            onBack={() => navigation.goBack()}
+            eyebrow="결혼식 준비 가이드"
+            title={'6개월부터 당일까지\n차근차근 함께'}
+            subtitle="단계별 체크리스트와 타임라인"
+          />
+        </StaggerItem>
 
         {/* 뷰 모드 토글 */}
         <View style={styles.viewToggleWrap}>
