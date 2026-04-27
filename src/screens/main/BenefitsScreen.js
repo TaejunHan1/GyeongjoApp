@@ -12,22 +12,19 @@ import {
   Animated,
   Easing,
   Share,
+  Image,
+  Modal,
+  Pressable,
 } from 'react-native';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { TC, PressableCard, StaggerItem } from './guides/tossStyle';
 import { getAiStatus } from '../../lib/aiCredit';
+import { MOBILE_TEMPLATES, TEMPLATE_CATEGORIES } from './studio/mobileTemplateConfigs';
 
 const { width } = Dimensions.get('window');
-
-// 청첩장 템플릿 미리보기 (에셋 완성 전 플레이스홀더 스타일)
-const TEMPLATE_PREVIEWS = [
-  { id: 'elegant-garden', name: 'Elegant Garden', bg: '#FBF9F3', accent: '#B5C7A8', emoji: '🌿' },
-  { id: 'korean-elegant', name: 'Korean Elegant', bg: '#F5EDE0', accent: '#C9A97A', emoji: '🎋' },
-  { id: 'modern-minimal', name: 'Modern Minimal', bg: '#F4F4F6', accent: '#6B7684', emoji: '✦' },
-  { id: 'romantic-pink', name: 'Romantic Pink', bg: '#FCE7F3', accent: '#F472B6', emoji: '🌸' },
-  { id: 'vintage', name: 'Vintage', bg: '#EDE3D2', accent: '#8B6F47', emoji: '🕯️' },
-];
 
 const FEATURE_LIST = [
   { icon: 'flower-outline', label: '수채화 꽃·잎 장식', color: TC.green, bg: TC.greenSoft },
@@ -39,6 +36,35 @@ const FEATURE_LIST = [
 export default function BenefitsScreen({ navigation, userInfo, session, isAuthenticated }) {
   const [aiStatus, setAiStatus] = useState({ balance: 0 });
   const [heroFloat] = useState(new Animated.Value(0));
+  const [activeCategory, setActiveCategory] = useState('floral');
+  const [zoomTemplate, setZoomTemplate] = useState(null); // 바텀 시트 모달
+  const sheetFade = useRef(new Animated.Value(0)).current;
+  const sheetTranslateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+
+  const openZoom = (template) => {
+    setZoomTemplate(template);
+    Animated.parallel([
+      Animated.timing(sheetFade, { toValue: 1, duration: 220, useNativeDriver: true }),
+      Animated.spring(sheetTranslateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 4,
+        speed: 14,
+      }),
+    ]).start();
+  };
+
+  const closeZoom = () => {
+    Animated.parallel([
+      Animated.timing(sheetFade, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(sheetTranslateY, {
+        toValue: SCREEN_HEIGHT,
+        duration: 240,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => setZoomTemplate(null));
+  };
 
   // 크레딧 잔액 로드
   useEffect(() => {
@@ -143,39 +169,99 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
           </View>
         </StaggerItem>
 
-        {/* 템플릿 미리보기 (가로 스크롤) */}
+        {/* 템플릿 미리보기 (카테고리 + 가로 스크롤) */}
         <StaggerItem delay={80}>
           <View style={s.previewHead}>
             <Text style={s.sectionLabel}>미리 보는 템플릿</Text>
-            <Text style={s.previewHint}>5종 준비 중</Text>
+            <Text style={s.previewHint}>
+              {MOBILE_TEMPLATES.filter((t) => t.category === activeCategory).length}종
+            </Text>
           </View>
+
+          {/* 카테고리 칩 */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.previewRow}
+            contentContainerStyle={s.categoryRow}
           >
-            {TEMPLATE_PREVIEWS.map((t, i) => (
-              <View
-                key={t.id}
-                style={[s.previewCard, { backgroundColor: t.bg }]}
-              >
-                {/* 상단 꾸밈 */}
-                <View style={[s.previewDecoTop, { backgroundColor: t.accent, opacity: 0.2 }]} />
-                <Text style={s.previewEmoji}>{t.emoji}</Text>
-
-                {/* 가상 청첩장 미리보기 */}
-                <View style={[s.previewPaper, { borderColor: t.accent + '40' }]}>
-                  <View style={[s.previewLine, { backgroundColor: t.accent, width: '50%', height: 3 }]} />
-                  <View style={[s.previewLine, { backgroundColor: t.accent, width: '70%', height: 2, marginTop: 6 }]} />
-                  <View style={[s.previewPhoto, { backgroundColor: t.accent + '30' }]} />
-                  <View style={[s.previewLine, { backgroundColor: t.accent, width: '60%', height: 2, marginTop: 6 }]} />
-                  <View style={[s.previewLine, { backgroundColor: t.accent, width: '40%', height: 2, marginTop: 3 }]} />
-                </View>
-
-                <Text style={s.previewName}>{t.name}</Text>
-              </View>
-            ))}
+            {TEMPLATE_CATEGORIES.map((c) => {
+              const isActive = c.id === activeCategory;
+              const count = MOBILE_TEMPLATES.filter((t) => t.category === c.id).length;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  onPress={() => setActiveCategory(c.id)}
+                  activeOpacity={0.8}
+                  style={[s.categoryChip, isActive && s.categoryChipActive]}
+                >
+                  <Ionicons
+                    name={c.icon}
+                    size={13}
+                    color={isActive ? '#fff' : TC.inkMuted}
+                  />
+                  <Text
+                    style={[
+                      s.categoryChipText,
+                      isActive && s.categoryChipTextActive,
+                    ]}
+                  >
+                    {c.label}
+                  </Text>
+                  {count > 0 && (
+                    <View
+                      style={[
+                        s.categoryBadge,
+                        isActive && s.categoryBadgeActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          s.categoryBadgeText,
+                          isActive && s.categoryBadgeTextActive,
+                        ]}
+                      >
+                        {count}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
+
+          {/* 템플릿 가로 스크롤 */}
+          {MOBILE_TEMPLATES.filter((t) => t.category === activeCategory).length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.previewRow}
+            >
+              {MOBILE_TEMPLATES.filter((t) => t.category === activeCategory).map(
+                (t) => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={s.previewItem}
+                    activeOpacity={0.85}
+                    onPress={() => openZoom(t)}
+                  >
+                    <Image
+                      source={t.preview}
+                      style={s.previewImage}
+                      resizeMode="cover"
+                    />
+                    <Text style={s.previewName}>{t.name}</Text>
+                    <Text style={s.previewSub}>{t.subtitle}</Text>
+                  </TouchableOpacity>
+                )
+              )}
+            </ScrollView>
+          ) : (
+            <View style={s.emptyCategory}>
+              <Ionicons name="time-outline" size={28} color={TC.inkMuted} />
+              <Text style={s.emptyCategoryTitle}>준비 중인 카테고리예요</Text>
+              <Text style={s.emptyCategorySub}>곧 새 템플릿으로 찾아올게요</Text>
+            </View>
+          )}
         </StaggerItem>
 
         {/* 기능 4개 그리드 */}
@@ -267,6 +353,60 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
           </PressableCard>
         </StaggerItem>
       </ScrollView>
+
+      {/* 템플릿 확대 보기 — 바텀 시트 */}
+      <Modal
+        visible={!!zoomTemplate}
+        transparent
+        statusBarTranslucent
+        onRequestClose={closeZoom}
+        animationType="none"
+      >
+        <View style={s.sheetRoot}>
+          <Animated.View style={[s.sheetBackdrop, { opacity: sheetFade }]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeZoom} />
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              s.sheetContainer,
+              { transform: [{ translateY: sheetTranslateY }] },
+            ]}
+          >
+            {/* 핸들바 */}
+            <View style={s.sheetHandle} />
+
+            {zoomTemplate && (
+              <>
+                {/* 헤더 */}
+                <View style={s.sheetHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.sheetTitle}>{zoomTemplate.name}</Text>
+                    <Text style={s.sheetSubtitle}>{zoomTemplate.subtitle}</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={closeZoom}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={s.sheetCloseBtn}
+                  >
+                    <Ionicons name="close" size={20} color={TC.ink} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* 이미지 */}
+                <View style={s.sheetImageWrap}>
+                  <Image
+                    source={zoomTemplate.preview}
+                    style={s.sheetImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              </>
+            )}
+          </Animated.View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -385,58 +525,171 @@ const s = StyleSheet.create({
     fontWeight: '500',
   },
 
+  // 카테고리 칩
+  categoryRow: {
+    paddingHorizontal: 20,
+    gap: 8,
+    paddingBottom: 14,
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: TC.card,
+    borderRadius: 18,
+  },
+  categoryChipActive: {
+    backgroundColor: TC.ink,
+  },
+  categoryChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
+  categoryChipTextActive: {
+    color: '#fff',
+  },
+  categoryBadge: {
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: 9,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 2,
+  },
+  categoryBadgeActive: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  categoryBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: TC.inkMuted,
+  },
+  categoryBadgeTextActive: {
+    color: '#fff',
+  },
+
+  // 빈 카테고리
+  emptyCategory: {
+    marginHorizontal: 20,
+    paddingVertical: 36,
+    alignItems: 'center',
+    backgroundColor: TC.card,
+    borderRadius: 16,
+    gap: 6,
+  },
+  emptyCategoryTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: TC.ink,
+    letterSpacing: -0.2,
+    marginTop: 4,
+  },
+  emptyCategorySub: {
+    fontSize: 12,
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
+
   // 템플릿 미리보기
   previewRow: {
     paddingHorizontal: 20,
-    gap: 12,
+    gap: 14,
     paddingRight: 24,
   },
-  previewCard: {
-    width: 140,
-    height: 200,
-    borderRadius: 16,
-    padding: 14,
+  previewItem: {
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    overflow: 'hidden',
-    position: 'relative',
+    width: 170,
   },
-  previewDecoTop: {
-    position: 'absolute',
-    top: -30,
-    right: -30,
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+  previewImage: {
+    width: 170,
+    height: 238,
+    borderRadius: 12,
+    backgroundColor: '#FBF9F3',
   },
-  previewEmoji: {
-    fontSize: 20,
-    marginBottom: 6,
+
+  // 바텀 시트 모달
+  sheetRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
   },
-  previewPaper: {
-    width: '100%',
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  sheetContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    marginBottom: 10,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 24,
+    paddingTop: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 16,
   },
-  previewLine: {
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
     borderRadius: 2,
-    opacity: 0.5,
+    backgroundColor: '#E5E8EB',
+    marginBottom: 12,
   },
-  previewPhoto: {
-    width: '80%',
-    height: 60,
-    borderRadius: 6,
-    marginTop: 6,
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: TC.ink,
+    letterSpacing: -0.4,
+  },
+  sheetSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+    marginTop: 2,
+  },
+  sheetCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: TC.bg,
+  },
+  sheetImageWrap: {
+    paddingHorizontal: 0,
+    alignItems: 'center',
+  },
+  sheetImage: {
+    width: width,
+    height: width * (1400 / 1024),
+    backgroundColor: '#FBF9F3',
   },
   previewName: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
-    color: TC.inkSoft,
+    color: TC.ink,
+    letterSpacing: -0.3,
+    marginTop: 8,
+  },
+  previewSub: {
+    fontSize: 11,
+    color: TC.inkMuted,
     letterSpacing: -0.2,
+    marginTop: 2,
   },
 
   // 기능 그리드
