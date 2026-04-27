@@ -12,6 +12,7 @@ import MyEventsScreen from '../screens/main/MyEventsScreen';
 // import GuideScreen from '../screens/main/GuideScreen'; // 기존 스타일
 import GuideScreen from '../screens/main/GuideScreenToss'; // 토스 스타일
 import BenefitsScreen from '../screens/main/BenefitsScreen'; // 🆕 혜택 화면
+import PaperInvitationEditorScreen from '../screens/main/studio/PaperInvitationEditorScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import CreditScreen from '../screens/main/CreditScreen';
 import TermsScreen from '../screens/legal/TermsScreen';
@@ -744,6 +745,13 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
             />
           )}
         </Stack.Screen>
+
+        {/* 종이 청첩장 에디터 */}
+        <Stack.Screen
+          name="PaperInvitationEditor"
+          component={PaperInvitationEditorScreen}
+          options={{ headerShown: false }}
+        />
 
         {/* 이용약관 / 개인정보 처리방침 */}
         <Stack.Screen name="Terms" component={TermsScreen} options={{ headerShown: false }} />

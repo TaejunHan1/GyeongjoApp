@@ -402,6 +402,24 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
                     resizeMode="contain"
                   />
                 </View>
+
+                {/* CTA — 이 템플릿으로 만들기 */}
+                <View style={s.sheetCtaWrap}>
+                  <TouchableOpacity
+                    style={s.sheetCta}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      const t = zoomTemplate;
+                      closeZoom();
+                      setTimeout(() => {
+                        navigation.navigate('PaperInvitationEditor', { template: t });
+                      }, 260);
+                    }}
+                  >
+                    <Ionicons name="create-outline" size={18} color="#fff" />
+                    <Text style={s.sheetCtaText}>이 템플릿으로 만들기</Text>
+                  </TouchableOpacity>
+                </View>
               </>
             )}
           </Animated.View>
@@ -677,6 +695,27 @@ const s = StyleSheet.create({
     width: width,
     height: width * (1400 / 1024),
     backgroundColor: '#FBF9F3',
+  },
+
+  // 시트 CTA 버튼
+  sheetCtaWrap: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  sheetCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    backgroundColor: TC.ink,
+    borderRadius: 14,
+  },
+  sheetCtaText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.3,
   },
   previewName: {
     fontSize: 13,
