@@ -120,6 +120,14 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
         <Text style={s.headerTitle}>스튜디오</Text>
         <View style={{ flex: 1 }} />
         <TouchableOpacity
+          style={s.headerIconBtn}
+          onPress={() => navigation.navigate('SavedInvitations')}
+          activeOpacity={0.7}
+          hitSlop={8}
+        >
+          <Ionicons name="bookmark-outline" size={20} color={TC.ink} />
+        </TouchableOpacity>
+        <TouchableOpacity
           style={s.creditPill}
           onPress={() => navigation.navigate('Credit')}
           activeOpacity={0.85}
@@ -412,7 +420,7 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
                       const t = zoomTemplate;
                       closeZoom();
                       setTimeout(() => {
-                        navigation.navigate('PaperInvitationEditor', { template: t });
+                        navigation.navigate('PaperInvitationForm', { template: t });
                       }, 260);
                     }}
                   >
@@ -457,6 +465,13 @@ const s = StyleSheet.create({
     borderRadius: 14,
   },
   creditPillText: { fontSize: 13, fontWeight: '700', color: TC.blue },
+  headerIconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+  },
 
   // ═══ HERO 카드 ═══
   heroWrap: { paddingHorizontal: 20, paddingTop: 16 },

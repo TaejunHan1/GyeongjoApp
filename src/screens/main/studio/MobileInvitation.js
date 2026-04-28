@@ -38,7 +38,7 @@ export default function MobileInvitation({ template, data, width = 170, height =
           borderBottomRightRadius: 2,
         };
       case 'oval':
-        return { borderRadius: w / 2 };
+        return { borderRadius: '50%' };
       case 'rectangle':
       default:
         return { borderRadius: 4 };

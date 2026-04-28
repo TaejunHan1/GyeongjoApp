@@ -12,7 +12,9 @@ import MyEventsScreen from '../screens/main/MyEventsScreen';
 // import GuideScreen from '../screens/main/GuideScreen'; // 기존 스타일
 import GuideScreen from '../screens/main/GuideScreenToss'; // 토스 스타일
 import BenefitsScreen from '../screens/main/BenefitsScreen'; // 🆕 혜택 화면
-import PaperInvitationEditorScreen from '../screens/main/studio/PaperInvitationEditorScreen';
+import PaperInvitationFormScreen from '../screens/main/studio/PaperInvitationFormScreen';
+import PaperInvitationLayoutScreen from '../screens/main/studio/PaperInvitationLayoutScreen';
+import SavedInvitationsScreen from '../screens/main/studio/SavedInvitationsScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import CreditScreen from '../screens/main/CreditScreen';
 import TermsScreen from '../screens/legal/TermsScreen';
@@ -746,10 +748,22 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
           )}
         </Stack.Screen>
 
-        {/* 종이 청첩장 에디터 */}
+        {/* 종이 청첩장 — 1단계: 정보 입력 */}
         <Stack.Screen
-          name="PaperInvitationEditor"
-          component={PaperInvitationEditorScreen}
+          name="PaperInvitationForm"
+          component={PaperInvitationFormScreen}
+          options={{ headerShown: false }}
+        />
+        {/* 종이 청첩장 — 2단계: 위치/크기 조정 */}
+        <Stack.Screen
+          name="PaperInvitationLayout"
+          component={PaperInvitationLayoutScreen}
+          options={{ headerShown: false }}
+        />
+        {/* 종이 청첩장 — 내가 만든 목록 */}
+        <Stack.Screen
+          name="SavedInvitations"
+          component={SavedInvitationsScreen}
           options={{ headerShown: false }}
         />
 
