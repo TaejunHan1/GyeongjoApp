@@ -402,14 +402,34 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
                   </TouchableOpacity>
                 </View>
 
-                {/* 이미지 */}
-                <View style={s.sheetImageWrap}>
-                  <Image
-                    source={zoomTemplate.preview}
-                    style={s.sheetImage}
-                    resizeMode="contain"
-                  />
-                </View>
+                {/* 이미지 + 실제 사이즈 안내 — 시트가 길면 스크롤 */}
+                <ScrollView
+                  style={{ flexGrow: 0 }}
+                  contentContainerStyle={{ paddingBottom: 8 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <View style={s.sheetImageWrap}>
+                    <Image
+                      source={zoomTemplate.preview}
+                      style={s.sheetImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+
+                  {/* 실제 사이즈 안내 */}
+                  <View style={s.sizeGuide}>
+                    <View style={s.sizeGuideHeader}>
+                      <Ionicons name="resize-outline" size={16} color={TC.inkMuted} />
+                      <Text style={s.sizeGuideTitle}>실제 인쇄 사이즈</Text>
+                      <Text style={s.sizeGuideMeta}>A4 반접지 · 148 × 210 mm</Text>
+                    </View>
+                    <Image
+                      source={require('../../../assets/studio/templates/floral/size.png')}
+                      style={s.sizeGuideImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                </ScrollView>
 
                 {/* CTA — 이 템플릿으로 만들기 */}
                 <View style={s.sheetCtaWrap}>
@@ -661,6 +681,7 @@ const s = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingBottom: Platform.OS === 'ios' ? 32 : 24,
     paddingTop: 8,
+    maxHeight: '92%',
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 16,
@@ -710,6 +731,42 @@ const s = StyleSheet.create({
     width: width,
     height: width * (1400 / 1024),
     backgroundColor: '#FBF9F3',
+  },
+
+  // 실제 사이즈 안내 — 컴팩트
+  sizeGuide: {
+    marginTop: 10,
+    marginHorizontal: 16,
+    backgroundColor: TC.bg,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  sizeGuideHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 2,
+    marginBottom: 6,
+  },
+  sizeGuideTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TC.ink,
+    letterSpacing: -0.2,
+  },
+  sizeGuideMeta: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '600',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+    textAlign: 'right',
+  },
+  sizeGuideImage: {
+    width: '100%',
+    height: 300,
+    borderRadius: 6,
   },
 
   // 시트 CTA 버튼

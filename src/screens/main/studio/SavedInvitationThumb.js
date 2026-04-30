@@ -1,7 +1,7 @@
 // src/screens/main/studio/SavedInvitationThumb.js
 // 저장된 청첩장 미리보기 (layout JSON 그대로 적용)
-import React from 'react';
-import { View, Text, Image, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, Image, Platform, ActivityIndicator } from 'react-native';
 import Svg, { Defs, ClipPath, Path, Image as SvgImage } from 'react-native-svg';
 import { MOBILE_TEMPLATES } from './mobileTemplateConfigs';
 
@@ -33,6 +33,29 @@ const getPhotoRadius = (shape, w) => {
 
 export default function SavedInvitationThumb({ invitation, width = 100 }) {
   const template = MOBILE_TEMPLATES.find((t) => t.id === invitation.template_id);
+
+  // 사진 prefetch — 다 받아진 뒤 템플릿과 함께 한번에 표시
+  const [photoReady, setPhotoReady] = useState(!invitation.photo_url);
+  useEffect(() => {
+    let cancelled = false;
+    if (!invitation.photo_url) {
+      setPhotoReady(true);
+      return;
+    }
+    setPhotoReady(false);
+    Image.prefetch(invitation.photo_url)
+      .then(() => {
+        if (!cancelled) setPhotoReady(true);
+      })
+      .catch(() => {
+        // 실패해도 placeholder 라도 보여주기
+        if (!cancelled) setPhotoReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [invitation.photo_url]);
+
   if (!template) {
     return (
       <View
@@ -56,6 +79,25 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
   const px = (val) => (val / refWidth) * width;
 
   return (
+    <View style={{ width, height, position: 'relative' }}>
+      {/* 로딩 중: 동일 크기 placeholder + spinner */}
+      {!photoReady && (
+        <View
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width,
+            height,
+            backgroundColor: template.bgColor || '#FBF9F3',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10,
+          }}
+        >
+          <ActivityIndicator size="small" color="#A89577" />
+        </View>
+      )}
     <View
       style={{
         width,
@@ -63,31 +105,10 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
         backgroundColor: template.bgColor || '#FBF9F3',
         overflow: 'hidden',
         position: 'relative',
+        opacity: photoReady ? 1 : 0,
       }}
     >
-      {/* 빈 템플릿 배경 */}
-      <Image
-        source={template.blank}
-        style={{ position: 'absolute', width, height }}
-        resizeMode="contain"
-      />
-
-      {/* 베이크인 마스크 (& 등) */}
-      {(template.masks || []).map((m, i) => (
-        <View
-          key={`mask-${i}`}
-          style={{
-            position: 'absolute',
-            left: ((m.x - m.w / 2) / 100) * width,
-            top: ((m.y - m.h / 2) / 100) * height,
-            width: (m.w / 100) * width,
-            height: (m.h / 100) * height,
-            backgroundColor: template.bgColor || '#FBF9F3',
-          }}
-        />
-      ))}
-
-      {/* 사진 — blank.png 위 layer */}
+      {/* 사진 — blank.png 아래 layer (cutout 템플릿이면 사진이 구멍으로 비침) */}
       {layout.photo && (
         layout.photo.shape === 'oval' ? (
           <View
@@ -174,6 +195,28 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
         )
       )}
 
+      {/* 빈 템플릿 — 사진 위 layer */}
+      <Image
+        source={template.blank}
+        style={{ position: 'absolute', width, height }}
+        resizeMode="contain"
+      />
+
+      {/* 베이크인 마스크 (& 등) — 템플릿 위에 얹힘 */}
+      {(template.masks || []).map((m, i) => (
+        <View
+          key={`mask-${i}`}
+          style={{
+            position: 'absolute',
+            left: ((m.x - m.w / 2) / 100) * width,
+            top: ((m.y - m.h / 2) / 100) * height,
+            width: (m.w / 100) * width,
+            height: (m.h / 100) * height,
+            backgroundColor: template.bgColor || '#FBF9F3',
+          }}
+        />
+      ))}
+
       {/* 신랑 */}
       {layout.groom && invitation.groom && (
         <Text
@@ -183,7 +226,7 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
             top: (layout.groom.y / 100) * height,
             width: (layout.groom.w / 100) * width,
             textAlign: 'center',
-            fontFamily: SERIF_FONT,
+            fontFamily: layout.groom.fontFamily || SERIF_FONT,
             fontSize: px(layout.groom.size || 13),
             color: '#3A2E22',
             fontWeight: '500',
@@ -202,7 +245,7 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
             top: (layout.bride.y / 100) * height,
             width: (layout.bride.w / 100) * width,
             textAlign: 'center',
-            fontFamily: SERIF_FONT,
+            fontFamily: layout.bride.fontFamily || SERIF_FONT,
             fontSize: px(layout.bride.size || 13),
             color: '#3A2E22',
             fontWeight: '500',
@@ -212,24 +255,24 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
         </Text>
       )}
 
-      {/* 날짜 */}
+      {/* 날짜 — 편집 화면과 위치 정확히 일치하도록 좌측 보정 */}
       {layout.date && invitation.date_str && (
         <Text
           style={{
             position: 'absolute',
-            left: 0,
-            right: 0,
+            left: (layout.date.x / 100) * width - 2,
             top: (layout.date.y / 100) * height,
+            width: ((layout.date.w ?? 100) / 100) * width,
             textAlign: 'center',
-            fontFamily: NUMERIC_FONT,
+            fontFamily: layout.date.fontFamily || NUMERIC_FONT,
             fontSize: px(layout.date.size || 9),
             color: '#6B5B44',
-            letterSpacing: 0.6,
+            letterSpacing: 1.2,
             fontWeight: '600',
           }}
         >
           {invitation.date_str}
-          {invitation.time_str ? `  ${invitation.time_str}` : ''}
+          {invitation.time_str ? ` ${invitation.time_str}` : ''}
         </Text>
       )}
 
@@ -239,11 +282,11 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
           numberOfLines={1}
           style={{
             position: 'absolute',
-            left: 0,
-            right: 0,
+            left: (layout.venue.x / 100) * width,
             top: (layout.venue.y / 100) * height,
+            width: ((layout.venue.w ?? 100) / 100) * width,
             textAlign: 'center',
-            fontFamily: SERIF_FONT,
+            fontFamily: layout.venue.fontFamily || SERIF_FONT,
             fontSize: px(layout.venue.size || 9),
             color: '#6B5B44',
             fontWeight: '500',
@@ -252,6 +295,7 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
           {invitation.venue}
         </Text>
       )}
+    </View>
     </View>
   );
 }

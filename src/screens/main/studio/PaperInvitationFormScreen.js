@@ -22,6 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { TC } from '../guides/tossStyle';
+import { MOBILE_TEMPLATES } from './mobileTemplateConfigs';
 
 const formatDate = (d) => {
   const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -37,17 +38,49 @@ const formatTime = (d) => {
   return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
 };
 
-export default function PaperInvitationFormScreen({ navigation, route }) {
-  const template = route?.params?.template;
+// 저장된 date_str/time_str 을 Date 객체로 복원 (수정 모드용)
+const parseSavedDateTime = (date_str, time_str) => {
+  if (!date_str) return null;
+  const dm = date_str.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!dm) return null;
+  const dt = new Date(parseInt(dm[1]), parseInt(dm[2]) - 1, parseInt(dm[3]));
+  if (time_str) {
+    const tm = time_str.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+    if (tm) {
+      let h = parseInt(tm[1]);
+      const min = parseInt(tm[2]);
+      const period = (tm[3] || '').toUpperCase();
+      if (period === 'PM' && h < 12) h += 12;
+      if (period === 'AM' && h === 12) h = 0;
+      dt.setHours(h, min);
+    }
+  }
+  return dt;
+};
 
-  const [photoUri, setPhotoUri] = useState(null);
-  const [groom, setGroom] = useState('');
-  const [bride, setBride] = useState('');
-  const [dateObj, setDateObj] = useState(null);
+export default function PaperInvitationFormScreen({ navigation, route }) {
+  const invitation = route?.params?.invitation; // 수정 모드일 때 들어옴
+  const isEditing = !!invitation;
+
+  // 수정 모드: invitation.template_id로 템플릿 복원
+  const template =
+    route?.params?.template ||
+    MOBILE_TEMPLATES.find((t) => t.id === invitation?.template_id);
+
+  const [photoUri, setPhotoUri] = useState(invitation?.photo_url || null);
+  const [photoAspect, setPhotoAspect] = useState(null); // 가로/세로 비율
+  const [groom, setGroom] = useState(invitation?.groom || '');
+  const [bride, setBride] = useState(invitation?.bride || '');
+  const [dateObj, setDateObj] = useState(
+    parseSavedDateTime(invitation?.date_str, invitation?.time_str)
+  );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState('date'); // 'date' | 'time' (Android 용)
-  const [tempDate, setTempDate] = useState(new Date(2026, 5, 14, 11, 30));
-  const [venue, setVenue] = useState('');
+  const [tempDate, setTempDate] = useState(
+    parseSavedDateTime(invitation?.date_str, invitation?.time_str) ||
+      new Date(2026, 5, 14, 11, 30)
+  );
+  const [venue, setVenue] = useState(invitation?.venue || '');
 
   const pickPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -57,12 +90,18 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [3, 4],
+      allowsEditing: false,
       quality: 0.9,
     });
     if (!result.canceled && result.assets?.[0]) {
-      setPhotoUri(result.assets[0].uri);
+      const asset = result.assets[0];
+      setPhotoUri(asset.uri);
+      // 원본 비율 저장 (가로 / 세로) — 다음 화면에서 영역 비율 자동 맞춤
+      if (asset.width && asset.height) {
+        setPhotoAspect(asset.width / asset.height);
+      } else {
+        setPhotoAspect(null);
+      }
     }
   };
 
@@ -81,12 +120,16 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
       template,
       formData: {
         photoUri,
+        photoAspect,
         groom: groom.trim(),
         bride: bride.trim(),
         date_str: formatDate(dateObj),
         time_str: formatTime(dateObj),
         venue: venue.trim(),
       },
+      // 수정 모드: 기존 invitation의 id와 layout 전달
+      editingId: invitation?.id,
+      editingLayout: invitation?.layout,
     });
   };
 

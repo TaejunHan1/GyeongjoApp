@@ -30,17 +30,12 @@ export const MOBILE_TEMPLATES = [
     preview: require('../../../../assets/studio/templates/floral/classic/preview.png'),
     blank: require('../../../../assets/studio/templates/floral/classic/blank.png'),
     // 아치 안에는 사진만, 이름·날짜·장소는 아치 밖(아래)
-    photo: { shape: 'arch', x: 50, y: 38, w: 52, h: 54 },
-    bgColor: '#F5EEE0',  // 템플릿 배경색 (베이크인 요소 가릴 때 사용)
+    photo: { shape: 'rectangle', x: 50, y: 38, w: 52, h: 54 },
     text: {
       names: { y: 70, size: 14, color: '#3A2E22', hideConnector: true },
       date: { y: 78, size: 9, color: '#6B5B44' },
       venue: { y: 85, size: 9, color: '#6B5B44' },
     },
-    // 템플릿에 베이크인된 요소들을 배경색으로 덮어 숨김
-    masks: [
-      { x: 50, y: 64, w: 18, h: 6 }, // 베이크인 "&" 위치
-    ],
   },
   {
     id: 'floral-wreath',
@@ -49,7 +44,7 @@ export const MOBILE_TEMPLATES = [
     category: 'floral',
     preview: require('../../../../assets/studio/templates/floral/wreath/preview.png'),
     blank: require('../../../../assets/studio/templates/floral/wreath/blank.png'),
-    photo: { shape: 'circle', x: 50, y: 34, w: 36, h: 36 },
+    photo: { shape: 'rectangle', x: 50, y: 34, w: 36, h: 36 },
     text: {
       names: { y: 60, size: 13, color: '#3A2E22', hideConnector: true },
       date: { y: 71, size: 9, color: '#6B5B44' },
@@ -77,7 +72,7 @@ export const MOBILE_TEMPLATES = [
     category: 'floral',
     preview: require('../../../../assets/studio/templates/floral/botanical/preview.png'),
     blank: require('../../../../assets/studio/templates/floral/botanical/blank.png'),
-    photo: { shape: 'arch', x: 50, y: 48, w: 44, h: 38 },
+    photo: { shape: 'rectangle', x: 50, y: 48, w: 44, h: 38 },
     text: {
       names: { y: 73, size: 13, color: '#3A2E22', hideConnector: true },
       date: { y: 81, size: 9, color: '#6B5B44' },
@@ -91,11 +86,83 @@ export const MOBILE_TEMPLATES = [
     category: 'floral',
     preview: require('../../../../assets/studio/templates/floral/vintage/preview.png'),
     blank: require('../../../../assets/studio/templates/floral/vintage/blank.png'),
-    photo: { shape: 'oval', x: 50, y: 44, w: 40, h: 35 },
+    photo: { shape: 'rectangle', x: 50, y: 44, w: 40, h: 35 },
     text: {
       names: { y: 68, size: 13, color: '#3A2E22', hideConnector: true },
       date: { y: 77, size: 9, color: '#6B5B44' },
       venue: { y: 84, size: 9, color: '#6B5B44' },
+    },
+  },
+
+  // ─── minimal 카테고리 ───
+  {
+    id: 'minimal-1',
+    name: 'Minimal 1',
+    subtitle: '미니멀 1',
+    category: 'minimal',
+    preview: require('../../../../assets/studio/templates/minimal/minimal1/preview.png'),
+    blank: require('../../../../assets/studio/templates/minimal/minimal1/blank.png'),
+    photo: { shape: 'rectangle', x: 50, y: 38, w: 70, h: 55 },
+    text: {
+      names: { y: 74, size: 14, color: '#2C2A28', hideConnector: true },
+      date: { y: 82, size: 9, color: '#5A5854' },
+      venue: { y: 88, size: 9, color: '#5A5854' },
+    },
+  },
+  {
+    id: 'minimal-2',
+    name: 'Minimal 2',
+    subtitle: '미니멀 2',
+    category: 'minimal',
+    preview: require('../../../../assets/studio/templates/minimal/minimal2/preview.png'),
+    blank: require('../../../../assets/studio/templates/minimal/minimal2/blank.png'),
+    photo: { shape: 'rectangle', x: 50, y: 38, w: 70, h: 55 },
+    text: {
+      names: { y: 74, size: 14, color: '#2C2A28', hideConnector: true },
+      date: { y: 82, size: 9, color: '#5A5854' },
+      venue: { y: 88, size: 9, color: '#5A5854' },
+    },
+  },
+  {
+    id: 'minimal-3',
+    name: 'Minimal 3',
+    subtitle: '미니멀 3',
+    category: 'minimal',
+    preview: require('../../../../assets/studio/templates/minimal/minimal3/preview.png'),
+    blank: require('../../../../assets/studio/templates/minimal/minimal3/blank.png'),
+    photo: { shape: 'rectangle', x: 50, y: 38, w: 70, h: 55 },
+    text: {
+      names: { y: 74, size: 14, color: '#2C2A28', hideConnector: true },
+      date: { y: 82, size: 9, color: '#5A5854' },
+      venue: { y: 88, size: 9, color: '#5A5854' },
+    },
+  },
+  {
+    id: 'minimal-4',
+    name: 'Minimal 4',
+    subtitle: '미니멀 4',
+    category: 'minimal',
+    preview: require('../../../../assets/studio/templates/minimal/minimal4/preview.png'),
+    blank: require('../../../../assets/studio/templates/minimal/minimal4/blank.png'),
+    photo: { shape: 'rectangle', x: 50, y: 38, w: 70, h: 55 },
+    text: {
+      names: { y: 74, size: 14, color: '#2C2A28', hideConnector: true },
+      date: { y: 82, size: 9, color: '#5A5854' },
+      venue: { y: 88, size: 9, color: '#5A5854' },
+    },
+  },
+  {
+    id: 'minimal-5',
+    name: 'Minimal 5',
+    subtitle: '미니멀 5',
+    category: 'minimal',
+    preview: require('../../../../assets/studio/templates/minimal/minimal5/preview.png'),
+    blank: require('../../../../assets/studio/templates/minimal/minimal5/blank.png'),
+    photo: { shape: 'rectangle', x: 50, y: 38, w: 70, h: 55 },
+    text: {
+      names: { y: 74, size: 14, color: '#2C2A28', hideConnector: true },
+      date: { y: 82, size: 9, color: '#5A5854' },
+      venue: { y: 88, size: 9, color: '#5A5854' },
     },
   },
 ];

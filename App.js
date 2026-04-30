@@ -91,10 +91,17 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // 커스텀 폰트 로드
+  // 커스텀 폰트 로드 — 종이 청첩장 글씨체 선택용
   useEffect(() => {
     Font.loadAsync({
       'Great Vibes': require('./assets/fonts/GreatVibes-Regular.ttf'),
+      'Italianno': require('./assets/fonts/Italianno-Regular.ttf'),
+      'PlayfairDisplay': require('./assets/fonts/PlayfairDisplay-Regular.ttf'),
+      'EBGaramond': require('./assets/fonts/EBGaramond-Regular.ttf'),
+      'NanumMyeongjo': require('./assets/fonts/NanumMyeongjo-Regular.ttf'),
+      'GowunBatang': require('./assets/fonts/GowunBatang-Regular.ttf'),
+      'GowunDodum': require('./assets/fonts/GowunDodum-Regular.ttf'),
+      'Sunflower': require('./assets/fonts/Sunflower-Light.ttf'),
     }).catch(() => {});
   }, []);
   

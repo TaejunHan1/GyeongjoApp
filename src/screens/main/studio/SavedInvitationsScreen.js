@@ -52,6 +52,14 @@ export default function SavedInvitationsScreen({ navigation }) {
     load();
   };
 
+  const handleEdit = (item) => {
+    setDetail(null);
+    // 폼 화면으로 prefill해서 이동 — 거기서 다음 → 레이아웃으로 이어짐
+    setTimeout(() => {
+      navigation.navigate('PaperInvitationForm', { invitation: item });
+    }, 200);
+  };
+
   const handleDelete = (item) => {
     Alert.alert(
       '청첩장 삭제',
@@ -161,11 +169,11 @@ export default function SavedInvitationsScreen({ navigation }) {
         />
       )}
 
-      {/* 상세 미리보기 모달 */}
+      {/* 상세 미리보기 모달 — 바텀 시트 */}
       <Modal
         visible={!!detail}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setDetail(null)}
         statusBarTranslucent
       >
@@ -193,7 +201,7 @@ export default function SavedInvitationsScreen({ navigation }) {
                 </View>
 
                 <ScrollView
-                  contentContainerStyle={{ alignItems: 'center', paddingTop: 8, paddingBottom: 16 }}
+                  contentContainerStyle={{ alignItems: 'center', paddingTop: 4, paddingBottom: 12 }}
                 >
                   <SavedInvitationThumb
                     invitation={detail}
@@ -226,6 +234,14 @@ export default function SavedInvitationsScreen({ navigation }) {
                 </ScrollView>
 
                 <View style={s.detailActions}>
+                  <TouchableOpacity
+                    style={s.editBtn}
+                    onPress={() => handleEdit(detail)}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="create-outline" size={16} color="#fff" />
+                    <Text style={s.editBtnText}>수정하기</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={s.deleteBtn}
                     onPress={() => handleDelete(detail)}
@@ -404,15 +420,34 @@ const s = StyleSheet.create({
   },
   detailText: { fontSize: 13, color: TC.ink, fontWeight: '500', letterSpacing: -0.2 },
   detailActions: {
+    flexDirection: 'row',
     paddingHorizontal: 20,
     paddingTop: 8,
+    gap: 8,
   },
-  deleteBtn: {
+  editBtn: {
+    flex: 2,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    backgroundColor: TC.ink,
+    borderRadius: 12,
+  },
+  editBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.3,
+  },
+  deleteBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
     backgroundColor: '#FEF2F2',
     borderRadius: 12,
   },
