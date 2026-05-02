@@ -1,5 +1,5 @@
 // src/screens/event/guestbook/GuestWritingScreen.js
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,15 +8,25 @@ import {
   Dimensions,
   PanResponder,
   Alert,
+  ActivityIndicator,
   StatusBar,
   Animated,
   Platform,
+  ScrollView,
+  Image,
+  ImageBackground,
 } from 'react-native';
 import Svg, { Path, G } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useTutorial } from '../../../contexts/TutorialContext';
+import {
+  getGuestbookPaperPurchaseState,
+  purchaseGuestbookPaperTemplate,
+} from '../../../lib/guestbookPaperCredit';
+
+const JEONGDAM_LOGO = require('../../../../assets/images/jeongdamlogo.png');
 
 // Digital Ink Recognition — dev client 빌드에서만 동작
 let DigitalInk = null;
@@ -52,11 +62,283 @@ const HINT_STROKES = [
   { d: 'M 200 84 A 10 10 0 1 1 200 104 A 10 10 0 1 1 200 84' },   // ㅇ 받침
 ];
 
+const PAPER_TEMPLATES = [
+  {
+    id: 'jd-floral-corner',
+    name: 'Floral Corner',
+    subtitle: '플로럴 코너',
+    price: 0,
+    bg: '#F9F3E8',
+    ink: '#221C16',
+    line: '#D6BE92',
+    accent: '#B99B68',
+    pattern: 'blank',
+    image: require('../../../../assets/guestbook/paper-templates/jd-floral-corner.png'),
+  },
+  {
+    id: 'jd-arch-garden',
+    name: 'Arch Garden',
+    subtitle: '아치 가든',
+    price: 4,
+    bg: '#F7F1E8',
+    ink: '#211B16',
+    line: '#D5C09B',
+    accent: '#AF9063',
+    pattern: 'blank',
+    image: require('../../../../assets/guestbook/paper-templates/jd-arch-garden.png'),
+  },
+  {
+    id: 'jd-vellum-wave',
+    name: 'Vellum Wave',
+    subtitle: '벨럼 웨이브',
+    price: 5,
+    bg: '#F8F0E4',
+    ink: '#211B15',
+    line: '#D8BE8C',
+    accent: '#B99762',
+    pattern: 'blank',
+    image: require('../../../../assets/guestbook/paper-templates/jd-vellum-wave.png'),
+  },
+  {
+    id: 'jd-sage-botanical',
+    name: 'Sage Botanical',
+    subtitle: '세이지 보태니컬',
+    price: 5,
+    bg: '#F7F3EA',
+    ink: '#211B15',
+    line: '#C9C0A8',
+    accent: '#A59676',
+    pattern: 'blank',
+    image: require('../../../../assets/guestbook/paper-templates/jd-sage-botanical.png'),
+  },
+  {
+    id: 'jd-modern-paper',
+    name: 'Modern Paper',
+    subtitle: '모던 페이퍼',
+    price: 5,
+    bg: '#F8F3EA',
+    ink: '#211B15',
+    line: '#D3BE94',
+    accent: '#B49562',
+    pattern: 'blank',
+    image: require('../../../../assets/guestbook/paper-templates/jd-modern-paper.png'),
+  },
+  {
+    id: 'ivory-line',
+    name: 'Ivory Line',
+    subtitle: '아이보리 라인',
+    price: 0,
+    bg: '#FDF8EF',
+    ink: '#1A1209',
+    line: '#E7DCC8',
+    accent: '#B89A68',
+    pattern: 'line',
+    image: require('../../../../assets/guestbook/paper-templates/ivory-line.png'),
+  },
+  {
+    id: 'hanji-calm',
+    name: 'Hanji Sign',
+    subtitle: '하객 서명 한지',
+    price: 4,
+    bg: '#F3EEE4',
+    ink: '#241D16',
+    line: '#D4C8B7',
+    accent: '#9B8566',
+    pattern: 'blank',
+    image: require('../../../../assets/guestbook/paper-templates/hanji-calm.png'),
+  },
+  {
+    id: 'hanji-border',
+    name: 'Hanji Border',
+    subtitle: '라운드 한지 보더',
+    price: 3,
+    bg: '#F5EFE4',
+    ink: '#241D16',
+    line: '#D8CCBA',
+    accent: '#9A8262',
+    pattern: 'blank',
+    image: require('../../../../assets/guestbook/paper-templates/hanji-border.png'),
+    brandOffset: { top: 84, right: 72, previewTop: 16, previewRight: 16 },
+  },
+  {
+    id: 'ivory-guestbook',
+    name: 'Guestbook Ivory',
+    subtitle: '프리미엄 아이보리',
+    price: 4,
+    bg: '#FBF7EF',
+    ink: '#211B15',
+    line: '#DDD2C0',
+    accent: '#9B8664',
+    pattern: 'blank',
+    image: require('../../../../assets/guestbook/paper-templates/ivory-guestbook.png'),
+  },
+  {
+    id: 'ink-wash',
+    name: 'Ink Wash',
+    subtitle: '은은한 수묵 한지',
+    price: 5,
+    bg: '#F2EDE3',
+    ink: '#241D16',
+    line: '#D3C6B4',
+    accent: '#8C7354',
+    pattern: 'blank',
+    image: require('../../../../assets/guestbook/paper-templates/ink-wash.png'),
+    brandOffset: { top: 14, previewTop: 6 },
+  },
+];
+
+const getPaperTemplate = (id) =>
+  PAPER_TEMPLATES.find((template) => template.id === id) || PAPER_TEMPLATES[0];
+
+const DEFAULT_OWNED_PAPER_IDS = PAPER_TEMPLATES
+  .filter((template) => Number(template.price || 0) <= 0)
+  .map((template) => template.id);
+
+const getPatternPath = (template, width, height) => {
+  if (template.pattern === 'line') {
+    return Array.from({ length: Math.ceil(height / 60) })
+      .map((_, i) => `M0,${(i + 1) * 60} L${width},${(i + 1) * 60}`)
+      .join(' ');
+  }
+  if (template.pattern === 'grid') {
+    const rows = Array.from({ length: Math.ceil(height / 54) })
+      .map((_, i) => `M0,${(i + 1) * 54} L${width},${(i + 1) * 54}`)
+      .join(' ');
+    const cols = Array.from({ length: Math.ceil(width / 54) })
+      .map((_, i) => `M${(i + 1) * 54},0 L${(i + 1) * 54},${height}`)
+      .join(' ');
+    return `${rows} ${cols}`;
+  }
+  if (template.pattern === 'archive') {
+    return [
+      `M${width * 0.08},${height * 0.16} L${width * 0.92},${height * 0.16}`,
+      `M${width * 0.08},${height * 0.84} L${width * 0.92},${height * 0.84}`,
+      `M${width * 0.5},${height * 0.24} L${width * 0.5},${height * 0.76}`,
+    ].join(' ');
+  }
+  return '';
+};
+
+const renderPaperPattern = (template, width, height, preview = false) => {
+  const patternPath = getPatternPath(template, width, height);
+  if (template.pattern === 'blank') {
+    return null;
+  }
+  if (template.pattern === 'dot') {
+    const step = preview ? 12 : 44;
+    const radius = preview ? 0.9 : 1.4;
+    const dots = [];
+    for (let y = step; y < height; y += step) {
+      for (let x = step; x < width; x += step) {
+        dots.push(`M${x},${y} m-${radius},0 a${radius},${radius} 0 1,0 ${radius * 2},0 a${radius},${radius} 0 1,0 -${radius * 2},0`);
+      }
+    }
+    return (
+      <Svg style={StyleSheet.absoluteFill} width={width} height={height}>
+        <Path d={dots.join(' ')} fill={template.line} opacity={0.45} />
+      </Svg>
+    );
+  }
+  if (!patternPath) return null;
+  return (
+    <Svg style={StyleSheet.absoluteFill} width={width} height={height}>
+      <Path
+        d={patternPath}
+        stroke={template.line}
+        strokeWidth={preview ? 0.7 : 0.8}
+        opacity={template.pattern === 'archive' ? 0.42 : 0.62}
+        fill="none"
+      />
+    </Svg>
+  );
+};
+
+const getBrandOffsetStyle = (template, preview = false) => {
+  const offset = template?.brandOffset;
+  if (!offset) return null;
+  const style = {};
+  const top = preview ? offset.previewTop : offset.top;
+  const right = preview ? offset.previewRight : offset.right;
+  if (top != null) style.top = top;
+  if (right != null) style.right = right;
+  return style;
+};
+
+const PaperBrandMark = ({ template, preview = false }) => (
+  <View
+    pointerEvents="none"
+    style={[
+      preview ? intro.brandMarkPreview : draw.brandMark,
+      getBrandOffsetStyle(template, preview),
+    ]}
+  >
+    <Image
+      source={JEONGDAM_LOGO}
+      style={preview ? intro.brandLogoPreview : draw.brandLogo}
+      resizeMode="contain"
+    />
+    <Text style={preview ? intro.brandTaglinePreview : draw.brandTagline}>정성을 담아서</Text>
+  </View>
+);
+
+const PaperLivePreview = ({ template, width }) => {
+  const previewHeight = 154;
+  const content = (
+    <>
+      {!template.image && renderPaperPattern(template, width - 20, previewHeight, true)}
+      <View style={intro.livePreviewShade} />
+      <PaperBrandMark template={template} preview />
+      <Text style={[intro.livePreviewName, { color: template.ink }]}>홍길동</Text>
+    </>
+  );
+
+  if (template.image) {
+    return (
+      <ImageBackground
+        source={template.image}
+        style={[intro.livePreview, { height: previewHeight, backgroundColor: template.bg }]}
+        imageStyle={intro.livePreviewImage}
+        resizeMode="cover"
+      >
+        {content}
+      </ImageBackground>
+    );
+  }
+
+  return (
+    <View style={[intro.livePreview, { height: previewHeight, backgroundColor: template.bg }]}>
+      {content}
+    </View>
+  );
+};
+
+const PaperSwatch = ({ template }) => {
+  const swatchStyle = [intro.selectedSwatch, { backgroundColor: template.bg }];
+  if (template.image) {
+    return (
+      <ImageBackground
+        source={template.image}
+        style={swatchStyle}
+        imageStyle={intro.selectedSwatchImage}
+        resizeMode="cover"
+      />
+    );
+  }
+  return (
+    <View style={swatchStyle}>
+      {renderPaperPattern(template, 44, 56, true)}
+    </View>
+  );
+};
+
 export default function GuestWritingScreen({ navigation, route }) {
-  const { event, side = 'groom' } = route.params;
+  const { event, side = 'groom', paperTemplateId } = route.params;
   const sideLabel = side === 'groom' ? '신랑측' : '신부측';
   const sideColor = side === 'groom' ? '#3B82F6' : '#EC4899';
-  const sideEmoji = side === 'groom' ? '🤵' : '👰';
+  const sideCode = side === 'groom' ? 'GROOM' : 'BRIDE';
+  const initialPaperId = PAPER_TEMPLATES.some((template) => template.id === paperTemplateId)
+    ? paperTemplateId
+    : PAPER_TEMPLATES[0].id;
 
   useKeepAwake();
 
@@ -67,6 +349,18 @@ export default function GuestWritingScreen({ navigation, route }) {
   // 상태: 'intro' | 'drawing'
   const [mode, setMode] = useState('intro');
   const [screenSize, setScreenSize] = useState(Dimensions.get('window'));
+  const [selectedPaperId, setSelectedPaperId] = useState(initialPaperId);
+  const [ownedPaperIds, setOwnedPaperIds] = useState(DEFAULT_OWNED_PAPER_IDS);
+  const [creditBalance, setCreditBalance] = useState(null);
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [storeLoading, setStoreLoading] = useState(true);
+  const selectedPaper = getPaperTemplate(selectedPaperId);
+  const ownedPaperIdSet = useMemo(() => new Set([...DEFAULT_OWNED_PAPER_IDS, ...ownedPaperIds]), [ownedPaperIds]);
+  const selectedPaperOwned = Number(selectedPaper.price || 0) <= 0 || ownedPaperIdSet.has(selectedPaper.id);
+  const ownedPaperTemplates = useMemo(
+    () => PAPER_TEMPLATES.filter((template) => Number(template.price || 0) <= 0 || ownedPaperIdSet.has(template.id)),
+    [ownedPaperIdSet]
+  );
 
   const viewShotRef = useRef(null);
   const [strokes, setStrokes] = useState([]);
@@ -111,6 +405,33 @@ export default function GuestWritingScreen({ navigation, route }) {
     const id = setInterval(measure, 500);
     return () => clearInterval(id);
   }, [activeTutorial, tutorialStep?.id, mode, registerTarget]);
+
+  const loadPaperStoreState = useCallback(async () => {
+    setStoreLoading(true);
+    try {
+      const result = await getGuestbookPaperPurchaseState();
+      const nextOwned = new Set(DEFAULT_OWNED_PAPER_IDS);
+      if (result?.success) {
+        (result.templateIds || []).forEach((id) => nextOwned.add(id));
+        setCreditBalance(result.balance ?? 0);
+      }
+      setOwnedPaperIds(Array.from(nextOwned));
+    } catch (e) {
+      console.warn('[GuestbookPaper] 구매 상태 로드 실패:', e);
+      setOwnedPaperIds(DEFAULT_OWNED_PAPER_IDS);
+    } finally {
+      setStoreLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPaperStoreState();
+  }, [loadPaperStoreState]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener?.('focus', loadPaperStoreState);
+    return unsubscribe;
+  }, [navigation, loadPaperStoreState]);
 
   // 획 하나씩 그려지는 힌트 애니메이션 (웹 버전과 동일한 로직)
   useEffect(() => {
@@ -229,11 +550,79 @@ export default function GuestWritingScreen({ navigation, route }) {
     }, 3000);
   }, [controlsOpacity]);
 
+  const handlePurchaseSelected = useCallback(async () => {
+    if (selectedPaperOwned) return true;
+
+    const price = Number(selectedPaper.price || 0);
+    setPurchaseLoading(true);
+    try {
+      const result = await purchaseGuestbookPaperTemplate({
+        templateId: selectedPaper.id,
+        price,
+        eventId: event?.id,
+      });
+
+      if (result?.success) {
+        setOwnedPaperIds((prev) => Array.from(new Set([...DEFAULT_OWNED_PAPER_IDS, ...prev, selectedPaper.id])));
+        setCreditBalance(result.balance ?? 0);
+        Alert.alert(
+          result.alreadyOwned ? '이미 구매한 배경' : '구매 완료',
+          `${selectedPaper.subtitle} 배경을 사용할 수 있어요.\n남은 크레딧: ${Number(result.balance ?? 0).toLocaleString('ko-KR')}건`,
+          [{ text: '확인' }]
+        );
+        return true;
+      }
+
+      if (result?.error === 'insufficient_balance') {
+        setCreditBalance(result.balance ?? 0);
+        Alert.alert(
+          '크레딧 부족',
+          `${selectedPaper.subtitle} 배경은 ${price}크레딧이 필요해요.\n현재 잔액: ${Number(result.balance ?? 0).toLocaleString('ko-KR')}건\n충전 후 다시 구매해주세요.`,
+          [
+            { text: '닫기', style: 'cancel' },
+            { text: '충전하러 가기', onPress: () => navigation.navigate('Credit') },
+          ]
+        );
+        return false;
+      }
+
+      Alert.alert(
+        '구매 실패',
+        result?.error === 'setup_required'
+          ? '배경 구매 시스템 설정이 아직 적용되지 않았어요.\n관리자에게 설정을 요청해주세요.'
+          : '구매 처리 중 오류가 발생했습니다.',
+        [{ text: '확인' }]
+      );
+      return false;
+    } catch (e) {
+      console.warn('[GuestbookPaper] 구매 실패:', e);
+      Alert.alert('구매 실패', '구매 처리 중 오류가 발생했습니다.', [{ text: '확인' }]);
+      return false;
+    } finally {
+      setPurchaseLoading(false);
+    }
+  }, [event?.id, navigation, selectedPaper, selectedPaperOwned]);
+
+  const handleStartPress = useCallback(async () => {
+    if (!selectedPaperOwned) {
+      await handlePurchaseSelected();
+      return;
+    }
+
+    if (tutorialStep?.id === 'me_guest_writing_start') {
+      tutorialAdvance();
+      pauseTutorial(); // 서명패드에서는 오버레이 숨김 → GuestConfirm에서 재개
+    }
+    enterDrawing();
+  }, [enterDrawing, handlePurchaseSelected, pauseTutorial, selectedPaperOwned, tutorialAdvance, tutorialStep?.id]);
+
   // ── PanResponder (팜 리젝션: 움직이는 터치 = 펜) ─
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
 
       onPanResponderGrant: (evt) => {
         resetInactivityTimer();
@@ -395,7 +784,7 @@ export default function GuestWritingScreen({ navigation, route }) {
       }
 
       clearCanvas();
-      navigation.navigate('GuestConfirm', { event, handwritingUri: uri, side, inkCandidates });
+      navigation.navigate('GuestConfirm', { event, handwritingUri: uri, side, inkCandidates, paperTemplateId: selectedPaperId });
     } catch (err) {
       console.error('Capture error:', err);
       Alert.alert('오류', '처리 중 오류가 발생했습니다.');
@@ -414,6 +803,15 @@ export default function GuestWritingScreen({ navigation, route }) {
       event?.event_type === 'wedding'
         ? `${event.groom_name || ''} ♥ ${event.bride_name || ''}`
         : event?.event_name || '경조사';
+    const carouselCardWidth = Math.min(screenSize.width - 40, 360);
+    const carouselGap = 12;
+    const startButtonLabel = purchaseLoading
+      ? '구매 처리 중...'
+      : storeLoading
+        ? '구매 정보 확인 중...'
+        : selectedPaperOwned
+          ? '방명록 시작하기'
+          : `${selectedPaper.price}크레딧으로 구매하기`;
 
     return (
       <View style={intro.container}>
@@ -428,29 +826,128 @@ export default function GuestWritingScreen({ navigation, route }) {
           <View style={{ width: 36 }} />
         </View>
 
-        {/* 본문 */}
         <View style={intro.body}>
-          {/* 측 + 행사명 */}
-          <View style={[intro.sideIconWrap, { backgroundColor: sideColor + '15' }]}>
-            <Text style={{ fontSize: 32 }}>{sideEmoji}</Text>
+          <View style={intro.eventBlock}>
+            <View style={[intro.sidePill, { backgroundColor: sideColor + '14' }]}>
+              <Text style={[intro.sidePillText, { color: sideColor }]}>{sideCode}</Text>
+              <Text style={[intro.sideName, { color: sideColor }]}>{sideLabel}</Text>
+            </View>
+            <Text style={intro.eventName}>{eventTitle}</Text>
           </View>
-          <Text style={[intro.sideName, { color: sideColor }]}>{sideLabel}</Text>
-          <Text style={intro.eventName}>{eventTitle}</Text>
 
-          {/* 안내 카드 */}
-          <View style={intro.infoCard}>
-            <View style={intro.infoRow}>
-              <View style={intro.infoDot} />
-              <Text style={intro.infoText}>시작하면 화면이 <Text style={intro.infoStrong}>가로 전체화면</Text>으로 전환돼요</Text>
+          <View style={intro.sectionHeader}>
+            <View>
+              <Text style={intro.sectionTitle}>접수 배경 선택</Text>
+              <Text style={intro.sectionSub}>축의대 화면에 표시될 종이 템플릿</Text>
             </View>
-            <View style={intro.infoRow}>
-              <View style={intro.infoDot} />
-              <Text style={intro.infoText}>하객분이 터치펜으로 성함을 직접 적어요</Text>
+            <View style={intro.creditPill}>
+              <Text style={intro.creditPillText}>
+                {creditBalance == null ? '크레딧 -' : `잔액 ${Number(creditBalance).toLocaleString('ko-KR')}크레딧`}
+              </Text>
             </View>
-            <View style={intro.infoRow}>
-              <View style={intro.infoDot} />
-              <Text style={intro.infoText}>10초 무입력 시 자동으로 초기화돼요</Text>
+          </View>
+
+          <ScrollView
+            horizontal
+            style={intro.templateScroller}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={intro.templateList}
+            decelerationRate="fast"
+            snapToInterval={carouselCardWidth + carouselGap}
+            snapToAlignment="start"
+            onMomentumScrollEnd={(e) => {
+              const nextIndex = Math.max(
+                0,
+                Math.min(
+                  PAPER_TEMPLATES.length - 1,
+                  Math.round(e.nativeEvent.contentOffset.x / (carouselCardWidth + carouselGap))
+                )
+              );
+              const nextTemplate = PAPER_TEMPLATES[nextIndex];
+              if (nextTemplate) setSelectedPaperId(nextTemplate.id);
+            }}
+          >
+            {PAPER_TEMPLATES.map((template) => {
+              const selected = selectedPaperId === template.id;
+              const owned = Number(template.price || 0) <= 0 || ownedPaperIdSet.has(template.id);
+              return (
+                <TouchableOpacity
+                  key={template.id}
+                  style={[
+                    intro.templateCard,
+                    { width: carouselCardWidth },
+                    selected && { borderColor: sideColor, backgroundColor: '#FFFFFF' },
+                  ]}
+                  onPress={() => setSelectedPaperId(template.id)}
+                  activeOpacity={0.82}
+                >
+                  <PaperLivePreview template={template} width={carouselCardWidth - 20} />
+                  <View style={intro.templateInfoRow}>
+                    <View style={intro.templateMeta}>
+                      <Text style={intro.templateName}>{template.name}</Text>
+                      <Text style={intro.templateSub}>{template.subtitle}</Text>
+                    </View>
+                    <View style={[
+                      intro.priceBadge,
+                      owned ? intro.freeBadge : intro.paidBadge,
+                    ]}>
+                      <Text style={[
+                        intro.priceBadgeText,
+                        !owned && intro.paidBadgeText,
+                      ]}>
+                        {Number(template.price || 0) <= 0 ? '기본' : owned ? '보유중' : `${template.price} 크레딧`}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <View style={intro.selectedCard}>
+            <PaperSwatch template={selectedPaper} />
+            <View style={{ flex: 1 }}>
+              <Text style={intro.selectedLabel}>선택한 배경</Text>
+              <Text style={intro.selectedName}>{selectedPaper.name}</Text>
             </View>
+            <Text style={intro.selectedPrice}>
+              {selectedPaperOwned
+                ? Number(selectedPaper.price || 0) <= 0 ? '기본' : '보유중'
+                : `${selectedPaper.price} 크레딧 구매 필요`}
+            </Text>
+          </View>
+
+          <View style={intro.ownedSection}>
+            <View style={intro.ownedHeader}>
+              <Text style={intro.ownedTitle}>보유한 배경</Text>
+              <Text style={intro.ownedCount}>{storeLoading ? '확인 중' : `${ownedPaperTemplates.length}개`}</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={intro.ownedList}
+            >
+              {ownedPaperTemplates.map((template) => {
+                const selected = selectedPaperId === template.id;
+                return (
+                  <TouchableOpacity
+                    key={template.id}
+                    style={[
+                      intro.ownedChip,
+                      selected && { borderColor: sideColor, backgroundColor: sideColor + '0D' },
+                    ]}
+                    onPress={() => setSelectedPaperId(template.id)}
+                    activeOpacity={0.82}
+                  >
+                    <PaperSwatch template={template} />
+                    <View style={intro.ownedChipTextWrap}>
+                      <Text style={intro.ownedChipName} numberOfLines={1}>{template.name}</Text>
+                      <Text style={intro.ownedChipSub}>{Number(template.price || 0) <= 0 ? '기본' : '구매 완료'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
         </View>
 
@@ -458,17 +955,20 @@ export default function GuestWritingScreen({ navigation, route }) {
         <View style={intro.footer}>
           <TouchableOpacity
             ref={startBtnRef}
-            style={[intro.startBtn, { backgroundColor: sideColor }]}
-            onPress={() => {
-              if (tutorialStep?.id === 'me_guest_writing_start') {
-                tutorialAdvance();
-                pauseTutorial(); // 서명패드에서는 오버레이 숨김 → GuestConfirm에서 재개
-              }
-              enterDrawing();
-            }}
+            style={[
+              intro.startBtn,
+              { backgroundColor: selectedPaperOwned ? sideColor : '#191F28' },
+              (purchaseLoading || storeLoading) && intro.startBtnDisabled,
+            ]}
+            onPress={handleStartPress}
+            disabled={purchaseLoading || storeLoading}
             activeOpacity={0.85}
           >
-            <Text style={intro.startBtnText}>방명록 시작하기</Text>
+            {purchaseLoading || storeLoading ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={intro.startBtnText}>{startButtonLabel}</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -478,57 +978,64 @@ export default function GuestWritingScreen({ navigation, route }) {
   // ════════════════════════════════════════════
   // 드로잉 화면 (전체화면 가로)
   // ════════════════════════════════════════════
+  const drawingContent = (
+    <>
+      {!selectedPaper.image && renderPaperPattern(selectedPaper, SW, SH)}
+
+      <Svg style={StyleSheet.absoluteFill} width={SW} height={SH}>
+        {/* 완료된 획 */}
+        {strokes.map((d, i) => (
+          <Path
+            key={i}
+            d={d}
+            stroke={selectedPaper.ink}
+            strokeWidth={5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        ))}
+        {/* 현재 획 */}
+        {currentPath.length > 0 && (
+          <Path
+            d={currentPath}
+            stroke={selectedPaper.ink}
+            strokeWidth={5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        )}
+      </Svg>
+
+      {/* 힌트는 ViewShot 밖으로 이동 — 캡처에 포함 안 됨 */}
+    </>
+  );
+
   return (
-    <View style={{ flex: 1, backgroundColor: '#F8F4EE' }}>
+    <View style={{ flex: 1, backgroundColor: selectedPaper.bg }}>
       <StatusBar hidden />
 
       {/* 종이 캔버스 */}
       <ViewShot
         ref={viewShotRef}
         options={{ format: 'png', quality: 1.0, result: 'tmpfile' }}
-        style={{ flex: 1, backgroundColor: '#FDFAF5' }}
+        style={{ flex: 1, backgroundColor: selectedPaper.bg }}
       >
         <View
-          style={{ flex: 1, backgroundColor: '#FDFAF5' }}
+          style={{ flex: 1, backgroundColor: selectedPaper.bg }}
           {...panResponder.panHandlers}
         >
-          {/* 종이 질감 가로선 */}
-          <Svg style={StyleSheet.absoluteFill} width={SW} height={SH}>
-            {Array.from({ length: Math.ceil(SH / 60) }).map((_, i) => (
-              <Path
-                key={i}
-                d={`M0,${(i + 1) * 60} L${SW},${(i + 1) * 60}`}
-                stroke="#E8E0D0"
-                strokeWidth={0.8}
-                opacity={0.6}
-              />
-            ))}
-            {/* 완료된 획 */}
-            {strokes.map((d, i) => (
-              <Path
-                key={i}
-                d={d}
-                stroke="#1A1209"
-                strokeWidth={5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-            ))}
-            {/* 현재 획 */}
-            {currentPath.length > 0 && (
-              <Path
-                d={currentPath}
-                stroke="#1A1209"
-                strokeWidth={5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-            )}
-          </Svg>
-
-          {/* 힌트는 ViewShot 밖으로 이동 — 캡처에 포함 안 됨 */}
+          {selectedPaper.image && (
+            <ImageBackground
+              source={selectedPaper.image}
+              style={StyleSheet.absoluteFill}
+              resizeMode="cover"
+              pointerEvents="none"
+            />
+          )}
+          <PaperBrandMark template={selectedPaper} />
+          {drawingContent}
         </View>
       </ViewShot>
 
@@ -592,9 +1099,6 @@ export default function GuestWritingScreen({ navigation, route }) {
               })}
             </G>
           </Svg>
-          <View style={draw.hintTextWrap}>
-            <Text style={draw.emptyText}>성함을 적어주세요</Text>
-          </View>
         </Animated.View>
       )}
 
@@ -662,47 +1166,288 @@ const intro = StyleSheet.create({
   // 본문
   body: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    gap: 10,
-    paddingBottom: 40,
+    paddingTop: 16,
+    paddingBottom: 20,
   },
-  sideIconWrap: {
-    width: 72, height: 72, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 4,
+  eventBlock: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
   },
-  sideName: {
-    fontSize: 14, fontWeight: '700', letterSpacing: 0.2,
-  },
-  eventName: {
-    fontSize: 22, fontWeight: '800', color: '#191F28',
-    letterSpacing: -0.5, textAlign: 'center',
-    marginBottom: 8,
-  },
-
-  // 안내 카드
-  infoCard: {
-    width: '100%',
-    backgroundColor: '#F8F9FA',
-    borderRadius: 16,
-    padding: 18,
-    gap: 12,
-  },
-  infoRow: {
+  sidePill: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    marginBottom: 12,
+  },
+  sidePillText: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  sideName: { fontSize: 13, fontWeight: '800', letterSpacing: -0.2 },
+  eventName: {
+    fontSize: 25,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: -0.7,
+    lineHeight: 32,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: -0.5,
+  },
+  sectionSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8B95A1',
+    marginTop: 3,
+    letterSpacing: -0.2,
+  },
+  creditPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#F2F4F6',
+  },
+  creditPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#4E5968',
+    letterSpacing: -0.1,
+  },
+  templateList: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  templateScroller: {
+    flexGrow: 0,
+    height: 248,
+  },
+  templateCard: {
+    width: 132,
+    borderRadius: 18,
+    backgroundColor: '#F8F9FA',
+    borderWidth: 1.5,
+    borderColor: '#EEF2F7',
+    padding: 10,
+  },
+  livePreview: {
+    width: '100%',
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(25,31,40,0.06)',
+    marginBottom: 12,
+  },
+  livePreviewImage: {
+    borderRadius: 14,
+  },
+  livePreviewShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  livePreviewTop: {
+    position: 'absolute',
+    top: 14,
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  livePreviewDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  livePreviewLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  livePreviewGuide: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 1.8,
+    opacity: 0.65,
+  },
+  livePreviewName: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 72,
+    fontSize: 40,
+    fontWeight: '300',
+    letterSpacing: 8,
+  },
+  brandMarkPreview: {
+    position: 'absolute',
+    top: 9,
+    right: 11,
+    alignItems: 'center',
+    opacity: 0.62,
+  },
+  brandLogoPreview: {
+    width: 34,
+    height: 34,
+  },
+  brandTaglinePreview: {
+    marginTop: -1,
+    fontSize: 6,
+    color: '#5F5549',
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  },
+  templateMeta: {
+    flex: 1,
+  },
+  templateInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: 10,
   },
-  infoDot: {
-    width: 6, height: 6, borderRadius: 3,
-    backgroundColor: '#C5CCD5',
+  templateName: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: -0.35,
   },
-  infoText: {
-    flex: 1, fontSize: 14, color: '#4E5968', lineHeight: 20,
+  templateSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8B95A1',
+    marginTop: 3,
+    letterSpacing: -0.25,
   },
-  infoStrong: { fontWeight: '700', color: '#191F28' },
+  priceBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    marginTop: 10,
+  },
+  freeBadge: {
+    backgroundColor: '#E8F3FF',
+  },
+  paidBadge: {
+    backgroundColor: '#191F28',
+  },
+  priceBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#3182F6',
+  },
+  paidBadgeText: {
+    color: '#FFFFFF',
+  },
+  selectedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginTop: 4,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EEF2F7',
+    gap: 12,
+  },
+  selectedSwatch: {
+    width: 44,
+    height: 56,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(25,31,40,0.08)',
+  },
+  selectedSwatchImage: {
+    borderRadius: 8,
+  },
+  selectedLabel: {
+    fontSize: 11,
+    color: '#8B95A1',
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  selectedName: {
+    fontSize: 15,
+    color: '#191F28',
+    fontWeight: '900',
+    letterSpacing: -0.3,
+  },
+  selectedPrice: {
+    fontSize: 13,
+    color: '#4E5968',
+    fontWeight: '800',
+  },
+  ownedSection: {
+    marginTop: 12,
+    paddingHorizontal: 20,
+  },
+  ownedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  ownedTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: -0.2,
+  },
+  ownedCount: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#8B95A1',
+  },
+  ownedList: {
+    gap: 8,
+    paddingRight: 20,
+  },
+  ownedChip: {
+    width: 132,
+    minHeight: 74,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 8,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#EEF2F7',
+    backgroundColor: '#FFFFFF',
+  },
+  ownedChipTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  ownedChipName: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: -0.2,
+  },
+  ownedChipSub: {
+    marginTop: 3,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
 
   // 하단 버튼
   footer: {
@@ -712,6 +1457,9 @@ const intro = StyleSheet.create({
   startBtn: {
     height: 54, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
+  },
+  startBtnDisabled: {
+    backgroundColor: '#8B95A1',
   },
   startBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.3 },
 });
@@ -741,15 +1489,23 @@ const draw = StyleSheet.create({
     shadowOpacity: 0.7,
     elevation: 0,
   },
-  hintTextWrap: {
+  brandMark: {
     position: 'absolute',
-    bottom: 56,
-    left: 0,
-    right: 0,
+    top: 30,
+    right: 42,
     alignItems: 'center',
+    opacity: 0.62,
   },
-  emptyText: {
-    fontSize: 16, color: '#C8BFA8', fontWeight: '400', letterSpacing: 3,
+  brandLogo: {
+    width: 92,
+    height: 92,
+  },
+  brandTagline: {
+    marginTop: -6,
+    fontSize: 13,
+    color: '#5F5549',
+    fontWeight: '600',
+    letterSpacing: -0.2,
   },
   controls: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,

@@ -6,6 +6,9 @@
 //
 // 폴더 구조: assets/studio/templates/{category}/{template-id}/preview.png + blank.png
 
+export const A6_ASPECT_RATIO = 148 / 105;
+export const BASE_WIDTH = 170;
+
 export const TEMPLATE_CATEGORIES = [
   { id: 'floral', label: '꽃·풀', icon: 'flower-outline' },
   { id: 'minimal', label: '미니멀', icon: 'remove-outline' },
@@ -121,6 +124,8 @@ export const MOBILE_TEMPLATES = [
       names: { y: 74, size: 14, color: '#2C2A28', hideConnector: true },
       date: { y: 82, size: 9, color: '#5A5854' },
       venue: { y: 88, size: 9, color: '#5A5854' },
+      // 큰 날짜 (월/일 두 줄) — minimal-2 전용
+      dateBig: { y: 92, size: 28, color: '#2C2A28' },
     },
   },
   {
@@ -149,6 +154,8 @@ export const MOBILE_TEMPLATES = [
       names: { y: 74, size: 14, color: '#2C2A28', hideConnector: true },
       date: { y: 82, size: 9, color: '#5A5854' },
       venue: { y: 88, size: 9, color: '#5A5854' },
+      // 인사말 — minimal-4 전용. PNG 위에 덮어쓰는 용도라 사용자가 위치/색 조절 가능.
+      greeting: { text: '결 혼 합 니 다', y: 8, size: 12, color: '#5A5854' },
     },
   },
   {
@@ -163,6 +170,160 @@ export const MOBILE_TEMPLATES = [
       names: { y: 74, size: 14, color: '#2C2A28', hideConnector: true },
       date: { y: 82, size: 9, color: '#5A5854' },
       venue: { y: 88, size: 9, color: '#5A5854' },
+    },
+  },
+
+  // ─── modern 카테고리 ───
+  {
+    id: 'modern-editorial',
+    name: 'Cobalt Block',
+    subtitle: '코발트 그래픽 블록',
+    category: 'modern',
+    preview: require('../../../../assets/studio/templates/modern/modern-editorial/preview.png'),
+    blank: require('../../../../assets/studio/templates/modern/modern-editorial/blank.png'),
+    bgColor: '#F6F7F4',
+    photo: { shape: 'arch', x: 62, y: 45, w: 43, h: 64 },
+    text: {
+      names: { y: 81, size: 16, color: '#FFFFFF', hideConnector: true },
+      date: { y: 88, size: 9, color: '#FFFFFF' },
+      venue: { y: 92, size: 9, color: '#FFFFFF' },
+    },
+  },
+  {
+    id: 'modern-cobalt-grid',
+    name: 'Mono Construct',
+    subtitle: '건축적 흑백 포스터',
+    category: 'modern',
+    preview: require('../../../../assets/studio/templates/modern/modern-cobalt-grid/preview.png'),
+    blank: require('../../../../assets/studio/templates/modern/modern-cobalt-grid/blank.png'),
+    bgColor: '#F8F8F6',
+    photo: { shape: 'rectangle', x: 70, y: 57, w: 50, h: 60 },
+    text: {
+      names: { y: 16.7, size: 16, color: '#111111', hideConnector: true },
+      date: { y: 6.1, size: 9, color: '#171717' },
+      venue: { y: 91.5, size: 9, color: '#222222' },
+    },
+  },
+  {
+    id: 'modern-champagne-frame',
+    name: 'Digital Glass',
+    subtitle: '블루 디지털 카드',
+    category: 'modern',
+    preview: require('../../../../assets/studio/templates/modern/modern-champagne-frame/preview.png'),
+    blank: require('../../../../assets/studio/templates/modern/modern-champagne-frame/blank.png'),
+    bgColor: '#F2F7FF',
+    photo: { shape: 'rectangle', x: 64.8, y: 34.6, w: 45.5, h: 38.2 },
+    text: {
+      names: { y: 58, size: 18, color: '#1F2937', hideConnector: true },
+      date: { y: 64, size: 9, color: '#243244' },
+      venue: { y: 75.2, size: 9, color: '#243244' },
+    },
+  },
+  {
+    id: 'modern-mono-split',
+    name: 'Gallery Line',
+    subtitle: '딥그린 갤러리 라인',
+    category: 'modern',
+    preview: require('../../../../assets/studio/templates/modern/modern-mono-split/preview.png'),
+    blank: require('../../../../assets/studio/templates/modern/modern-mono-split/blank.png'),
+    bgColor: '#F7F7F3',
+    photo: { shape: 'rectangle', x: 65, y: 69, w: 58, h: 43 },
+    text: {
+      names: { y: 30, size: 18, color: '#111827', hideConnector: true },
+      date: { y: 86, size: 9, color: '#00503D' },
+      venue: { y: 90, size: 9, color: '#00503D' },
+    },
+  },
+  {
+    id: 'modern-sage-glass',
+    name: 'Navy Diagonal',
+    subtitle: '네이비 대각 포스터',
+    category: 'modern',
+    preview: require('../../../../assets/studio/templates/modern/modern-sage-glass/preview.png'),
+    blank: require('../../../../assets/studio/templates/modern/modern-sage-glass/blank.png'),
+    bgColor: '#F9F9F6',
+    photo: { shape: 'rectangle', x: 60, y: 32, w: 46, h: 64 },
+    text: {
+      names: { y: 42, size: 17, color: '#0C2748', hideConnector: true },
+      date: { y: 65, size: 9, color: '#0C2748' },
+      venue: { y: 69, size: 9, color: '#0C2748' },
+    },
+  },
+
+  // ─── vintage 카테고리 ───
+  {
+    id: 'vintage-letterpress',
+    name: 'Ivory Film',
+    subtitle: '아이보리 필름 포트레이트',
+    category: 'vintage',
+    preview: require('../../../../assets/studio/templates/vintage/vintage-letterpress/preview.png'),
+    blank: require('../../../../assets/studio/templates/vintage/vintage-letterpress/blank.png'),
+    bgColor: '#EEE7D8',
+    photo: { shape: 'rectangle', x: 50, y: 35.5, w: 58, h: 56 },
+    text: {
+      names: { y: 72, size: 15, color: '#4D4338', hideConnector: true },
+      date: { y: 84, size: 9, color: '#6B5E50' },
+      venue: { y: 88, size: 9, color: '#6B5E50' },
+    },
+  },
+  {
+    id: 'vintage-film',
+    name: 'Quiet Archive',
+    subtitle: '조용한 흑백 아카이브',
+    category: 'vintage',
+    preview: require('../../../../assets/studio/templates/vintage/vintage-film/preview.png'),
+    blank: require('../../../../assets/studio/templates/vintage/vintage-film/blank.png'),
+    bgColor: '#EFEBE1',
+    photo: { shape: 'rectangle', x: 50, y: 36.5, w: 68, h: 32 },
+    text: {
+      names: { y: 61, size: 15, color: '#3F3A34', hideConnector: true },
+      date: { y: 77, size: 9, color: '#6F675C' },
+      venue: { y: 82, size: 9, color: '#6F675C' },
+    },
+  },
+  {
+    id: 'vintage-nouveau',
+    name: 'Cotton Frame',
+    subtitle: '코튼 페이퍼 여백',
+    category: 'vintage',
+    preview: require('../../../../assets/studio/templates/vintage/vintage-nouveau/preview.png'),
+    blank: require('../../../../assets/studio/templates/vintage/vintage-nouveau/blank.png'),
+    bgColor: '#F0ECE2',
+    photo: { shape: 'rectangle', x: 50, y: 31.5, w: 32, h: 34 },
+    text: {
+      names: { y: 59, size: 15, color: '#4E453B', hideConnector: true },
+      date: { y: 74, size: 9, color: '#766B5E' },
+      venue: { y: 79, size: 9, color: '#766B5E' },
+    },
+  },
+  {
+    id: 'vintage-postcard',
+    name: 'Sepia Column',
+    subtitle: '세피아 세로 사진',
+    category: 'vintage',
+    preview: require('../../../../assets/studio/templates/vintage/vintage-postcard/preview.png'),
+    blank: require('../../../../assets/studio/templates/vintage/vintage-postcard/blank.png'),
+    bgColor: '#EBE3D3',
+    photo: { shape: 'rectangle', x: 70, y: 51, w: 40, h: 76 },
+    text: {
+      names: { y: 58, size: 15, color: '#5A4B3E', hideConnector: true },
+      date: { y: 75, size: 9, color: '#7A6A58' },
+      venue: { y: 80, size: 9, color: '#7A6A58' },
+    },
+  },
+  {
+    id: 'vintage-deco',
+    name: 'Gallery Square',
+    subtitle: '갤러리 흑백 스퀘어',
+    category: 'vintage',
+    preview: require('../../../../assets/studio/templates/vintage/vintage-deco/preview.png'),
+    blank: require('../../../../assets/studio/templates/vintage/vintage-deco/blank.png'),
+    bgColor: '#F0EEE6',
+    photo: { shape: 'rectangle', x: 50, y: 51, w: 40, h: 28 },
+    text: {
+      names: { y: 23, size: 15, color: '#4A443B', hideConnector: true },
+      date: { y: 75, size: 9, color: '#746C60' },
+      venue: { y: 80, size: 9, color: '#746C60' },
     },
   },
 ];

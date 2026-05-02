@@ -1935,7 +1935,7 @@ export default function EventDetailScreen({ navigation, route }) {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.sideSelectDesc}>담당자가 접수할 측을 선택해주세요</Text>
+            <Text style={styles.sideSelectDesc}>접수대 선택 후 종이 배경 템플릿을 고를 수 있어요</Text>
 
             {/* 접수대 선택 영역 — 튜토리얼 스포트라이트 대상 */}
             <View ref={sideSelectRowsRef} collapsable={false}>
@@ -1950,14 +1950,16 @@ export default function EventDetailScreen({ navigation, route }) {
                 }}
                 activeOpacity={0.7}
               >
-                <View style={[styles.sideRowIcon, { backgroundColor: '#EBF3FF' }]}>
-                  <Text style={{ fontSize: 22 }}>🤵</Text>
+                <View style={[styles.sideRowMark, { backgroundColor: '#EBF3FF' }]}>
+                  <Text style={[styles.sideRowMarkText, { color: '#3182F6' }]}>GROOM</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.sideRowTitle}>신랑측</Text>
+                  <Text style={styles.sideRowTitle}>신랑측 접수대</Text>
                   <Text style={styles.sideRowSub}>신랑 가족 · 친구 · 동료 하객</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#C5CCD5" />
+                <View style={styles.sideRowAction}>
+                  <Text style={styles.sideRowActionText}>선택</Text>
+                </View>
               </TouchableOpacity>
 
               <View style={styles.sideRowDivider} />
@@ -1973,14 +1975,16 @@ export default function EventDetailScreen({ navigation, route }) {
                 }}
                 activeOpacity={0.7}
               >
-                <View style={[styles.sideRowIcon, { backgroundColor: '#FFF0F6' }]}>
-                  <Text style={{ fontSize: 22 }}>👰</Text>
+                <View style={[styles.sideRowMark, { backgroundColor: '#FFF0F6' }]}>
+                  <Text style={[styles.sideRowMarkText, { color: '#EC4899' }]}>BRIDE</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.sideRowTitle, { color: '#EC4899' }]}>신부측</Text>
+                  <Text style={[styles.sideRowTitle, { color: '#EC4899' }]}>신부측 접수대</Text>
                   <Text style={styles.sideRowSub}>신부 가족 · 친구 · 동료 하객</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#C5CCD5" />
+                <View style={styles.sideRowAction}>
+                  <Text style={styles.sideRowActionText}>선택</Text>
+                </View>
               </TouchableOpacity>
             </View>
 
@@ -2780,37 +2784,58 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#8B95A1',
     paddingHorizontal: 20,
-    marginBottom: 16,
+    marginBottom: 14,
     marginTop: -4,
   },
   sideRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    gap: 14,
+    marginHorizontal: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EEF2F7',
+    gap: 12,
   },
-  sideRowIcon: {
-    width: 46,
+  sideRowMark: {
+    width: 58,
     height: 46,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  sideRowMarkText: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+  },
   sideRowTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#191F28',
     marginBottom: 2,
+    letterSpacing: -0.3,
   },
   sideRowSub: {
     fontSize: 13,
     color: '#8B95A1',
+    letterSpacing: -0.2,
   },
   sideRowDivider: {
-    height: 1,
+    height: 10,
+  },
+  sideRowAction: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
     backgroundColor: '#F2F4F6',
-    marginHorizontal: 20,
+  },
+  sideRowActionText: {
+    fontSize: 12,
+    color: '#4E5968',
+    fontWeight: '800',
   },
 
   // 디지털 방명록 아이콘 박스

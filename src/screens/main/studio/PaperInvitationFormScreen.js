@@ -22,7 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { TC } from '../guides/tossStyle';
-import { MOBILE_TEMPLATES } from './mobileTemplateConfigs';
+import { A6_ASPECT_RATIO, MOBILE_TEMPLATES } from './mobileTemplateConfigs';
 
 const formatDate = (d) => {
   const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -216,7 +216,7 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
             <Image
               source={template.preview}
               style={s.templateThumb}
-              resizeMode="cover"
+              resizeMode="contain"
             />
             <View style={{ flex: 1 }}>
               <Text style={s.templateInfoTitle}>{template.name}</Text>
@@ -470,9 +470,9 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   templateThumb: {
-    width: 50,
-    height: 70,
-    borderRadius: 6,
+    width: 72,
+    height: 72 * A6_ASPECT_RATIO,
+    borderRadius: 8,
     backgroundColor: '#FBF9F3',
   },
   templateInfoTitle: { fontSize: 14, fontWeight: '800', color: TC.ink, letterSpacing: -0.3 },

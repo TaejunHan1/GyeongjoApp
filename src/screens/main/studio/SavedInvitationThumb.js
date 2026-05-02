@@ -1,7 +1,7 @@
 // src/screens/main/studio/SavedInvitationThumb.js
 // 저장된 청첩장 미리보기 (layout JSON 그대로 적용)
-import React, { useState, useEffect } from 'react';
-import { View, Text, Image, Platform, ActivityIndicator } from 'react-native';
+import React from 'react';
+import { View, Text, Image, Platform } from 'react-native';
 import Svg, { Defs, ClipPath, Path, Image as SvgImage } from 'react-native-svg';
 import { MOBILE_TEMPLATES } from './mobileTemplateConfigs';
 
@@ -34,27 +34,8 @@ const getPhotoRadius = (shape, w) => {
 export default function SavedInvitationThumb({ invitation, width = 100 }) {
   const template = MOBILE_TEMPLATES.find((t) => t.id === invitation.template_id);
 
-  // 사진 prefetch — 다 받아진 뒤 템플릿과 함께 한번에 표시
-  const [photoReady, setPhotoReady] = useState(!invitation.photo_url);
-  useEffect(() => {
-    let cancelled = false;
-    if (!invitation.photo_url) {
-      setPhotoReady(true);
-      return;
-    }
-    setPhotoReady(false);
-    Image.prefetch(invitation.photo_url)
-      .then(() => {
-        if (!cancelled) setPhotoReady(true);
-      })
-      .catch(() => {
-        // 실패해도 placeholder 라도 보여주기
-        if (!cancelled) setPhotoReady(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [invitation.photo_url]);
+  // photoReady prefetch 로직 제거 — 즉시 카드 표시.
+  // 사진은 RN Image 컴포넌트가 자동 캐싱/로드하고, 로드 전엔 placeholder 배경색이 보임.
 
   if (!template) {
     return (
@@ -79,33 +60,13 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
   const px = (val) => (val / refWidth) * width;
 
   return (
-    <View style={{ width, height, position: 'relative' }}>
-      {/* 로딩 중: 동일 크기 placeholder + spinner */}
-      {!photoReady && (
-        <View
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            width,
-            height,
-            backgroundColor: template.bgColor || '#FBF9F3',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10,
-          }}
-        >
-          <ActivityIndicator size="small" color="#A89577" />
-        </View>
-      )}
     <View
       style={{
         width,
         height,
-        backgroundColor: template.bgColor || '#FBF9F3',
+        backgroundColor: template.bgColor || '#FFFFFF',
         overflow: 'hidden',
         position: 'relative',
-        opacity: photoReady ? 1 : 0,
       }}
     >
       {/* 사진 — blank.png 아래 layer (cutout 템플릿이면 사진이 구멍으로 비침) */}
@@ -118,6 +79,7 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
               top: (layout.photo.y / 100) * height,
               width: (layout.photo.w / 100) * width,
               height: (layout.photo.h / 100) * height,
+              transform: [{ rotate: `${layout.photo.rotation || 0}deg` }],
             }}
           >
             <Svg
@@ -164,6 +126,7 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
               height: (layout.photo.h / 100) * height,
               overflow: 'hidden',
               backgroundColor: 'rgba(168,149,119,0.15)',
+              transform: [{ rotate: `${layout.photo.rotation || 0}deg` }],
               ...getPhotoRadius(
                 layout.photo.shape,
                 (layout.photo.w / 100) * width
@@ -195,11 +158,11 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
         )
       )}
 
-      {/* 빈 템플릿 — 사진 위 layer */}
+      {/* 빈 템플릿 — 사진 위 layer (cover로 캔버스 가득) */}
       <Image
         source={template.blank}
         style={{ position: 'absolute', width, height }}
-        resizeMode="contain"
+        resizeMode="cover"
       />
 
       {/* 베이크인 마스크 (& 등) — 템플릿 위에 얹힘 */}
@@ -220,6 +183,8 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
       {/* 신랑 */}
       {layout.groom && invitation.groom && (
         <Text
+          numberOfLines={1}
+          ellipsizeMode="clip"
           style={{
             position: 'absolute',
             left: (layout.groom.x / 100) * width,
@@ -228,8 +193,9 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
             textAlign: 'center',
             fontFamily: layout.groom.fontFamily || SERIF_FONT,
             fontSize: px(layout.groom.size || 13),
-            color: '#3A2E22',
-            fontWeight: '500',
+            color: layout.groom.color || '#3A2E22',
+            fontWeight: layout.groom.bold ? '900' : '500',
+            transform: [{ rotate: `${layout.groom.rotation || 0}deg` }],
           }}
         >
           {invitation.groom}
@@ -239,6 +205,8 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
       {/* 신부 */}
       {layout.bride && invitation.bride && (
         <Text
+          numberOfLines={1}
+          ellipsizeMode="clip"
           style={{
             position: 'absolute',
             left: (layout.bride.x / 100) * width,
@@ -247,28 +215,30 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
             textAlign: 'center',
             fontFamily: layout.bride.fontFamily || SERIF_FONT,
             fontSize: px(layout.bride.size || 13),
-            color: '#3A2E22',
-            fontWeight: '500',
+            color: layout.bride.color || '#3A2E22',
+            fontWeight: layout.bride.bold ? '900' : '500',
+            transform: [{ rotate: `${layout.bride.rotation || 0}deg` }],
           }}
         >
           {invitation.bride}
         </Text>
       )}
 
-      {/* 날짜 — 편집 화면과 위치 정확히 일치하도록 좌측 보정 */}
+      {/* 날짜 — 편집 화면과 위치 정확히 일치하도록 좌측 보정 (width 비례) */}
       {layout.date && invitation.date_str && (
         <Text
           style={{
             position: 'absolute',
-            left: (layout.date.x / 100) * width - 2,
+            left: (layout.date.x / 100) * width - px(2),
             top: (layout.date.y / 100) * height,
             width: ((layout.date.w ?? 100) / 100) * width,
             textAlign: 'center',
             fontFamily: layout.date.fontFamily || NUMERIC_FONT,
             fontSize: px(layout.date.size || 9),
-            color: '#6B5B44',
-            letterSpacing: 1.2,
-            fontWeight: '600',
+            color: layout.date.color || '#6B5B44',
+            letterSpacing: px(1.2),
+            fontWeight: layout.date.bold ? '900' : '600',
+            transform: [{ rotate: `${layout.date.rotation || 0}deg` }],
           }}
         >
           {invitation.date_str}
@@ -288,14 +258,63 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
             textAlign: 'center',
             fontFamily: layout.venue.fontFamily || SERIF_FONT,
             fontSize: px(layout.venue.size || 9),
-            color: '#6B5B44',
-            fontWeight: '500',
+            color: layout.venue.color || '#6B5B44',
+            fontWeight: layout.venue.bold ? '900' : '500',
+            transform: [{ rotate: `${layout.venue.rotation || 0}deg` }],
           }}
         >
           {invitation.venue}
         </Text>
       )}
-    </View>
+
+      {/* 큰 날짜 (월/일 두 줄) — invitation.layout.dateBig 있을 때만 */}
+      {layout.dateBig && invitation.date_str && (() => {
+        const m = (invitation.date_str || '').match(/\d+\.(\d+)\.(\d+)/);
+        if (!m) return null;
+        const sizePx = px(layout.dateBig.size || 28);
+        return (
+          <Text
+            style={{
+              position: 'absolute',
+              left: (layout.dateBig.x / 100) * width,
+              top: (layout.dateBig.y / 100) * height,
+              width: ((layout.dateBig.w ?? 100) / 100) * width,
+              textAlign: 'center',
+              fontFamily: layout.dateBig.fontFamily || SERIF_FONT,
+              fontSize: sizePx,
+              color: layout.dateBig.color || '#2C2A28',
+              fontWeight: layout.dateBig.bold ? '900' : '300',
+              letterSpacing: 1,
+              lineHeight: sizePx * 1.1,
+              transform: [{ rotate: `${layout.dateBig.rotation || 0}deg` }],
+            }}
+          >
+            {`${m[1]}.\n${m[2]}.`}
+          </Text>
+        );
+      })()}
+
+      {/* 인사말 — 템플릿이 greeting 정의했을 때 (예: minimal-4 "결 혼 합 니 다") */}
+      {layout.greeting && template.text?.greeting?.text && (
+        <Text
+          numberOfLines={1}
+          style={{
+            position: 'absolute',
+            left: (layout.greeting.x / 100) * width,
+            top: (layout.greeting.y / 100) * height,
+            width: ((layout.greeting.w ?? 100) / 100) * width,
+            textAlign: 'center',
+            fontFamily: layout.greeting.fontFamily || SERIF_FONT,
+            fontSize: px(layout.greeting.size || 12),
+            color: layout.greeting.color || '#5A5854',
+            fontWeight: layout.greeting.bold ? '900' : '500',
+            letterSpacing: px(1),
+            transform: [{ rotate: `${layout.greeting.rotation || 0}deg` }],
+          }}
+        >
+          {template.text.greeting.text}
+        </Text>
+      )}
     </View>
   );
 }

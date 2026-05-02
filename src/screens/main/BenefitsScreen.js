@@ -22,9 +22,11 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { TC, PressableCard, StaggerItem } from './guides/tossStyle';
 import { getAiStatus } from '../../lib/aiCredit';
-import { MOBILE_TEMPLATES, TEMPLATE_CATEGORIES } from './studio/mobileTemplateConfigs';
+import { A6_ASPECT_RATIO, MOBILE_TEMPLATES, TEMPLATE_CATEGORIES } from './studio/mobileTemplateConfigs';
 
 const { width } = Dimensions.get('window');
+const PREVIEW_CARD_WIDTH = 170;
+const SHEET_PREVIEW_WIDTH = Math.min(width - 72, 340);
 
 const FEATURE_LIST = [
   { icon: 'flower-outline', label: '수채화 꽃·잎 장식', color: TC.green, bg: TC.greenSoft },
@@ -421,13 +423,17 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
                     <View style={s.sizeGuideHeader}>
                       <Ionicons name="resize-outline" size={16} color={TC.inkMuted} />
                       <Text style={s.sizeGuideTitle}>실제 인쇄 사이즈</Text>
-                      <Text style={s.sizeGuideMeta}>A4 반접지 · 148 × 210 mm</Text>
+                      <Text style={s.sizeGuideMeta}>A6 단면 · 105 × 148 mm</Text>
                     </View>
-                    <Image
-                      source={require('../../../assets/studio/templates/floral/size.png')}
-                      style={s.sizeGuideImage}
-                      resizeMode="contain"
-                    />
+                    <View style={s.a6Guide}>
+                      <View style={s.a6Paper}>
+                        <Text style={s.a6Label}>A6</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.a6GuideTitle}>105 × 148 mm</Text>
+                        <Text style={s.a6GuideSub}>모바일 청첩장과 인쇄용 PDF 모두 같은 비율로 맞춰져요</Text>
+                      </View>
+                    </View>
                   </View>
                 </ScrollView>
 
@@ -657,11 +663,11 @@ const s = StyleSheet.create({
   },
   previewItem: {
     alignItems: 'center',
-    width: 170,
+    width: PREVIEW_CARD_WIDTH,
   },
   previewImage: {
-    width: 170,
-    height: 238,
+    width: PREVIEW_CARD_WIDTH,
+    height: PREVIEW_CARD_WIDTH * A6_ASPECT_RATIO,
     borderRadius: 12,
     backgroundColor: '#FBF9F3',
   },
@@ -728,8 +734,9 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   sheetImage: {
-    width: width,
-    height: width * (1400 / 1024),
+    width: SHEET_PREVIEW_WIDTH,
+    height: SHEET_PREVIEW_WIDTH * A6_ASPECT_RATIO,
+    borderRadius: 12,
     backgroundColor: '#FBF9F3',
   },
 
@@ -763,10 +770,40 @@ const s = StyleSheet.create({
     letterSpacing: -0.2,
     textAlign: 'right',
   },
-  sizeGuideImage: {
-    width: '100%',
-    height: 300,
-    borderRadius: 6,
+  a6Guide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  a6Paper: {
+    width: 44,
+    height: 44 * A6_ASPECT_RATIO,
+    borderRadius: 4,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  a6Label: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: TC.inkMuted,
+  },
+  a6GuideTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: TC.ink,
+    letterSpacing: -0.2,
+  },
+  a6GuideSub: {
+    fontSize: 11,
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+    marginTop: 2,
+    lineHeight: 16,
   },
 
   // 시트 CTA 버튼

@@ -102,6 +102,13 @@ export default function App() {
       'GowunBatang': require('./assets/fonts/GowunBatang-Regular.ttf'),
       'GowunDodum': require('./assets/fonts/GowunDodum-Regular.ttf'),
       'Sunflower': require('./assets/fonts/Sunflower-Light.ttf'),
+      'BlackHanSans': require('./assets/fonts/BlackHanSans-Regular.ttf'),
+      'YeonSung': require('./assets/fonts/YeonSung-Regular.ttf'),
+      'SingleDay': require('./assets/fonts/SingleDay-Regular.ttf'),
+      'Hahmlet': require('./assets/fonts/Hahmlet-Regular.ttf'),
+      'Cinzel': require('./assets/fonts/Cinzel-Regular.ttf'),
+      'DancingScript': require('./assets/fonts/DancingScript-Regular.ttf'),
+      'Tangerine': require('./assets/fonts/Tangerine-Regular.ttf'),
     }).catch(() => {});
   }, []);
   

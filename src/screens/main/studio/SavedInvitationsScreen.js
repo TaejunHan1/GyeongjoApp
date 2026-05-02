@@ -1,6 +1,6 @@
 // src/screens/main/studio/SavedInvitationsScreen.js
 // 내가 저장한 종이 청첩장 목록
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,12 +19,20 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { Image as RNImage } from 'react-native';
+import ViewShot, { captureRef } from 'react-native-view-shot';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { TC } from '../guides/tossStyle';
 import {
   listPaperInvitations,
   deletePaperInvitation,
 } from '../../../lib/paperInvitationHelper';
 import SavedInvitationThumb from './SavedInvitationThumb';
+
+// 인쇄 권장 해상도 — A6(105×148mm) @ 300 DPI = 1240×1748 픽셀
+// 단, 메모리 절약 위해 1024로 시작 (≈248 DPI). 인쇄소 대부분 OK.
+const EXPORT_WIDTH = 1024;
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -58,6 +66,94 @@ export default function SavedInvitationsScreen({ navigation }) {
     setTimeout(() => {
       navigation.navigate('PaperInvitationForm', { invitation: item });
     }, 200);
+  };
+
+  // PDF 내보내기 — 큰 사이즈 캡처 → PDF → 공유 시트
+  const [exporting, setExporting] = useState(false);
+  const exportRef = useRef(null);
+
+  const handleExportPDF = async (item) => {
+    if (!item) return;
+    setExporting(true);
+    try {
+      // 0) 사진 미리 다운로드 — SavedInvitationThumb의 photoReady 가 true 되도록
+      if (item.photo_url) {
+        try {
+          await RNImage.prefetch(item.photo_url);
+        } catch (e) {
+          console.warn('[handleExportPDF] prefetch fail:', e?.message);
+        }
+      }
+
+      // 1) ViewShot 마운트 + 사진/템플릿 렌더링 시간 대기
+      await new Promise((r) => setTimeout(r, 900));
+
+      // 2) 큰 사이즈 청첩장을 base64 PNG 로 직접 캡처 (file system 거치지 않음)
+      const base64 = await captureRef(exportRef, {
+        format: 'png',
+        quality: 1.0,
+        result: 'base64',
+      });
+      const dataUri = `data:image/png;base64,${base64}`;
+
+      // 4) HTML — A6 사이즈 페이지에 이미지 비율 정확히 유지(contain)
+      // cover 로 하면 캡처 비율(1024:1400)과 A6 비율(105:148) 차이로 좌우 잘림 → 위치 어긋남
+      const html = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <style>
+              @page { size: 105mm 148mm; margin: 0; }
+              html, body { margin: 0; padding: 0; background: #FFFFFF; }
+              .wrap {
+                width: 105mm;
+                height: 148mm;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              }
+              img {
+                max-width: 100%;
+                max-height: 100%;
+                width: 100%;
+                height: auto;
+                display: block;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="wrap">
+              <img src="${dataUri}" />
+            </div>
+          </body>
+        </html>
+      `;
+
+      const { uri: pdfUri } = await Print.printToFileAsync({
+        html,
+        base64: false,
+        width: 297,  // 105mm in points
+        height: 419, // 148mm in points
+      });
+
+      // 5) 공유 시트
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(pdfUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: `${item.groom || ''} & ${item.bride || ''} 청첩장`,
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        Alert.alert('내보내기 완료', `PDF 파일: ${pdfUri}`);
+      }
+    } catch (e) {
+      console.error('[handleExportPDF]', e);
+      Alert.alert('PDF 내보내기 실패', e?.message || '오류가 발생했습니다.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleDelete = (item) => {
@@ -238,17 +334,33 @@ export default function SavedInvitationsScreen({ navigation }) {
                     style={s.editBtn}
                     onPress={() => handleEdit(detail)}
                     activeOpacity={0.85}
+                    disabled={exporting}
                   >
                     <Ionicons name="create-outline" size={16} color="#fff" />
-                    <Text style={s.editBtnText}>수정하기</Text>
+                    <Text style={s.editBtnText}>수정</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={s.pdfBtn}
+                    onPress={() => handleExportPDF(detail)}
+                    activeOpacity={0.85}
+                    disabled={exporting}
+                  >
+                    {exporting ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="download-outline" size={16} color="#fff" />
+                        <Text style={s.pdfBtnText}>PDF</Text>
+                      </>
+                    )}
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={s.deleteBtn}
                     onPress={() => handleDelete(detail)}
                     activeOpacity={0.8}
+                    disabled={exporting}
                   >
-                    <Ionicons name="trash-outline" size={16} color="#E14C4C" />
-                    <Text style={s.deleteBtnText}>삭제</Text>
+                    <Ionicons name="trash-outline" size={20} color="#E14C4C" />
                   </TouchableOpacity>
                 </View>
               </>
@@ -256,6 +368,23 @@ export default function SavedInvitationsScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* 오프스크린 캡처용 — PDF 내보내기 시에만 큰 사이즈로 마운트.
+          opacity 0 / display:none 등은 캡처 누락의 원인이라 화면 밖 위치만 사용. */}
+      {exporting && detail && (
+        <View
+          style={{
+            position: 'absolute',
+            top: -100000,
+            left: 0,
+          }}
+          pointerEvents="none"
+        >
+          <ViewShot ref={exportRef} options={{ format: 'png', quality: 1 }}>
+            <SavedInvitationThumb invitation={detail} width={EXPORT_WIDTH} />
+          </ViewShot>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -426,7 +555,7 @@ const s = StyleSheet.create({
     gap: 8,
   },
   editBtn: {
-    flex: 2,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -441,8 +570,24 @@ const s = StyleSheet.create({
     color: '#fff',
     letterSpacing: -0.3,
   },
-  deleteBtn: {
+  pdfBtn: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    backgroundColor: TC.blue,
+    borderRadius: 12,
+  },
+  pdfBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.3,
+  },
+  deleteBtn: {
+    width: 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

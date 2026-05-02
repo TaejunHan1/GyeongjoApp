@@ -16,37 +16,8 @@ import { useTutorial } from '../../../contexts/TutorialContext';
 
 const DEFAULT_AMOUNTS = [30000, 50000, 70000, 100000, 150000, 200000];
 
-// ── 줄무늬 종이 배경 ──────────────────────────────────────
-const LinedPaper = ({ sc = 1 }) => {
-  const lineSpacing = Math.round(28 * sc);
-  const lines = Array.from({ length: 60 });
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {/* 가로 줄 */}
-      {lines.map((_, i) => (
-        <View
-          key={i}
-          style={{
-            position: 'absolute',
-            top: Math.round(16 * sc) + i * lineSpacing,
-            left: 0, right: 0, height: 1,
-            backgroundColor: '#DBEAFE',
-            opacity: 0.8,
-          }}
-        />
-      ))}
-      {/* 왼쪽 빨간 세로 마진선 */}
-      <View style={{
-        position: 'absolute', top: 0, bottom: 0,
-        left: Math.round(44 * sc), width: 1.5,
-        backgroundColor: '#FCA5A5', opacity: 0.7,
-      }} />
-    </View>
-  );
-};
-
 export default function GuestConfirmScreen({ navigation, route }) {
-  const { event, handwritingUri, side = 'groom', inkCandidates = [] } = route.params;
+  const { event, handwritingUri, side = 'groom', inkCandidates = [], paperTemplateId } = route.params;
   const sideColor  = side === 'groom' ? '#3182F6' : '#F04452';
   const sideBg     = side === 'groom' ? '#E8F3FF' : '#FFF0F1';
   const sideLabel  = side === 'groom' ? '신랑측 하객' : '신부측 하객';
@@ -377,7 +348,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
         setSelectedName(''); setNameConfirmed(false);
         setSelectedAmount(0); setRelationDetail(null);
         setGuestPhone(''); setPhoneVisible(false);
-        navigation.navigate('GuestWriting', { event, side });
+        navigation.navigate('GuestWriting', { event, side, paperTemplateId });
       }, 2500);
     } catch (err) {
       console.error('Save error:', err);
@@ -481,13 +452,10 @@ export default function GuestConfirmScreen({ navigation, route }) {
           <Text style={[s.sideBadgeText, { color: sideColor, fontSize: Math.round(16 * sc) }]}>{sideLabel}</Text>
         </View>
 
-        {/* 서명 이미지 (줄무늬 종이) */}
+        {/* 서명 이미지 */}
         <View style={[s.sigCard, { marginHorizontal: d.gap16, marginBottom: d.gap12 }]}>
           <Text style={[s.sigLabel, { fontSize: Math.round(15 * sc), marginBottom: d.gap8 }]}>작성하신 서명</Text>
           <View style={[s.sigImageWrap, { borderRadius: d.r16 }]}>
-            {/* 줄무늬 종이 배경 */}
-            <LinedPaper sc={sc} />
-            {/* 서명 이미지 */}
             <Image
               source={{ uri: handwritingUri }}
               style={StyleSheet.absoluteFill}
@@ -948,8 +916,14 @@ const s = StyleSheet.create({
   sigImageWrap: {
     flex: 1,
     overflow: 'hidden',
-    borderWidth: 2, borderColor: '#D8E4F0',
-    backgroundColor: '#F8FBFF',
+    borderWidth: 1.5,
+    borderColor: '#E6DED1',
+    backgroundColor: '#F8F4EC',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
   rewriteBtn: {
     backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#D1D6DB',

@@ -39,27 +39,67 @@ const buildEggPath = (w, h) =>
 const { width: SCREEN_W } = Dimensions.get('window');
 // 카드 패딩 16 + 화면 여백 좌우 16
 const CARD_INNER_PADDING = 16;
+const A6_ASPECT_RATIO = 148 / 105;
 const CANVAS_W = SCREEN_W - 32 - CARD_INNER_PADDING * 2;
-const CANVAS_H = CANVAS_W * (1400 / 1024);
+const CANVAS_H = CANVAS_W * A6_ASPECT_RATIO;
 
 // 사진 크기 최대값 — 캔버스를 넘어 크롭 효과처럼 확대 가능
 const PHOTO_MAX = 500;
+// 텍스트 글자 크기 범위
+const TEXT_SIZE_MIN = 6;
+const TEXT_SIZE_MAX = 150;
 
 const SERIF_FONT = Platform.select({ ios: 'AppleMyungjo', android: 'serif' });
 const NUMERIC_FONT = Platform.select({ ios: 'Helvetica Neue', android: 'sans-serif' });
 
+// 텍스트 색상 옵션 — 청첩장에 어울리는 톤
+const COLOR_OPTIONS = [
+  // 무채색
+  { id: 'black', label: '검정', value: '#000000' },
+  { id: 'ink', label: '먹', value: '#2C2A28' },
+  { id: 'charcoal', label: '차콜', value: '#4A4A4A' },
+  { id: 'gray', label: '회색', value: '#8E9197' },
+  { id: 'lightgray', label: '연회색', value: '#C7C7C7' },
+  { id: 'white', label: '흰색', value: '#FFFFFF' },
+  // 갈색 톤
+  { id: 'darkbrown', label: '진갈', value: '#4A2C20' },
+  { id: 'brown', label: '갈색', value: '#3A2E22' },
+  { id: 'mocha', label: '모카', value: '#6B4A3A' },
+  { id: 'olive', label: '올리브', value: '#6B5B44' },
+  { id: 'beige', label: '베이지', value: '#A89571' },
+  { id: 'gold', label: '골드', value: '#A8895A' },
+  // 컬러
+  { id: 'wine', label: '와인', value: '#722F37' },
+  { id: 'rose', label: '로즈', value: '#C8898E' },
+  { id: 'pink', label: '핑크', value: '#F4A5B6' },
+  { id: 'lightpink', label: '연핑크', value: '#F8DAD0' },
+  { id: 'navy', label: '네이비', value: '#2C3E50' },
+  { id: 'darkblue', label: '진청', value: '#1F3A5F' },
+  { id: 'blue', label: '블루', value: '#3182F6' },
+  { id: 'forest', label: '포레스트', value: '#3C5A4E' },
+];
+
 // 폰트 옵션 — 무료 폰트 (assets/fonts에 ttf + App.js에서 Font.loadAsync로 로드)
 const FONT_OPTIONS = [
+  // 한글
   { id: 'serif', label: '명조', sample: '가나', family: SERIF_FONT },
   { id: 'sans', label: '고딕', sample: '가나', family: NUMERIC_FONT },
   { id: 'nanum-myeongjo', label: '나눔명조', sample: '가나', family: 'NanumMyeongjo' },
+  { id: 'hahmlet', label: '함렛', sample: '가나', family: 'Hahmlet' },
   { id: 'gowun-batang', label: '고운바탕', sample: '가나', family: 'GowunBatang' },
   { id: 'gowun-dodum', label: '고운돋움', sample: '가나', family: 'GowunDodum' },
   { id: 'sunflower', label: '선플라워', sample: '가나', family: 'Sunflower' },
+  { id: 'black-han', label: '블랙한산스', sample: '가나', family: 'BlackHanSans' },
+  { id: 'yeon-sung', label: '연성', sample: '가나', family: 'YeonSung' },
+  { id: 'single-day', label: '싱글데이', sample: '가나', family: 'SingleDay' },
+  // 영문
   { id: 'playfair', label: 'Playfair', sample: 'Aa', family: 'PlayfairDisplay' },
   { id: 'garamond', label: 'Garamond', sample: 'Aa', family: 'EBGaramond' },
+  { id: 'cinzel', label: 'Cinzel', sample: 'Aa', family: 'Cinzel' },
   { id: 'great-vibes', label: 'Vibes', sample: 'Aa', family: 'Great Vibes' },
   { id: 'italianno', label: 'Italianno', sample: 'Aa', family: 'Italianno' },
+  { id: 'dancing', label: 'Dancing', sample: 'Aa', family: 'DancingScript' },
+  { id: 'tangerine', label: 'Tangerine', sample: 'Aa', family: 'Tangerine' },
 ];
 
 const getPhotoRadius = (shape, w) => {
@@ -94,10 +134,15 @@ function DraggableElement({
   onDragStart,
   onDragEnd,
   zIndex,
+  locked,
+  rotation = 0,
   children,
 }) {
   const pan = useRef(new Animated.ValueXY({ x: initialX, y: initialY })).current;
   const positionRef = useRef({ x: initialX, y: initialY });
+  // PanResponder는 한 번만 생성 → ref로 최신 locked 추적
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
 
   // initialX/Y가 외부에서 바뀌면 동기화 (size 조정 등)
   React.useEffect(() => {
@@ -107,24 +152,28 @@ function DraggableElement({
 
   const responder = useRef(
     PanResponder.create({
-      // 터치 시작 즉시 캡처 → 부모 ScrollView 가 제스처 가로채지 못하게
+      // 항상 제스처 잡음 → 잠금이어도 선택은 가능
       onStartShouldSetPanResponder: () => true,
       onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponderCapture: () => true,
-      // 다른 responder 가 제스처 가져가려 할 때 거절
       onPanResponderTerminationRequest: () => false,
       onShouldBlockNativeResponder: () => true,
       onPanResponderGrant: () => {
+        // 선택은 항상
         onSelect(id);
+        // 잠금이면 드래그 시작/오프셋 세팅 안 함 → 박스 안 움직임
+        if (lockedRef.current) return;
         onDragStart?.();
         pan.setOffset(positionRef.current);
         pan.setValue({ x: 0, y: 0 });
       },
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
-        useNativeDriver: false,
-      }),
+      onPanResponderMove: (_, g) => {
+        if (lockedRef.current) return;
+        pan.setValue({ x: g.dx, y: g.dy });
+      },
       onPanResponderRelease: (_, g) => {
+        if (lockedRef.current) return;
         pan.flattenOffset();
         const newX = positionRef.current.x + g.dx;
         const newY = positionRef.current.y + g.dy;
@@ -133,6 +182,7 @@ function DraggableElement({
         onDragEnd?.();
       },
       onPanResponderTerminate: () => {
+        if (lockedRef.current) return;
         pan.flattenOffset();
         onDragEnd?.();
       },
@@ -142,19 +192,29 @@ function DraggableElement({
   return (
     <Animated.View
       {...responder.panHandlers}
-      style={[
-        {
-          position: 'absolute',
-          width,
-          height,
-          transform: pan.getTranslateTransform(),
-          zIndex: zIndex ?? 0,
-          elevation: zIndex ?? 0,
-        },
-        selected && s.selectedBorder,
-      ]}
+      style={{
+        position: 'absolute',
+        width,
+        height,
+        // 외부: 위치만 (Animated translate)
+        transform: pan.getTranslateTransform(),
+        zIndex: zIndex ?? 0,
+        elevation: zIndex ?? 0,
+      }}
     >
-      {children}
+      <View
+        style={[
+          {
+            width: '100%',
+            height: '100%',
+            // 내부: 회전만 (정적) — Animated와 분리해서 누락 방지
+            transform: [{ rotate: `${rotation}deg` }],
+          },
+          selected && (locked ? s.selectedBorderLocked : s.selectedBorder),
+        ]}
+      >
+        {children}
+      </View>
     </Animated.View>
   );
 }
@@ -316,6 +376,10 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     if (savedEl.size != null) out.size = savedEl.size;
     if (savedEl.shape) out.shape = savedEl.shape;
     if (savedEl.fontFamily) out.fontFamily = savedEl.fontFamily;
+    if (savedEl.locked) out.locked = true;
+    if (savedEl.rotation != null) out.rotation = savedEl.rotation;
+    if (savedEl.color) out.color = savedEl.color;
+    if (savedEl.bold) out.bold = true;
     return out;
   };
 
@@ -376,35 +440,63 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   const hideConnector = !!text.names?.hideConnector;
   const namesY = ((text.names?.y || 70) / 100) * CANVAS_H;
   const namesSize = text.names?.size || 14;
+  // 박스 너비를 35% 로 키워서 글자 크기 키워도 줄나눔 안 되게 함.
+  // 박스 가운데 위치는 기존과 동일하게 유지 (좌측 25%, 우측 75% 또는 35%/65%).
+  const NAME_W = CANVAS_W * 0.35;
+  const NAME_HALF = NAME_W / 2;
   const initGroom = {
-    x: hideConnector ? CANVAS_W * 0.18 : CANVAS_W * 0.28,
+    x: hideConnector ? CANVAS_W * 0.27 - NAME_HALF : CANVAS_W * 0.37 - NAME_HALF,
     y: namesY,
-    w: CANVAS_W * 0.18,
+    w: NAME_W,
     size: namesSize,
+    color: text.names?.color,
   };
   const initBride = {
-    x: hideConnector ? CANVAS_W * 0.64 : CANVAS_W * 0.54,
+    x: hideConnector ? CANVAS_W * 0.73 - NAME_HALF : CANVAS_W * 0.63 - NAME_HALF,
     y: namesY,
-    w: CANVAS_W * 0.18,
+    w: NAME_W,
     size: namesSize,
+    color: text.names?.color,
   };
   const initConnector = {
     x: CANVAS_W * 0.46,
     y: namesY,
     w: CANVAS_W * 0.08,
     size: namesSize,
+    color: text.names?.connectorColor,
   };
   const initDate = {
     x: 0,
     y: ((text.date?.y || 78) / 100) * CANVAS_H,
     size: text.date?.size || 9,
     w: CANVAS_W,
+    color: text.date?.color,
   };
   const initVenue = {
     x: 0,
     y: ((text.venue?.y || 85) / 100) * CANVAS_H,
     size: text.venue?.size || 9,
     w: CANVAS_W,
+    color: text.venue?.color,
+  };
+  // 큰 날짜 (월/일 두 줄) — 템플릿에 dateBig 정의된 경우만 사용
+  const hasDateBig = !!text.dateBig;
+  const initDateBig = {
+    x: 0,
+    y: ((text.dateBig?.y || 92) / 100) * CANVAS_H,
+    size: text.dateBig?.size || 28,
+    w: CANVAS_W,
+    color: text.dateBig?.color,
+  };
+  // 인사말 — 템플릿에 greeting 정의된 경우만 (예: minimal-4의 "결 혼 합 니 다")
+  const hasGreeting = !!text.greeting;
+  const greetingText = text.greeting?.text || '';
+  const initGreeting = {
+    x: 0,
+    y: ((text.greeting?.y || 8) / 100) * CANVAS_H,
+    size: text.greeting?.size || 12,
+    w: CANVAS_W,
+    color: text.greeting?.color,
   };
 
   // 수정 모드: 저장된 layout이 있으면 그걸로 시작, 부족한 필드는 기본값
@@ -421,31 +513,99 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       bride: merge(initBride, 'bride'),
       date: merge(initDate, 'date'),
       venue: merge(initVenue, 'venue'),
+      dateBig: merge(initDateBig, 'dateBig'),
+      greeting: merge(initGreeting, 'greeting'),
     };
   });
+
+  // formData.date_str ("2026.06.14 SAT") 에서 월·일 추출 → "06.\n14."
+  const bigDateText = (() => {
+    const m = (formData.date_str || '').match(/\d+\.(\d+)\.(\d+)/);
+    if (!m) return '';
+    return `${m[1]}.\n${m[2]}.`;
+  })();
   const [selected, setSelected] = useState(null);
   const [resizeMode, setResizeMode] = useState('all'); // 'all' | 'w' | 'h' (사진만 적용)
+  // 슬라이더 카드 안 카테고리 탭 — 한 번에 한 영역만 표시 (미리보기 잘 보이게)
+  const [editTab, setEditTab] = useState('size'); // 'style' | 'size' | 'position' | 'rotation'
+
+  // 요소 변경 시 기본 탭으로 (사진은 style 없음)
+  useEffect(() => {
+    setEditTab('size');
+  }, [selected]);
   const [dragging, setDragging] = useState(false);     // 드래그 중엔 스크롤 차단
   const [saving, setSaving] = useState(false);
 
   const handleMoveEnd = (id, x, y) => {
-    setLayout((prev) => ({ ...prev, [id]: { ...prev[id], x, y } }));
+    setLayout((prev) => {
+      const el = prev[id];
+      if (!el || el.locked) return prev;
+      return { ...prev, [id]: { ...el, x, y } };
+    });
   };
 
-  // 미세조정 — 1px 씩 이동
+  // 미세조정 — 1px 씩 이동 (잠금 시 차단)
   const nudge = (dx, dy) => {
     if (!selected) return;
     setLayout((prev) => {
       const el = prev[selected];
-      if (!el) return prev;
+      if (!el || el.locked) return prev;
       return { ...prev, [selected]: { ...el, x: el.x + dx, y: el.y + dy } };
+    });
+  };
+
+  // 잠금 토글 — 잠그면 드래그/미세조정/크기/폰트 모두 차단
+  const toggleLock = () => {
+    if (!selected) return;
+    setLayout((prev) => {
+      const el = prev[selected];
+      if (!el) return prev;
+      return { ...prev, [selected]: { ...el, locked: !el.locked } };
+    });
+  };
+
+  // 회전 — 절대값 설정 (잠금 시 차단)
+  const setRotation = (deg) => {
+    if (!selected) return;
+    setLayout((prev) => {
+      const el = prev[selected];
+      if (!el || el.locked) return prev;
+      // -180 ~ 180 범위로 정규화
+      let v = Math.round(deg);
+      if (v > 180) v = 180;
+      if (v < -180) v = -180;
+      return { ...prev, [selected]: { ...el, rotation: v } };
+    });
+  };
+
+  // 회전 — 미세조정 (잠금 시 차단)
+  const adjustRotation = (delta) => {
+    if (!selected) return;
+    setLayout((prev) => {
+      const el = prev[selected];
+      if (!el || el.locked) return prev;
+      const cur = el.rotation || 0;
+      let v = cur + delta;
+      if (v > 180) v = 180;
+      if (v < -180) v = -180;
+      return { ...prev, [selected]: { ...el, rotation: v } };
+    });
+  };
+
+  // 회전 리셋 (잠금 시 차단)
+  const resetRotation = () => {
+    if (!selected) return;
+    setLayout((prev) => {
+      const el = prev[selected];
+      if (!el || el.locked) return prev;
+      return { ...prev, [selected]: { ...el, rotation: 0 } };
     });
   };
 
   const adjustSize = (delta) => {
     setLayout((prev) => {
       const el = prev[selected];
-      if (!el) return prev;
+      if (!el || el.locked) return prev;
 
       if (selected === 'photo') {
         const step = delta * 6;
@@ -468,26 +628,46 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       }
 
       // 텍스트: 글자 크기 조정
-      const newSize = Math.max(6, Math.min(36, el.size + delta));
+      const newSize = Math.max(TEXT_SIZE_MIN, Math.min(TEXT_SIZE_MAX, el.size + delta));
       return { ...prev, [selected]: { ...el, size: newSize } };
     });
   };
 
-  // 폰트 변경 — 텍스트 요소에만 적용
+  // 폰트 변경 — 텍스트 요소에만 적용 (잠금 시 차단)
   const setFont = (family) => {
     if (!selected || selected === 'photo') return;
     setLayout((prev) => {
       const el = prev[selected];
-      if (!el) return prev;
+      if (!el || el.locked) return prev;
       return { ...prev, [selected]: { ...el, fontFamily: family } };
     });
   };
 
-  // 슬라이더로 절대값 설정
+  // 색상 변경 — 텍스트 요소에만 적용 (잠금 시 차단)
+  const setColor = (color) => {
+    if (!selected || selected === 'photo') return;
+    setLayout((prev) => {
+      const el = prev[selected];
+      if (!el || el.locked) return prev;
+      return { ...prev, [selected]: { ...el, color } };
+    });
+  };
+
+  // 굵게 토글 — 텍스트 요소에만 적용 (잠금 시 차단)
+  const toggleBold = () => {
+    if (!selected || selected === 'photo') return;
+    setLayout((prev) => {
+      const el = prev[selected];
+      if (!el || el.locked) return prev;
+      return { ...prev, [selected]: { ...el, bold: !el.bold } };
+    });
+  };
+
+  // 슬라이더로 절대값 설정 (잠금 시 차단)
   const setSizeAbsolute = (value) => {
     setLayout((prev) => {
       const el = prev[selected];
-      if (!el) return prev;
+      if (!el || el.locked) return prev;
 
       if (selected === 'photo') {
         const newW = Math.max(40, Math.min(PHOTO_MAX, value));
@@ -505,7 +685,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         return { ...prev, photo: { ...el, w: newW, h: newW * ratio } };
       }
 
-      const newSize = Math.max(6, Math.min(36, value));
+      const newSize = Math.max(TEXT_SIZE_MIN, Math.min(TEXT_SIZE_MAX, value));
       return { ...prev, [selected]: { ...el, size: newSize } };
     });
   };
@@ -521,8 +701,13 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       }
       return { value: Math.round(el.w), min: 40, max: PHOTO_MAX };
     }
-    return { value: el.size, min: 6, max: 36 };
+    return { value: el.size, min: TEXT_SIZE_MIN, max: TEXT_SIZE_MAX };
   })();
+
+  // 잠금 여부 — 잠금 시 컨트롤 영역 시각적 비활성
+  const isLocked = !!(selected && layout[selected]?.locked);
+  const lockedDimStyle = isLocked ? { opacity: 0.4 } : null;
+  const lockedPointer = isLocked ? 'none' : 'auto';
 
   const handleSave = async () => {
     setSaving(true);
@@ -553,6 +738,10 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         ...(el.size != null ? { size: el.size } : {}),
         ...(el.shape ? { shape: el.shape } : {}),
         ...(el.fontFamily ? { fontFamily: el.fontFamily } : {}),
+        ...(el.locked ? { locked: true } : {}),
+        ...(el.rotation ? { rotation: el.rotation } : {}),
+        ...(el.color ? { color: el.color } : {}),
+        ...(el.bold ? { bold: true } : {}),
       });
       const normalizedLayout = {
         canvas_w: CANVAS_W, // 저장 시점 캔버스 너비 (px) — 스케일 기준
@@ -562,6 +751,8 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         date: norm(layout.date),
         venue: norm(layout.venue),
         ...(hideConnector ? {} : { connector: norm(layout.connector) }),
+        ...(hasDateBig ? { dateBig: norm(layout.dateBig) } : {}),
+        ...(hasGreeting ? { greeting: norm(layout.greeting) } : {}),
       };
 
       // 3) DB insert 또는 update
@@ -652,7 +843,14 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       <View style={s.canvasCard}>
         <Pressable
           onPress={() => setSelected(null)}
-          style={[s.canvas, { width: CANVAS_W, height: CANVAS_H }]}
+          style={[
+            s.canvas,
+            {
+              width: CANVAS_W,
+              height: CANVAS_H,
+              backgroundColor: template.bgColor || '#FFFFFF',
+            },
+          ]}
         >
           {/* 사진 — blank.png 아래 layer (cutout 템플릿이면 사진이 구멍으로 비침) */}
           <DraggableElement
@@ -666,6 +864,8 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             onMoveEnd={handleMoveEnd}
             onDragStart={() => setDragging(true)}
             onDragEnd={() => setDragging(false)}
+            locked={layout.photo.locked}
+            rotation={layout.photo.rotation}
             zIndex={1}
           >
             {layout.photo.shape === 'oval' ? (
@@ -727,6 +927,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
           </DraggableElement>
 
           {/* 빈 템플릿 — 사진 위 layer. pointerEvents="none" 으로 터치는 사진/캔버스로 통과 */}
+          {/* cover: 템플릿 PNG가 캔버스를 가득 채워 흰 띠 없음 → 사진이 캔버스 밖으로 나가면 잘림이 명확 */}
           <Image
             source={template.blank}
             pointerEvents="none"
@@ -737,7 +938,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               zIndex: 2,
               elevation: 2,
             }}
-            resizeMode="contain"
+            resizeMode="cover"
           />
 
           {/* 베이크인 요소 가리는 마스크 (& 등) — 템플릿 위에 얹힘 */}
@@ -758,27 +959,31 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             />
           ))}
 
-          {/* 신랑 — 별도 드래그 */}
+          {/* 신랑 — 별도 드래그. 박스 너비를 글자 크기에 비례하게 늘려 줄나눔/잘림 방지 */}
           <DraggableElement
             id="groom"
             selected={selected === 'groom'}
             onSelect={setSelected}
             initialX={layout.groom.x}
             initialY={layout.groom.y}
-            width={layout.groom.w}
+            width={Math.max(layout.groom.w, (layout.groom.size || 14) * 5)}
             height={layout.groom.size * 2.2}
             onMoveEnd={handleMoveEnd}
             onDragStart={() => setDragging(true)}
             onDragEnd={() => setDragging(false)}
+            locked={layout.groom.locked}
+            rotation={layout.groom.rotation}
             zIndex={4}
           >
             <Text
+              numberOfLines={1}
+              ellipsizeMode="clip"
               style={{
                 textAlign: 'center',
                 fontFamily: layout.groom.fontFamily || SERIF_FONT,
                 fontSize: layout.groom.size,
-                color: '#3A2E22',
-                fontWeight: '500',
+                color: layout.groom.color || '#3A2E22',
+                fontWeight: layout.groom.bold ? '900' : '500',
               }}
             >
               {formData.groom}
@@ -793,18 +998,21 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               onSelect={setSelected}
               initialX={layout.connector.x}
               initialY={layout.connector.y}
-              width={layout.connector.w}
+              width={Math.max(layout.connector.w, (layout.connector.size || 14) * 1.5)}
               height={layout.connector.size * 2.2}
               onMoveEnd={handleMoveEnd}
+              locked={layout.connector.locked}
+              rotation={layout.connector.rotation}
               zIndex={4}
             >
               <Text
+                numberOfLines={1}
                 style={{
                   textAlign: 'center',
                   fontFamily: layout.connector.fontFamily || SERIF_FONT,
                   fontSize: layout.connector.size * 0.95,
-                  color: '#A89571',
-                  fontWeight: '300',
+                  color: layout.connector.color || '#A89571',
+                  fontWeight: layout.connector.bold ? '900' : '300',
                 }}
               >
                 &
@@ -812,27 +1020,31 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             </DraggableElement>
           )}
 
-          {/* 신부 — 별도 드래그 */}
+          {/* 신부 — 별도 드래그. 박스 너비 동적 확장 (이름 길이/크기 대응) */}
           <DraggableElement
             id="bride"
             selected={selected === 'bride'}
             onSelect={setSelected}
             initialX={layout.bride.x}
             initialY={layout.bride.y}
-            width={layout.bride.w}
+            width={Math.max(layout.bride.w, (layout.bride.size || 14) * 5)}
             height={layout.bride.size * 2.2}
             onMoveEnd={handleMoveEnd}
             onDragStart={() => setDragging(true)}
             onDragEnd={() => setDragging(false)}
+            locked={layout.bride.locked}
+            rotation={layout.bride.rotation}
             zIndex={4}
           >
             <Text
+              numberOfLines={1}
+              ellipsizeMode="clip"
               style={{
                 textAlign: 'center',
                 fontFamily: layout.bride.fontFamily || SERIF_FONT,
                 fontSize: layout.bride.size,
-                color: '#3A2E22',
-                fontWeight: '500',
+                color: layout.bride.color || '#3A2E22',
+                fontWeight: layout.bride.bold ? '900' : '500',
               }}
             >
               {formData.bride}
@@ -851,6 +1063,8 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             onMoveEnd={handleMoveEnd}
             onDragStart={() => setDragging(true)}
             onDragEnd={() => setDragging(false)}
+            locked={layout.date.locked}
+            rotation={layout.date.rotation}
             zIndex={4}
           >
             <Text
@@ -858,9 +1072,9 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                 textAlign: 'center',
                 fontFamily: layout.date.fontFamily || NUMERIC_FONT,
                 fontSize: layout.date.size,
-                color: '#6B5B44',
+                color: layout.date.color || '#6B5B44',
                 letterSpacing: 1.2,
-                fontWeight: '600',
+                fontWeight: layout.date.bold ? '900' : '600',
               }}
             >
               {formData.date_str}  {formData.time_str}
@@ -880,6 +1094,8 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               onMoveEnd={handleMoveEnd}
               onDragStart={() => setDragging(true)}
               onDragEnd={() => setDragging(false)}
+              locked={layout.venue.locked}
+              rotation={layout.venue.rotation}
               zIndex={4}
             >
               <Text
@@ -888,11 +1104,77 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                   textAlign: 'center',
                   fontFamily: layout.venue.fontFamily || SERIF_FONT,
                   fontSize: layout.venue.size,
-                  color: '#6B5B44',
-                  fontWeight: '500',
+                  color: layout.venue.color || '#6B5B44',
+                  fontWeight: layout.venue.bold ? '900' : '500',
                 }}
               >
                 {formData.venue}
+              </Text>
+            </DraggableElement>
+          )}
+
+          {/* 큰 날짜 (월/일 두 줄) — 템플릿에 dateBig 정의되고 일시 선택했을 때만 표시 */}
+          {hasDateBig && bigDateText !== '' && (
+            <DraggableElement
+              id="dateBig"
+              selected={selected === 'dateBig'}
+              onSelect={setSelected}
+              initialX={layout.dateBig.x}
+              initialY={layout.dateBig.y}
+              width={layout.dateBig.w}
+              height={layout.dateBig.size * 2.6}
+              onMoveEnd={handleMoveEnd}
+              onDragStart={() => setDragging(true)}
+              onDragEnd={() => setDragging(false)}
+              locked={layout.dateBig.locked}
+              rotation={layout.dateBig.rotation}
+              zIndex={4}
+            >
+              <Text
+                style={{
+                  textAlign: 'center',
+                  fontFamily: layout.dateBig.fontFamily || SERIF_FONT,
+                  fontSize: layout.dateBig.size,
+                  color: layout.dateBig.color || '#2C2A28',
+                  fontWeight: layout.dateBig.bold ? '900' : '300',
+                  letterSpacing: 1,
+                  lineHeight: layout.dateBig.size * 1.1,
+                }}
+              >
+                {bigDateText}
+              </Text>
+            </DraggableElement>
+          )}
+
+          {/* 인사말 — 템플릿이 greeting 정의한 경우만 (예: minimal-4 "결 혼 합 니 다") */}
+          {hasGreeting && (
+            <DraggableElement
+              id="greeting"
+              selected={selected === 'greeting'}
+              onSelect={setSelected}
+              initialX={layout.greeting.x}
+              initialY={layout.greeting.y}
+              width={layout.greeting.w}
+              height={layout.greeting.size * 2.2}
+              onMoveEnd={handleMoveEnd}
+              onDragStart={() => setDragging(true)}
+              onDragEnd={() => setDragging(false)}
+              locked={layout.greeting.locked}
+              rotation={layout.greeting.rotation}
+              zIndex={4}
+            >
+              <Text
+                numberOfLines={1}
+                style={{
+                  textAlign: 'center',
+                  fontFamily: layout.greeting.fontFamily || SERIF_FONT,
+                  fontSize: layout.greeting.size,
+                  color: layout.greeting.color || '#5A5854',
+                  fontWeight: layout.greeting.bold ? '900' : '500',
+                  letterSpacing: 1,
+                }}
+              >
+                {greetingText}
               </Text>
             </DraggableElement>
           )}
@@ -912,6 +1194,12 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
           { id: 'date', label: '일시', icon: 'calendar-outline' },
           ...(formData.venue
             ? [{ id: 'venue', label: '장소', icon: 'location-outline' }]
+            : []),
+          ...(hasDateBig && bigDateText
+            ? [{ id: 'dateBig', label: '큰 날짜', icon: 'calendar' }]
+            : []),
+          ...(hasGreeting
+            ? [{ id: 'greeting', label: '인사말', icon: 'chatbox-outline' }]
             : []),
         ].map((tab) => {
           const active = selected === tab.id;
@@ -936,117 +1224,238 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       </View>
 
       {/* 슬라이더 카드 — 선택 시에만 */}
-      {selected && sliderConfig && (
-        <View style={s.sliderCard}>
-          {/* 사진 가로/세로/전체 모드 */}
-          {selected === 'photo' && layout.photo.shape !== 'circle' && (
-            <View style={s.modeRow}>
-              {[
-                { id: 'all', label: '전체' },
-                { id: 'w', label: '가로' },
-                { id: 'h', label: '세로' },
-              ].map((m) => (
-                <TouchableOpacity
-                  key={m.id}
-                  style={[s.modeBtn, resizeMode === m.id && s.modeBtnActive]}
-                  onPress={() => setResizeMode(m.id)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[s.modeBtnText, resizeMode === m.id && s.modeBtnTextActive]}>
-                    {m.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {/* 폰트 선택 — 텍스트 요소일 때만 가로 스크롤 */}
-          {selected !== 'photo' && (
-            <View style={s.fontSection}>
-              <Text style={s.fontSectionLabel}>글씨체</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={s.fontRow}
-              >
-                {FONT_OPTIONS.map((f) => {
-                  const currentFamily = layout[selected]?.fontFamily || SERIF_FONT;
-                  const active = currentFamily === f.family;
+      {selected && sliderConfig && (() => {
+        const editTabs = [
+          ...(selected !== 'photo' ? [{ id: 'style', label: '꾸미기' }] : []),
+          { id: 'size', label: '크기' },
+          { id: 'position', label: '위치' },
+          { id: 'rotation', label: '회전' },
+        ];
+        const currentTab = editTabs.some((t) => t.id === editTab) ? editTab : 'size';
+        return (
+          <View style={s.sliderCard}>
+            {/* 카테고리 탭 + 잠금 버튼 (헤더에 항상) */}
+            <View style={s.editTabsRow}>
+              <View style={s.editTabs}>
+                {editTabs.map((t) => {
+                  const active = currentTab === t.id;
                   return (
                     <TouchableOpacity
-                      key={f.id}
-                      style={[s.fontChip, active && s.fontChipActive]}
-                      onPress={() => setFont(f.family)}
+                      key={t.id}
+                      style={[s.editTabBtn, active && s.editTabBtnActive]}
+                      onPress={() => setEditTab(t.id)}
                       activeOpacity={0.7}
                     >
-                      <Text
-                        style={[
-                          s.fontChipSample,
-                          { fontFamily: f.family },
-                          active && { color: TC.blue },
-                        ]}
-                      >
-                        {f.sample}
-                      </Text>
-                      <Text style={[s.fontChipLabel, active && { color: TC.blue, fontWeight: '700' }]}>
-                        {f.label}
+                      <Text style={[s.editTabText, active && s.editTabTextActive]}>
+                        {t.label}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </View>
+              <TouchableOpacity
+                onPress={toggleLock}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={s.lockBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={layout[selected]?.locked ? 'lock-closed' : 'lock-open-outline'}
+                  size={18}
+                  color={layout[selected]?.locked ? TC.blue : TC.inkMuted}
+                />
+              </TouchableOpacity>
             </View>
-          )}
 
-          <View style={s.sliderHeader}>
-            <Text style={s.sliderLabel}>
-              {selected === 'photo'
-                ? layout.photo.shape === 'circle'
-                  ? '사진 크기'
-                  : resizeMode === 'w'
-                    ? '가로 크기'
-                    : resizeMode === 'h'
-                      ? '세로 크기'
-                      : '사진 크기'
-                : '글자 크기'}
-            </Text>
-            <Text style={s.sliderValue}>{sliderConfig.value}</Text>
-          </View>
-          <View style={s.sliderRow}>
-            <HoldButton style={s.sliderIconBtn} onPress={() => adjustSize(-1)}>
-              <Ionicons name="remove" size={20} color={TC.inkMuted} />
-            </HoldButton>
-            <Slider
-              value={sliderConfig.value}
-              min={sliderConfig.min}
-              max={sliderConfig.max}
-              onChange={setSizeAbsolute}
-            />
-            <HoldButton style={s.sliderIconBtn} onPress={() => adjustSize(1)}>
-              <Ionicons name="add" size={20} color={TC.inkMuted} />
-            </HoldButton>
-          </View>
+            {/* 꾸미기 — 폰트 + 색상 (텍스트 요소만) */}
+            {currentTab === 'style' && (
+              <View style={[lockedDimStyle, { gap: 10 }]} pointerEvents={lockedPointer}>
+                {/* 글씨체 + 굵게 토글 */}
+                <View style={s.fontSection}>
+                  <View style={s.styleSectionHeader}>
+                    <Text style={s.fontSectionLabel}>글씨체</Text>
+                    <TouchableOpacity
+                      style={[s.boldBtn, layout[selected]?.bold && s.boldBtnActive]}
+                      onPress={toggleBold}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          s.boldBtnText,
+                          layout[selected]?.bold && { color: '#FFFFFF' },
+                        ]}
+                      >
+                        B
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fontRow}>
+                    {FONT_OPTIONS.map((f) => {
+                      const currentFamily = layout[selected]?.fontFamily || SERIF_FONT;
+                      const active = currentFamily === f.family;
+                      return (
+                        <TouchableOpacity
+                          key={f.id}
+                          style={[s.fontChip, active && s.fontChipActive]}
+                          onPress={() => setFont(f.family)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[s.fontChipSample, { fontFamily: f.family }, active && { color: TC.blue }]}>
+                            {f.sample}
+                          </Text>
+                          <Text style={[s.fontChipLabel, active && { color: TC.blue, fontWeight: '700' }]}>
+                            {f.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+                <View style={s.fontSection}>
+                  <Text style={s.fontSectionLabel}>색상</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fontRow}>
+                    {COLOR_OPTIONS.map((c) => {
+                      const active = (layout[selected]?.color) === c.value;
+                      return (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={[s.colorChip, active && s.colorChipActive]}
+                          onPress={() => setColor(c.value)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[s.colorSwatch, { backgroundColor: c.value }]} />
+                          <Text style={[s.fontChipLabel, active && { color: TC.blue, fontWeight: '700' }]}>
+                            {c.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              </View>
+            )}
 
-          {/* 위치 미세조정 — 4방향 (작게) */}
-          <View style={s.nudgeFooter}>
-            <Text style={s.nudgeFooterLabel}>위치 미세조정</Text>
-            <View style={s.nudgeFooterBtns}>
-              <HoldButton style={s.nudgeFooterBtn} onPress={() => nudge(-1, 0)}>
-                <Ionicons name="chevron-back" size={16} color={TC.ink} />
-              </HoldButton>
-              <HoldButton style={s.nudgeFooterBtn} onPress={() => nudge(0, -1)}>
-                <Ionicons name="chevron-up" size={16} color={TC.ink} />
-              </HoldButton>
-              <HoldButton style={s.nudgeFooterBtn} onPress={() => nudge(0, 1)}>
-                <Ionicons name="chevron-down" size={16} color={TC.ink} />
-              </HoldButton>
-              <HoldButton style={s.nudgeFooterBtn} onPress={() => nudge(1, 0)}>
-                <Ionicons name="chevron-forward" size={16} color={TC.ink} />
-              </HoldButton>
-            </View>
+            {/* 크기 — 사진 모드 + 사이즈 슬라이더 */}
+            {currentTab === 'size' && (
+              <View style={[lockedDimStyle, { gap: 10 }]} pointerEvents={lockedPointer}>
+                {selected === 'photo' && layout.photo.shape !== 'circle' && (
+                  <View style={s.modeRow}>
+                    {[
+                      { id: 'all', label: '전체' },
+                      { id: 'w', label: '가로' },
+                      { id: 'h', label: '세로' },
+                    ].map((m) => (
+                      <TouchableOpacity
+                        key={m.id}
+                        style={[s.modeBtn, resizeMode === m.id && s.modeBtnActive]}
+                        onPress={() => setResizeMode(m.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[s.modeBtnText, resizeMode === m.id && s.modeBtnTextActive]}>
+                          {m.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                <View style={s.sliderHeader}>
+                  <Text style={s.sliderLabel}>
+                    {selected === 'photo'
+                      ? layout.photo.shape === 'circle'
+                        ? '사진 크기'
+                        : resizeMode === 'w'
+                          ? '가로 크기'
+                          : resizeMode === 'h'
+                            ? '세로 크기'
+                            : '사진 크기'
+                      : '글자 크기'}
+                  </Text>
+                  <Text style={s.sliderValue}>{sliderConfig.value}</Text>
+                </View>
+                <View style={s.sliderRow}>
+                  <HoldButton style={s.sliderIconBtn} onPress={() => adjustSize(-1)}>
+                    <Ionicons name="remove" size={20} color={TC.inkMuted} />
+                  </HoldButton>
+                  <Slider
+                    value={sliderConfig.value}
+                    min={sliderConfig.min}
+                    max={sliderConfig.max}
+                    onChange={setSizeAbsolute}
+                  />
+                  <HoldButton style={s.sliderIconBtn} onPress={() => adjustSize(1)}>
+                    <Ionicons name="add" size={20} color={TC.inkMuted} />
+                  </HoldButton>
+                </View>
+              </View>
+            )}
+
+            {/* 위치 — 4방향 미세조정 (크게) */}
+            {currentTab === 'position' && (
+              <View style={[s.positionPad, lockedDimStyle]} pointerEvents={lockedPointer}>
+                <View style={s.positionRow}>
+                  <View style={s.positionSlot} />
+                  <HoldButton style={s.positionBtn} onPress={() => nudge(0, -1)}>
+                    <Ionicons name="chevron-up" size={20} color={TC.ink} />
+                  </HoldButton>
+                  <View style={s.positionSlot} />
+                </View>
+                <View style={s.positionRow}>
+                  <HoldButton style={s.positionBtn} onPress={() => nudge(-1, 0)}>
+                    <Ionicons name="chevron-back" size={20} color={TC.ink} />
+                  </HoldButton>
+                  <View style={s.positionCenter}>
+                    <Ionicons name="move" size={18} color={TC.inkMuted} />
+                  </View>
+                  <HoldButton style={s.positionBtn} onPress={() => nudge(1, 0)}>
+                    <Ionicons name="chevron-forward" size={20} color={TC.ink} />
+                  </HoldButton>
+                </View>
+                <View style={s.positionRow}>
+                  <View style={s.positionSlot} />
+                  <HoldButton style={s.positionBtn} onPress={() => nudge(0, 1)}>
+                    <Ionicons name="chevron-down" size={20} color={TC.ink} />
+                  </HoldButton>
+                  <View style={s.positionSlot} />
+                </View>
+              </View>
+            )}
+
+            {/* 회전 — 슬라이더 + -/+ + 0° 리셋 */}
+            {currentTab === 'rotation' && (
+              <View style={[lockedDimStyle, { gap: 10 }]} pointerEvents={lockedPointer}>
+                <View style={s.sliderHeader}>
+                  <Text style={s.sliderLabel}>회전</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text style={s.sliderValue}>{layout[selected]?.rotation || 0}°</Text>
+                    <TouchableOpacity
+                      onPress={resetRotation}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={s.lockBtn}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="refresh-outline" size={18} color={TC.inkMuted} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={s.sliderRow}>
+                  <HoldButton style={s.sliderIconBtn} onPress={() => adjustRotation(-1)}>
+                    <Ionicons name="arrow-undo" size={18} color={TC.inkMuted} />
+                  </HoldButton>
+                  <Slider
+                    value={layout[selected]?.rotation || 0}
+                    min={-180}
+                    max={180}
+                    onChange={setRotation}
+                  />
+                  <HoldButton style={s.sliderIconBtn} onPress={() => adjustRotation(1)}>
+                    <Ionicons name="arrow-redo" size={18} color={TC.inkMuted} />
+                  </HoldButton>
+                </View>
+              </View>
+            )}
           </View>
-        </View>
-      )}
+        );
+      })()}
     </SafeAreaView>
   );
 }
@@ -1087,22 +1496,22 @@ const s = StyleSheet.create({
     letterSpacing: -0.3,
   },
 
-  // 캔버스 — 토스 카드형 흰색 배경
+  // 캔버스 wrap — 배경/그림자 없이 템플릿 PNG만 보이도록
   canvasCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
+    backgroundColor: 'transparent',
     padding: CARD_INNER_PADDING,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   canvas: {
-    backgroundColor: '#FBF9F3',
+    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
     position: 'relative',
     borderRadius: 8,
+    // 캔버스 영역 명확화 — 그림자로 떠있는 종이 느낌
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
 
   selectedBorder: {
@@ -1110,6 +1519,19 @@ const s = StyleSheet.create({
     borderColor: TC.blue,
     borderStyle: 'dashed',
     borderRadius: 4,
+  },
+  selectedBorderLocked: {
+    borderWidth: 1.5,
+    borderColor: '#A0A0A0',
+    borderStyle: 'solid',
+    borderRadius: 4,
+  },
+  lockBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
   },
 
   // 요소 탭 카드 — 흰색, 4분할 그리드
@@ -1222,6 +1644,53 @@ const s = StyleSheet.create({
     letterSpacing: -0.2,
   },
 
+  // 꾸미기 섹션 헤더 (라벨 + 굵게 버튼)
+  styleSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  boldBtn: {
+    width: 32,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#F2F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  boldBtnActive: {
+    backgroundColor: TC.ink,
+  },
+  boldBtnText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: TC.ink,
+  },
+
+  // 색상 칩
+  colorChip: {
+    width: 56,
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+    backgroundColor: '#F7F8FA',
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    gap: 4,
+  },
+  colorChipActive: {
+    backgroundColor: '#EAF3FF',
+    borderColor: TC.blue,
+  },
+  colorSwatch: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+
   sliderHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1275,6 +1744,79 @@ const s = StyleSheet.create({
     height: 32,
     borderRadius: 8,
     backgroundColor: '#F2F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // 회전 섹션
+  rotationSection: {
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F3F5',
+    gap: 10,
+  },
+
+  // 카테고리 탭 (꾸미기 / 크기 / 위치 / 회전)
+  editTabsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editTabs: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#F2F4F6',
+    borderRadius: 10,
+    padding: 3,
+  },
+  editTabBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  editTabBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  editTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
+  editTabTextActive: {
+    color: TC.ink,
+    fontWeight: '700',
+  },
+
+  // 위치 D-pad (크게, 직관적)
+  positionPad: {
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+  },
+  positionRow: {
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+  },
+  positionBtn: {
+    width: 44,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#F2F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  positionSlot: { width: 44, height: 38 },
+  positionCenter: {
+    width: 44,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
   },
