@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
-import { sendVerificationSms, generateVerificationCode } from '../../lib/twilioDirectSms';
+import { sendVerificationSms, generateVerificationCode } from '../../lib/solapiSms';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../styles/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -108,6 +108,22 @@ const CustomModal = ({ visible, onClose, title, message, buttons }) => {
   );
 };
 
+const rememberPaperInvitationAuthUserId = async (authUserId) => {
+  if (!authUserId) return;
+
+  try {
+    const rawIds = await AsyncStorage.getItem('paperInvitationAuthUserIds');
+    const ids = rawIds ? JSON.parse(rawIds) : [];
+    const nextIds = Array.isArray(ids) ? ids : [];
+
+    if (!nextIds.includes(authUserId)) {
+      await AsyncStorage.setItem('paperInvitationAuthUserIds', JSON.stringify([...nextIds, authUserId]));
+    }
+  } catch (error) {
+    console.log('⚠️ 종이 청첩장 이전 세션 저장 실패:', error?.message);
+  }
+};
+
 export default function PhoneAuthScreen() {
   const navigation = useNavigation();
   const route = useRoute();
@@ -186,14 +202,24 @@ export default function PhoneAuthScreen() {
       await AsyncStorage.setItem('isLoggedIn', 'true');
       console.log('✅ 사용자 정보 AsyncStorage에 저장 완료:', userInfo);
       
-      // 2. Supabase Auth 세션도 생성 (AppNavigator에서 일관된 인증 상태 유지)
+      // 2. Supabase Auth 세션 유지
+      // 기존 익명 세션에 종이 청첩장이 묶여 있을 수 있으므로 새 익명 계정으로 덮어쓰지 않는다.
       try {
-        // Supabase에 더미 세션 생성 또는 기존 방식 유지
-        const { data, error } = await supabase.auth.signInAnonymously();
-        if (error) {
-          console.log('⚠️ Supabase 더미 세션 생성 실패:', error.message);
+        const {
+          data: { user: currentAuthUser },
+        } = await supabase.auth.getUser();
+
+        if (currentAuthUser?.id) {
+          await rememberPaperInvitationAuthUserId(currentAuthUser.id);
+          console.log('✅ 기존 Supabase 세션 유지:', currentAuthUser.id);
         } else {
-          console.log('✅ Supabase 더미 세션 생성 성공');
+          const { data, error } = await supabase.auth.signInAnonymously();
+          if (error) {
+            console.log('⚠️ Supabase 더미 세션 생성 실패:', error.message);
+          } else {
+            await rememberPaperInvitationAuthUserId(data?.user?.id);
+            console.log('✅ Supabase 더미 세션 생성 성공');
+          }
         }
       } catch (supabaseError) {
         console.log('⚠️ Supabase 세션 처리 오류:', supabaseError.message);
@@ -299,7 +325,7 @@ export default function PhoneAuthScreen() {
   // SMS 인증번호 발송
   const sendSmsCode = async (phoneNumber) => {
     try {
-      console.log('📱 Twilio SMS 인증번호 발송 시작:', phoneNumber);
+      console.log('📱 SOLAPI SMS 인증번호 발송 시작:', phoneNumber);
       
       const verificationCode = generateVerificationCode();
       console.log('🔢 생성된 인증번호:', verificationCode);
@@ -313,7 +339,7 @@ export default function PhoneAuthScreen() {
       const smsResult = await sendVerificationSms(phoneNumber, verificationCode);
       
       if (!smsResult.success) {
-        console.error('❌ Twilio SMS 발송 실패:', smsResult.error);
+        console.error('❌ SOLAPI SMS 발송 실패:', smsResult.error);
         return { 
           success: false, 
           error: smsResult.error || 'SMS 발송에 실패했습니다.' 
@@ -337,7 +363,7 @@ export default function PhoneAuthScreen() {
         return { success: false, error: '인증번호 저장 중 오류가 발생했습니다.' };
       }
       
-      console.log('✅ Twilio SMS 발송 및 DB 저장 완료');
+      console.log('✅ SOLAPI SMS 발송 및 DB 저장 완료');
       return { success: true };
       
     } catch (error) {

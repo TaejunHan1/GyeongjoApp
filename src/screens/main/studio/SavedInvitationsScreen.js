@@ -41,10 +41,17 @@ export default function SavedInvitationsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [detail, setDetail] = useState(null); // 상세 모달
+  const [loadError, setLoadError] = useState('');
 
   const load = useCallback(async () => {
     const r = await listPaperInvitations();
-    if (r.success) setItems(r.data || []);
+    if (r.success) {
+      setItems(r.data || []);
+      setLoadError('');
+    } else {
+      setItems([]);
+      setLoadError(r.error || '청첩장 목록을 불러오지 못했습니다.');
+    }
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -238,14 +245,18 @@ export default function SavedInvitationsScreen({ navigation }) {
           <View style={s.emptyIcon}>
             <Ionicons name="document-outline" size={32} color={TC.inkMuted} />
           </View>
-          <Text style={s.emptyTitle}>아직 만든 청첩장이 없어요</Text>
-          <Text style={s.emptySub}>스튜디오에서 첫 청첩장을 만들어보세요</Text>
+          <Text style={s.emptyTitle}>
+            {loadError ? '청첩장을 불러오지 못했어요' : '아직 만든 청첩장이 없어요'}
+          </Text>
+          <Text style={s.emptySub}>
+            {loadError || '스튜디오에서 첫 청첩장을 만들어보세요'}
+          </Text>
           <TouchableOpacity
             style={s.emptyCta}
-            onPress={() => navigation.goBack()}
+            onPress={loadError ? load : () => navigation.goBack()}
             activeOpacity={0.85}
           >
-            <Text style={s.emptyCtaText}>템플릿 보러가기</Text>
+            <Text style={s.emptyCtaText}>{loadError ? '다시 불러오기' : '템플릿 보러가기'}</Text>
           </TouchableOpacity>
         </View>
       ) : (

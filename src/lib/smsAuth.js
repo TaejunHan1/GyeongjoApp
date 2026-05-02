@@ -1,75 +1,9 @@
 // src/lib/smsAuth.js - SMS 인증 관련 함수들
 import { supabase } from './supabase';
-
-// Twilio 설정
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || 'AC5dd31b5e03e762535d6b924d7fc75bf1';
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '8241502dffed02b342346e8cf671d530';
-const TWILIO_MESSAGE_SERVICE_SID = process.env.TWILIO_MESSAGE_SERVICE_SID || 'MG3b71d5e9e3b1c461f51ef67b3519266a';
-
-// 인증번호 생성
-const generateVerificationCode = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-};
-
-// SMS 발송 (Twilio 직접 호출)
-const sendSmsWithTwilio = async (phoneNumber, code) => {
-  try {
-    console.log('📱 Sending SMS via Twilio to:', phoneNumber);
-    
-    const authString = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
-    
-    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${authString}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        MessagingServiceSid: TWILIO_MESSAGE_SERVICE_SID,
-        To: phoneNumber,
-        Body: `[정담] 인증번호: ${code}\n타인에게 절대 알려주지 마세요.`,
-      }).toString(),
-    });
-
-    const data = await response.json();
-    
-    if (response.ok) {
-      console.log('🟢 SMS sent successfully:', data.sid);
-      return { success: true, sid: data.sid };
-    } else {
-      console.log('🔴 SMS send failed:', data);
-      return { success: false, error: data.message || 'SMS 발송 실패' };
-    }
-  } catch (error) {
-    console.error('🔴 Twilio SMS error:', error);
-    return { success: false, error: '네트워크 오류가 발생했습니다.' };
-  }
-};
-
-// Supabase OTP 사용 (대안)
-const sendSmsWithSupabase = async (phoneNumber) => {
-  try {
-    console.log('📱 Sending SMS via Supabase to:', phoneNumber);
-    
-    const { data, error } = await supabase.auth.signInWithOtp({
-      phone: phoneNumber,
-      options: {
-        channel: 'sms',
-      },
-    });
-
-    if (error) {
-      console.log('🔴 Supabase SMS error:', error);
-      return { success: false, error: error.message };
-    }
-
-    console.log('🟢 Supabase SMS sent successfully');
-    return { success: true, data };
-  } catch (error) {
-    console.error('🔴 Supabase SMS exception:', error);
-    return { success: false, error: '인증번호 발송에 실패했습니다.' };
-  }
-};
+import {
+  sendVerificationSms as sendSolapiVerificationSms,
+  generateVerificationCode,
+} from './solapiSms';
 
 // 인증번호 임시 저장소 (실제로는 안전한 저장소 사용)
 const verificationCodes = new Map();
@@ -78,20 +12,11 @@ const verificationCodes = new Map();
 export const sendSmsVerification = async (phoneNumber) => {
   try {
     console.log('📱 Starting SMS verification for:', phoneNumber);
-    
-    // 방법 1: Supabase OTP 사용 (권장)
-    const supabaseResult = await sendSmsWithSupabase(phoneNumber);
-    if (supabaseResult.success) {
-      return supabaseResult;
-    }
-    
-    console.log('🟡 Supabase OTP failed, trying Twilio...');
-    
-    // 방법 2: Twilio 직접 사용 (백업)
+
     const code = generateVerificationCode();
-    const twilioResult = await sendSmsWithTwilio(phoneNumber, code);
+    const smsResult = await sendSolapiVerificationSms(phoneNumber, code);
     
-    if (twilioResult.success) {
+    if (smsResult.success) {
       // 인증번호 임시 저장 (5분 TTL)
       verificationCodes.set(phoneNumber, {
         code,
@@ -104,10 +29,13 @@ export const sendSmsVerification = async (phoneNumber) => {
         verificationCodes.delete(phoneNumber);
       }, 5 * 60 * 1000);
       
-      return { success: true, method: 'twilio' };
+      return { success: true, method: 'solapi', sid: smsResult.sid };
     }
     
-    return { success: false, error: '인증번호 발송에 실패했습니다. 잠시 후 다시 시도해주세요.' };
+    return {
+      success: false,
+      error: smsResult.error || '인증번호 발송에 실패했습니다. 잠시 후 다시 시도해주세요.',
+    };
     
   } catch (error) {
     console.error('🔴 SMS verification error:', error);
@@ -115,35 +43,10 @@ export const sendSmsVerification = async (phoneNumber) => {
   }
 };
 
-// 인증번호 확인 (Supabase OTP)
-export const verifyOtpWithSupabase = async (phoneNumber, token) => {
+// 인증번호 확인 (SOLAPI)
+export const verifyCodeWithSolapi = async (phoneNumber, inputCode) => {
   try {
-    console.log('🔍 Verifying Supabase OTP for:', phoneNumber);
-    
-    const { data, error } = await supabase.auth.verifyOtp({
-      phone: phoneNumber,
-      token: token,
-      type: 'sms',
-    });
-
-    if (error) {
-      console.log('🔴 Supabase OTP verification failed:', error);
-      return { success: false, error: error.message };
-    }
-
-    console.log('🟢 Supabase OTP verified successfully');
-    return { success: true, session: data.session, user: data.user };
-    
-  } catch (error) {
-    console.error('🔴 Supabase OTP verification exception:', error);
-    return { success: false, error: '인증에 실패했습니다.' };
-  }
-};
-
-// 인증번호 확인 (Twilio)
-export const verifyCodeWithTwilio = async (phoneNumber, inputCode) => {
-  try {
-    console.log('🔍 Verifying Twilio code for:', phoneNumber);
+    console.log('🔍 Verifying SOLAPI code for:', phoneNumber);
     
     const stored = verificationCodes.get(phoneNumber);
     
@@ -168,8 +71,8 @@ export const verifyCodeWithTwilio = async (phoneNumber, inputCode) => {
     // 코드 확인
     if (stored.code === inputCode) {
       verificationCodes.delete(phoneNumber);
-      console.log('🟢 Twilio code verified successfully');
-      return { success: true };
+      console.log('🟢 SOLAPI code verified successfully');
+      return { success: true, method: 'solapi' };
     } else {
       stored.attempts += 1;
       verificationCodes.set(phoneNumber, stored);
@@ -180,32 +83,19 @@ export const verifyCodeWithTwilio = async (phoneNumber, inputCode) => {
     }
     
   } catch (error) {
-    console.error('🔴 Twilio code verification exception:', error);
+    console.error('🔴 SOLAPI code verification exception:', error);
     return { success: false, error: '인증에 실패했습니다.' };
   }
 };
+
+export const verifyCodeWithTwilio = verifyCodeWithSolapi;
 
 // 통합 인증번호 확인 함수
 export const verifyPhoneCode = async (phoneNumber, code) => {
   try {
     console.log('🔍 Starting phone verification for:', phoneNumber);
-    
-    // 먼저 Supabase OTP 시도
-    const supabaseResult = await verifyOtpWithSupabase(phoneNumber, code);
-    if (supabaseResult.success) {
-      return supabaseResult;
-    }
-    
-    console.log('🟡 Supabase OTP failed, trying Twilio verification...');
-    
-    // Twilio 코드 확인
-    const twilioResult = await verifyCodeWithTwilio(phoneNumber, code);
-    if (twilioResult.success) {
-      // Twilio로 인증 성공시 Supabase에 사용자 등록
-      return await createUserWithPhone(phoneNumber);
-    }
-    
-    return twilioResult;
+
+    return await verifyCodeWithSolapi(phoneNumber, code);
     
   } catch (error) {
     console.error('🔴 Phone verification error:', error);
@@ -213,7 +103,7 @@ export const verifyPhoneCode = async (phoneNumber, code) => {
   }
 };
 
-// 핸드폰 번호로 사용자 생성 (Twilio 인증 후)
+// 핸드폰 번호로 사용자 생성
 const createUserWithPhone = async (phoneNumber, userInfo = {}) => {
   try {
     console.log('👤 Creating user with phone:', phoneNumber);

@@ -191,6 +191,8 @@ function DraggableElement({
 
   return (
     <Animated.View
+      collapsable={false}
+      pointerEvents="box-only"
       {...responder.panHandlers}
       style={{
         position: 'absolute',
@@ -871,6 +873,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             {layout.photo.shape === 'oval' ? (
               // 계란 모양: SVG 클립 패스로 비대칭 oval 렌더
               <Svg
+                pointerEvents="none"
                 width={layout.photo.w}
                 height={layout.photo.h}
                 style={{ overflow: 'visible' }}
@@ -898,6 +901,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               </Svg>
             ) : (
               <View
+                pointerEvents="none"
                 style={[
                   {
                     width: '100%',
@@ -910,6 +914,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               >
                 {formData.photoUri ? (
                   <Image
+                    pointerEvents="none"
                     source={{ uri: formData.photoUri }}
                     style={{ width: '100%', height: '100%', resizeMode: 'cover' }}
                   />
@@ -928,18 +933,25 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
 
           {/* 빈 템플릿 — 사진 위 layer. pointerEvents="none" 으로 터치는 사진/캔버스로 통과 */}
           {/* cover: 템플릿 PNG가 캔버스를 가득 채워 흰 띠 없음 → 사진이 캔버스 밖으로 나가면 잘림이 명확 */}
-          <Image
-            source={template.blank}
+          <View
             pointerEvents="none"
             style={{
               position: 'absolute',
+              left: 0,
+              top: 0,
               width: CANVAS_W,
               height: CANVAS_H,
               zIndex: 2,
               elevation: 2,
             }}
-            resizeMode="cover"
-          />
+          >
+            <Image
+              pointerEvents="none"
+              source={template.blank}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="cover"
+            />
+          </View>
 
           {/* 베이크인 요소 가리는 마스크 (& 등) — 템플릿 위에 얹힘 */}
           {(template.masks || []).map((m, i) => (

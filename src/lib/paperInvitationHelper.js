@@ -1,8 +1,92 @@
 // src/lib/paperInvitationHelper.js
 // 종이 청첩장 Supabase CRUD + 사진 업로드
 import { supabase } from './supabase';
+import { getCurrentUserInfo } from './supabaseHelper';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 // expo-file-system v19+ legacy API 사용 (readAsStringAsync 호환)
 import * as FileSystem from 'expo-file-system/legacy';
+
+async function getPaperInvitationOwner() {
+  const userInfo = await getCurrentUserInfo();
+
+  if (userInfo.success && userInfo.user?.id) {
+    return {
+      success: true,
+      userId: userInfo.user.id,
+      source: userInfo.source || 'app',
+    };
+  }
+
+  return {
+    success: false,
+    error: userInfo.error || '로그인이 필요합니다.',
+  };
+}
+
+async function getStorageOwnerId(fallbackUserId) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user?.id) return user.id;
+
+  try {
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (!error && data?.user?.id) {
+      await rememberPaperInvitationAuthUserId(data.user.id);
+      return data.user.id;
+    }
+  } catch (error) {
+    console.warn('[getStorageOwnerId] anonymous sign-in failed:', error?.message);
+  }
+
+  return fallbackUserId;
+}
+
+async function rememberPaperInvitationAuthUserId(authUserId) {
+  if (!authUserId) return;
+
+  try {
+    const rawIds = await AsyncStorage.getItem('paperInvitationAuthUserIds');
+    const parsedIds = rawIds ? JSON.parse(rawIds) : [];
+    const ids = Array.isArray(parsedIds) ? parsedIds : [];
+
+    if (!ids.includes(authUserId)) {
+      await AsyncStorage.setItem('paperInvitationAuthUserIds', JSON.stringify([...ids, authUserId]));
+    }
+  } catch (error) {
+    console.warn('[paperInvitationHelper] failed to remember auth user id:', error?.message);
+  }
+}
+
+async function getRememberedPaperInvitationUserIds() {
+  try {
+    const rawIds = await AsyncStorage.getItem('paperInvitationAuthUserIds');
+    const parsedIds = rawIds ? JSON.parse(rawIds) : [];
+    return Array.isArray(parsedIds) ? parsedIds.filter(Boolean) : [];
+  } catch (error) {
+    console.warn('[paperInvitationHelper] failed to read remembered auth user ids:', error?.message);
+    return [];
+  }
+}
+
+async function getAccessiblePaperInvitationUserIds(primaryUserId) {
+  const ids = [primaryUserId];
+  const rememberedIds = await getRememberedPaperInvitationUserIds();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  rememberedIds.forEach((id) => {
+    if (id && !ids.includes(id)) ids.push(id);
+  });
+
+  if (user?.id && !ids.includes(user.id)) {
+    ids.push(user.id);
+  }
+
+  return ids;
+}
 
 /**
  * 청첩장 저장 (insert) — draft 상태로
@@ -11,22 +95,15 @@ import * as FileSystem from 'expo-file-system/legacy';
  */
 export async function createPaperInvitation(payload) {
   try {
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabase.auth.getUser();
+    const owner = await getPaperInvitationOwner();
 
-    console.log('[createPaperInvitation] user:', user?.id, 'authErr:', authErr);
-
-    if (authErr) {
-      console.error('[createPaperInvitation] auth error:', JSON.stringify(authErr));
-      return { success: false, error: `인증 오류: ${authErr.message}` };
-    }
-    if (!user) {
-      return { success: false, error: '로그인이 필요합니다.' };
+    if (!owner.success) {
+      return { success: false, error: owner.error };
     }
 
-    const insertPayload = { ...payload, user_id: user.id, status: 'draft' };
+    console.log('[createPaperInvitation] owner:', owner.userId, owner.source);
+
+    const insertPayload = { ...payload, user_id: owner.userId, status: 'draft' };
     console.log('[createPaperInvitation] inserting payload keys:', Object.keys(insertPayload));
 
     const response = await supabase
@@ -57,10 +134,15 @@ export async function createPaperInvitation(payload) {
  * 청첩장 업데이트 (layout 변경, 텍스트 수정 등)
  */
 export async function updatePaperInvitation(id, payload) {
+  const owner = await getPaperInvitationOwner();
+  if (!owner.success) return { success: false, error: owner.error };
+  const accessibleUserIds = await getAccessiblePaperInvitationUserIds(owner.userId);
+
   const { data, error } = await supabase
     .from('paper_invitations')
     .update(payload)
     .eq('id', id)
+    .in('user_id', accessibleUserIds)
     .select()
     .single();
 
@@ -75,15 +157,14 @@ export async function updatePaperInvitation(id, payload) {
  * 사용자의 청첩장 목록 가져오기
  */
 export async function listPaperInvitations() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { success: false, error: '로그인이 필요합니다.' };
+  const owner = await getPaperInvitationOwner();
+  if (!owner.success) return { success: false, error: owner.error };
+  const accessibleUserIds = await getAccessiblePaperInvitationUserIds(owner.userId);
 
   const { data, error } = await supabase
     .from('paper_invitations')
     .select('*')
-    .eq('user_id', user.id)
+    .in('user_id', accessibleUserIds)
     .order('created_at', { ascending: false });
 
   if (error) return { success: false, error: error.message };
@@ -108,7 +189,15 @@ export async function getPaperInvitation(id) {
  * 청첩장 삭제
  */
 export async function deletePaperInvitation(id) {
-  const { error } = await supabase.from('paper_invitations').delete().eq('id', id);
+  const owner = await getPaperInvitationOwner();
+  if (!owner.success) return { success: false, error: owner.error };
+  const accessibleUserIds = await getAccessiblePaperInvitationUserIds(owner.userId);
+
+  const { error } = await supabase
+    .from('paper_invitations')
+    .delete()
+    .eq('id', id)
+    .in('user_id', accessibleUserIds);
   if (error) return { success: false, error: error.message };
   return { success: true };
 }
@@ -128,10 +217,10 @@ function base64ToBytes(base64) {
 
 export async function uploadInvitationPhoto(localUri, invitationId = 'temp') {
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return { success: false, error: '로그인이 필요합니다.' };
+    const owner = await getPaperInvitationOwner();
+    if (!owner.success) return { success: false, error: owner.error };
+
+    const storageOwnerId = await getStorageOwnerId(owner.userId);
 
     // 진단: 현재 프로젝트의 bucket 목록 출력
     const { data: buckets } = await supabase.storage.listBuckets();
@@ -150,7 +239,7 @@ export async function uploadInvitationPhoto(localUri, invitationId = 'temp') {
 
     const ext = (localUri.split('.').pop()?.toLowerCase() || 'jpg').replace(/\?.*$/, '');
     const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
-    const path = `${user.id}/${invitationId}/main_${Date.now()}.${ext}`;
+    const path = `${storageOwnerId}/${invitationId}/main_${Date.now()}.${ext}`;
 
     // 3) 업로드
     const { data: uploadData, error: uploadError } = await supabase.storage

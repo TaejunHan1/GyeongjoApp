@@ -5,8 +5,13 @@ import Constants from 'expo-constants';
 import 'react-native-url-polyfill/auto';
 
 // Supabase 설정
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ofshqvrldcesvjtredxo.supabase.co';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mc2hxdnJsZGNlc3ZqdHJlZHhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwNDI1MTQsImV4cCI6MjA2NDYxODUxNH0.uIfuqMP7SFvQfQXSESS9xKHWlBYeWmZwf1j_4eveZ6Q';
+// EAS preview에 같은 이름의 잘못된 환경변수가 남아 있어도 앱이 다른 Supabase
+// 프로젝트로 붙지 않도록, 클라이언트 앱에서는 EXPO_PUBLIC_* 값만 우선 사용한다.
+const DEFAULT_SUPABASE_URL = 'https://ofshqvrldcesvjtredxo.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mc2hxdnJsZGNlc3ZqdHJlZHhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwNDI1MTQsImV4cCI6MjA2NDYxODUxNH0.uIfuqMP7SFvQfQXSESS9xKHWlBYeWmZwf1j_4eveZ6Q';
+
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
 
 // 딥링크 URL 생성
 const createRedirectUrl = () => {

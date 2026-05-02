@@ -27,6 +27,9 @@ import { A6_ASPECT_RATIO, MOBILE_TEMPLATES, TEMPLATE_CATEGORIES } from './studio
 const { width } = Dimensions.get('window');
 const PREVIEW_CARD_WIDTH = 170;
 const SHEET_PREVIEW_WIDTH = Math.min(width - 72, 340);
+const PRINT_SIZE_GUIDE_IMAGE = require('../../../assets/studio/templates/floral/size.png');
+const PRINT_SIZE_GUIDE_WIDTH = Math.min(330, width - 52);
+const PRINT_SIZE_GUIDE_HEIGHT = PRINT_SIZE_GUIDE_WIDTH * (1086 / 1448);
 
 const FEATURE_LIST = [
   { icon: 'flower-outline', label: '수채화 꽃·잎 장식', color: TC.green, bg: TC.greenSoft },
@@ -425,15 +428,11 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
                       <Text style={s.sizeGuideTitle}>실제 인쇄 사이즈</Text>
                       <Text style={s.sizeGuideMeta}>A6 단면 · 105 × 148 mm</Text>
                     </View>
-                    <View style={s.a6Guide}>
-                      <View style={s.a6Paper}>
-                        <Text style={s.a6Label}>A6</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.a6GuideTitle}>105 × 148 mm</Text>
-                        <Text style={s.a6GuideSub}>모바일 청첩장과 인쇄용 PDF 모두 같은 비율로 맞춰져요</Text>
-                      </View>
-                    </View>
+                    <Image
+                      source={PRINT_SIZE_GUIDE_IMAGE}
+                      style={s.sizeGuideImage}
+                      resizeMode="contain"
+                    />
                   </View>
                 </ScrollView>
 
@@ -746,8 +745,9 @@ const s = StyleSheet.create({
     marginHorizontal: 16,
     backgroundColor: TC.bg,
     borderRadius: 12,
-    paddingVertical: 8,
+    paddingTop: 8,
     paddingHorizontal: 10,
+    paddingBottom: 10,
   },
   sizeGuideHeader: {
     flexDirection: 'row',
@@ -769,6 +769,13 @@ const s = StyleSheet.create({
     color: TC.inkMuted,
     letterSpacing: -0.2,
     textAlign: 'right',
+  },
+  sizeGuideImage: {
+    width: PRINT_SIZE_GUIDE_WIDTH,
+    height: PRINT_SIZE_GUIDE_HEIGHT,
+    alignSelf: 'center',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
   },
   a6Guide: {
     flexDirection: 'row',

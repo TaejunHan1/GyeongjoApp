@@ -191,14 +191,16 @@ export const getCurrentUserInfo = async () => {
     
     if (isLoggedIn === 'true' && storedUserInfo) {
       const userInfo = JSON.parse(storedUserInfo);
+      const phone = userInfo.phone || userInfo.userPhone || '';
+      const name = userInfo.userName || userInfo.name || '';
       
       return {
         success: true,
         user: {
           id: userInfo.userId,
-          phone: userInfo.phone,
-          name: userInfo.userName,
-          email: `${userInfo.phone.replace(/\D/g, '')}@phone.temp`, // 임시 이메일
+          phone,
+          name,
+          email: `${phone.replace(/\D/g, '')}@phone.temp`, // 임시 이메일
           auth_method: 'phone'
         },
         source: 'asyncstorage'
