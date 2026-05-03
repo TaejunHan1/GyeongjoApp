@@ -48,9 +48,22 @@ const PHOTO_MAX = 500;
 // 텍스트 글자 크기 범위
 const TEXT_SIZE_MIN = 6;
 const TEXT_SIZE_MAX = 150;
+const BACK_DIVIDER_IDS = [
+  'backInfoTopDivider',
+  'backInfoBottomDivider',
+  'backThanksDivider',
+];
+const isBackDivider = (id) => BACK_DIVIDER_IDS.includes(id);
 
-const SERIF_FONT = Platform.select({ ios: 'AppleMyungjo', android: 'serif' });
-const NUMERIC_FONT = Platform.select({ ios: 'Helvetica Neue', android: 'sans-serif' });
+const SERIF_FONT = 'NanumMyeongjo';
+const NUMERIC_FONT = 'GowunDodum';
+
+const normalizeSavedFontFamily = (fontFamily) => {
+  if (!fontFamily) return fontFamily;
+  if (['AppleMyungjo', 'Times New Roman', 'serif'].includes(fontFamily)) return SERIF_FONT;
+  if (['Helvetica Neue', 'System', 'sans-serif'].includes(fontFamily)) return NUMERIC_FONT;
+  return fontFamily;
+};
 
 // 텍스트 색상 옵션 — 청첩장에 어울리는 톤
 const COLOR_OPTIONS = [
@@ -120,6 +133,128 @@ const getPhotoRadius = (shape, w) => {
       return { borderRadius: 6 };
   }
 };
+
+const parseWeddingDate = (dateStr) => {
+  const m = (dateStr || '').match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+};
+
+function MiniCalendar({ dateStr, width, height }) {
+  const date = parseWeddingDate(dateStr);
+  if (!date) return null;
+
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const selectedDay = date.getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const totalCells = Math.max(35, Math.ceil((firstDay + daysInMonth) / 7) * 7);
+  const cells = Array.from({ length: totalCells }, (_, i) => {
+    const day = i - firstDay + 1;
+    return day > 0 && day <= daysInMonth ? day : null;
+  });
+  const horizontalPadding = Math.max(4, width * 0.035);
+  const innerW = Math.max(1, width - horizontalPadding * 2);
+  const cellW = innerW / 7;
+  const headerH = height * 0.18;
+  const weekdaysH = height * 0.13;
+  const weekCount = cells.length / 7;
+  const rowH = Math.max(1, (height - headerH - weekdaysH) / weekCount);
+  const monthLabel = `${year}. ${String(month + 1).padStart(2, '0')}`;
+  const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const weeks = Array.from({ length: weekCount }, (_, row) =>
+    cells.slice(row * 7, row * 7 + 7)
+  );
+
+  return (
+    <View style={{ width, height, paddingHorizontal: horizontalPadding }}>
+      <Text
+        style={{
+          height: headerH,
+          textAlign: 'center',
+          fontSize: Math.max(10, headerH * 0.55),
+          fontWeight: '700',
+          color: '#A96770',
+          letterSpacing: 1.4,
+          lineHeight: headerH,
+        }}
+      >
+        {monthLabel}
+      </Text>
+      <View style={{ flexDirection: 'row' }}>
+        {weekdays.map((d, i) => (
+          <Text
+            key={`${d}-${i}`}
+            style={{
+              width: cellW,
+              height: weekdaysH,
+              textAlign: 'center',
+              fontSize: Math.max(6, weekdaysH * 0.42),
+              fontWeight: '700',
+              color: i === 0 ? '#C98B92' : '#3A3732',
+              lineHeight: weekdaysH,
+            }}
+          >
+            {d}
+          </Text>
+        ))}
+      </View>
+      {weeks.map((week, rowIndex) => (
+        <View key={`week-${rowIndex}`} style={{ flexDirection: 'row', width: innerW }}>
+          {week.map((day, colIndex) => {
+            const selected = day === selectedDay;
+            return (
+              <View
+                key={`day-${rowIndex}-${colIndex}`}
+                style={{
+                  width: cellW,
+                  height: rowH,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {selected ? (
+                  <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                    <Text
+                      style={{
+                        fontSize: Math.max(15, rowH * 0.95),
+                        color: '#F1B7BE',
+                        lineHeight: Math.max(15, rowH),
+                      }}
+                    >
+                      ♥
+                    </Text>
+                    <Text
+                      style={{
+                        position: 'absolute',
+                        fontSize: Math.max(6, rowH * 0.34),
+                        fontWeight: '900',
+                        color: '#4A3838',
+                      }}
+                    >
+                      {day}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text
+                    style={{
+                      fontSize: Math.max(7, rowH * 0.42),
+                      fontWeight: '500',
+                      color: day ? (colIndex === 0 ? '#C98B92' : '#3A3732') : 'transparent',
+                    }}
+                  >
+                    {day || ''}
+                  </Text>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
 
 // 드래그 가능한 요소
 function DraggableElement({
@@ -366,6 +501,12 @@ const sliderStyles = StyleSheet.create({
 export default function PaperInvitationLayoutScreen({ navigation, route }) {
   const { template, formData, editingId, editingLayout } = route.params;
   const isEditing = !!editingId;
+  const hasBackSide = !!template.hasBack;
+  const backData = formData.backData || editingLayout?.backData || {};
+  const savedCanvasW =
+    editingLayout?.canvas_w && editingLayout.canvas_w > 0
+      ? editingLayout.canvas_w
+      : null;
 
   // 저장된 layout(percent 기준)을 현재 캔버스 px 좌표로 복원
   const restoreFromSaved = (savedEl) => {
@@ -375,9 +516,13 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     if (savedEl.y != null) out.y = (savedEl.y / 100) * CANVAS_H;
     if (savedEl.w != null) out.w = (savedEl.w / 100) * CANVAS_W;
     if (savedEl.h != null) out.h = (savedEl.h / 100) * CANVAS_H;
-    if (savedEl.size != null) out.size = savedEl.size;
+    if (savedEl.size_pct != null) {
+      out.size = (savedEl.size_pct / 100) * CANVAS_W;
+    } else if (savedEl.size != null) {
+      out.size = savedCanvasW ? savedEl.size * (CANVAS_W / savedCanvasW) : savedEl.size;
+    }
     if (savedEl.shape) out.shape = savedEl.shape;
-    if (savedEl.fontFamily) out.fontFamily = savedEl.fontFamily;
+    if (savedEl.fontFamily) out.fontFamily = normalizeSavedFontFamily(savedEl.fontFamily);
     if (savedEl.locked) out.locked = true;
     if (savedEl.rotation != null) out.rotation = savedEl.rotation;
     if (savedEl.color) out.color = savedEl.color;
@@ -500,12 +645,50 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     w: CANVAS_W,
     color: text.greeting?.color,
   };
+  const backConf = template.back || {};
+  const makeBackText = (key, fallback) => {
+    const conf = backConf[key] || fallback;
+    return {
+      x: ((conf.x ?? 10) / 100) * CANVAS_W,
+      y: ((conf.y ?? 10) / 100) * CANVAS_H,
+      w: ((conf.w ?? 80) / 100) * CANVAS_W,
+      size: conf.size ?? 10,
+      color: conf.color,
+    };
+  };
+  const makeBackBox = (key, fallback) => {
+    const conf = backConf[key] || fallback;
+    return {
+      x: ((conf.x ?? 20) / 100) * CANVAS_W,
+      y: ((conf.y ?? 60) / 100) * CANVAS_H,
+      w: ((conf.w ?? 60) / 100) * CANVAS_W,
+      h: ((conf.h ?? 24) / 100) * CANVAS_H,
+      color: conf.color,
+    };
+  };
+  const initBackInvitation = makeBackText('invitation', { x: 18, y: 15.2, w: 64, size: 9.5, color: '#3A3732' });
+  const initBackGroomParents = makeBackText('groomParents', { x: 23, y: 39.7, w: 35, size: 8.5, color: '#3A3732' });
+  const initBackBrideParents = makeBackText('brideParents', { x: 23, y: 44.1, w: 35, size: 8.5, color: '#3A3732' });
+  const initBackGroomName = makeBackText('groomName', { x: 60, y: 39.3, w: 21, size: 13, color: '#2C2A28' });
+  const initBackBrideName = makeBackText('brideName', { x: 60, y: 43.8, w: 21, size: 13, color: '#2C2A28' });
+  const initBackDateLabel = makeBackText('dateLabel', { x: 24, y: 52, w: 18, size: 8.5, color: '#3A3732' });
+  const initBackVenueLabel = makeBackText('venueLabel', { x: 24, y: 57.8, w: 18, size: 8.5, color: '#3A3732' });
+  const initBackDate = makeBackText('date', { x: 37, y: 52, w: 48, size: 9, color: '#3A3732' });
+  const initBackVenue = makeBackText('venue', { x: 37, y: 57.8, w: 55, size: 8.5, color: '#3A3732' });
+  const initBackCalendar = makeBackBox('calendar', { x: 21, y: 65.5, w: 58, h: 21.5 });
+  const initBackInfoTopDivider = makeBackBox('infoTopDivider', { x: 18, y: 49.6, w: 64, h: 0.16, color: '#B6B2AD' });
+  const initBackInfoBottomDivider = makeBackBox('infoBottomDivider', { x: 18, y: 62.4, w: 64, h: 0.16, color: '#B6B2AD' });
+  const initBackThanksDivider = makeBackBox('thanksDivider', { x: 18, y: 86.4, w: 64, h: 0.16, color: '#B6B2AD' });
 
   // 수정 모드: 저장된 layout이 있으면 그걸로 시작, 부족한 필드는 기본값
   const [layout, setLayout] = useState(() => {
     const saved = isEditing && editingLayout ? editingLayout : null;
     const merge = (defaultEl, savedKey) => {
       const restored = saved ? restoreFromSaved(saved[savedKey]) : null;
+      return restored ? { ...defaultEl, ...restored } : defaultEl;
+    };
+    const mergeBack = (defaultEl, savedKey) => {
+      const restored = saved?.back ? restoreFromSaved(saved.back[savedKey]) : null;
       return restored ? { ...defaultEl, ...restored } : defaultEl;
     };
     return {
@@ -517,6 +700,19 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       venue: merge(initVenue, 'venue'),
       dateBig: merge(initDateBig, 'dateBig'),
       greeting: merge(initGreeting, 'greeting'),
+      backInvitation: mergeBack(initBackInvitation, 'invitation'),
+      backGroomParents: mergeBack(initBackGroomParents, 'groomParents'),
+      backBrideParents: mergeBack(initBackBrideParents, 'brideParents'),
+      backGroomName: mergeBack(initBackGroomName, 'groomName'),
+      backBrideName: mergeBack(initBackBrideName, 'brideName'),
+      backDateLabel: mergeBack(initBackDateLabel, 'dateLabel'),
+      backVenueLabel: mergeBack(initBackVenueLabel, 'venueLabel'),
+      backDate: mergeBack(initBackDate, 'date'),
+      backVenue: mergeBack(initBackVenue, 'venue'),
+      backCalendar: mergeBack(initBackCalendar, 'calendar'),
+      backInfoTopDivider: mergeBack(initBackInfoTopDivider, 'infoTopDivider'),
+      backInfoBottomDivider: mergeBack(initBackInfoBottomDivider, 'infoBottomDivider'),
+      backThanksDivider: mergeBack(initBackThanksDivider, 'thanksDivider'),
     };
   });
 
@@ -527,6 +723,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     return `${m[1]}.\n${m[2]}.`;
   })();
   const [selected, setSelected] = useState(null);
+  const [activeSide, setActiveSide] = useState('front');
   const [resizeMode, setResizeMode] = useState('all'); // 'all' | 'w' | 'h' (사진만 적용)
   // 슬라이더 카드 안 카테고리 탭 — 한 번에 한 영역만 표시 (미리보기 잘 보이게)
   const [editTab, setEditTab] = useState('size'); // 'style' | 'size' | 'position' | 'rotation'
@@ -534,7 +731,12 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   // 요소 변경 시 기본 탭으로 (사진은 style 없음)
   useEffect(() => {
     setEditTab('size');
+    if (isBackDivider(selected)) setResizeMode('w');
+    if (selected === 'photo') setResizeMode('all');
   }, [selected]);
+  useEffect(() => {
+    setSelected(null);
+  }, [activeSide]);
   const [dragging, setDragging] = useState(false);     // 드래그 중엔 스크롤 차단
   const [saving, setSaving] = useState(false);
 
@@ -608,6 +810,23 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     setLayout((prev) => {
       const el = prev[selected];
       if (!el || el.locked) return prev;
+
+      if (isBackDivider(selected)) {
+        const step = delta * 6;
+        if (resizeMode === 'h') {
+          const newH = Math.max(1, Math.min(18, el.h + delta));
+          return { ...prev, [selected]: { ...el, h: newH } };
+        }
+        const newW = Math.max(40, Math.min(CANVAS_W, el.w + step));
+        return { ...prev, [selected]: { ...el, w: newW } };
+      }
+
+      if (selected === 'backCalendar') {
+        const step = delta * 6;
+        const ratio = el.h / el.w;
+        const newW = Math.max(120, Math.min(CANVAS_W, el.w + step));
+        return { ...prev, backCalendar: { ...el, w: newW, h: newW * ratio } };
+      }
 
       if (selected === 'photo') {
         const step = delta * 6;
@@ -687,6 +906,21 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         return { ...prev, photo: { ...el, w: newW, h: newW * ratio } };
       }
 
+      if (isBackDivider(selected)) {
+        if (resizeMode === 'h') {
+          const newH = Math.max(1, Math.min(18, value));
+          return { ...prev, [selected]: { ...el, h: newH } };
+        }
+        const newW = Math.max(40, Math.min(CANVAS_W, value));
+        return { ...prev, [selected]: { ...el, w: newW } };
+      }
+
+      if (selected === 'backCalendar') {
+        const ratio = el.h / el.w;
+        const newW = Math.max(120, Math.min(CANVAS_W, value));
+        return { ...prev, backCalendar: { ...el, w: newW, h: newW * ratio } };
+      }
+
       const newSize = Math.max(TEXT_SIZE_MIN, Math.min(TEXT_SIZE_MAX, value));
       return { ...prev, [selected]: { ...el, size: newSize } };
     });
@@ -703,6 +937,13 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       }
       return { value: Math.round(el.w), min: 40, max: PHOTO_MAX };
     }
+    if (isBackDivider(selected)) {
+      if (resizeMode === 'h') return { value: Math.round(el.h), min: 1, max: 18 };
+      return { value: Math.round(el.w), min: 40, max: CANVAS_W };
+    }
+    if (selected === 'backCalendar') {
+      return { value: Math.round(el.w), min: 120, max: CANVAS_W };
+    }
     return { value: el.size, min: TEXT_SIZE_MIN, max: TEXT_SIZE_MAX };
   })();
 
@@ -711,7 +952,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   const lockedDimStyle = isLocked ? { opacity: 0.4 } : null;
   const lockedPointer = isLocked ? 'none' : 'auto';
 
-  const handleSave = async () => {
+    const handleSave = async () => {
     setSaving(true);
     try {
       // 1) 사진 업로드 — 사용자가 새 사진을 골랐을 때만 업로드
@@ -737,7 +978,12 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         y: (el.y / CANVAS_H) * 100,
         ...(hasW && el.w != null ? { w: (el.w / CANVAS_W) * 100 } : {}),
         ...(el.h != null ? { h: (el.h / CANVAS_H) * 100 } : {}),
-        ...(el.size != null ? { size: el.size } : {}),
+        ...(el.size != null
+          ? {
+              size: el.size,
+              size_pct: (el.size / CANVAS_W) * 100,
+            }
+          : {}),
         ...(el.shape ? { shape: el.shape } : {}),
         ...(el.fontFamily ? { fontFamily: el.fontFamily } : {}),
         ...(el.locked ? { locked: true } : {}),
@@ -755,6 +1001,26 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         ...(hideConnector ? {} : { connector: norm(layout.connector) }),
         ...(hasDateBig ? { dateBig: norm(layout.dateBig) } : {}),
         ...(hasGreeting ? { greeting: norm(layout.greeting) } : {}),
+        ...(hasBackSide
+          ? {
+              backData,
+              back: {
+                invitation: norm(layout.backInvitation),
+                groomParents: norm(layout.backGroomParents),
+                brideParents: norm(layout.backBrideParents),
+                groomName: norm(layout.backGroomName),
+                brideName: norm(layout.backBrideName),
+                dateLabel: norm(layout.backDateLabel),
+                venueLabel: norm(layout.backVenueLabel),
+                date: norm(layout.backDate),
+                venue: norm(layout.backVenue),
+                calendar: norm(layout.backCalendar),
+                infoTopDivider: norm(layout.backInfoTopDivider),
+                infoBottomDivider: norm(layout.backInfoBottomDivider),
+                thanksDivider: norm(layout.backThanksDivider),
+              },
+            }
+          : {}),
       };
 
       // 3) DB insert 또는 update
@@ -806,6 +1072,83 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     } finally {
       setSaving(false);
     }
+    };
+
+  const renderBackTextElement = (id, value, options = {}) => {
+    const el = layout[id];
+    if (!el || !value) return null;
+    const lineCount = options.lines || 1;
+    return (
+      <DraggableElement
+        id={id}
+        selected={selected === id}
+        onSelect={setSelected}
+        initialX={el.x}
+        initialY={el.y}
+        width={Math.max(el.w, options.minWidth || 0)}
+        height={el.size * (lineCount === 1 ? 2.2 : lineCount * 1.45)}
+        onMoveEnd={handleMoveEnd}
+        onDragStart={() => setDragging(true)}
+        onDragEnd={() => setDragging(false)}
+        locked={el.locked}
+        rotation={el.rotation}
+        zIndex={4}
+      >
+        <Text
+          numberOfLines={lineCount === 1 ? 1 : undefined}
+          style={{
+            textAlign: options.align || 'center',
+            fontFamily: el.fontFamily || SERIF_FONT,
+            fontSize: el.size,
+            lineHeight: lineCount === 1 ? undefined : el.size * 1.55,
+            color: el.color || options.color || '#3A3732',
+            fontWeight: el.bold ? '900' : options.weight || '500',
+            letterSpacing: options.letterSpacing ?? 0,
+          }}
+        >
+          {value}
+        </Text>
+      </DraggableElement>
+    );
+  };
+
+  const renderBackDividerElement = (id) => {
+    const el = layout[id];
+    if (!el) return null;
+
+    return (
+      <DraggableElement
+        id={id}
+        selected={selected === id}
+        onSelect={setSelected}
+        initialX={el.x}
+        initialY={el.y}
+        width={el.w}
+        height={Math.max(el.h + 12, 18)}
+        onMoveEnd={handleMoveEnd}
+        onDragStart={() => setDragging(true)}
+        onDragEnd={() => setDragging(false)}
+        locked={el.locked}
+        rotation={el.rotation}
+        zIndex={4}
+      >
+        <View
+          pointerEvents="none"
+          style={{
+            width: '100%',
+            height: Math.max(el.h, 1),
+            marginTop: 6,
+            backgroundColor: el.color || '#B6B2AD',
+          }}
+        />
+      </DraggableElement>
+    );
+  };
+
+  const formatParentLine = (father, mother, childLabel) => {
+    const names = [father, mother].map((v) => (v || '').trim()).filter(Boolean);
+    if (names.length === 0) return childLabel;
+    return `${names.join(' · ')}의 ${childLabel}`;
   };
 
   return (
@@ -832,10 +1175,33 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             {saving ? '저장 중' : '저장'}
           </Text>
         </TouchableOpacity>
-      </View>
+        </View>
 
-      {/* 캔버스 — 토스 스타일 흰색 카드, 가운데 정렬, 필요시만 스크롤 */}
-      <ScrollView
+        {hasBackSide && (
+          <View style={s.sideSwitch}>
+            {[
+              { id: 'front', label: '앞면' },
+              { id: 'back', label: '뒷면' },
+            ].map((side) => {
+              const active = activeSide === side.id;
+              return (
+                <TouchableOpacity
+                  key={side.id}
+                  style={[s.sideSwitchBtn, active && s.sideSwitchBtnActive]}
+                  onPress={() => setActiveSide(side.id)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[s.sideSwitchText, active && s.sideSwitchTextActive]}>
+                    {side.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        {/* 캔버스 — 토스 스타일 흰색 카드, 가운데 정렬, 필요시만 스크롤 */}
+        <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingVertical: 16, alignItems: 'center' }}
         showsVerticalScrollIndicator={false}
@@ -852,10 +1218,12 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               height: CANVAS_H,
               backgroundColor: template.bgColor || '#FFFFFF',
             },
-          ]}
-        >
-          {/* 사진 — blank.png 아래 layer (cutout 템플릿이면 사진이 구멍으로 비침) */}
-          <DraggableElement
+            ]}
+          >
+          {activeSide === 'front' ? (
+            <>
+            {/* 사진 — blank.png 아래 layer (cutout 템플릿이면 사진이 구멍으로 비침) */}
+            <DraggableElement
             id="photo"
             selected={selected === 'photo'}
             onSelect={setSelected}
@@ -1187,35 +1555,156 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                 }}
               >
                 {greetingText}
-              </Text>
-            </DraggableElement>
+                </Text>
+              </DraggableElement>
+            )}
+            </>
+          ) : (
+            <>
+              {template.backBlank ? (
+                <Image
+                  source={template.backBlank}
+                  pointerEvents="none"
+                  style={{ position: 'absolute', width: CANVAS_W, height: CANVAS_H }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View
+                  pointerEvents="none"
+                  style={{
+                    ...StyleSheet.absoluteFillObject,
+                    backgroundColor: '#FFFDF9',
+                  }}
+                />
+              )}
+
+              {renderBackTextElement('backInvitation', backData.invitationText, {
+                lines: 8,
+                align: 'center',
+                weight: '400',
+                letterSpacing: 0.2,
+              })}
+              {renderBackTextElement(
+                'backGroomParents',
+                formatParentLine(
+                  backData.groomFather || '아버님',
+                  backData.groomMother || '어머님',
+                  backData.groomRelation || '아들'
+                ),
+                {
+                  align: 'left',
+                  weight: '400',
+                }
+              )}
+              {renderBackTextElement(
+                'backBrideParents',
+                formatParentLine(
+                  backData.brideFather || '아버님',
+                  backData.brideMother || '어머님',
+                  backData.brideRelation || '딸'
+                ),
+                {
+                  align: 'left',
+                  weight: '400',
+                }
+              )}
+              {renderBackTextElement('backGroomName', formData.groom, {
+                letterSpacing: 2,
+              })}
+              {renderBackTextElement('backBrideName', formData.bride, {
+                letterSpacing: 2,
+              })}
+              {renderBackTextElement('backDateLabel', '일  시  |', {
+                align: 'left',
+                weight: '500',
+                minWidth: CANVAS_W * 0.18,
+              })}
+              {renderBackTextElement('backVenueLabel', '장  소  |', {
+                align: 'left',
+                weight: '500',
+                minWidth: CANVAS_W * 0.18,
+              })}
+              {renderBackTextElement('backDate', `${formData.date_str} ${formData.time_str}`, {
+                align: 'left',
+                weight: '500',
+              })}
+              {!!formData.venue && renderBackTextElement('backVenue', formData.venue, {
+                lines: 3,
+                align: 'left',
+                weight: '500',
+              })}
+
+              {renderBackDividerElement('backInfoTopDivider')}
+              {renderBackDividerElement('backInfoBottomDivider')}
+              {renderBackDividerElement('backThanksDivider')}
+
+              <DraggableElement
+                id="backCalendar"
+                selected={selected === 'backCalendar'}
+                onSelect={setSelected}
+                initialX={layout.backCalendar.x}
+                initialY={layout.backCalendar.y}
+                width={layout.backCalendar.w}
+                height={layout.backCalendar.h}
+                onMoveEnd={handleMoveEnd}
+                onDragStart={() => setDragging(true)}
+                onDragEnd={() => setDragging(false)}
+                locked={layout.backCalendar.locked}
+                rotation={layout.backCalendar.rotation}
+                zIndex={4}
+              >
+                <MiniCalendar
+                  dateStr={formData.date_str}
+                  width={layout.backCalendar.w}
+                  height={layout.backCalendar.h}
+                />
+              </DraggableElement>
+            </>
           )}
-        </Pressable>
+          </Pressable>
       </View>
       </ScrollView>
 
-      {/* 요소 선택 탭 — 큰 카드형 4분할 그리드 (토스 스타일) */}
-      <View style={s.tabsCard}>
-        {[
-          { id: 'photo', label: '사진', icon: 'image-outline' },
-          { id: 'groom', label: '신랑', icon: 'person-outline' },
-          ...(hideConnector
-            ? []
-            : [{ id: 'connector', label: '&', icon: 'remove-outline' }]),
-          { id: 'bride', label: '신부', icon: 'person-outline' },
-          { id: 'date', label: '일시', icon: 'calendar-outline' },
-          ...(formData.venue
-            ? [{ id: 'venue', label: '장소', icon: 'location-outline' }]
-            : []),
-          ...(hasDateBig && bigDateText
-            ? [{ id: 'dateBig', label: '큰 날짜', icon: 'calendar' }]
-            : []),
-          ...(hasGreeting
-            ? [{ id: 'greeting', label: '인사말', icon: 'chatbox-outline' }]
-            : []),
-        ].map((tab) => {
-          const active = selected === tab.id;
-          return (
+        {/* 요소 선택 탭 — 큰 카드형 4분할 그리드 (토스 스타일) */}
+        <View style={s.tabsCard}>
+          {(activeSide === 'front'
+            ? [
+                { id: 'photo', label: '사진', icon: 'image-outline' },
+                { id: 'groom', label: '신랑', icon: 'person-outline' },
+                ...(hideConnector
+                  ? []
+                  : [{ id: 'connector', label: '&', icon: 'remove-outline' }]),
+                { id: 'bride', label: '신부', icon: 'person-outline' },
+                { id: 'date', label: '일시', icon: 'calendar-outline' },
+                ...(formData.venue
+                  ? [{ id: 'venue', label: '장소', icon: 'location-outline' }]
+                  : []),
+                ...(hasDateBig && bigDateText
+                  ? [{ id: 'dateBig', label: '큰 날짜', icon: 'calendar' }]
+                  : []),
+                ...(hasGreeting
+                  ? [{ id: 'greeting', label: '인사말', icon: 'chatbox-outline' }]
+                  : []),
+            ]
+          : [
+              { id: 'backInvitation', label: '초대문구', icon: 'chatbubble-ellipses-outline' },
+              { id: 'backGroomParents', label: '신랑측', icon: 'people-outline' },
+              { id: 'backGroomName', label: '신랑', icon: 'person-outline' },
+              { id: 'backBrideParents', label: '신부측', icon: 'people-outline' },
+              { id: 'backBrideName', label: '신부', icon: 'person-outline' },
+              { id: 'backDateLabel', label: '일시 |', icon: 'text-outline' },
+              { id: 'backDate', label: '일시', icon: 'time-outline' },
+              { id: 'backVenueLabel', label: '장소 |', icon: 'text-outline' },
+              ...(formData.venue
+                ? [{ id: 'backVenue', label: '장소', icon: 'location-outline' }]
+                : []),
+              { id: 'backCalendar', label: '달력', icon: 'calendar-outline' },
+              { id: 'backInfoTopDivider', label: '상단선', icon: 'remove-outline' },
+              { id: 'backInfoBottomDivider', label: '하단선', icon: 'remove-outline' },
+              { id: 'backThanksDivider', label: '감사선', icon: 'remove-outline' },
+            ]).map((tab) => {
+            const active = selected === tab.id;
+            return (
             <TouchableOpacity
               key={tab.id}
               style={s.tabItem}
@@ -1235,13 +1724,14 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         })}
       </View>
 
-      {/* 슬라이더 카드 — 선택 시에만 */}
-      {selected && sliderConfig && (() => {
-        const editTabs = [
-          ...(selected !== 'photo' ? [{ id: 'style', label: '꾸미기' }] : []),
-          { id: 'size', label: '크기' },
-          { id: 'position', label: '위치' },
-          { id: 'rotation', label: '회전' },
+        {/* 슬라이더 카드 — 선택 시에만 */}
+        {selected && sliderConfig && (() => {
+          const selectedIsShapeOnly = selected === 'photo' || selected === 'backCalendar';
+          const editTabs = [
+            ...(!selectedIsShapeOnly ? [{ id: 'style', label: '꾸미기' }] : []),
+            { id: 'size', label: '크기' },
+            { id: 'position', label: '위치' },
+            { id: 'rotation', label: '회전' },
         ];
         const currentTab = editTabs.some((t) => t.id === editTab) ? editTab : 'size';
         return (
@@ -1283,46 +1773,48 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             {currentTab === 'style' && (
               <View style={[lockedDimStyle, { gap: 10 }]} pointerEvents={lockedPointer}>
                 {/* 글씨체 + 굵게 토글 */}
-                <View style={s.fontSection}>
-                  <View style={s.styleSectionHeader}>
-                    <Text style={s.fontSectionLabel}>글씨체</Text>
-                    <TouchableOpacity
-                      style={[s.boldBtn, layout[selected]?.bold && s.boldBtnActive]}
-                      onPress={toggleBold}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          s.boldBtnText,
-                          layout[selected]?.bold && { color: '#FFFFFF' },
-                        ]}
+                {!isBackDivider(selected) && (
+                  <View style={s.fontSection}>
+                    <View style={s.styleSectionHeader}>
+                      <Text style={s.fontSectionLabel}>글씨체</Text>
+                      <TouchableOpacity
+                        style={[s.boldBtn, layout[selected]?.bold && s.boldBtnActive]}
+                        onPress={toggleBold}
+                        activeOpacity={0.7}
                       >
-                        B
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fontRow}>
-                    {FONT_OPTIONS.map((f) => {
-                      const currentFamily = layout[selected]?.fontFamily || SERIF_FONT;
-                      const active = currentFamily === f.family;
-                      return (
-                        <TouchableOpacity
-                          key={f.id}
-                          style={[s.fontChip, active && s.fontChipActive]}
-                          onPress={() => setFont(f.family)}
-                          activeOpacity={0.7}
+                        <Text
+                          style={[
+                            s.boldBtnText,
+                            layout[selected]?.bold && { color: '#FFFFFF' },
+                          ]}
                         >
-                          <Text style={[s.fontChipSample, { fontFamily: f.family }, active && { color: TC.blue }]}>
-                            {f.sample}
-                          </Text>
-                          <Text style={[s.fontChipLabel, active && { color: TC.blue, fontWeight: '700' }]}>
-                            {f.label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
+                          B
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fontRow}>
+                      {FONT_OPTIONS.map((f) => {
+                        const currentFamily = layout[selected]?.fontFamily || SERIF_FONT;
+                        const active = currentFamily === f.family;
+                        return (
+                          <TouchableOpacity
+                            key={f.id}
+                            style={[s.fontChip, active && s.fontChipActive]}
+                            onPress={() => setFont(f.family)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[s.fontChipSample, { fontFamily: f.family }, active && { color: TC.blue }]}>
+                              {f.sample}
+                            </Text>
+                            <Text style={[s.fontChipLabel, active && { color: TC.blue, fontWeight: '700' }]}>
+                              {f.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
                 <View style={s.fontSection}>
                   <Text style={s.fontSectionLabel}>색상</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fontRow}>
@@ -1350,8 +1842,8 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             {/* 크기 — 사진 모드 + 사이즈 슬라이더 */}
             {currentTab === 'size' && (
               <View style={[lockedDimStyle, { gap: 10 }]} pointerEvents={lockedPointer}>
-                {selected === 'photo' && layout.photo.shape !== 'circle' && (
-                  <View style={s.modeRow}>
+                  {selected === 'photo' && layout.photo.shape !== 'circle' && (
+                    <View style={s.modeRow}>
                     {[
                       { id: 'all', label: '전체' },
                       { id: 'w', label: '가로' },
@@ -1368,20 +1860,45 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                         </Text>
                       </TouchableOpacity>
                     ))}
-                  </View>
-                )}
-                <View style={s.sliderHeader}>
-                  <Text style={s.sliderLabel}>
-                    {selected === 'photo'
-                      ? layout.photo.shape === 'circle'
-                        ? '사진 크기'
+                    </View>
+                  )}
+                  {isBackDivider(selected) && (
+                    <View style={s.modeRow}>
+                      {[
+                        { id: 'w', label: '길이' },
+                        { id: 'h', label: '두께' },
+                      ].map((m) => (
+                        <TouchableOpacity
+                          key={m.id}
+                          style={[s.modeBtn, resizeMode === m.id && s.modeBtnActive]}
+                          onPress={() => setResizeMode(m.id)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[s.modeBtnText, resizeMode === m.id && s.modeBtnTextActive]}>
+                            {m.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                  <View style={s.sliderHeader}>
+                    <Text style={s.sliderLabel}>
+                      {selected === 'photo'
+                        ? layout.photo.shape === 'circle'
+                          ? '사진 크기'
                         : resizeMode === 'w'
-                          ? '가로 크기'
-                          : resizeMode === 'h'
-                            ? '세로 크기'
-                            : '사진 크기'
-                      : '글자 크기'}
-                  </Text>
+                            ? '가로 크기'
+                            : resizeMode === 'h'
+                              ? '세로 크기'
+                              : '사진 크기'
+                        : selected === 'backCalendar'
+                          ? '달력 크기'
+                          : isBackDivider(selected)
+                            ? resizeMode === 'h'
+                              ? '구분선 두께'
+                              : '구분선 길이'
+                        : '글자 크기'}
+                    </Text>
                   <Text style={s.sliderValue}>{sliderConfig.value}</Text>
                 </View>
                 <View style={s.sliderRow}>
@@ -1507,6 +2024,33 @@ const s = StyleSheet.create({
     color: TC.blue,
     letterSpacing: -0.3,
   },
+  sideSwitch: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 10,
+    padding: 4,
+    backgroundColor: '#EDEFF3',
+    borderRadius: 12,
+  },
+  sideSwitchBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius: 9,
+  },
+  sideSwitchBtnActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  sideSwitchText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
+  sideSwitchTextActive: {
+    color: TC.ink,
+  },
 
   // 캔버스 wrap — 배경/그림자 없이 템플릿 PNG만 보이도록
   canvasCard: {
@@ -1549,6 +2093,8 @@ const s = StyleSheet.create({
   // 요소 탭 카드 — 흰색, 4분할 그리드
   tabsCard: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 12,
     marginHorizontal: 16,
     marginBottom: 8,
     paddingVertical: 14,
@@ -1562,7 +2108,7 @@ const s = StyleSheet.create({
     elevation: 2,
   },
   tabItem: {
-    flex: 1,
+    width: '25%',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,

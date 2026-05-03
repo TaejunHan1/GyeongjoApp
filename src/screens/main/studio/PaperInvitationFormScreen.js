@@ -58,6 +58,9 @@ const parseSavedDateTime = (date_str, time_str) => {
   return dt;
 };
 
+const GROOM_RELATION_OPTIONS = ['아들', '장남', '차남', '삼남'];
+const BRIDE_RELATION_OPTIONS = ['딸', '장녀', '차녀', '삼녀'];
+
 export default function PaperInvitationFormScreen({ navigation, route }) {
   const invitation = route?.params?.invitation; // 수정 모드일 때 들어옴
   const isEditing = !!invitation;
@@ -81,6 +84,23 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
       new Date(2026, 5, 14, 11, 30)
   );
   const [venue, setVenue] = useState(invitation?.venue || '');
+  const backData = invitation?.layout?.backData || {};
+  const [formStep, setFormStep] = useState(1);
+  const [invitationText, setInvitationText] = useState(
+    backData.invitationText ||
+      '서로의 이름을 부르는 것만으로도\n따뜻한 약속이 되는 날,\n소중한 분들을 모시고 함께하고 싶습니다.'
+  );
+  const [groomFather, setGroomFather] = useState(backData.groomFather || '');
+  const [groomMother, setGroomMother] = useState(backData.groomMother || '');
+  const [brideFather, setBrideFather] = useState(backData.brideFather || '');
+  const [brideMother, setBrideMother] = useState(backData.brideMother || '');
+  const [groomRelation, setGroomRelation] = useState(backData.groomRelation || '아들');
+  const [brideRelation, setBrideRelation] = useState(backData.brideRelation || '딸');
+  const supportsBackSide = !!template?.hasBack;
+  const templateInfoPreview =
+    supportsBackSide && formStep === 2 && template?.backPreview
+      ? template.backPreview
+      : template?.preview;
 
   const pickPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -116,6 +136,11 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
     }
     // 예식장은 선택 사항 — 비워도 통과
 
+    if (supportsBackSide && formStep === 1) {
+      setFormStep(2);
+      return;
+    }
+
     navigation.navigate('PaperInvitationLayout', {
       template,
       formData: {
@@ -126,6 +151,17 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
         date_str: formatDate(dateObj),
         time_str: formatTime(dateObj),
         venue: venue.trim(),
+        backData: supportsBackSide
+          ? {
+              invitationText: invitationText.trim(),
+              groomFather: groomFather.trim(),
+              groomMother: groomMother.trim(),
+              brideFather: brideFather.trim(),
+              brideMother: brideMother.trim(),
+              groomRelation,
+              brideRelation,
+            }
+          : null,
       },
       // 수정 모드: 기존 invitation의 id와 layout 전달
       editingId: invitation?.id,
@@ -180,13 +216,21 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
       {/* 헤더 */}
       <View style={s.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={() => {
+            if (supportsBackSide && formStep === 2) {
+              setFormStep(1);
+              return;
+            }
+            navigation.goBack();
+          }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           style={s.headerBtn}
         >
           <Ionicons name="chevron-back" size={24} color={TC.ink} />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>정보 입력</Text>
+        <Text style={s.headerTitle}>
+          {supportsBackSide && formStep === 2 ? '뒷면 입력' : '정보 입력'}
+        </Text>
         <View style={{ width: 36 }} />
       </View>
 
@@ -196,8 +240,18 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
           <Text style={s.stepDotText}>1</Text>
         </View>
         <View style={s.stepLine} />
+        {supportsBackSide && (
+          <>
+            <View style={[s.stepDot, formStep >= 2 && s.stepDotActive]}>
+              <Text style={[s.stepDotText, formStep < 2 && { color: TC.inkMuted }]}>2</Text>
+            </View>
+            <View style={s.stepLine} />
+          </>
+        )}
         <View style={s.stepDot}>
-          <Text style={[s.stepDotText, { color: TC.inkMuted }]}>2</Text>
+          <Text style={[s.stepDotText, { color: TC.inkMuted }]}>
+            {supportsBackSide ? '3' : '2'}
+          </Text>
         </View>
       </View>
 
@@ -214,7 +268,7 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
           {/* 템플릿 안내 */}
           <View style={s.templateInfo}>
             <Image
-              source={template.preview}
+              source={templateInfoPreview}
               style={s.templateThumb}
               resizeMode="contain"
             />
@@ -225,107 +279,205 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
             </View>
           </View>
 
-          {/* 사진 */}
-          <Text style={s.sectionLabel}>사진</Text>
-          <TouchableOpacity style={s.photoCard} onPress={pickPhoto} activeOpacity={0.85}>
-            {photoUri ? (
+            {(!supportsBackSide || formStep === 1) ? (
               <>
-                <Image source={{ uri: photoUri }} style={s.photoThumb} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.photoTitle}>사진 변경</Text>
-                  <Text style={s.photoSub}>다른 사진 선택하기</Text>
+                {/* 사진 */}
+                <Text style={s.sectionLabel}>사진</Text>
+                <TouchableOpacity style={s.photoCard} onPress={pickPhoto} activeOpacity={0.85}>
+                  {photoUri ? (
+                    <>
+                      <Image source={{ uri: photoUri }} style={s.photoThumb} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.photoTitle}>사진 변경</Text>
+                        <Text style={s.photoSub}>다른 사진 선택하기</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={TC.inkDim} />
+                    </>
+                  ) : (
+                    <>
+                      <View style={s.photoPlaceholder}>
+                        <Ionicons name="image-outline" size={22} color={TC.blue} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.photoTitle}>사진 추가하기</Text>
+                        <Text style={s.photoSub}>갤러리에서 선택 (3:4 권장)</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={TC.inkDim} />
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                {/* 이름 */}
+                <Text style={s.sectionLabel}>이름</Text>
+                <View style={s.row}>
+                  <View style={[s.inputCellInRow, { flex: 1 }]}>
+                    <Text style={s.inputLabel}>신랑</Text>
+                    <TextInput
+                      value={groom}
+                      onChangeText={setGroom}
+                      placeholder="한준서"
+                      placeholderTextColor={TC.inkDim}
+                      style={s.input}
+                      maxLength={10}
+                    />
+                  </View>
+                  <View style={[s.inputCellInRow, { flex: 1 }]}>
+                    <Text style={s.inputLabel}>신부</Text>
+                    <TextInput
+                      value={bride}
+                      onChangeText={setBride}
+                      placeholder="김은재"
+                      placeholderTextColor={TC.inkDim}
+                      style={s.input}
+                      maxLength={10}
+                    />
+                  </View>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={TC.inkDim} />
+
+                {/* 일시 — 통합 1줄 */}
+                <Text style={s.sectionLabel}>예식 일시</Text>
+                <TouchableOpacity
+                  style={s.dateTimeCard}
+                  onPress={openDateTimePicker}
+                  activeOpacity={0.7}
+                >
+                  <View style={s.dateTimeIcon}>
+                    <Ionicons name="calendar-outline" size={20} color={TC.blue} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    {dateObj ? (
+                      <>
+                        <Text style={s.dateTimeMain}>{formatDate(dateObj)}</Text>
+                        <Text style={s.dateTimeSub}>{formatTime(dateObj)}</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={s.dateTimeMainPlaceholder}>날짜·시간 선택</Text>
+                        <Text style={s.dateTimeSub}>예식 날짜와 시간을 골라주세요</Text>
+                      </>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={TC.inkDim} />
+                </TouchableOpacity>
+
+                {/* 예식장 (이름만, 선택사항) */}
+                <Text style={s.sectionLabel}>예식장 <Text style={{ color: TC.inkDim, fontWeight: '500' }}>(선택)</Text></Text>
+                <View style={s.inputCell}>
+                  <Text style={s.inputLabel}>이름</Text>
+                  <TextInput
+                    value={venue}
+                    onChangeText={setVenue}
+                    placeholder="그랜드 하얏트 서울 · 로즈홀 2층"
+                    placeholderTextColor={TC.inkDim}
+                    style={s.input}
+                    maxLength={80}
+                  />
+                </View>
               </>
             ) : (
               <>
-                <View style={s.photoPlaceholder}>
-                  <Ionicons name="image-outline" size={22} color={TC.blue} />
+              <Text style={s.sectionLabel}>초대 문구</Text>
+              <View style={s.inputCell}>
+                <Text style={s.inputLabel}>문구</Text>
+                <TextInput
+                    value={invitationText}
+                    onChangeText={setInvitationText}
+                    placeholder="초대 문구를 입력해주세요"
+                    placeholderTextColor={TC.inkDim}
+                    style={[s.input, s.textArea]}
+                    multiline
+                    maxLength={160}
+                  />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.photoTitle}>사진 추가하기</Text>
-                  <Text style={s.photoSub}>갤러리에서 선택 (3:4 권장)</Text>
+
+                <Text style={s.sectionLabel}>혼주 성함</Text>
+                <View style={s.row}>
+                  <View style={[s.inputCellInRow, { flex: 1 }]}>
+                    <Text style={s.inputLabel}>신랑 아버님</Text>
+                    <TextInput value={groomFather} onChangeText={setGroomFather} placeholder="성함" placeholderTextColor={TC.inkDim} style={s.input} maxLength={12} />
+                  </View>
+                  <View style={[s.inputCellInRow, { flex: 1 }]}>
+                    <Text style={s.inputLabel}>신랑 어머님</Text>
+                    <TextInput value={groomMother} onChangeText={setGroomMother} placeholder="성함" placeholderTextColor={TC.inkDim} style={s.input} maxLength={12} />
+                  </View>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={TC.inkDim} />
+                <View style={s.row}>
+                  <View style={[s.inputCellInRow, { flex: 1 }]}>
+                    <Text style={s.inputLabel}>신부 아버님</Text>
+                    <TextInput value={brideFather} onChangeText={setBrideFather} placeholder="성함" placeholderTextColor={TC.inkDim} style={s.input} maxLength={12} />
+                  </View>
+                  <View style={[s.inputCellInRow, { flex: 1 }]}>
+                    <Text style={s.inputLabel}>신부 어머님</Text>
+                    <TextInput value={brideMother} onChangeText={setBrideMother} placeholder="성함" placeholderTextColor={TC.inkDim} style={s.input} maxLength={12} />
+                  </View>
+                </View>
+
+                <Text style={s.sectionLabel}>자녀 표기</Text>
+                <View style={s.relationCard}>
+                  <Text style={s.inputLabel}>신랑 표기</Text>
+                  <View style={s.relationRow}>
+                    {GROOM_RELATION_OPTIONS.map((option) => {
+                      const active = groomRelation === option;
+                      return (
+                        <TouchableOpacity
+                          key={option}
+                          style={[s.relationChip, active && s.relationChipActive]}
+                          onPress={() => setGroomRelation(option)}
+                          activeOpacity={0.75}
+                        >
+                          <Text style={[s.relationChipText, active && s.relationChipTextActive]}>
+                            {option}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={[s.inputLabel, { marginTop: 12 }]}>신부 표기</Text>
+                  <View style={s.relationRow}>
+                    {BRIDE_RELATION_OPTIONS.map((option) => {
+                      const active = brideRelation === option;
+                      return (
+                        <TouchableOpacity
+                          key={option}
+                          style={[s.relationChip, active && s.relationChipActive]}
+                          onPress={() => setBrideRelation(option)}
+                          activeOpacity={0.75}
+                        >
+                          <Text style={[s.relationChipText, active && s.relationChipTextActive]}>
+                            {option}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={s.backHintCard}>
+                  <Ionicons name="heart" size={18} color="#E78A9A" />
+                  <Text style={s.backHintText}>
+                    달력은 1단계에서 선택한 예식 날짜를 기준으로 자동 생성되고, 해당 날짜는 핑크 하트로 표시됩니다.
+                  </Text>
+                </View>
               </>
             )}
-          </TouchableOpacity>
+          </ScrollView>
 
-          {/* 이름 */}
-          <Text style={s.sectionLabel}>이름</Text>
-          <View style={s.row}>
-            <View style={[s.inputCellInRow, { flex: 1 }]}>
-              <Text style={s.inputLabel}>신랑</Text>
-              <TextInput
-                value={groom}
-                onChangeText={setGroom}
-                placeholder="한준서"
-                placeholderTextColor={TC.inkDim}
-                style={s.input}
-                maxLength={10}
-              />
-            </View>
-            <View style={[s.inputCellInRow, { flex: 1 }]}>
-              <Text style={s.inputLabel}>신부</Text>
-              <TextInput
-                value={bride}
-                onChangeText={setBride}
-                placeholder="김은재"
-                placeholderTextColor={TC.inkDim}
-                style={s.input}
-                maxLength={10}
-              />
-            </View>
+          {/* 하단 다음 버튼 */}
+          <View style={s.bottomBar}>
+            {supportsBackSide && formStep === 2 && (
+              <TouchableOpacity style={s.prevBtn} onPress={() => setFormStep(1)} activeOpacity={0.85}>
+                <Ionicons name="arrow-back" size={18} color={TC.ink} />
+                <Text style={s.prevBtnText}>이전</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={[s.nextBtn, supportsBackSide && formStep === 2 && { flex: 1 }]} onPress={handleNext} activeOpacity={0.85}>
+              <Text style={s.nextBtnText}>
+                {supportsBackSide && formStep === 1 ? '다음 — 뒷면 입력' : '다음 — 위치 조정'}
+              </Text>
+              <Ionicons name="arrow-forward" size={18} color="#fff" />
+            </TouchableOpacity>
           </View>
-
-          {/* 일시 — 통합 1줄 */}
-          <Text style={s.sectionLabel}>예식 일시</Text>
-          <TouchableOpacity
-            style={s.dateTimeCard}
-            onPress={openDateTimePicker}
-            activeOpacity={0.7}
-          >
-            <View style={s.dateTimeIcon}>
-              <Ionicons name="calendar-outline" size={20} color={TC.blue} />
-            </View>
-            <View style={{ flex: 1 }}>
-              {dateObj ? (
-                <>
-                  <Text style={s.dateTimeMain}>{formatDate(dateObj)}</Text>
-                  <Text style={s.dateTimeSub}>{formatTime(dateObj)}</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={s.dateTimeMainPlaceholder}>날짜·시간 선택</Text>
-                  <Text style={s.dateTimeSub}>예식 날짜와 시간을 골라주세요</Text>
-                </>
-              )}
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={TC.inkDim} />
-          </TouchableOpacity>
-
-          {/* 예식장 (이름만, 선택사항) */}
-          <Text style={s.sectionLabel}>예식장 <Text style={{ color: TC.inkDim, fontWeight: '500' }}>(선택)</Text></Text>
-          <View style={s.inputCell}>
-            <Text style={s.inputLabel}>이름</Text>
-            <TextInput
-              value={venue}
-              onChangeText={setVenue}
-              placeholder="그랜드 하얏트 서울 · 로즈홀 2층"
-              placeholderTextColor={TC.inkDim}
-              style={s.input}
-              maxLength={40}
-            />
-          </View>
-        </ScrollView>
-
-        {/* 하단 다음 버튼 */}
-        <View style={s.bottomBar}>
-          <TouchableOpacity style={s.nextBtn} onPress={handleNext} activeOpacity={0.85}>
-            <Text style={s.nextBtnText}>다음 — 위치 조정</Text>
-            <Ionicons name="arrow-forward" size={18} color="#fff" />
-          </TouchableOpacity>
-        </View>
       </KeyboardAvoidingView>
 
       {/* iOS 통합 일시 picker 모달 — 캘린더(날짜) + 스피너(시간) 분리 */}
@@ -554,6 +706,43 @@ const s = StyleSheet.create({
     letterSpacing: -0.3,
     padding: 0,
   },
+  textArea: {
+    minHeight: 104,
+    lineHeight: 22,
+    textAlignVertical: 'top',
+    paddingTop: 2,
+  },
+  relationCard: {
+    marginHorizontal: 20,
+    marginBottom: 8,
+    padding: 14,
+    backgroundColor: TC.card,
+    borderRadius: 12,
+  },
+  relationRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  relationChip: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  relationChipActive: {
+    backgroundColor: TC.ink,
+  },
+  relationChipText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
+  relationChipTextActive: {
+    color: '#FFFFFF',
+  },
   inputValue: {
     fontSize: 15,
     fontWeight: '600',
@@ -654,6 +843,8 @@ const s = StyleSheet.create({
 
   // 하단 다음 버튼
   bottomBar: {
+    flexDirection: 'row',
+    gap: 10,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: Platform.OS === 'ios' ? 28 : 16,
@@ -670,10 +861,44 @@ const s = StyleSheet.create({
     backgroundColor: TC.ink,
     borderRadius: 14,
   },
+  prevBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+  },
+  prevBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: TC.ink,
+    letterSpacing: -0.3,
+  },
   nextBtnText: {
     fontSize: 15,
     fontWeight: '800',
     color: '#fff',
     letterSpacing: -0.3,
+  },
+  backHintCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginHorizontal: 20,
+    marginTop: 12,
+    padding: 14,
+    backgroundColor: '#FFF4F6',
+    borderRadius: 14,
+  },
+  backHintText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+    color: '#7B4D57',
+    letterSpacing: -0.2,
   },
 });

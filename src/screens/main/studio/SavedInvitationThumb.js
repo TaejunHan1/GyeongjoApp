@@ -1,12 +1,22 @@
 // src/screens/main/studio/SavedInvitationThumb.js
 // 저장된 청첩장 미리보기 (layout JSON 그대로 적용)
 import React from 'react';
-import { View, Text, Image, Platform } from 'react-native';
+import { View, Text, Image } from 'react-native';
 import Svg, { Defs, ClipPath, Path, Image as SvgImage } from 'react-native-svg';
-import { MOBILE_TEMPLATES } from './mobileTemplateConfigs';
+import { A6_ASPECT_RATIO, MOBILE_TEMPLATES } from './mobileTemplateConfigs';
 
-const SERIF_FONT = Platform.select({ ios: 'AppleMyungjo', android: 'serif' });
-const NUMERIC_FONT = Platform.select({ ios: 'Helvetica Neue', android: 'sans-serif' });
+const SERIF_FONT = 'NanumMyeongjo';
+const NUMERIC_FONT = 'GowunDodum';
+
+const normalizeSavedFontFamily = (fontFamily) => {
+  if (!fontFamily) return fontFamily;
+  if (['AppleMyungjo', 'Times New Roman', 'serif'].includes(fontFamily)) return SERIF_FONT;
+  if (['Helvetica Neue', 'System', 'sans-serif'].includes(fontFamily)) return NUMERIC_FONT;
+  return fontFamily;
+};
+
+const fontFamilyFor = (fontFamily, fallback = SERIF_FONT) =>
+  normalizeSavedFontFamily(fontFamily) || fallback;
 
 const buildEggPath = (w, h) =>
   `M ${w / 2} 0 ` +
@@ -31,7 +41,129 @@ const getPhotoRadius = (shape, w) => {
   }
 };
 
-export default function SavedInvitationThumb({ invitation, width = 100 }) {
+const parseWeddingDate = (dateStr) => {
+  const m = (dateStr || '').match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+};
+
+function MiniCalendarThumb({ dateStr, width, height }) {
+  const date = parseWeddingDate(dateStr);
+  if (!date) return null;
+
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const selectedDay = date.getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const totalCells = Math.max(35, Math.ceil((firstDay + daysInMonth) / 7) * 7);
+  const cells = Array.from({ length: totalCells }, (_, i) => {
+    const day = i - firstDay + 1;
+    return day > 0 && day <= daysInMonth ? day : null;
+  });
+  const horizontalPadding = Math.max(1, width * 0.035);
+  const innerW = Math.max(1, width - horizontalPadding * 2);
+  const cellW = innerW / 7;
+  const headerH = height * 0.18;
+  const weekdaysH = height * 0.13;
+  const weekCount = cells.length / 7;
+  const rowH = Math.max(1, (height - headerH - weekdaysH) / weekCount);
+  const monthLabel = `${year}. ${String(month + 1).padStart(2, '0')}`;
+  const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const weeks = Array.from({ length: weekCount }, (_, row) =>
+    cells.slice(row * 7, row * 7 + 7)
+  );
+
+  return (
+    <View style={{ width, height, paddingHorizontal: horizontalPadding }}>
+      <Text
+        style={{
+          height: headerH,
+          textAlign: 'center',
+          fontSize: Math.max(5, headerH * 0.55),
+          fontWeight: '700',
+          color: '#A96770',
+          letterSpacing: 0.5,
+          lineHeight: headerH,
+        }}
+      >
+        {monthLabel}
+      </Text>
+      <View style={{ flexDirection: 'row' }}>
+        {weekdays.map((d, i) => (
+          <Text
+            key={`${d}-${i}`}
+            style={{
+              width: cellW,
+              height: weekdaysH,
+              textAlign: 'center',
+              fontSize: Math.max(4, weekdaysH * 0.42),
+              fontWeight: '700',
+              color: i === 0 ? '#C98B92' : '#3A3732',
+              lineHeight: weekdaysH,
+            }}
+          >
+            {d}
+          </Text>
+        ))}
+      </View>
+      {weeks.map((week, rowIndex) => (
+        <View key={`week-${rowIndex}`} style={{ flexDirection: 'row', width: innerW }}>
+          {week.map((day, colIndex) => {
+            const selected = day === selectedDay;
+            return (
+              <View
+                key={`day-${rowIndex}-${colIndex}`}
+                style={{
+                  width: cellW,
+                  height: rowH,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {selected ? (
+                  <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                    <Text
+                      style={{
+                        fontSize: Math.max(8, rowH * 0.95),
+                        color: '#F1B7BE',
+                        lineHeight: Math.max(8, rowH),
+                      }}
+                    >
+                      ♥
+                    </Text>
+                    <Text
+                      style={{
+                        position: 'absolute',
+                        fontSize: Math.max(3, rowH * 0.34),
+                        fontWeight: '900',
+                        color: '#4A3838',
+                      }}
+                    >
+                      {day}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text
+                    style={{
+                      fontSize: Math.max(4, rowH * 0.42),
+                      fontWeight: '500',
+                      color: day ? (colIndex === 0 ? '#C98B92' : '#3A3732') : 'transparent',
+                    }}
+                  >
+                    {day || ''}
+                  </Text>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+export default function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
   const template = MOBILE_TEMPLATES.find((t) => t.id === invitation.template_id);
 
   // photoReady prefetch 로직 제거 — 즉시 카드 표시.
@@ -42,7 +174,7 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
       <View
         style={{
           width,
-          aspectRatio: 1024 / 1400,
+          aspectRatio: 1 / A6_ASPECT_RATIO,
           backgroundColor: '#F0F0F0',
           alignItems: 'center',
           justifyContent: 'center',
@@ -53,11 +185,156 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
     );
   }
 
-  const height = width * (1400 / 1024);
+  const height = width * A6_ASPECT_RATIO;
   const layout = invitation.layout || {};
   // 저장 시점 canvas 너비 기준으로 스케일 (없으면 260 fallback)
   const refWidth = layout.canvas_w || 260;
   const px = (val) => (val / refWidth) * width;
+  const scaledSize = (el, fallback) => {
+    if (el?.size_pct != null) return (el.size_pct / 100) * width;
+    return px(el?.size ?? fallback);
+  };
+  const back = layout.back || {};
+  const backData = layout.backData || {};
+  const templateBack = template.back || {};
+
+  if (side === 'back' && template.hasBack) {
+    const formatParentLine = (father, mother, childLabel) => {
+      const names = [father, mother].map((v) => (v || '').trim()).filter(Boolean);
+      if (names.length === 0) return childLabel;
+      return `${names.join(' · ')}의 ${childLabel}`;
+    };
+
+    const renderBackText = (key, value, options = {}) => {
+      const el = back[key] || templateBack[key];
+      if (!el || !value) return null;
+      const sizePx = scaledSize(el, 10);
+
+      return (
+        <Text
+          numberOfLines={options.lines === 1 ? 1 : undefined}
+          style={{
+            position: 'absolute',
+            left: (el.x / 100) * width,
+            top: (el.y / 100) * height,
+            width: ((el.w ?? 80) / 100) * width,
+            textAlign: options.align || 'center',
+            fontFamily: fontFamilyFor(el.fontFamily),
+            fontSize: sizePx,
+            lineHeight: options.lines && options.lines > 1 ? sizePx * 1.55 : undefined,
+            color: el.color || options.color || '#3A3732',
+            fontWeight: el.bold ? '900' : options.weight || '500',
+            letterSpacing: options.letterSpacing ?? 0,
+            transform: [{ rotate: `${el.rotation || 0}deg` }],
+          }}
+        >
+          {value}
+        </Text>
+      );
+    };
+
+    return (
+      <View
+        style={{
+          width,
+          height,
+          backgroundColor: template.bgColor || '#FFFFFF',
+          overflow: 'hidden',
+          position: 'relative',
+        }}
+      >
+        {template.backBlank ? (
+          <Image
+            source={template.backBlank}
+            style={{ position: 'absolute', width, height }}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={{ position: 'absolute', width, height, backgroundColor: '#FFFDF9' }} />
+        )}
+
+        {renderBackText('invitation', backData.invitationText, {
+          lines: 8,
+          weight: '400',
+          letterSpacing: 0.2,
+        })}
+        {renderBackText('groomParents', formatParentLine(
+          backData.groomFather || '아버님',
+          backData.groomMother || '어머님',
+          backData.groomRelation || '아들'
+        ), {
+          align: 'left',
+          weight: '400',
+        })}
+        {renderBackText('brideParents', formatParentLine(
+          backData.brideFather || '아버님',
+          backData.brideMother || '어머님',
+          backData.brideRelation || '딸'
+        ), {
+          align: 'left',
+          weight: '400',
+        })}
+        {renderBackText('groomName', invitation.groom, {
+          letterSpacing: 2,
+        })}
+        {renderBackText('brideName', invitation.bride, {
+          letterSpacing: 2,
+        })}
+        {renderBackText('dateLabel', '일  시  |', {
+          align: 'left',
+        })}
+        {renderBackText('venueLabel', '장  소  |', {
+          align: 'left',
+        })}
+        {renderBackText('date', `${invitation.date_str || ''}${invitation.time_str ? ` ${invitation.time_str}` : ''}`, {
+          align: 'left',
+        })}
+        {!!invitation.venue && renderBackText('venue', invitation.venue, {
+          lines: 3,
+          align: 'left',
+        })}
+
+        {['infoTopDivider', 'infoBottomDivider', 'thanksDivider'].map((key) => {
+          const el = back[key] || templateBack[key];
+          if (!el) return null;
+          return (
+          <View
+            key={key}
+            style={{
+              position: 'absolute',
+              left: (el.x / 100) * width,
+              top: (el.y / 100) * height,
+              width: ((el.w ?? 50) / 100) * width,
+              height: Math.max(1, (el.h / 100) * height),
+              backgroundColor: el.color || '#B6B2AD',
+              transform: [{ rotate: `${el.rotation || 0}deg` }],
+            }}
+          />
+          );
+        })}
+
+        {(back.calendar || templateBack.calendar) && (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: ((back.calendar || templateBack.calendar).x / 100) * width,
+              top: ((back.calendar || templateBack.calendar).y / 100) * height,
+              width: (((back.calendar || templateBack.calendar).w ?? 58) / 100) * width,
+              height: (((back.calendar || templateBack.calendar).h ?? 25) / 100) * height,
+              transform: [{ rotate: `${(back.calendar || templateBack.calendar).rotation || 0}deg` }],
+            }}
+          >
+            <MiniCalendarThumb
+              dateStr={invitation.date_str}
+              width={(((back.calendar || templateBack.calendar).w ?? 58) / 100) * width}
+              height={(((back.calendar || templateBack.calendar).h ?? 25) / 100) * height}
+            />
+          </View>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View
@@ -191,8 +468,8 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
             top: (layout.groom.y / 100) * height,
             width: (layout.groom.w / 100) * width,
             textAlign: 'center',
-            fontFamily: layout.groom.fontFamily || SERIF_FONT,
-            fontSize: px(layout.groom.size || 13),
+            fontFamily: fontFamilyFor(layout.groom.fontFamily),
+            fontSize: scaledSize(layout.groom, 13),
             color: layout.groom.color || '#3A2E22',
             fontWeight: layout.groom.bold ? '900' : '500',
             transform: [{ rotate: `${layout.groom.rotation || 0}deg` }],
@@ -213,8 +490,8 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
             top: (layout.bride.y / 100) * height,
             width: (layout.bride.w / 100) * width,
             textAlign: 'center',
-            fontFamily: layout.bride.fontFamily || SERIF_FONT,
-            fontSize: px(layout.bride.size || 13),
+            fontFamily: fontFamilyFor(layout.bride.fontFamily),
+            fontSize: scaledSize(layout.bride, 13),
             color: layout.bride.color || '#3A2E22',
             fontWeight: layout.bride.bold ? '900' : '500',
             transform: [{ rotate: `${layout.bride.rotation || 0}deg` }],
@@ -233,8 +510,8 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
             top: (layout.date.y / 100) * height,
             width: ((layout.date.w ?? 100) / 100) * width,
             textAlign: 'center',
-            fontFamily: layout.date.fontFamily || NUMERIC_FONT,
-            fontSize: px(layout.date.size || 9),
+            fontFamily: fontFamilyFor(layout.date.fontFamily, NUMERIC_FONT),
+            fontSize: scaledSize(layout.date, 9),
             color: layout.date.color || '#6B5B44',
             letterSpacing: px(1.2),
             fontWeight: layout.date.bold ? '900' : '600',
@@ -256,8 +533,8 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
             top: (layout.venue.y / 100) * height,
             width: ((layout.venue.w ?? 100) / 100) * width,
             textAlign: 'center',
-            fontFamily: layout.venue.fontFamily || SERIF_FONT,
-            fontSize: px(layout.venue.size || 9),
+            fontFamily: fontFamilyFor(layout.venue.fontFamily),
+            fontSize: scaledSize(layout.venue, 9),
             color: layout.venue.color || '#6B5B44',
             fontWeight: layout.venue.bold ? '900' : '500',
             transform: [{ rotate: `${layout.venue.rotation || 0}deg` }],
@@ -271,7 +548,7 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
       {layout.dateBig && invitation.date_str && (() => {
         const m = (invitation.date_str || '').match(/\d+\.(\d+)\.(\d+)/);
         if (!m) return null;
-        const sizePx = px(layout.dateBig.size || 28);
+        const sizePx = scaledSize(layout.dateBig, 28);
         return (
           <Text
             style={{
@@ -280,7 +557,7 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
               top: (layout.dateBig.y / 100) * height,
               width: ((layout.dateBig.w ?? 100) / 100) * width,
               textAlign: 'center',
-              fontFamily: layout.dateBig.fontFamily || SERIF_FONT,
+              fontFamily: fontFamilyFor(layout.dateBig.fontFamily),
               fontSize: sizePx,
               color: layout.dateBig.color || '#2C2A28',
               fontWeight: layout.dateBig.bold ? '900' : '300',
@@ -304,8 +581,8 @@ export default function SavedInvitationThumb({ invitation, width = 100 }) {
             top: (layout.greeting.y / 100) * height,
             width: ((layout.greeting.w ?? 100) / 100) * width,
             textAlign: 'center',
-            fontFamily: layout.greeting.fontFamily || SERIF_FONT,
-            fontSize: px(layout.greeting.size || 12),
+            fontFamily: fontFamilyFor(layout.greeting.fontFamily),
+            fontSize: scaledSize(layout.greeting, 12),
             color: layout.greeting.color || '#5A5854',
             fontWeight: layout.greeting.bold ? '900' : '500',
             letterSpacing: px(1),

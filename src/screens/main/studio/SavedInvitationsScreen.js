@@ -41,6 +41,7 @@ export default function SavedInvitationsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [detail, setDetail] = useState(null); // 상세 모달
+  const [detailSide, setDetailSide] = useState('front');
   const [loadError, setLoadError] = useState('');
 
   const load = useCallback(async () => {
@@ -77,10 +78,12 @@ export default function SavedInvitationsScreen({ navigation }) {
 
   // PDF 내보내기 — 큰 사이즈 캡처 → PDF → 공유 시트
   const [exporting, setExporting] = useState(false);
+  const [exportSide, setExportSide] = useState('front');
   const exportRef = useRef(null);
 
-  const handleExportPDF = async (item) => {
+  const handleExportPDF = async (item, side = 'front') => {
     if (!item) return;
+    setExportSide(side);
     setExporting(true);
     try {
       // 0) 사진 미리 다운로드 — SavedInvitationThumb의 photoReady 가 true 되도록
@@ -149,7 +152,7 @@ export default function SavedInvitationsScreen({ navigation }) {
       if (canShare) {
         await Sharing.shareAsync(pdfUri, {
           mimeType: 'application/pdf',
-          dialogTitle: `${item.groom || ''} & ${item.bride || ''} 청첩장`,
+          dialogTitle: `${item.groom || ''} & ${item.bride || ''} 청첩장 ${side === 'back' ? '뒷면' : '앞면'}`,
           UTI: 'com.adobe.pdf',
         });
       } else {
@@ -189,7 +192,10 @@ export default function SavedInvitationsScreen({ navigation }) {
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={s.card}
-      onPress={() => setDetail(item)}
+      onPress={() => {
+        setDetailSide('front');
+        setDetail(item);
+      }}
       onLongPress={() => handleDelete(item)}
       activeOpacity={0.85}
     >
@@ -310,9 +316,32 @@ export default function SavedInvitationsScreen({ navigation }) {
                 <ScrollView
                   contentContainerStyle={{ alignItems: 'center', paddingTop: 4, paddingBottom: 12 }}
                 >
+                  {!!detail.layout?.back && (
+                    <View style={s.sideSwitch}>
+                      {[
+                        { id: 'front', label: '앞면' },
+                        { id: 'back', label: '뒷면' },
+                      ].map((side) => {
+                        const active = detailSide === side.id;
+                        return (
+                          <TouchableOpacity
+                            key={side.id}
+                            style={[s.sideSwitchBtn, active && s.sideSwitchBtnActive]}
+                            onPress={() => setDetailSide(side.id)}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={[s.sideSwitchText, active && s.sideSwitchTextActive]}>
+                              {side.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
                   <SavedInvitationThumb
                     invitation={detail}
                     width={SCREEN_W - 64}
+                    side={detailSide}
                   />
 
                   <View style={s.detailInfo}>
@@ -352,7 +381,7 @@ export default function SavedInvitationsScreen({ navigation }) {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={s.pdfBtn}
-                    onPress={() => handleExportPDF(detail)}
+                    onPress={() => handleExportPDF(detail, detailSide)}
                     activeOpacity={0.85}
                     disabled={exporting}
                   >
@@ -392,7 +421,7 @@ export default function SavedInvitationsScreen({ navigation }) {
           pointerEvents="none"
         >
           <ViewShot ref={exportRef} options={{ format: 'png', quality: 1 }}>
-            <SavedInvitationThumb invitation={detail} width={EXPORT_WIDTH} />
+            <SavedInvitationThumb invitation={detail} width={EXPORT_WIDTH} side={exportSide} />
           </ViewShot>
         </View>
       )}
@@ -552,6 +581,33 @@ const s = StyleSheet.create({
     paddingHorizontal: 32,
     marginTop: 16,
     gap: 8,
+  },
+  sideSwitch: {
+    flexDirection: 'row',
+    width: SCREEN_W - 64,
+    marginBottom: 12,
+    padding: 4,
+    backgroundColor: '#EDEFF3',
+    borderRadius: 12,
+  },
+  sideSwitchBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius: 9,
+  },
+  sideSwitchBtnActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  sideSwitchText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
+  sideSwitchTextActive: {
+    color: TC.ink,
   },
   detailRow: {
     flexDirection: 'row',
