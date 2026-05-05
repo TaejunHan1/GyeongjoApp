@@ -19,6 +19,7 @@ import {
   Vibration,
   Image,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,15 +30,34 @@ import { getCurrentUserInfo, getEventDetail, getEventContributions, getEventStat
 import { supabase } from '../../lib/supabase';
 import { sendAlimtalkWithCredit, getAlimtalkBalance } from '../../lib/alimtalkCredit';
 import { normalizePhone, samePhone } from '../../lib/phoneUtils';
-import AlimtalkResendButton from '../../components/AlimtalkResendButton';
 import SimpleModal from '../../components/SimpleModal';
 import { useSimpleAlert } from '../../hooks/useSimpleAlert';
 import TutorialOverlay from '../../components/TutorialOverlay';
 import { useTutorial } from '../../contexts/TutorialContext';
 
+const GUEST_CARD_ASSETS = {
+  groomRail: require('../../../assets/guestbook/card/guest-card-rail-groom-fast.png'),
+  brideRail: require('../../../assets/guestbook/card/guest-card-rail-bride-fast.png'),
+  pattern: require('../../../assets/guestbook/card/guest-card-pattern-visible-fast.png'),
+  confirmedStamp: require('../../../assets/guestbook/card/ChatGPT Image May 5, 2026, 06_09_38 PM.png'),
+  cash: require('../../../assets/guestbook/card/icon-cash.png'),
+  ticket: require('../../../assets/guestbook/card/icon-ticket.png'),
+};
+const GUEST_CARD_FONT_FAMILY = Platform.select({
+  ios: 'Apple SD Gothic Neo',
+  android: 'sans-serif',
+  default: undefined,
+});
+
 export default function EventDetailScreen({ navigation, route }) {
   const { eventId, initialEvent, initialStats } = route.params;
   const insets = useSafeAreaInsets();
+  const { width: viewportWidth } = useWindowDimensions();
+  const guestCardWidth = Math.min(viewportWidth * 0.96, 680);
+  const guestCardScale = Math.max(Math.min(guestCardWidth / 680, 1), 0.55);
+  const guestCardFontScale = Math.max(Math.min(guestCardWidth / 680, 1), 0.7);
+  const scaleGuestCard = (value, min = 0) => Math.round(Math.max(value * guestCardScale, min));
+  const scaleGuestFont = (value, min = 0) => Math.round(Math.max(value * guestCardFontScale, min));
 
   // 백 버튼 텍스트 제거 + 초기 타이틀 즉시 적용
   React.useLayoutEffect(() => {
@@ -58,6 +78,7 @@ export default function EventDetailScreen({ navigation, route }) {
   // initialEvent/initialStats가 있으면 즉시 렌더링, 없으면 로딩 후 표시
   const [event, setEvent] = useState(initialEvent || null);
   const [contributions, setContributions] = useState([]);
+  const contributionsRef = useRef([]);
   const [loading, setLoading] = useState(!initialEvent); // 초기 데이터 있으면 로딩 스킵
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState(initialStats || {
@@ -99,6 +120,7 @@ export default function EventDetailScreen({ navigation, route }) {
   const scrollViewRef = useRef(null);
   const itemYPositions = useRef({}); // 각 아이템의 Y 위치 (newListSection 기준)
   const listSectionY = useRef(0);    // newListSection의 ScrollView 기준 Y 위치
+  const guestbookRealtimeChannelRef = useRef(null);
   
   // 통계 모달
   const [statisticsModalVisible, setStatisticsModalVisible] = useState(false);
@@ -122,6 +144,10 @@ export default function EventDetailScreen({ navigation, route }) {
     brideCount: '',
   });
   const mealPasswordShake = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    contributionsRef.current = contributions;
+  }, [contributions]);
 
   // ── 바텀시트 애니메이션 (배경 fade / 시트 slide 분리) ──
   const bsAddFade     = useRef(new Animated.Value(0)).current;
@@ -550,6 +576,17 @@ export default function EventDetailScreen({ navigation, route }) {
   // 부조 확정/미확정 토글 처리 — 낙관적 업데이트(즉시 UI 반영)
   const handleToggleVerification = async (contribution) => {
     const newVerified = !contribution.is_verified;
+    const broadcastVerificationChange = (isVerified) => {
+      guestbookRealtimeChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'verification_changed',
+        payload: {
+          event_id: eventId,
+          id: contribution.id,
+          is_verified: isVerified,
+        },
+      });
+    };
 
     // 즉시 UI 반영
     setContributions(prev =>
@@ -559,6 +596,8 @@ export default function EventDetailScreen({ navigation, route }) {
       ...prev,
       confirmedCount: prev.confirmedCount + (newVerified ? 1 : -1),
     }));
+    // 다른 태블릿도 DB 응답을 기다리지 않고 바로 바뀌게 먼저 알림
+    broadcastVerificationChange(newVerified);
 
     try {
       const result = await toggleGuestBookVerification(contribution.id);
@@ -571,6 +610,7 @@ export default function EventDetailScreen({ navigation, route }) {
           ...prev,
           confirmedCount: prev.confirmedCount + (newVerified ? -1 : 1),
         }));
+        broadcastVerificationChange(contribution.is_verified);
         showAlert({ title: '오류', message: result.error || '확정 상태 변경에 실패했습니다.' });
       }
     } catch (error) {
@@ -582,6 +622,7 @@ export default function EventDetailScreen({ navigation, route }) {
         ...prev,
         confirmedCount: prev.confirmedCount + (newVerified ? -1 : 1),
       }));
+      broadcastVerificationChange(contribution.is_verified);
       showAlert({ title: '오류', message: '확정 상태 변경 중 오류가 발생했습니다.' });
     }
   };
@@ -951,6 +992,27 @@ export default function EventDetailScreen({ navigation, route }) {
     const channel = supabase
       .channel(`guestbook_rt_${eventId}`)
       .on(
+        'broadcast',
+        { event: 'verification_changed' },
+        ({ payload }) => {
+          if (payload?.event_id !== eventId || !payload?.id) return;
+          setContributions((prev) =>
+            prev.map((c) => (
+              c.id === payload.id
+                ? { ...c, is_verified: !!payload.is_verified }
+                : c
+            ))
+          );
+          setStats((prev) => {
+            const confirmedCount = contributionsRef.current.reduce((count, item) => {
+              if (item.id === payload.id) return count + (payload.is_verified ? 1 : 0);
+              return count + (item.is_verified ? 1 : 0);
+            }, 0);
+            return { ...prev, confirmedCount };
+          });
+        }
+      )
+      .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'guest_book' },
         (payload) => {
@@ -971,6 +1033,15 @@ export default function EventDetailScreen({ navigation, route }) {
           setContributions((prev) =>
             prev.map((c) => (c.id === entry.id ? entry : c))
           );
+          if (typeof entry.is_verified === 'boolean') {
+            setStats((prev) => {
+              const confirmedCount = contributionsRef.current.reduce((count, item) => {
+                if (item.id === entry.id) return count + (entry.is_verified ? 1 : 0);
+                return count + (item.is_verified ? 1 : 0);
+              }, 0);
+              return { ...prev, confirmedCount };
+            });
+          }
         }
       )
       .on(
@@ -985,6 +1056,7 @@ export default function EventDetailScreen({ navigation, route }) {
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log('[Realtime] guest_book 구독 성공');
+          guestbookRealtimeChannelRef.current = channel;
         } else if (status === 'CHANNEL_ERROR') {
           console.warn('[Realtime] 구독 오류 — 재시도 필요');
         }
@@ -992,6 +1064,9 @@ export default function EventDetailScreen({ navigation, route }) {
 
     return () => {
       localSub.remove();
+      if (guestbookRealtimeChannelRef.current === channel) {
+        guestbookRealtimeChannelRef.current = null;
+      }
       supabase.removeChannel(channel);
     };
   }, [eventId]);
@@ -1444,23 +1519,33 @@ export default function EventDetailScreen({ navigation, route }) {
 
           {/* 필터 탭 + 검색 */}
           <View style={styles.listControlRow}>
-            <View style={styles.filterTabRow}>
-              {listTabItems.map((tab) => (
-                <TouchableOpacity
-                  key={tab.key}
-                  style={[styles.filterTab, activeTab === tab.key && styles.filterTabActive]}
-                  onPress={() => setActiveTab(tab.key)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.filterTabText, activeTab === tab.key && styles.filterTabTextActive]}>
-                    {tab.label} {formatAmountCard(tab.count)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.filterTabScroll}
+              contentContainerStyle={styles.filterTabRow}
+            >
+                {listTabItems.map((tab) => (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[styles.filterTab, activeTab === tab.key && styles.filterTabActive]}
+                    onPress={() => setActiveTab(tab.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[styles.filterTabText, activeTab === tab.key && styles.filterTabTextActive]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={1}
+                    >
+                      {tab.label} {formatAmountCard(tab.count)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+            </ScrollView>
             <TouchableOpacity
               onPress={openSearchModal}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.filterSearchButton}
             >
               <Ionicons name="search" size={22} color="#191F28" />
             </TouchableOpacity>
@@ -1485,6 +1570,10 @@ export default function EventDetailScreen({ navigation, route }) {
 
                 const isEditing = editingItemId === contribution.id;
                 const ticketCount = Number(contribution.ticket_count || 0);
+                const sideKey = getMealContributionSide(contribution);
+                const sideAccent = '#3182F6';
+                const sideSoft = '#EEF5FF';
+                const railImage = sideKey === 'bride' ? GUEST_CARD_ASSETS.brideRail : GUEST_CARD_ASSETS.groomRail;
 
                 return (
                   <View
@@ -1494,11 +1583,15 @@ export default function EventDetailScreen({ navigation, route }) {
                         itemYPositions.current[contribution.id] = e.nativeEvent.layout.y;
                       }
                     }}
-                    style={[styles.flatItem, isEditing && styles.flatItemEditing]}
+                    style={[
+                      styles.flatItem,
+                      { borderLeftColor: sideAccent, backgroundColor: sideKey === 'bride' ? '#FFFCFD' : '#FCFDFF' },
+                      isEditing && styles.flatItemEditing
+                    ]}
                   >
                     {isEditing ? (
                       /* ── 인라인 수정 폼 ── */
-                      <View style={{ flex: 1 }}>
+                      <View style={styles.inlineEditCard}>
                         {/* 성함 한 줄 */}
                         <View style={styles.inlineEditRow}>
                           <TextInput
@@ -1616,94 +1709,217 @@ export default function EventDetailScreen({ navigation, route }) {
                         </View>
                       </View>
                     ) : (
-                      <View style={{ flex: 1 }}>
-                        {/* 상단: 아바타 + 이름/관계 + 금액/상태 */}
-                        <View style={styles.flatItemTop}>
-                          <View style={[
-                            styles.flatAvatar,
-                            contribution.is_verified && styles.flatAvatarVerified,
-                          ]}>
-                            <Text style={styles.flatAvatarText}>
-                              {(contribution.guest_name || '이').charAt(0)}
-                            </Text>
-                          </View>
-
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.flatName}>
-                              {contribution.guest_name || '이름 없음'}
-                            </Text>
-                            <Text style={styles.flatMeta}>
-                              {timeStr ? `${timeStr} · ` : ''}{displayCategory} {displayDetail}
-                            </Text>
-                            {contribution.guest_phone ? (
-                              <Text style={styles.flatPhone}>{contribution.guest_phone}</Text>
-                            ) : null}
-                            {ticketCount > 0 && (
-                              <View style={styles.flatTicketBadge}>
-                                <Ionicons name="ticket-outline" size={12} color="#3182F6" />
-                                <Text style={styles.flatTicketBadgeText}>식권 {formatAmountCard(ticketCount)}장</Text>
-                              </View>
-                            )}
-                          </View>
-
-                          <View style={{ alignItems: 'flex-end' }}>
-                            {contribution.guest_phone && contribution.amount && (
-                              contribution.alimtalk_sent ? (
-                                <View style={[styles.alimtalkSentBadge, { marginBottom: 6 }]}>
-                                  <Text style={styles.alimtalkSentBadgeText}>✓ 발송완료</Text>
-                                </View>
-                              ) : (
-                                <View style={{ marginBottom: 10 }}>
-                                  <AlimtalkResendButton
-                                    onPress={() => handleResendAlimtalk(contribution)}
-                                    loading={resendingId === contribution.id}
-                                  />
-                                </View>
-                              )
-                            )}
-                            <Text style={[
-                              styles.flatAmount,
-                              !contribution.amount && styles.flatAmountEmpty,
-                            ]}>
-                              {contribution.amount ? `+${formatAmountCard(contribution.amount)}원` : '금액 미입력'}
-                            </Text>
-                          </View>
-                        </View>
-
-                        {/* 하단: 풀너비 액션 버튼 */}
-                        {isRealItem && (
-                          <View style={styles.flatActBtnRow}>
-                            {contribution.is_verified ? (
-                              <TouchableOpacity
-                                style={[styles.flatActBtnFull, { flex: 1 }]}
-                                onPress={() => handleToggleVerification(contribution)}
+                      <View style={[styles.flatGuestCard, { height: scaleGuestCard(238, 194) }]}>
+                        <Image
+                          source={railImage}
+                          style={[styles.flatCardRailImage, { width: scaleGuestCard(56, 48) }]}
+                          resizeMode="stretch"
+                          fadeDuration={0}
+                        />
+                        <View style={[styles.flatCardBody, contribution.is_verified && styles.flatCardBodyConfirmed]}>
+                          <Image
+                            source={GUEST_CARD_ASSETS.pattern}
+                            style={styles.flatCardPattern}
+                            resizeMode="contain"
+                            fadeDuration={0}
+                          />
+                          <View style={[styles.flatCardHeader, contribution.is_verified && styles.flatCardDimmed]}>
+                            <View style={styles.flatCardHeaderLeft}>
+                              <Text
+                                style={[styles.flatCardName, { fontSize: scaleGuestFont(22, 16) }]}
+                                numberOfLines={1}
+                                maxFontSizeMultiplier={1}
+                                adjustsFontSizeToFit
                               >
-                                <Text style={[styles.flatActBtnFullText, { color: '#8B95A1' }]}>확정취소</Text>
-                              </TouchableOpacity>
-                            ) : (
-                              <>
-                                <TouchableOpacity
-                                  style={[styles.flatActBtnFull, styles.flatActBtnFullConfirm]}
-                                  onPress={() => handleToggleVerification(contribution)}
+                                {contribution.guest_name || '이름 없음'}
+                              </Text>
+                              <View style={styles.flatCardMetaRow}>
+                                <Text
+                                  style={[styles.flatCardSideText, { color: sideAccent, fontSize: scaleGuestFont(12, 10) }]}
+                                  numberOfLines={1}
+                                  maxFontSizeMultiplier={1}
                                 >
-                                  <Text style={[styles.flatActBtnFullText, { color: '#3182F6' }]}>확정</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.flatActBtnFull}
-                                  onPress={() => handleEditContribution(contribution)}
+                                  {displayCategory}
+                                </Text>
+                                <Text style={[styles.flatCardMetaDot, { fontSize: scaleGuestFont(12, 10) }]} maxFontSizeMultiplier={1}>·</Text>
+                                <Text
+                                  style={[styles.flatCardRelationText, { fontSize: scaleGuestFont(12, 10) }]}
+                                  numberOfLines={1}
+                                  maxFontSizeMultiplier={1}
                                 >
-                                  <Text style={styles.flatActBtnFullText}>수정</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.flatActBtnFull}
-                                  onPress={() => handleDeleteContribution(contribution)}
-                                >
-                                  <Text style={[styles.flatActBtnFullText, { color: '#F04452' }]}>삭제</Text>
-                                </TouchableOpacity>
-                              </>
-                            )}
+                                  {displayDetail}
+                                </Text>
+                              </View>
+                            </View>
+
+                            <View style={styles.flatCardHeaderRight}>
+                              {!!timeStr && (
+                                <Text style={[styles.flatCardTime, { fontSize: scaleGuestFont(12, 10) }]} maxFontSizeMultiplier={1}>
+                                  {timeStr} 접수
+                                </Text>
+                              )}
+                              {contribution.guest_phone && contribution.amount && (
+                                contribution.alimtalk_sent ? (
+                                  <View style={[styles.flatCardResendBadge, { backgroundColor: sideSoft }]}>
+                                    <Ionicons name="checkmark-circle-outline" size={scaleGuestCard(14, 11)} color={sideAccent} />
+                                    <Text
+                                      style={[styles.flatCardResendText, { color: sideAccent, fontSize: scaleGuestFont(11, 9) }]}
+                                      maxFontSizeMultiplier={1}
+                                    >
+                                      알림톡 발송완료
+                                    </Text>
+                                  </View>
+                                ) : (
+                                  <TouchableOpacity
+                                    style={[styles.flatCardResendBadge, { backgroundColor: sideSoft }]}
+                                    onPress={() => handleResendAlimtalk(contribution)}
+                                    disabled={resendingId === contribution.id}
+                                    activeOpacity={0.78}
+                                  >
+                                    <Ionicons name="refresh-circle-outline" size={scaleGuestCard(14, 11)} color={sideAccent} />
+                                    <Text
+                                      style={[styles.flatCardResendText, { color: sideAccent, fontSize: scaleGuestFont(11, 9) }]}
+                                      maxFontSizeMultiplier={1}
+                                    >
+                                      {resendingId === contribution.id ? '발송 중...' : '알림톡 재발송'}
+                                    </Text>
+                                  </TouchableOpacity>
+                                )
+                              )}
+                            </View>
                           </View>
-                        )}
+
+                          <View style={[styles.flatCardDottedLine, contribution.is_verified && styles.flatCardDimmed]} />
+
+                          <View style={[styles.flatCardValueRow, contribution.is_verified && styles.flatCardDimmed]}>
+                            <View style={styles.flatCardAmountSection}>
+                              <Image
+                                source={GUEST_CARD_ASSETS.cash}
+                                style={[
+                                  styles.flatCardCashIcon,
+                                  {
+                                    tintColor: sideAccent,
+                                    width: scaleGuestCard(38, 26),
+                                    height: scaleGuestCard(38, 26),
+                                  },
+                                ]}
+                              />
+                              <View style={styles.flatCardAmountTexts}>
+                                <Text style={[styles.flatCardLabel, { fontSize: scaleGuestFont(12, 9) }]} maxFontSizeMultiplier={1}>부조금</Text>
+                                <Text
+                                  style={[
+                                    styles.flatCardAmount,
+                                    { fontSize: scaleGuestFont(23, 16) },
+                                    !contribution.amount && styles.flatAmountEmpty,
+                                  ]}
+                                  numberOfLines={1}
+                                  maxFontSizeMultiplier={1}
+                                  adjustsFontSizeToFit
+                                >
+                                  {contribution.amount ? `${formatAmountCard(contribution.amount)}원` : '금액 미입력'}
+                                </Text>
+                              </View>
+                            </View>
+
+                            <View style={styles.flatCardValueDivider} />
+
+                            <View style={[styles.flatCardTicketBox, { backgroundColor: sideSoft }]}>
+                              <Image
+                                source={GUEST_CARD_ASSETS.ticket}
+                                style={[
+                                  styles.flatCardTicketIcon,
+                                  {
+                                    tintColor: sideAccent,
+                                    width: scaleGuestCard(26, 18),
+                                    height: scaleGuestCard(26, 18),
+                                  },
+                                ]}
+                              />
+                              <Text
+                                style={[styles.flatCardTicketInlineText, { color: sideAccent, fontSize: scaleGuestFont(14, 11) }]}
+                                numberOfLines={1}
+                                maxFontSizeMultiplier={1}
+                                adjustsFontSizeToFit
+                              >
+                                식권 {formatAmountCard(ticketCount)}장
+                              </Text>
+                            </View>
+                          </View>
+
+                          {contribution.is_verified && (
+                            <View style={styles.flatCardConfirmedLayer} pointerEvents="none">
+                              <Image
+                                source={GUEST_CARD_ASSETS.confirmedStamp}
+                                style={styles.flatCardConfirmedStamp}
+                                resizeMode="contain"
+                                fadeDuration={0}
+                              />
+                            </View>
+                          )}
+
+                          <View style={[styles.flatCardBottomLine, contribution.is_verified && styles.flatCardDimmed]} />
+
+                          {isRealItem && (
+                            contribution.is_verified ? (
+                              <View style={styles.flatCardConfirmedActionBox}>
+                                <View style={styles.flatCardConfirmedGuide}>
+                                  <Ionicons name="information-circle-outline" size={scaleGuestCard(16, 12)} color={sideAccent} />
+                                  <Text
+                                    style={[styles.flatCardConfirmedGuideText, { fontSize: scaleGuestFont(11, 9) }]}
+                                    numberOfLines={1}
+                                    maxFontSizeMultiplier={1}
+                                  >
+                                    확정 취소가 필요하신 경우 아래 버튼을 눌러주세요.
+                                  </Text>
+                                </View>
+                                <TouchableOpacity
+                                  style={styles.flatCardCancelConfirmButton}
+                                  onPress={() => handleToggleVerification(contribution)}
+                                  activeOpacity={0.75}
+                                >
+                                  <Ionicons name="arrow-undo-outline" size={scaleGuestCard(15, 11)} color={sideAccent} />
+                                  <Text style={[styles.flatCardActionText, { color: sideAccent, fontSize: scaleGuestFont(12, 10) }]}>
+                                    확정 취소
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            ) : (
+                              <View style={styles.flatCardActionRow}>
+                                <TouchableOpacity
+                                  style={[
+                                    styles.flatCardActionButton,
+                                    styles.flatCardConfirmButton,
+                                  ]}
+                                  onPress={() => handleToggleVerification(contribution)}
+                                  activeOpacity={0.75}
+                                >
+                                  <Ionicons name="checkmark-circle-outline" size={scaleGuestCard(15, 11)} color={sideAccent} />
+                                  <Text style={[styles.flatCardActionText, { color: sideAccent, fontSize: scaleGuestFont(12, 10) }]}>
+                                    확정
+                                  </Text>
+                                </TouchableOpacity>
+                                <>
+                                  <TouchableOpacity
+                                    style={styles.flatCardActionButton}
+                                    onPress={() => handleEditContribution(contribution)}
+                                    activeOpacity={0.75}
+                                  >
+                                    <Ionicons name="pencil-outline" size={scaleGuestCard(15, 11)} color="#4E5968" />
+                                    <Text style={[styles.flatCardActionText, { fontSize: scaleGuestFont(12, 10) }]}>수정</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={[styles.flatCardActionButton, styles.flatCardDeleteButton]}
+                                    onPress={() => handleDeleteContribution(contribution)}
+                                    activeOpacity={0.75}
+                                  >
+                                    <Ionicons name="trash-outline" size={scaleGuestCard(15, 11)} color="#F04452" />
+                                    <Text style={[styles.flatCardActionText, styles.flatCardDeleteText, { fontSize: scaleGuestFont(12, 10) }]}>삭제</Text>
+                                  </TouchableOpacity>
+                                </>
+                              </View>
+                            )
+                          )}
+                        </View>
                       </View>
                     )}
                   </View>
@@ -3234,11 +3450,11 @@ const styles = StyleSheet.create({
   },
   listControlRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 14,
-    gap: 12,
+    gap: 8,
   },
   filterDropdown: {
     flexDirection: 'row',
@@ -3250,14 +3466,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#191F28',
   },
-  filterTabRow: {
+  filterTabScroll: {
     flex: 1,
+  },
+  filterTabRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    alignItems: 'center',
+    gap: 7,
+    paddingRight: 4,
   },
   filterTab: {
-    paddingHorizontal: 14,
+    flexShrink: 0,
+    paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 20,
     backgroundColor: '#F2F4F6',
@@ -3266,23 +3486,300 @@ const styles = StyleSheet.create({
     backgroundColor: '#191F28',
   },
   filterTabText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#8B95A1',
   },
   filterTabTextActive: {
     color: '#FFFFFF',
   },
+  filterSearchButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
 
   // 플랫 리스트 아이템
   flatItem: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'flex-start',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#F2F4F6',
+    alignSelf: 'center',
+    width: '96%',
+    maxWidth: 680,
+    marginHorizontal: 0,
+    marginVertical: 4,
+    paddingHorizontal: 0,
+    borderRadius: 18,
+    overflow: 'visible',
+    position: 'relative',
+  },
+  flatGuestCard: {
+    width: '100%',
+    flexDirection: 'row',
+    position: 'relative',
+    alignItems: 'stretch',
+  },
+  flatCardRailImage: {
+    height: '100%',
+    borderTopLeftRadius: 18,
+    borderBottomLeftRadius: 18,
+    zIndex: 2,
+  },
+  flatCardBody: {
+    flex: 1,
+    marginLeft: -8,
+    borderTopRightRadius: 18,
+    borderBottomRightRadius: 18,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderLeftWidth: 0,
+    borderColor: '#E5E8EF',
+    paddingHorizontal: 15,
+    paddingTop: 13,
+    paddingBottom: 12,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  flatCardBodyConfirmed: {
+    paddingBottom: 6,
+  },
+  flatCardPattern: {
+    position: 'absolute',
+    right: -14,
+    bottom: 30,
+    width: 138,
+    height: 138,
+    opacity: 0.5,
+  },
+  flatCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    minHeight: 44,
+  },
+  flatCardHeaderLeft: {
+    flex: 1,
+    minWidth: 0,
+    paddingLeft: 7,
+  },
+  flatCardHeaderRight: {
+    alignItems: 'flex-end',
+    gap: 5,
+    minWidth: 112,
+  },
+  flatCardName: {
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '800',
+    color: '#050B1A',
+    letterSpacing: 0,
+  },
+  flatCardMetaRow: {
+    marginTop: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  flatCardSideText: {
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '800',
+  },
+  flatCardMetaDot: {
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  flatCardRelationText: {
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '700',
+    color: '#4E5968',
+  },
+  flatCardTime: {
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '700',
+    color: '#505766',
+  },
+  flatCardResendBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 9,
+    backgroundColor: '#F1F5FB',
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+  flatCardResendText: {
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '800',
+  },
+  flatCardDottedLine: {
+    marginTop: 9,
+    borderTopWidth: 2,
+    borderStyle: 'dotted',
+    borderColor: '#D7DCE4',
+  },
+  flatCardValueRow: {
+    height: 66,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
+  flatCardAmountSection: {
+    flex: 0.82,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  flatCardCashIcon: {
+    flexShrink: 0,
+  },
+  flatCardLabel: {
+    color: '#5B6472',
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '700',
+  },
+  flatCardAmountTexts: {
+    flex: 1,
+    minWidth: 0,
+  },
+  flatCardAmount: {
+    marginTop: 1,
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '800',
+    color: '#050B1A',
+    letterSpacing: 0,
+  },
+  flatCardValueDivider: {
+    width: 1,
+    height: 50,
+    marginLeft: 8,
+    marginRight: 12,
+    backgroundColor: '#E0E3E8',
+  },
+  flatCardTicketBox: {
+    width: 112,
+    height: 40,
+    borderRadius: 11,
+    paddingHorizontal: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    overflow: 'hidden',
+    position: 'relative',
+    zIndex: 1,
+  },
+  flatCardTicketIcon: {
+    flexShrink: 0,
+    zIndex: 1,
+  },
+  flatCardTicketInlineText: {
+    flex: 1,
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '800',
+    zIndex: 1,
+  },
+  flatCardDimmed: {
+    opacity: 0.26,
+  },
+  flatCardConfirmedLayer: {
+    position: 'absolute',
+    left: '0%',
+    right: '0%',
+    top: -6,
+    bottom: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+    elevation: 20,
+  },
+  flatCardConfirmedStamp: {
+    width: '145%',
+    height: '145%',
+    zIndex: 21,
+  },
+  flatCardBottomLine: {
+    height: 1,
+    backgroundColor: '#E6E9EF',
+    marginBottom: 10,
+  },
+  flatCardActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    height: 38,
+    flexShrink: 0,
+  },
+  flatCardActionButton: {
+    flex: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#C9D0DA',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  flatCardConfirmButton: {
+    borderColor: '#94B8EA',
+    backgroundColor: '#F2F7FF',
+  },
+  flatCardDeleteButton: {
+    borderColor: '#FF8B95',
+  },
+  flatCardActionText: {
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '800',
+    color: '#5B6472',
+  },
+  flatCardDeleteText: {
+    color: '#F04452',
+  },
+  flatCardConfirmedActionBox: {
+    height: 38,
+    marginTop: 'auto',
+    marginBottom: -2,
+    borderRadius: 9,
+    backgroundColor: '#F3F7FC',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    gap: 10,
+  },
+  flatCardConfirmedGuide: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  flatCardConfirmedGuideText: {
+    flex: 1,
+    minWidth: 0,
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '700',
+    color: '#5B6472',
+  },
+  flatCardCancelConfirmButton: {
+    height: 28,
+    minWidth: 112,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: '#3182F6',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
   },
   flatAvatar: {
     width: 44,
@@ -3298,25 +3795,41 @@ const styles = StyleSheet.create({
   },
   flatAvatarText: {
     fontSize: 17,
-    fontWeight: '700',
+    fontWeight: '900',
     color: '#4E5968',
   },
-  flatName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#191F28',
+  flatNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
     marginBottom: 3,
   },
+  flatName: {
+    fontSize: 23,
+    fontWeight: '900',
+    color: '#191F28',
+    flexShrink: 1,
+  },
+  flatSidePill: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  flatSidePillText: {
+    fontSize: 10,
+    fontWeight: '900',
+  },
   flatMeta: {
-    fontSize: 13,
+    fontSize: 15,
     color: '#8B95A1',
-    fontWeight: '400',
+    fontWeight: '800',
+    marginTop: 4,
   },
   flatPhone: {
     fontSize: 12,
     color: '#3182F6',
-    fontWeight: '500',
-    marginTop: 2,
+    fontWeight: '700',
+    marginTop: 4,
   },
   flatTicketBadge: {
     alignSelf: 'flex-start',
@@ -3327,12 +3840,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: '#EBF3FF',
   },
   flatTicketBadgeText: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#3182F6',
   },
   alimtalkBadge: {
     backgroundColor: '#FEE500',
@@ -3383,14 +3894,14 @@ const styles = StyleSheet.create({
     color: '#3182F6',
   },
   flatAmount: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '900',
     color: '#191F28',
-    marginBottom: 3,
+    letterSpacing: -0.4,
   },
   flatAmountEmpty: {
     color: '#B0BEC5',
-    fontWeight: '400',
+    fontWeight: '700',
     fontSize: 13,
   },
   flatStatus: {
@@ -3427,8 +3938,8 @@ const styles = StyleSheet.create({
   // ── 풀너비 액션 버튼 ──────────────────────────────
   flatItemTop: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    alignItems: 'flex-start',
+    gap: 12,
     marginBottom: 12,
   },
   flatActBtnRow: {
@@ -3437,7 +3948,9 @@ const styles = StyleSheet.create({
   },
   flatActBtnFull: {
     flex: 1,
-    paddingVertical: 11,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    gap: 5,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F2F4F6',
@@ -3448,8 +3961,12 @@ const styles = StyleSheet.create({
   },
   flatActBtnFullText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '900',
     color: '#4E5968',
+  },
+  flatActionIcon: {
+    width: 17,
+    height: 17,
   },
   flatActBtnDivider: {
     width: 1,
@@ -3460,6 +3977,23 @@ const styles = StyleSheet.create({
   // ── 인라인 수정 ──────────────────────────────────
   flatItemEditing: {
     backgroundColor: '#F8F9FA',
+    width: '96%',
+    maxWidth: 680,
+    alignSelf: 'center',
+  },
+  inlineEditCard: {
+    width: '100%',
+    alignSelf: 'stretch',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    padding: 14,
+    shadowColor: '#000000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   inlineEditRow: {
     flexDirection: 'row',
@@ -3527,6 +4061,8 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   amountChip: {
+    flexGrow: 1,
+    minWidth: 72,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 10,
@@ -3547,6 +4083,8 @@ const styles = StyleSheet.create({
     color: '#3182F6',
   },
   amountAddChip: {
+    flexGrow: 1,
+    minWidth: 82,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 10,
@@ -3567,6 +4105,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   inlineChip: {
+    flexGrow: 1,
+    minWidth: 72,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
@@ -3593,6 +4133,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   inlineCancelBtn: {
+    minWidth: 96,
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 7,
     borderRadius: 10,
@@ -3604,6 +4146,8 @@ const styles = StyleSheet.create({
     color: '#8B95A1',
   },
   inlineSaveBtn: {
+    minWidth: 112,
+    alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 7,
     borderRadius: 10,

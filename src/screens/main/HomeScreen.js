@@ -23,7 +23,6 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Toast from 'react-native-toast-message';
 import { Colors } from '../../styles/constants';
 import { supabase } from '../../lib/supabase';
 import { 
@@ -679,15 +678,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           if (notification.request.content.data?.type === 'contribution') {
             loadEvents(); // 이벤트 목록 새로고침
             loadMonthlyStatistics(); // 통계 새로고침
-
-            // 토스트 메시지 표시
-            Toast.show({
-              type: 'success',
-              text1: '💰 새로운 축의금',
-              text2: notification.request.content.body,
-              position: 'top',
-              visibilityTime: 4000,
-            });
           }
         });
       }
@@ -750,15 +740,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
           // 내 이벤트인 경우만 처리
           if (currentEventIds.includes(contributionEventId)) {
-            if (contributionData) {
-              Toast.show({
-                type: 'info',
-                text1: '💰 축의금 알림',
-                text2: `${contributionData.guest_name || '익명'}님 - ${(contributionData.amount || 0).toLocaleString()}원`,
-                position: 'top',
-                visibilityTime: 3000,
-              });
-            }
             handleContributionChange(changeType, contributionData, currentEventIds);
           }
         }
