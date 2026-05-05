@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import HomeScreen from '../screens/main/HomeScreen';
 import MyEventsScreen from '../screens/main/MyEventsScreen';
+import ReciprocityScreen from '../screens/main/ReciprocityScreen';
 // import GuideScreen from '../screens/main/GuideScreen'; // 기존 스타일
 import GuideScreen from '../screens/main/GuideScreenToss'; // 토스 스타일
 import BenefitsScreen from '../screens/main/BenefitsScreen'; // 🆕 혜택 화면
@@ -308,6 +309,19 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
           {(props) => (
             <EventDetailScreen 
               {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen
+          name="Reciprocity"
+          options={{ headerShown: false }}
+        >
+          {(props) => (
+            <ReciprocityScreen
+              {...props}
               userInfo={userInfo}
               session={session}
             />

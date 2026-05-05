@@ -29,6 +29,13 @@ import { Colors } from '../../styles/constants';
 import { getCurrentUserInfo, getEventDetail, getEventContributions, getEventStatistics, addGuestBookEntry, updateGuestBookEntry, deleteGuestBookEntry, toggleGuestBookVerification, updateEvent } from '../../lib/supabaseHelper';
 import { supabase } from '../../lib/supabase';
 import { sendAlimtalkWithCredit, getAlimtalkBalance } from '../../lib/alimtalkCredit';
+import {
+  getEventMembers,
+  getCurrentEventAccessRole,
+  inviteEventMember,
+  removeEventMember,
+  getRoleLabel,
+} from '../../lib/eventSharing';
 import { normalizePhone, samePhone } from '../../lib/phoneUtils';
 import SimpleModal from '../../components/SimpleModal';
 import { useSimpleAlert } from '../../hooks/useSimpleAlert';
@@ -50,7 +57,13 @@ const GUEST_CARD_FONT_FAMILY = Platform.select({
 });
 
 export default function EventDetailScreen({ navigation, route }) {
-  const { eventId, initialEvent, initialStats } = route.params;
+  const {
+    eventId,
+    initialEvent,
+    initialStats,
+    initialSearchQuery = '',
+    focusContributionId = null,
+  } = route.params || {};
   const insets = useSafeAreaInsets();
   const { width: viewportWidth } = useWindowDimensions();
   const guestCardWidth = Math.min(viewportWidth * 0.96, 680);
@@ -89,11 +102,18 @@ export default function EventDetailScreen({ navigation, route }) {
   });
 
   // 검색 및 페이지네이션
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
   const [currentPage, setCurrentPage] = useState(1);
+  const [focusedContributionId, setFocusedContributionId] = useState(focusContributionId || null);
   const itemsPerPage = 10;
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'groom', 'bride', 'verified', 'unverified'
   const [sortOrder, setSortOrder] = useState('default'); // 'default', 'amount_desc', 'amount_asc', 'name_asc', 'name_desc'
+
+  useEffect(() => {
+    setSearchQuery(initialSearchQuery || '');
+    setFocusedContributionId(focusContributionId || null);
+    itemYPositions.current = {};
+  }, [eventId, initialSearchQuery, focusContributionId]);
 
   // 성공 모달
   const [successModalVisible, setSuccessModalVisible] = useState(false);
@@ -225,12 +245,22 @@ export default function EventDetailScreen({ navigation, route }) {
   // 검색 적용
   const applySearch = () => {
     setSearchQuery(tempSearchQuery);
+    searchInputRef.current?.blur?.();
+    Keyboard.dismiss();
     setSearchModalVisible(false);
+  };
+
+  const submitSearchFromKeyboard = () => {
+    setSearchQuery(tempSearchQuery);
+    searchInputRef.current?.blur?.();
+    Keyboard.dismiss();
   };
 
   // 검색 취소
   const cancelSearch = () => {
     setTempSearchQuery(searchQuery);
+    searchInputRef.current?.blur?.();
+    Keyboard.dismiss();
     setSearchModalVisible(false);
   };
 
@@ -238,6 +268,8 @@ export default function EventDetailScreen({ navigation, route }) {
   const clearSearch = () => {
     setTempSearchQuery('');
     setSearchQuery('');
+    searchInputRef.current?.blur?.();
+    Keyboard.dismiss();
     setSearchModalVisible(false);
   };
 
@@ -294,8 +326,20 @@ export default function EventDetailScreen({ navigation, route }) {
   const [resendingId, setResendingId] = useState(null);
   // 현재 유저 알림톡 크레딧 잔액
   const [alimtalkBalance, setAlimtalkBalance] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [shareModal, setShareModal] = useState({ visible: false, members: [], loading: false });
+  const [shareForm, setShareForm] = useState({ phone: '', displayName: '', role: 'manager' });
+  const [shareSaving, setShareSaving] = useState(false);
+  const [accessRole, setAccessRole] = useState(initialEvent?.shared_role || 'owner');
+  const [canManageEvent, setCanManageEvent] = useState(!initialEvent?.shared_access || initialEvent?.shared_role !== 'viewer');
   // 공통 Alert 훅
   const { showAlert, alertProps } = useSimpleAlert();
+  const isEventOwner = !!currentUserId && !!event?.user_id && event.user_id === currentUserId;
+  const ensureCanManageEvent = () => {
+    if (canManageEvent) return true;
+    showAlert({ title: '보기 전용', message: '보기 전용으로 공유된 행사는 수정, 삭제, 확정 처리를 할 수 없어요.' });
+    return false;
+  };
 
   // ── 튜토리얼 ──
   const { activeTutorial, step: tutorialStep, registerTarget, registerHandler, advanceStep: tutorialAdvance } = useTutorial();
@@ -476,6 +520,7 @@ export default function EventDetailScreen({ navigation, route }) {
   };
 
   const handleEditContribution = (contribution) => {
+    if (!ensureCanManageEvent()) return;
     setEditingItemId(contribution.id);
     setInlineEditData({
       guest_name: contribution.guest_name || '',
@@ -490,6 +535,7 @@ export default function EventDetailScreen({ navigation, route }) {
 
   // 인라인 수정 저장 (낙관적 업데이트)
   const handleSaveInlineEdit = async (contribution) => {
+    if (!ensureCanManageEvent()) return;
     if (!inlineEditData.guest_name.trim()) {
       showAlert({ title: '알림', message: '성함을 입력해주세요.' });
       return;
@@ -548,6 +594,7 @@ export default function EventDetailScreen({ navigation, route }) {
 
   // 부조 삭제 처리
   const handleDeleteContribution = (contribution) => {
+    if (!ensureCanManageEvent()) return;
     console.log('🔍 삭제할 contribution 객체:', contribution);
     console.log('🔍 contribution.id:', contribution.id);
     showAlert({
@@ -575,6 +622,7 @@ export default function EventDetailScreen({ navigation, route }) {
 
   // 부조 확정/미확정 토글 처리 — 낙관적 업데이트(즉시 UI 반영)
   const handleToggleVerification = async (contribution) => {
+    if (!ensureCanManageEvent()) return;
     const newVerified = !contribution.is_verified;
     const broadcastVerificationChange = (isVerified) => {
       guestbookRealtimeChannelRef.current?.send({
@@ -629,6 +677,7 @@ export default function EventDetailScreen({ navigation, route }) {
 
   // 확정 처리 실행 — 확정관리 모달·바텀시트에서 사용
   const executeVerificationToggle = async () => {
+    if (!ensureCanManageEvent()) return;
     setVerificationModalVisible(false);
     try {
       const result = await toggleGuestBookVerification(verificationModalData.contribution.id);
@@ -691,6 +740,34 @@ export default function EventDetailScreen({ navigation, route }) {
   const mealContractedTotalAmount = mealTicketPrice * mealContractedTicketCount;
   const mealDistributedTotalAmount = mealTicketPrice * mealTicketStats.total;
   const hasMealSettlement = mealTicketPrice > 0 || mealContractedTicketCount > 0 || mealGroomTicketCount > 0 || mealBrideTicketCount > 0;
+  const totalContributionAmount = contributions.reduce((sum, c) => sum + (c.amount || 0), 0);
+  const verifiedContributions = contributions.filter(c => c.is_verified);
+  const unverifiedContributions = contributions.filter(c => !c.is_verified);
+  const verifiedAmount = verifiedContributions.reduce((sum, c) => sum + (c.amount || 0), 0);
+  const unverifiedAmount = unverifiedContributions.reduce((sum, c) => sum + (c.amount || 0), 0);
+  const createSideStat = (sideKey) => {
+    const sideItems = contributions.filter(c => getMealContributionSide(c) === sideKey);
+    const sideAmount = sideItems.reduce((sum, c) => sum + (c.amount || 0), 0);
+    const sideVerified = sideItems.filter(c => c.is_verified);
+    const sideTickets = sideItems.reduce((sum, c) => sum + Number(c.ticket_count || 0), 0);
+    return {
+      count: sideItems.length,
+      amount: sideAmount,
+      average: sideItems.length > 0 ? Math.round(sideAmount / sideItems.length) : 0,
+      verifiedCount: sideVerified.length,
+      verifiedAmount: sideVerified.reduce((sum, c) => sum + (c.amount || 0), 0),
+      ticketCount: sideTickets,
+      percent: totalContributionAmount > 0 ? Math.round((sideAmount / totalContributionAmount) * 100) : 0,
+    };
+  };
+  const sideStats = {
+    groom: createSideStat('groom'),
+    bride: createSideStat('bride'),
+  };
+  const topContributionItems = [...contributions]
+    .filter(c => Number(c.amount || 0) > 0)
+    .sort((a, b) => (b.amount || 0) - (a.amount || 0))
+    .slice(0, 5);
   const formatMealTicketDelta = (value) => {
     if (value < 0) return `${formatAmountCard(Math.abs(value))}장 초과`;
     return `${formatAmountCard(value)}장 남음`;
@@ -708,6 +785,7 @@ export default function EventDetailScreen({ navigation, route }) {
   };
 
   const requestMealPassword = (action) => {
+    if (action !== 'view' && !ensureCanManageEvent()) return;
     if (mealCompact && action === 'view') {
       setMealCompact(false);
     }
@@ -872,10 +950,50 @@ export default function EventDetailScreen({ navigation, route }) {
     }
   };
 
+  const normalizeSearchText = (value) => String(value || '').toLowerCase().trim();
+
+  const getContributionSearchText = (contribution) => {
+    const { displayCategory, displayDetail } = getRelationDisplay(
+      contribution.relation_category,
+      contribution.relation_detail
+    );
+    const phoneDigits = normalizePhone(contribution.guest_phone || '');
+    const amount = contribution.amount || 0;
+    const amountLocale = amount ? new Intl.NumberFormat('ko-KR').format(Math.round(amount)) : '';
+
+    return [
+      contribution.guest_name,
+      contribution.guest_phone,
+      phoneDigits,
+      displayCategory,
+      displayDetail,
+      contribution.relation_category,
+      contribution.relation_detail,
+      amount ? String(amount) : '',
+      amountLocale,
+      amountLocale ? `${amountLocale}원` : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+  };
+
+  const matchesContributionSearch = (contribution, query) => {
+    const searchText = normalizeSearchText(query);
+    if (!searchText) return true;
+
+    const contributionText = getContributionSearchText(contribution);
+    if (contributionText.includes(searchText)) return true;
+
+    const searchDigits = normalizePhone(searchText);
+    if (!searchDigits) return false;
+    return normalizePhone(contributionText).includes(searchDigits);
+  };
+
   // 검색 및 탭 필터링 계산
   const filteredContributions = contributions.filter(contribution => {
     // 검색 필터
-    const matchesSearch = contribution.guest_name?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = matchesContributionSearch(contribution, searchQuery);
     
     // 탭 필터
     let matchesTab = true;
@@ -907,6 +1025,9 @@ export default function EventDetailScreen({ navigation, route }) {
   });
   
   const totalPages = Math.ceil(filteredContributions.length / itemsPerPage);
+  const focusedContributionIndex = focusedContributionId
+    ? filteredContributions.findIndex(item => item.id === focusedContributionId)
+    : -1;
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentPageContributions = filteredContributions.slice(startIndex, startIndex + itemsPerPage);
   const listTabItems = [
@@ -916,16 +1037,49 @@ export default function EventDetailScreen({ navigation, route }) {
     { key: 'unverified', label: '미확정', count: contributions.filter(c => !c.is_verified).length },
     { key: 'verified', label: '확정', count: contributions.filter(c => c.is_verified).length },
   ];
+  const trimmedTempSearchQuery = tempSearchQuery.trim();
+  const searchPreviewResults = trimmedTempSearchQuery
+    ? contributions.filter(c => matchesContributionSearch(c, trimmedTempSearchQuery))
+    : [];
 
   // 검색어나 탭, 정렬이 변경되면 첫 페이지로 이동
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, activeTab, sortOrder]);
 
+  useEffect(() => {
+    if (!focusedContributionId || focusedContributionIndex < 0) return;
+    const targetPage = Math.floor(focusedContributionIndex / itemsPerPage) + 1;
+    if (targetPage !== currentPage) {
+      setCurrentPage(targetPage);
+    }
+  }, [focusedContributionId, focusedContributionIndex, currentPage]);
+
+  useEffect(() => {
+    if (!focusedContributionId) return undefined;
+
+    const timer = setTimeout(() => {
+      InteractionManager.runAfterInteractions(() => {
+        const itemY = itemYPositions.current[focusedContributionId];
+        if (typeof itemY !== 'number') return;
+
+        const targetY = listSectionY.current + itemY - 82;
+        scrollViewRef.current?.scrollTo({ y: Math.max(0, targetY), animated: true });
+      });
+    }, 260);
+
+    return () => clearTimeout(timer);
+  }, [focusedContributionId, currentPage, currentPageContributions.length]);
+
   // 화면 포커스 시 데이터 새로고침
   useFocusEffect(
     React.useCallback(() => {
       loadEventData();
+      getCurrentEventAccessRole(eventId).then(res => {
+        if (!res?.success) return;
+        setAccessRole(res.role);
+        setCanManageEvent(!!res.canManage);
+      });
       // 알림톡 크레딧 잔액도 같이 갱신
       getAlimtalkBalance().then(res => {
         if (res?.success) setAlimtalkBalance(res.balance);
@@ -946,6 +1100,7 @@ export default function EventDetailScreen({ navigation, route }) {
       const info = await getCurrentUserInfo();
       const uid = info?.user?.id;
       if (!uid) return;
+      setCurrentUserId(uid);
       channel = supabase
         .channel(`eventdetail_balance_${uid}`)
         .on(
@@ -1145,6 +1300,104 @@ export default function EventDetailScreen({ navigation, route }) {
     setStats(calculatedStats);
   };
 
+  const openShareModal = async () => {
+    setShareModal({ visible: true, members: [], loading: true });
+    setShareForm({ phone: '', displayName: '', role: 'manager' });
+    const result = await getEventMembers(eventId);
+    setShareModal({
+      visible: true,
+      members: result?.success ? result.data : [],
+      loading: false,
+    });
+  };
+
+  const closeShareModal = () => {
+    if (shareSaving) return;
+    setShareModal({ visible: false, members: [], loading: false });
+    setShareForm({ phone: '', displayName: '', role: 'manager' });
+  };
+
+  const refreshShareMembers = async () => {
+    const result = await getEventMembers(eventId);
+    setShareModal(prev => ({
+      ...prev,
+      members: result?.success ? result.data : prev.members,
+      loading: false,
+    }));
+  };
+
+  const handleInviteMember = async () => {
+    if (shareSaving) return;
+    if (!isEventOwner) {
+      showAlert({ title: '권한 없음', message: '행사 공유는 처음 행사를 만든 사람만 할 수 있어요.' });
+      return;
+    }
+    const cleanPhone = shareForm.phone.replace(/[^0-9]/g, '');
+    if (cleanPhone.length < 10) {
+      showAlert({ title: '휴대폰번호 확인', message: '공유할 사람의 휴대폰번호를 입력해주세요.' });
+      return;
+    }
+
+    setShareSaving(true);
+    try {
+      const result = await inviteEventMember({
+        eventId,
+        phone: shareForm.phone,
+        displayName: shareForm.displayName,
+        role: shareForm.role,
+        userId: currentUserId,
+      });
+
+      if (!result?.success) {
+        showAlert({
+          title: '공유 실패',
+          message: result?.error === 'permission_denied'
+            ? '이 행사를 공유할 권한이 없어요.'
+            : '잠시 후 다시 시도해주세요.',
+        });
+        return;
+      }
+
+      setShareForm({ phone: '', displayName: '', role: 'manager' });
+      await refreshShareMembers();
+      showAlert({ title: '공유 완료', message: '입력한 휴대폰번호로 로그인하면 이 행사가 함께 보여요.' });
+    } finally {
+      setShareSaving(false);
+    }
+  };
+
+  const handleRemoveMember = (member) => {
+    if (!isEventOwner) {
+      showAlert({ title: '권한 없음', message: '공유 해제는 처음 행사를 만든 사람만 할 수 있어요.' });
+      return;
+    }
+
+    Alert.alert(
+      '공유 해제',
+      `${member.display_name || member.phone}님의 행사 공유를 해제할까요?`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '해제',
+          style: 'destructive',
+          onPress: async () => {
+        const result = await removeEventMember(member.id, currentUserId);
+        if (!result?.success) {
+          showAlert({
+            title: '공유 해제 실패',
+            message: result?.error === 'permission_denied'
+              ? '행사 소유자만 공유를 해제할 수 있어요.'
+              : '잠시 후 다시 시도해주세요.',
+          });
+          return;
+        }
+        refreshShareMembers();
+          },
+        },
+      ],
+    );
+  };
+
 
   const formatDate = (dateString) => {
     if (!dateString) return '날짜 미정';
@@ -1269,14 +1522,26 @@ export default function EventDetailScreen({ navigation, route }) {
           {/* 이벤트명 + 통계 버튼 */}
           <View style={styles.heroTopRow}>
             <Text style={styles.heroEventName}>{event.event_name}</Text>
-            <TouchableOpacity
-              style={styles.heroStatBtn}
-              onPress={() => openBS(setStatisticsModalVisible, bsStatFade, bsStatSlide)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="bar-chart-outline" size={15} color="#4E5968" />
-              <Text style={styles.heroStatBtnText}>통계</Text>
-            </TouchableOpacity>
+            <View style={styles.heroTopActions}>
+              {isEventOwner && (
+                <TouchableOpacity
+                  style={styles.heroStatBtn}
+                  onPress={openShareModal}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="people-outline" size={15} color="#4E5968" />
+                  <Text style={styles.heroStatBtnText}>공유 멤버</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.heroStatBtn}
+                onPress={() => openBS(setStatisticsModalVisible, bsStatFade, bsStatSlide)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="bar-chart-outline" size={15} color="#4E5968" />
+                <Text style={styles.heroStatBtnText}>통계</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* 총 부조금 */}
@@ -1285,26 +1550,33 @@ export default function EventDetailScreen({ navigation, route }) {
           </Text>
 
           {/* 부조 추가 + 하객접수 */}
-          <View style={styles.heroBtnRow}>
-            <TouchableOpacity
-              style={styles.heroBtnGray}
-              onPress={() => openBS(setAddModalVisible, bsAddFade, bsAddSlide)}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.heroBtnGrayText}>부조 추가</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              ref={guestReceiveBtnRef}
-              style={styles.heroBtnBlue}
-              onPress={() => openBS(setSideSelectVisible, bsSideFade, bsSideSlide)}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.heroBtnBlueText}>하객 접수</Text>
-            </TouchableOpacity>
-          </View>
+          {canManageEvent ? (
+            <View style={styles.heroBtnRow}>
+              <TouchableOpacity
+                style={styles.heroBtnGray}
+                onPress={() => openBS(setAddModalVisible, bsAddFade, bsAddSlide)}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.heroBtnGrayText}>부조 추가</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                ref={guestReceiveBtnRef}
+                style={styles.heroBtnBlue}
+                onPress={() => openBS(setSideSelectVisible, bsSideFade, bsSideSlide)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.heroBtnBlueText}>하객 접수</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.readOnlyNotice}>
+              <Ionicons name="eye-outline" size={17} color="#8B95A1" />
+              <Text style={styles.readOnlyNoticeText}>보기 전용으로 공유된 행사예요</Text>
+            </View>
+          )}
 
           {/* 미확정 배너 */}
-          {contributions.filter(c => !c.is_verified).length > 0 && (
+          {canManageEvent && contributions.filter(c => !c.is_verified).length > 0 && (
             <TouchableOpacity
               style={styles.unverifiedBanner}
               onPress={() => openBS(setVerifyManageModalVisible, bsVmFade, bsVmSlide)}
@@ -1404,8 +1676,9 @@ export default function EventDetailScreen({ navigation, route }) {
                 {!hasMealSettlement ? (
                   <TouchableOpacity
                     style={styles.mealLockedBox}
-                    activeOpacity={0.8}
-                    onPress={() => requestMealPassword('edit')}
+                    activeOpacity={canManageEvent ? 0.8 : 1}
+                    onPress={() => canManageEvent && requestMealPassword('edit')}
+                    disabled={!canManageEvent}
                   >
                     <View style={styles.mealLockedIcon}>
                       <Ionicons name="receipt-outline" size={22} color="#3182F6" />
@@ -1492,12 +1765,16 @@ export default function EventDetailScreen({ navigation, route }) {
                           >
                             <Text style={styles.mealActionText}>{mealUnlocked ? '금액 숨기기' : '금액 보기'}</Text>
                           </TouchableOpacity>
-                          <TouchableOpacity style={styles.mealActionBtn} onPress={() => requestMealPassword('edit')}>
-                            <Text style={styles.mealActionText}>수정</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={styles.mealActionBtn} onPress={() => requestMealPassword('delete')}>
-                            <Text style={[styles.mealActionText, { color: '#F04452' }]}>삭제</Text>
-                          </TouchableOpacity>
+                          {canManageEvent && (
+                            <>
+                              <TouchableOpacity style={styles.mealActionBtn} onPress={() => requestMealPassword('edit')}>
+                                <Text style={styles.mealActionText}>수정</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={styles.mealActionBtn} onPress={() => requestMealPassword('delete')}>
+                                <Text style={[styles.mealActionText, { color: '#F04452' }]}>삭제</Text>
+                              </TouchableOpacity>
+                            </>
+                          )}
                         </View>
                       </>
                     )}
@@ -1569,6 +1846,7 @@ export default function EventDetailScreen({ navigation, route }) {
                 })();
 
                 const isEditing = editingItemId === contribution.id;
+                const isFocusedContribution = focusedContributionId === contribution.id;
                 const ticketCount = Number(contribution.ticket_count || 0);
                 const sideKey = getMealContributionSide(contribution);
                 const sideAccent = '#3182F6';
@@ -1586,6 +1864,7 @@ export default function EventDetailScreen({ navigation, route }) {
                     style={[
                       styles.flatItem,
                       { borderLeftColor: sideAccent, backgroundColor: sideKey === 'bride' ? '#FFFCFD' : '#FCFDFF' },
+                      isFocusedContribution && styles.flatItemFocused,
                       isEditing && styles.flatItemEditing
                     ]}
                   >
@@ -1709,14 +1988,26 @@ export default function EventDetailScreen({ navigation, route }) {
                         </View>
                       </View>
                     ) : (
-                      <View style={[styles.flatGuestCard, { height: scaleGuestCard(238, 194) }]}>
+                      <View style={[
+                        styles.flatGuestCard,
+                        { height: canManageEvent ? scaleGuestCard(238, 194) : scaleGuestCard(186, 154) },
+                        !canManageEvent && styles.flatGuestCardReadOnly,
+                      ]}>
                         <Image
                           source={railImage}
-                          style={[styles.flatCardRailImage, { width: scaleGuestCard(56, 48) }]}
+                          style={[
+                            styles.flatCardRailImage,
+                            { width: canManageEvent ? scaleGuestCard(56, 48) : scaleGuestCard(48, 40) },
+                            !canManageEvent && styles.flatCardRailImageReadOnly,
+                          ]}
                           resizeMode="stretch"
                           fadeDuration={0}
                         />
-                        <View style={[styles.flatCardBody, contribution.is_verified && styles.flatCardBodyConfirmed]}>
+                        <View style={[
+                          styles.flatCardBody,
+                          contribution.is_verified && styles.flatCardBodyConfirmed,
+                          !canManageEvent && styles.flatCardBodyReadOnly,
+                        ]}>
                           <Image
                             source={GUEST_CARD_ASSETS.pattern}
                             style={styles.flatCardPattern}
@@ -1750,6 +2041,18 @@ export default function EventDetailScreen({ navigation, route }) {
                                   {displayDetail}
                                 </Text>
                               </View>
+                              {!!contribution.guest_phone && (
+                                <View style={styles.flatCardPhoneRow}>
+                                  <Ionicons name="call-outline" size={scaleGuestCard(10, 8)} color="#8B95A1" />
+                                  <Text
+                                    style={[styles.flatCardPhoneText, { fontSize: scaleGuestFont(10, 8) }]}
+                                    numberOfLines={1}
+                                    maxFontSizeMultiplier={1}
+                                  >
+                                    {formatPhone(contribution.guest_phone)}
+                                  </Text>
+                                </View>
+                              )}
                             </View>
 
                             <View style={styles.flatCardHeaderRight}>
@@ -1789,7 +2092,11 @@ export default function EventDetailScreen({ navigation, route }) {
                             </View>
                           </View>
 
-                          <View style={[styles.flatCardDottedLine, contribution.is_verified && styles.flatCardDimmed]} />
+                          <View style={[
+                            styles.flatCardDottedLine,
+                            contribution.is_verified && styles.flatCardDimmed,
+                            !canManageEvent && styles.flatCardDottedLineReadOnly,
+                          ]} />
 
                           <View style={[styles.flatCardValueRow, contribution.is_verified && styles.flatCardDimmed]}>
                             <View style={styles.flatCardAmountSection}>
@@ -1857,9 +2164,11 @@ export default function EventDetailScreen({ navigation, route }) {
                             </View>
                           )}
 
-                          <View style={[styles.flatCardBottomLine, contribution.is_verified && styles.flatCardDimmed]} />
+                          {canManageEvent && (
+                            <View style={[styles.flatCardBottomLine, contribution.is_verified && styles.flatCardDimmed]} />
+                          )}
 
-                          {isRealItem && (
+                          {isRealItem && canManageEvent && (
                             contribution.is_verified ? (
                               <View style={styles.flatCardConfirmedActionBox}>
                                 <View style={styles.flatCardConfirmedGuide}>
@@ -1956,7 +2265,7 @@ export default function EventDetailScreen({ navigation, route }) {
                 {searchQuery ? '검색 결과가 없어요' : '부조 내역이 없어요'}
               </Text>
               <Text style={styles.tossEmptySubtitle}>
-                {searchQuery ? '다른 이름으로 검색해보세요' : '첫 번째 부조를 추가해보세요'}
+                {searchQuery ? '이름이나 휴대폰번호를 다시 확인해보세요' : '첫 번째 부조를 추가해보세요'}
               </Text>
             </View>
           )}
@@ -2106,7 +2415,7 @@ export default function EventDetailScreen({ navigation, route }) {
                 <View style={styles.tossStatMainAmount}>
                   <Text style={styles.tossStatLabel}>총 부조금</Text>
                   <Text style={styles.tossStatBigValue}>
-                    {formatAmount(contributions.reduce((sum, c) => sum + (c.amount || 0), 0))}
+                    {formatAmount(totalContributionAmount)}
                   </Text>
                 </View>
                 <View style={styles.tossStatDivider} />
@@ -2118,10 +2427,58 @@ export default function EventDetailScreen({ navigation, route }) {
                   <View style={styles.tossStatInfoItem}>
                     <Text style={styles.tossStatSmallLabel}>평균 부조금</Text>
                     <Text style={styles.tossStatSmallValue}>
-                      {formatAmount(contributions.length > 0 ? Math.round(contributions.reduce((sum, c) => sum + (c.amount || 0), 0) / contributions.length) : 0)}
+                      {formatAmount(contributions.length > 0 ? Math.round(totalContributionAmount / contributions.length) : 0)}
                     </Text>
                   </View>
+                  <View style={styles.tossStatInfoItem}>
+                    <Text style={styles.tossStatSmallLabel}>총 식권</Text>
+                    <Text style={styles.tossStatSmallValue}>{formatAmountCard(mealTicketStats.total)}장</Text>
+                  </View>
                 </View>
+              </View>
+
+              {/* 신랑/신부 측별 통계 */}
+              <View style={styles.tossStatSideCard}>
+                <Text style={styles.tossStatSectionTitle}>신랑측 · 신부측 비교</Text>
+                {[
+                  { key: 'groom', label: '신랑측', color: '#2F68B7', data: sideStats.groom },
+                  { key: 'bride', label: '신부측', color: '#2F68B7', data: sideStats.bride },
+                ].map((side) => (
+                  <View key={side.key} style={styles.tossStatSideBlock}>
+                    <View style={styles.tossStatSideTop}>
+                      <View style={styles.tossStatSideTitleRow}>
+                        <View style={[styles.tossStatSideDot, { backgroundColor: side.color }]} />
+                        <Text style={styles.tossStatSideTitle}>{side.label}</Text>
+                      </View>
+                      <Text style={styles.tossStatSidePercent}>{side.data.percent}%</Text>
+                    </View>
+                    <View style={styles.tossStatSideProgress}>
+                      <View style={[styles.tossStatSideProgressFill, { width: `${side.data.percent}%`, backgroundColor: side.color }]} />
+                    </View>
+                    <View style={styles.tossStatSideGrid}>
+                      <View style={styles.tossStatSideMetric}>
+                        <Text style={styles.tossStatSideMetricLabel}>금액</Text>
+                        <Text style={styles.tossStatSideMetricValue}>{formatAmount(side.data.amount)}</Text>
+                      </View>
+                      <View style={styles.tossStatSideMetric}>
+                        <Text style={styles.tossStatSideMetricLabel}>건수</Text>
+                        <Text style={styles.tossStatSideMetricValue}>{side.data.count}건</Text>
+                      </View>
+                      <View style={styles.tossStatSideMetric}>
+                        <Text style={styles.tossStatSideMetricLabel}>평균</Text>
+                        <Text style={styles.tossStatSideMetricValue}>{formatAmount(side.data.average)}</Text>
+                      </View>
+                      <View style={styles.tossStatSideMetric}>
+                        <Text style={styles.tossStatSideMetricLabel}>확정</Text>
+                        <Text style={styles.tossStatSideMetricValue}>{side.data.verifiedCount}건 · {formatAmount(side.data.verifiedAmount)}</Text>
+                      </View>
+                      <View style={styles.tossStatSideMetric}>
+                        <Text style={styles.tossStatSideMetricLabel}>식권</Text>
+                        <Text style={styles.tossStatSideMetricValue}>{formatAmountCard(side.data.ticketCount)}장</Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
               </View>
 
               {/* 금액대별 분포 */}
@@ -2160,13 +2517,36 @@ export default function EventDetailScreen({ navigation, route }) {
                     <View style={styles.tossStatProgressItem}>
                       <View style={[styles.tossStatDot, { backgroundColor: '#3182F6' }]} />
                       <Text style={styles.tossStatProgressLabel}>확정</Text>
-                      <Text style={styles.tossStatProgressValue}>{contributions.filter(c => c.is_verified).length}건</Text>
+                      <Text style={styles.tossStatProgressValue}>{verifiedContributions.length}건 · {formatAmount(verifiedAmount)}</Text>
                     </View>
                     <View style={styles.tossStatProgressItem}>
                       <View style={[styles.tossStatDot, { backgroundColor: '#E5E8EB' }]} />
                       <Text style={styles.tossStatProgressLabel}>미확정</Text>
-                      <Text style={styles.tossStatProgressValue}>{contributions.filter(c => !c.is_verified).length}건</Text>
+                      <Text style={styles.tossStatProgressValue}>{unverifiedContributions.length}건 · {formatAmount(unverifiedAmount)}</Text>
                     </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* 식권 통계 */}
+              <View style={styles.tossStatTicketCard}>
+                <Text style={styles.tossStatSectionTitle}>식권 현황</Text>
+                <View style={styles.tossStatTicketGrid}>
+                  <View style={styles.tossStatTicketItem}>
+                    <Text style={styles.tossStatTicketLabel}>전체 배부</Text>
+                    <Text style={styles.tossStatTicketValue}>{formatAmountCard(mealTicketStats.total)}장</Text>
+                  </View>
+                  <View style={styles.tossStatTicketItem}>
+                    <Text style={styles.tossStatTicketLabel}>신랑측</Text>
+                    <Text style={styles.tossStatTicketValue}>{formatAmountCard(mealTicketStats.groom)}장</Text>
+                  </View>
+                  <View style={styles.tossStatTicketItem}>
+                    <Text style={styles.tossStatTicketLabel}>신부측</Text>
+                    <Text style={styles.tossStatTicketValue}>{formatAmountCard(mealTicketStats.bride)}장</Text>
+                  </View>
+                  <View style={styles.tossStatTicketItem}>
+                    <Text style={styles.tossStatTicketLabel}>식대 환산</Text>
+                    <Text style={styles.tossStatTicketValue}>{formatAmount(mealDistributedTotalAmount)}</Text>
                   </View>
                 </View>
               </View>
@@ -2196,6 +2576,32 @@ export default function EventDetailScreen({ navigation, route }) {
                       ));
                   })()}
                 </View>
+              </View>
+
+              {/* 상위 부조 */}
+              <View style={styles.tossStatTopCard}>
+                <Text style={styles.tossStatSectionTitle}>상위 부조 내역</Text>
+                {topContributionItems.length > 0 ? (
+                  <View style={styles.tossStatTopList}>
+                    {topContributionItems.map((item, index) => {
+                      const { displayCategory, displayDetail } = getRelationDisplay(item.relation_category, item.relation_detail);
+                      return (
+                        <View key={item.id || index} style={styles.tossStatTopItem}>
+                          <View style={styles.tossStatTopRank}>
+                            <Text style={styles.tossStatTopRankText}>{index + 1}</Text>
+                          </View>
+                          <View style={styles.tossStatTopInfo}>
+                            <Text style={styles.tossStatTopName} numberOfLines={1}>{item.guest_name || '이름 없음'}</Text>
+                            <Text style={styles.tossStatTopMeta} numberOfLines={1}>{displayCategory} · {displayDetail}</Text>
+                          </View>
+                          <Text style={styles.tossStatTopAmount}>{formatAmount(item.amount || 0)}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={styles.tossStatEmptyText}>아직 금액이 입력된 부조 내역이 없어요.</Text>
+                )}
               </View>
             </ScrollView>
           </Animated.View>
@@ -2251,22 +2657,24 @@ export default function EventDetailScreen({ navigation, route }) {
                   <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
                     <View style={styles.vmListHeader}>
                       <Text style={styles.vmListTitle}>미확정 부조</Text>
-                      <TouchableOpacity
-                        style={styles.vmAllBtn}
-                        onPress={() => showAlert({
-                          title: '전체 확정',
-                          message: '모든 미확정 부조를 확정하시겠어요?',
-                          confirmText: '확정',
-                          cancelText: '취소',
-                          onConfirm: async () => {
-                            for (const item of unverified) await toggleGuestBookVerification(item.id);
-                            await loadEventData();
-                            setVerifyPage(0);
-                          },
-                        })}
-                      >
-                        <Text style={styles.vmAllBtnText}>전체 확정</Text>
-                      </TouchableOpacity>
+                      {canManageEvent && (
+                        <TouchableOpacity
+                          style={styles.vmAllBtn}
+                          onPress={() => showAlert({
+                            title: '전체 확정',
+                            message: '모든 미확정 부조를 확정하시겠어요?',
+                            confirmText: '확정',
+                            cancelText: '취소',
+                            onConfirm: async () => {
+                              for (const item of unverified) await toggleGuestBookVerification(item.id);
+                              await loadEventData();
+                              setVerifyPage(0);
+                            },
+                          })}
+                        >
+                          <Text style={styles.vmAllBtnText}>전체 확정</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
 
                     {pageItems.map((item, idx) => (
@@ -2280,12 +2688,14 @@ export default function EventDetailScreen({ navigation, route }) {
                         </View>
                         <View style={{ alignItems: 'flex-end', gap: 6 }}>
                           <Text style={styles.vmItemAmount}>+{formatAmountCard(item.amount)}원</Text>
-                          <TouchableOpacity
-                            style={styles.vmConfirmBtn}
-                            onPress={async () => { await toggleGuestBookVerification(item.id); await loadEventData(); }}
-                          >
-                            <Text style={styles.vmConfirmBtnText}>확정</Text>
-                          </TouchableOpacity>
+                          {canManageEvent && (
+                            <TouchableOpacity
+                              style={styles.vmConfirmBtn}
+                              onPress={async () => { await toggleGuestBookVerification(item.id); await loadEventData(); }}
+                            >
+                              <Text style={styles.vmConfirmBtnText}>확정</Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
                       </View>
                     ))}
@@ -2329,12 +2739,14 @@ export default function EventDetailScreen({ navigation, route }) {
                       </View>
                       <View style={{ alignItems: 'flex-end', gap: 6 }}>
                         <Text style={[styles.vmItemAmount, { color: '#3182F6' }]}>+{formatAmountCard(item.amount)}원</Text>
-                        <TouchableOpacity
-                          style={styles.vmCancelBtn}
-                          onPress={async () => { await toggleGuestBookVerification(item.id); await loadEventData(); }}
-                        >
-                          <Text style={styles.vmCancelBtnText}>취소</Text>
-                        </TouchableOpacity>
+                        {canManageEvent && (
+                          <TouchableOpacity
+                            style={styles.vmCancelBtn}
+                            onPress={async () => { await toggleGuestBookVerification(item.id); await loadEventData(); }}
+                          >
+                            <Text style={styles.vmCancelBtnText}>취소</Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
                     </View>
                   ))}
@@ -2421,7 +2833,7 @@ export default function EventDetailScreen({ navigation, route }) {
       {/* 검색 모달 */}
       <Modal
         visible={searchModalVisible}
-        transparent={true}
+        transparent={false}
         animationType="slide"
         onRequestClose={cancelSearch}
         onShow={handleModalShow}
@@ -2429,109 +2841,130 @@ export default function EventDetailScreen({ navigation, route }) {
         <KeyboardAvoidingView 
           style={styles.searchModalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          keyboardVerticalOffset={0}
         >
-          <View style={[styles.searchModalContainer, { paddingBottom: insets.bottom }]}>
-            {/* 헤더 */}
-            <View style={styles.searchModalHeader}>
-              <TouchableOpacity onPress={cancelSearch} style={styles.searchModalCloseButton}>
-                <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
-              </TouchableOpacity>
-              <Text style={styles.searchModalTitle}>부조 검색</Text>
-              <TouchableOpacity onPress={applySearch} style={styles.searchModalApplyButton}>
-                <Text style={styles.searchModalApplyText}>완료</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* 검색 입력 */}
-            <View style={styles.searchModalInputContainer}>
-              <Ionicons name="search" size={20} color={Colors.gray400} style={styles.searchModalInputIcon} />
-              <TextInput
-                ref={searchInputRef}
-                style={styles.searchModalInput}
-                placeholder="이름으로 검색해주세요"
-                value={tempSearchQuery}
-                onChangeText={setTempSearchQuery}
-                editable={inputEditable}
-                autoCapitalize="none"
-                autoCorrect={false}
-                clearButtonMode="while-editing"
-                returnKeyType="search"
-                onSubmitEditing={applySearch}
-                blurOnSubmit={false}
-                onFocus={() => {
-                  console.log('✅ TextInput onFocus 발생 - 키보드 활성화됨');
-                  keyboardActivated.current = true;
-                }}
-                onBlur={() => {
-                  console.log('❌ TextInput onBlur 발생 - 키보드 비활성화됨');
-                  keyboardActivated.current = false;
-                }}
-                onLayout={() => console.log('📏 TextInput onLayout 발생 - 렌더링 완료')}
-              />
-              {tempSearchQuery && (
-                <TouchableOpacity onPress={() => setTempSearchQuery('')} style={styles.searchModalClearButton}>
-                  <Ionicons name="close-circle" size={20} color={Colors.gray400} />
+          <SafeAreaView style={styles.searchModalSafeArea}>
+            <View
+              style={[
+                styles.searchModalContainer,
+                {
+                  paddingTop: Platform.OS === 'android' ? Math.max(insets.top, 10) : 8,
+                  paddingBottom: Math.max(insets.bottom, 16),
+                },
+              ]}
+            >
+              {/* 헤더 */}
+              <View style={styles.searchModalHeader}>
+                <TouchableOpacity onPress={cancelSearch} style={styles.searchModalCloseButton}>
+                  <Ionicons name="chevron-back" size={24} color="#191F28" />
                 </TouchableOpacity>
-              )}
-            </View>
+                <View style={styles.searchModalHeaderText}>
+                  <Text style={styles.searchModalTitle}>부조 검색</Text>
+                  <Text style={styles.searchModalSubtitle}>이름, 휴대폰번호, 관계, 금액으로 찾을 수 있어요</Text>
+                </View>
+                <TouchableOpacity onPress={applySearch} style={styles.searchModalApplyButton}>
+                  <Text style={styles.searchModalApplyText}>완료</Text>
+                </TouchableOpacity>
+              </View>
 
-            {/* 검색 결과 미리보기 */}
-            <View style={styles.searchModalPreview}>
-              <Text style={styles.searchModalPreviewTitle}>
-                검색 결과 ({(() => {
-                  const filteredCount = contributions.filter(c => 
-                    c.guest_name?.toLowerCase().includes(tempSearchQuery.toLowerCase())
-                  ).length;
-                  // console.log(`🔍 검색 결과 개수: ${filteredCount}개, 검색어: "${tempSearchQuery}"`);
-                  return filteredCount;
-                })()}명)
-              </Text>
+              {/* 검색 입력 */}
+              <View style={styles.searchModalInputContainer}>
+                <Ionicons name="search" size={21} color="#3182F6" style={styles.searchModalInputIcon} />
+                <TextInput
+                  ref={searchInputRef}
+                  style={styles.searchModalInput}
+                  placeholder="이름 또는 휴대폰번호를 입력해주세요"
+                  placeholderTextColor="#8B95A1"
+                  value={tempSearchQuery}
+                  onChangeText={setTempSearchQuery}
+                  editable={inputEditable}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  clearButtonMode="while-editing"
+                  keyboardType="default"
+                  returnKeyType="search"
+                  onSubmitEditing={submitSearchFromKeyboard}
+                  blurOnSubmit
+                  onFocus={() => {
+                    console.log('✅ TextInput onFocus 발생 - 키보드 활성화됨');
+                    keyboardActivated.current = true;
+                  }}
+                  onBlur={() => {
+                    console.log('❌ TextInput onBlur 발생 - 키보드 비활성화됨');
+                    keyboardActivated.current = false;
+                  }}
+                  onLayout={() => console.log('📏 TextInput onLayout 발생 - 렌더링 완료')}
+                />
+                {!!tempSearchQuery && (
+                  <TouchableOpacity onPress={() => setTempSearchQuery('')} style={styles.searchModalClearButton}>
+                    <Ionicons name="close-circle" size={22} color="#B0B8C1" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* 검색 결과 미리보기 */}
+              <View style={styles.searchModalPreview}>
+                <View style={styles.searchModalPreviewHeader}>
+                  <Text style={styles.searchModalPreviewTitle}>검색 결과</Text>
+                  <Text style={styles.searchModalPreviewCount}>{searchPreviewResults.length}명</Text>
+                </View>
               
-              <ScrollView style={styles.searchModalPreviewList} showsVerticalScrollIndicator={false}>
-                {tempSearchQuery ? (
-                  contributions
-                    .filter(c => c.guest_name?.toLowerCase().includes(tempSearchQuery.toLowerCase()))
-                    .slice(0, 5)
-                    .map((contribution, index) => (
-                    <View key={contribution.id || index} style={styles.searchModalPreviewItem}>
-                      <View style={styles.searchModalPreviewInfo}>
-                        <Text style={styles.searchModalPreviewName}>{contribution.guest_name}</Text>
-                        <Text style={styles.searchModalPreviewRelation}>
-                          {(() => {
-                            const { displayCategory, displayDetail } = getRelationDisplay(
-                              contribution.relation_category,
-                              contribution.relation_detail
-                            );
-                            return `${displayCategory} · ${displayDetail}`;
-                          })()}
+                <ScrollView
+                  style={styles.searchModalPreviewList}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {trimmedTempSearchQuery ? (
+                    searchPreviewResults
+                      .slice(0, 8)
+                      .map((contribution, index) => (
+                      <View key={contribution.id || index} style={styles.searchModalPreviewItem}>
+                        <View style={styles.searchModalPreviewAvatar}>
+                          <Ionicons name="person" size={18} color="#3182F6" />
+                        </View>
+                        <View style={styles.searchModalPreviewInfo}>
+                          <Text style={styles.searchModalPreviewName} numberOfLines={1}>{contribution.guest_name || '이름 없음'}</Text>
+                          <Text style={styles.searchModalPreviewRelation} numberOfLines={1}>
+                            {(() => {
+                              const { displayCategory, displayDetail } = getRelationDisplay(
+                                contribution.relation_category,
+                                contribution.relation_detail
+                              );
+                              const relationText = `${displayCategory} · ${displayDetail}`;
+                              return contribution.guest_phone
+                                ? `${relationText} · ${contribution.guest_phone}`
+                                : relationText;
+                            })()}
+                          </Text>
+                        </View>
+                        <Text style={styles.searchModalPreviewAmount} numberOfLines={1}>
+                          {formatAmount(contribution.amount || 0)}
                         </Text>
                       </View>
-                      <Text style={styles.searchModalPreviewAmount}>
-                        {formatAmount(contribution.amount || 0)}
-                      </Text>
+                    ))
+                  ) : (
+                    <View style={styles.searchModalEmptyState}>
+                      <View style={styles.searchModalStateIcon}>
+                        <Ionicons name="search" size={30} color="#3182F6" />
+                      </View>
+                      <Text style={styles.searchModalEmptyText}>검색어를 입력해주세요</Text>
+                      <Text style={styles.searchModalEmptySubtext}>휴대폰번호는 숫자만 입력해도 검색돼요</Text>
                     </View>
-                  ))
-                ) : (
-                  <View style={styles.searchModalEmptyState}>
-                    <Ionicons name="search" size={48} color={Colors.gray300} />
-                    <Text style={styles.searchModalEmptyText}>검색어를 입력해주세요</Text>
-                    <Text style={styles.searchModalEmptySubtext}>이름으로 부조 내역을 찾을 수 있어요</Text>
-                  </View>
-                )}
+                  )}
                   
-                {tempSearchQuery && contributions.filter(c => 
-                  c.guest_name?.toLowerCase().includes(tempSearchQuery.toLowerCase())
-                ).length === 0 && (
-                  <View style={styles.searchModalNoResults}>
-                    <Ionicons name="search" size={48} color={Colors.gray300} />
-                    <Text style={styles.searchModalNoResultsText}>검색 결과가 없어요</Text>
-                    <Text style={styles.searchModalNoResultsSubtext}>다른 이름으로 검색해보세요</Text>
-                  </View>
-                )}
-              </ScrollView>
+                  {trimmedTempSearchQuery && searchPreviewResults.length === 0 && (
+                    <View style={styles.searchModalNoResults}>
+                      <View style={styles.searchModalStateIcon}>
+                        <Ionicons name="alert-circle-outline" size={30} color="#8B95A1" />
+                      </View>
+                      <Text style={styles.searchModalNoResultsText}>검색 결과가 없어요</Text>
+                      <Text style={styles.searchModalNoResultsSubtext}>이름이나 휴대폰번호를 다시 확인해주세요</Text>
+                    </View>
+                  )}
+                </ScrollView>
+              </View>
             </View>
-          </View>
+          </SafeAreaView>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -2830,6 +3263,136 @@ export default function EventDetailScreen({ navigation, route }) {
         </View>
       </Modal>
 
+      {/* 행사 공유 멤버 관리 */}
+      <Modal
+        visible={shareModal.visible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={closeShareModal}
+      >
+        <KeyboardAvoidingView
+          style={styles.shareModalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity style={styles.shareBackdrop} activeOpacity={1} onPress={closeShareModal} />
+          <View style={styles.shareSheet}>
+            <View style={styles.shareSheetBottomFill} />
+            <View style={styles.shareHandle} />
+            <View style={styles.shareHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.shareTitle}>공유 멤버</Text>
+                <Text style={styles.shareSub} numberOfLines={1}>
+                  {event?.event_name || '행사'}를 함께 관리할 사람을 추가해요
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.shareCloseBtn} onPress={closeShareModal} activeOpacity={0.7}>
+                <Ionicons name="close" size={20} color="#8B95A1" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.shareFormBox}>
+              {!isEventOwner && (
+                <View style={styles.shareOwnerOnlyBox}>
+                  <Ionicons name="lock-closed-outline" size={18} color="#8B95A1" />
+                  <Text style={styles.shareOwnerOnlyText}>
+                    공유 멤버 관리는 처음 행사를 만든 사람만 할 수 있어요.
+                  </Text>
+                </View>
+              )}
+              <Text style={styles.shareFormLabel}>휴대폰번호</Text>
+              <TextInput
+                style={styles.shareInput}
+                value={shareForm.phone}
+                onChangeText={(text) => setShareForm(prev => ({ ...prev, phone: text }))}
+                placeholder="01012345678"
+                placeholderTextColor="#C5CCD5"
+                keyboardType="phone-pad"
+                editable={isEventOwner}
+              />
+              <Text style={styles.shareFormLabel}>표시 이름</Text>
+              <TextInput
+                style={styles.shareInput}
+                value={shareForm.displayName}
+                onChangeText={(text) => setShareForm(prev => ({ ...prev, displayName: text }))}
+                placeholder="신부, 어머니, 축의대 담당자 등"
+                placeholderTextColor="#C5CCD5"
+                editable={isEventOwner}
+              />
+
+              <View style={styles.shareRoleRow}>
+                {[
+                  { key: 'manager', label: '공동 관리' },
+                  { key: 'viewer', label: '보기 전용' },
+                ].map(role => (
+                  <TouchableOpacity
+                    key={role.key}
+                    style={[styles.shareRoleChip, shareForm.role === role.key && styles.shareRoleChipActive]}
+                    onPress={() => setShareForm(prev => ({ ...prev, role: role.key }))}
+                    activeOpacity={0.76}
+                    disabled={!isEventOwner}
+                  >
+                    <Text style={[styles.shareRoleChipText, shareForm.role === role.key && styles.shareRoleChipTextActive]}>
+                      {role.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.shareInviteBtn, shareSaving && styles.shareInviteBtnDisabled]}
+                onPress={handleInviteMember}
+                activeOpacity={0.82}
+                disabled={shareSaving || !isEventOwner}
+              >
+                <Ionicons name="person-add" size={16} color="#FFFFFF" />
+                <Text style={styles.shareInviteBtnText}>{shareSaving ? '추가 중...' : '멤버 추가'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.shareMemberHeader}>
+              <Text style={styles.shareMemberTitle}>현재 공유된 사람</Text>
+              <Text style={styles.shareMemberCount}>{shareModal.members.length}명</Text>
+            </View>
+
+            <ScrollView style={styles.shareMemberList} showsVerticalScrollIndicator={false}>
+              {shareModal.loading ? (
+                <Text style={styles.shareEmptyText}>불러오는 중...</Text>
+              ) : shareModal.members.length > 0 ? (
+                shareModal.members.map(member => (
+                  <View key={member.id} style={styles.shareMemberRow}>
+                    <View style={styles.shareMemberAvatar}>
+                      <Ionicons name="person" size={16} color="#3182F6" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.shareMemberName}>
+                        {member.display_name || member.phone}
+                      </Text>
+                      <Text style={styles.shareMemberMeta}>
+                        {member.phone} · {getRoleLabel(member.role)}
+                      </Text>
+                    </View>
+                    {isEventOwner && (
+                      <TouchableOpacity
+                        style={styles.shareRemoveBtn}
+                        onPress={() => handleRemoveMember(member)}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.shareRemoveText}>해제</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.shareEmptyText}>아직 공유된 멤버가 없어요.</Text>
+              )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* 공통 커스텀 Alert (iOS/안드 통일) */}
       <SimpleModal {...alertProps} />
     </SafeAreaView>
@@ -3001,8 +3564,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 10,
+    gap: 10,
+  },
+  heroTopActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   heroEventName: {
+    flex: 1,
     fontSize: 14,
     fontWeight: '500',
     color: '#8B95A1',
@@ -3066,6 +3636,230 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  readOnlyNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderRadius: 14,
+    backgroundColor: '#F2F4F6',
+    marginBottom: 16,
+  },
+  readOnlyNoticeText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#8B95A1',
+  },
+  shareModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  shareBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.36)',
+  },
+  shareSheet: {
+    maxHeight: '88%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 10,
+    paddingHorizontal: 18,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 20,
+  },
+  shareSheetBottomFill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -60,
+    height: 60,
+    backgroundColor: '#FFFFFF',
+  },
+  shareHandle: {
+    alignSelf: 'center',
+    width: 38,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#E5E8EB',
+    marginBottom: 16,
+  },
+  shareHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  shareTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: -0.4,
+  },
+  shareSub: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#8B95A1',
+  },
+  shareCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F2F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareFormBox: {
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#EEF2F7',
+    marginBottom: 16,
+  },
+  shareOwnerOnlyBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#F2F4F6',
+    marginBottom: 12,
+  },
+  shareOwnerOnlyText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8B95A1',
+    lineHeight: 17,
+  },
+  shareFormLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#4E5968',
+    marginBottom: 7,
+  },
+  shareInput: {
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    paddingHorizontal: 13,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#191F28',
+    marginBottom: 12,
+  },
+  shareRoleRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 13,
+  },
+  shareRoleChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  shareRoleChipActive: {
+    backgroundColor: '#EBF3FF',
+    borderColor: '#3182F6',
+  },
+  shareRoleChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#8B95A1',
+  },
+  shareRoleChipTextActive: {
+    color: '#3182F6',
+  },
+  shareInviteBtn: {
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: '#3182F6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  shareInviteBtnDisabled: {
+    opacity: 0.55,
+  },
+  shareInviteBtnText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  shareMemberHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 9,
+  },
+  shareMemberTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  shareMemberCount: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#8B95A1',
+  },
+  shareMemberList: {
+    maxHeight: 230,
+  },
+  shareMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F4F6',
+  },
+  shareMemberAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: '#EBF3FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareMemberName: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  shareMemberMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8B95A1',
+  },
+  shareRemoveBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#FFF1F1',
+  },
+  shareRemoveText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#EF4444',
+  },
+  shareEmptyText: {
+    paddingVertical: 24,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8B95A1',
   },
   unverifiedBanner: {
     flexDirection: 'row',
@@ -3515,17 +4309,33 @@ const styles = StyleSheet.create({
     overflow: 'visible',
     position: 'relative',
   },
+  flatItemFocused: {
+    borderWidth: 2,
+    borderColor: '#3182F6',
+    shadowColor: '#3182F6',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    elevation: 5,
+  },
   flatGuestCard: {
     width: '100%',
     flexDirection: 'row',
     position: 'relative',
     alignItems: 'stretch',
   },
+  flatGuestCardReadOnly: {
+    marginBottom: 2,
+  },
   flatCardRailImage: {
     height: '100%',
     borderTopLeftRadius: 18,
     borderBottomLeftRadius: 18,
     zIndex: 2,
+  },
+  flatCardRailImageReadOnly: {
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
   },
   flatCardBody: {
     flex: 1,
@@ -3550,6 +4360,13 @@ const styles = StyleSheet.create({
   },
   flatCardBodyConfirmed: {
     paddingBottom: 6,
+  },
+  flatCardBodyReadOnly: {
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    justifyContent: 'center',
   },
   flatCardPattern: {
     position: 'absolute',
@@ -3601,6 +4418,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#4E5968',
   },
+  flatCardPhoneRow: {
+    marginTop: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  flatCardPhoneText: {
+    flexShrink: 1,
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
   flatCardTime: {
     fontFamily: GUEST_CARD_FONT_FAMILY,
     fontWeight: '700',
@@ -3624,6 +4453,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 2,
     borderStyle: 'dotted',
     borderColor: '#D7DCE4',
+  },
+  flatCardDottedLineReadOnly: {
+    marginTop: 8,
   },
   flatCardValueRow: {
     height: 66,
@@ -5269,131 +6101,196 @@ const styles = StyleSheet.create({
   // 검색 모달 스타일
   searchModalOverlay: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: '#F2F4F6',
+  },
+  searchModalSafeArea: {
+    flex: 1,
+    backgroundColor: '#F2F4F6',
   },
   searchModalContainer: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: '#F2F4F6',
+    paddingHorizontal: 18,
+    paddingTop: 8,
   },
   searchModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
-    backgroundColor: Colors.white,
+    marginBottom: 16,
   },
   searchModalCloseButton: {
-    padding: 4,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  searchModalHeaderText: {
+    flex: 1,
+    paddingHorizontal: 12,
   },
   searchModalTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#191F28',
+  },
+  searchModalSubtitle: {
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#8B95A1',
   },
   searchModalApplyButton: {
-    padding: 4,
+    minWidth: 54,
+    height: 42,
+    paddingHorizontal: 12,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3182F6',
   },
   searchModalApplyText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.primary,
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   searchModalInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.gray50,
-    marginHorizontal: 20,
-    marginVertical: 16,
+    minHeight: 58,
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: Colors.gray200,
+    borderColor: '#E5E8EB',
   },
   searchModalInputIcon: {
-    marginRight: 8,
+    marginRight: 10,
   },
   searchModalInput: {
     flex: 1,
     fontSize: 16,
-    color: Colors.textPrimary,
+    fontWeight: '600',
+    color: '#191F28',
+    paddingVertical: Platform.OS === 'android' ? 0 : 2,
   },
   searchModalClearButton: {
     padding: 4,
   },
   searchModalPreview: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  searchModalPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
   searchModalPreviewTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 16,
+    fontWeight: '800',
+    color: '#191F28',
+  },
+  searchModalPreviewCount: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#3182F6',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#EEF6FF',
   },
   searchModalPreviewList: {
     flex: 1,
-    maxHeight: 400, // 최대 높이 제한
   },
   searchModalPreviewItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
+    borderBottomColor: '#F2F4F6',
+  },
+  searchModalPreviewAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EEF6FF',
+    marginRight: 12,
   },
   searchModalPreviewInfo: {
     flex: 1,
+    minWidth: 0,
+    paddingRight: 10,
   },
   searchModalPreviewName: {
     fontSize: 16,
-    fontWeight: '500',
-    color: Colors.textPrimary,
+    fontWeight: '800',
+    color: '#191F28',
     marginBottom: 4,
   },
   searchModalPreviewRelation: {
-    fontSize: 14,
-    color: Colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7684',
   },
   searchModalPreviewAmount: {
     fontSize: 16,
-    fontWeight: '600',
-    color: Colors.primary,
+    fontWeight: '800',
+    color: '#3182F6',
   },
   searchModalNoResults: {
     alignItems: 'center',
-    paddingVertical: 60,
+    paddingVertical: 64,
   },
   searchModalNoResultsText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#191F28',
     marginTop: 16,
     marginBottom: 8,
   },
   searchModalNoResultsSubtext: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    fontWeight: '500',
+    color: '#6B7684',
   },
   searchModalEmptyState: {
     alignItems: 'center',
-    paddingVertical: 60,
+    paddingVertical: 64,
+  },
+  searchModalStateIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F2F6FF',
   },
   searchModalEmptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#191F28',
     marginTop: 16,
     marginBottom: 8,
   },
   searchModalEmptySubtext: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    fontWeight: '500',
+    color: '#6B7684',
   },
   
   // 토스 스타일 통계 모달
@@ -5463,6 +6360,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
   },
   tossStatInfoItem: {
+    flex: 1,
     alignItems: 'center',
   },
   tossStatSmallLabel: {
@@ -5473,6 +6371,81 @@ const styles = StyleSheet.create({
   tossStatSmallValue: {
     fontSize: 16,
     fontWeight: '600',
+    color: '#191F28',
+  },
+  tossStatSideCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  tossStatSideBlock: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F4F6',
+  },
+  tossStatSideTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  tossStatSideTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tossStatSideDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  tossStatSideTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#191F28',
+  },
+  tossStatSidePercent: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#3182F6',
+  },
+  tossStatSideProgress: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#EEF1F4',
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  tossStatSideProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  tossStatSideGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tossStatSideMetric: {
+    width: '48%',
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+  },
+  tossStatSideMetricLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8B95A1',
+    marginBottom: 4,
+  },
+  tossStatSideMetricValue: {
+    fontSize: 13,
+    fontWeight: '900',
     color: '#191F28',
   },
   tossStatChartCard: {
@@ -5552,13 +6525,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#3182F6',
   },
   tossStatProgressInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    gap: 10,
   },
   tossStatProgressItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    justifyContent: 'space-between',
   },
   tossStatDot: {
     width: 8,
@@ -5566,12 +6539,48 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   tossStatProgressLabel: {
+    flex: 1,
     fontSize: 14,
     color: '#6B7684',
   },
   tossStatProgressValue: {
     fontSize: 14,
     fontWeight: '600',
+    color: '#191F28',
+  },
+  tossStatTicketCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  tossStatTicketGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  tossStatTicketItem: {
+    width: '48%',
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#F7FAFF',
+    borderWidth: 1,
+    borderColor: '#EEF4FF',
+  },
+  tossStatTicketLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8B95A1',
+    marginBottom: 6,
+  },
+  tossStatTicketValue: {
+    fontSize: 15,
+    fontWeight: '900',
     color: '#191F28',
   },
   tossStatRelationCard: {
@@ -5614,6 +6623,67 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#191F28',
+  },
+  tossStatTopCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  tossStatTopList: {
+    gap: 10,
+  },
+  tossStatTopItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F4F6',
+  },
+  tossStatTopRank: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EBF3FE',
+  },
+  tossStatTopRankText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#3182F6',
+  },
+  tossStatTopInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tossStatTopName: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  tossStatTopMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8B95A1',
+  },
+  tossStatTopAmount: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  tossStatEmptyText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8B95A1',
+    lineHeight: 19,
   },
   
   // 토스 스타일 확정 관리 모달

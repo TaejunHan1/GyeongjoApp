@@ -1,5 +1,5 @@
 // src/screens/main/HomeScreen.js - 개선된 통계 UI 포함 전체 코드
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Animated,
   Alert,
   Image,
+  ImageBackground,
   Modal,
   TextInput,
   KeyboardAvoidingView,
@@ -41,9 +42,17 @@ import * as Notifications from 'expo-notifications';
 import NotificationPermissionModal from '../../components/NotificationPermissionModal';
 import { useTutorial } from '../../contexts/TutorialContext';
 import TutorialPulseRing from '../../components/TutorialPulseRing';
+import {
+  getReciprocityNotifications,
+  updateReciprocityNotificationStatus,
+} from '../../lib/eventReciprocity';
 
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
+const RECIPROCITY_EVENT_ICONS = {
+  wedding: require('../../../assets/icons/reciprocity/wedding.png'),
+  funeral: require('../../../assets/icons/reciprocity/funeral.png'),
+};
 
 // 🔥 이벤트 역할 구분
 const EVENT_ROLES = {
@@ -441,6 +450,8 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const bannerScrollRef = useRef(null);
   const bannerWidth = Dimensions.get('window').width;
   const eventIdsRef = useRef([]);
+  const reciprocityRealtimeSeenRef = useRef(new Set());
+  const reciprocityKnownIdsRef = useRef(new Set());
 
   // 토스 모달 애니메이션 값들
   const confirmModalSlideAnim = useRef(new Animated.Value(0)).current;
@@ -463,39 +474,22 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   }, [userInfo, session, isAuthenticated]);
 
-  // 배너 데이터 - 파스텔 토스 스타일
+  // 배너 데이터 - 이미지 카드 스타일
   const banners = [
     {
-      title: '소중한 순간을\n함께 기록하세요',
-      sub: '결혼식, 돌잔치 등 기쁜 날들',
-      bg: '#FEE3E8',
-      titleColor: '#191F28',
-      subColor: '#4E5968',
-      icon: '🎂',
-      deco1: null,
-      deco2: null,
-    },
-    {
       title: '스마트하게\n부조를 기록하세요',
-      sub: '패드에 서명 한 번으로 완료',
-      bg: '#E8F3FF',
-      titleColor: '#191F28',
-      subColor: '#4E5968',
-      icon: null,
-      image: require('../../../assets/toss-banner-pad.png'),
-      deco1: null,
-      deco2: null,
+      mobileImage: require('../../../assets/home-banners/mobile/smart-ledger-bg.png'),
+      tabletImage: require('../../../assets/home-banners/tablet/smart-ledger-bg.png'),
     },
     {
       title: '마음을 나누는\n가장 쉬운 방법',
-      sub: '정성스러운 마음을 기록해보세요',
-      bg: '#DCFCE7',
-      titleColor: '#191F28',
-      subColor: '#4E5968',
-      icon: null,
-      image: require('../../../assets/toss-banner-heart.png'),
-      deco1: null,
-      deco2: null,
+      mobileImage: require('../../../assets/home-banners/mobile/easy-heart-bg.png'),
+      tabletImage: require('../../../assets/home-banners/tablet/easy-heart-bg.png'),
+    },
+    {
+      title: '소중한 순간을\n함께 기록하세요',
+      mobileImage: require('../../../assets/home-banners/mobile/memory-bg.png'),
+      tabletImage: require('../../../assets/home-banners/tablet/memory-bg.png'),
     },
   ];
 
@@ -679,6 +673,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             loadEvents(); // 이벤트 목록 새로고침
             loadMonthlyStatistics(); // 통계 새로고침
           }
+          if (notification.request.content.data?.type === 'reciprocity') {
+            loadReciprocityNotifications();
+          }
         });
       }
 
@@ -692,6 +689,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             if (eventId) {
               // 이벤트 상세 화면으로 이동
               navigation.navigate('EventDisplay', { eventId });
+            }
+          }
+          if (response.notification.request.content.data?.type === 'reciprocity') {
+            const eventId = response.notification.request.content.data.originalEventId;
+            if (eventId) {
+              navigation.navigate('EventDetail', { eventId });
             }
           }
         });
@@ -1371,6 +1374,30 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   };
 
   const userName = getUserName();
+  const currentUserId = user?.id || userInfo?.userId;
+
+  const formatPhoneNumber = (phone) => {
+    const digits = String(phone || '').replace(/[^0-9]/g, '');
+    if (!digits) return '';
+    const localDigits = digits.startsWith('82') && digits.length >= 11
+      ? `0${digits.slice(2)}`
+      : digits.startsWith('0082') && digits.length >= 13
+        ? `0${digits.slice(4)}`
+        : digits;
+    if (localDigits.length === 11) {
+      return `${localDigits.slice(0, 3)}-${localDigits.slice(3, 7)}-${localDigits.slice(7)}`;
+    }
+    if (localDigits.length === 10) {
+      return `${localDigits.slice(0, 3)}-${localDigits.slice(3, 6)}-${localDigits.slice(6)}`;
+    }
+    return phone || '';
+  };
+
+  const getReciprocityEventIcon = (eventType) => (
+    eventType === 'funeral'
+      ? RECIPROCITY_EVENT_ICONS.funeral
+      : RECIPROCITY_EVENT_ICONS.wedding
+  );
 
   // 🔥 나의 경조사 관리는 주최한 경조사만 사용 (개인 일정 완전 제외)
   const hostedEvents = events.filter((event, index, self) => {
@@ -1440,6 +1467,11 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const [pumasiReceivedPage, setPumasiReceivedPage] = useState(0);
   const [pumasiGavePage, setPumasiGavePage] = useState(0);
   const PUMASI_PER_PAGE = 5;
+  const [reciprocityNotifications, setReciprocityNotifications] = useState([]);
+  const [reciprocityLoading, setReciprocityLoading] = useState(false);
+  const [reciprocityPage, setReciprocityPage] = useState(0);
+  const [selectedReciprocityGroup, setSelectedReciprocityGroup] = useState(null);
+  const RECIPROCITY_PER_PAGE = 3;
 
   // 줬음 기록된 guest_book id 세트
   const gaveLinkedIds = new Set(pumasiGave.map(g => g.linked_guest_id).filter(Boolean));
@@ -1599,6 +1631,294 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     }
   };
 
+  const normalizePhoneDigits = (phone) => {
+    const digits = String(phone || '').replace(/[^0-9]/g, '');
+    if (digits.startsWith('0082') && digits.length >= 13) return `0${digits.slice(4)}`;
+    if (digits.startsWith('82') && digits.length >= 11) return `0${digits.slice(2)}`;
+    return digits;
+  };
+
+  const groupReciprocityNotifications = (items = []) => {
+    const grouped = new Map();
+
+    items.forEach((item) => {
+      const phoneKey = normalizePhoneDigits(item.source_guest_phone);
+      const nameKey = String(item.source_guest_name || '').trim();
+      const groupKey = phoneKey || `name:${nameKey || item.id}`;
+
+      if (!grouped.has(groupKey)) {
+        grouped.set(groupKey, {
+          ...item,
+          id: groupKey,
+          groupKey,
+          source_guest_phone: item.source_guest_phone,
+          source_guest_name: item.source_guest_name,
+          items: [],
+          originalEvents: [],
+          newEvents: [],
+          originalEventMap: new Map(),
+          newEventMap: new Map(),
+          source_amount_total: 0,
+          source_amount_max: 0,
+          status: 'read',
+        });
+      }
+
+      const group = grouped.get(groupKey);
+      group.items.push(item);
+      if (item.status === 'unread') {
+        group.status = 'unread';
+      }
+
+      if (!group.created_at || new Date(item.created_at) > new Date(group.created_at)) {
+        group.created_at = item.created_at;
+        group.source_guest_name = item.source_guest_name || group.source_guest_name;
+        group.source_guest_phone = item.source_guest_phone || group.source_guest_phone;
+        group.new_event = item.new_event || group.new_event;
+        group.new_event_id = item.new_event_id || group.new_event_id;
+      }
+
+      const originalEventId = item.original_event_id || item.original_event?.id;
+      if (originalEventId && item.original_event && !group.originalEventMap.has(originalEventId)) {
+        const amount = Number(item.source_amount || 0);
+        group.originalEventMap.set(originalEventId, {
+          ...item.original_event,
+          notificationId: item.id,
+          source_guest_name: item.source_guest_name,
+          source_guest_phone: item.source_guest_phone,
+          amount,
+          created_at: item.created_at,
+        });
+        group.source_amount_total += amount;
+        group.source_amount_max = Math.max(group.source_amount_max, amount);
+      }
+
+      const newEventId = item.new_event_id || item.new_event?.id;
+      if (newEventId && item.new_event && !group.newEventMap.has(newEventId)) {
+        group.newEventMap.set(newEventId, {
+          ...item.new_event,
+          notificationId: item.id,
+          created_at: item.created_at,
+        });
+      }
+    });
+
+    return Array.from(grouped.values())
+      .map((group) => {
+        const originalEvents = Array.from(group.originalEventMap.values()).sort((a, b) => (
+          new Date(b.created_at || 0) - new Date(a.created_at || 0)
+        ));
+        const newEvents = Array.from(group.newEventMap.values()).sort((a, b) => (
+          new Date(b.created_at || 0) - new Date(a.created_at || 0)
+        ));
+        return {
+          ...group,
+          originalEvents,
+          newEvents,
+          originalEventMap: undefined,
+          newEventMap: undefined,
+        };
+      })
+      .sort((a, b) => (
+        new Date(b.created_at || 0) - new Date(a.created_at || 0)
+      ));
+  };
+
+  const groupedReciprocityNotifications = useMemo(
+    () => groupReciprocityNotifications(reciprocityNotifications),
+    [reciprocityNotifications]
+  );
+
+  const showReciprocityLocalNotification = async (item, options = {}) => {
+    try {
+      if (!item?.id || reciprocityRealtimeSeenRef.current.has(item.id)) return;
+      reciprocityRealtimeSeenRef.current.add(item.id);
+
+      const body = `${item.source_guest_name || '하객'}님이 새 경조사를 만들었어요.`;
+
+      if (typeof Notifications.scheduleNotificationAsync === 'function') {
+        const permission = typeof Notifications.getPermissionsAsync === 'function'
+          ? await Notifications.getPermissionsAsync()
+          : null;
+
+        if (!permission || permission.status === 'granted') {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: '돌아온 경조사 알림',
+              body,
+              data: {
+                type: 'reciprocity',
+                notificationId: item.id,
+                originalEventId: item.original_event_id,
+              },
+            },
+            trigger: null,
+          });
+        }
+      }
+
+      if (options.showAlert) {
+        Alert.alert('돌아온 경조사 알림', body, [
+          {
+            text: '내역 보기',
+            onPress: () => {
+              if (item.original_event_id) {
+                navigation.navigate('EventDetail', {
+                  eventId: item.original_event_id,
+                  initialSearchQuery: item.source_guest_phone || item.source_guest_name || '',
+                });
+              }
+            },
+          },
+          { text: '확인' },
+        ]);
+      }
+    } catch (error) {
+      console.warn('reciprocity local notification failed:', error);
+    }
+  };
+
+  const notifyNewReciprocityItems = async (items = []) => {
+    const newItems = items.filter(item => (
+      item?.id && !reciprocityKnownIdsRef.current.has(item.id)
+    ));
+
+    if (newItems.length === 0) return;
+
+    newItems.forEach(item => reciprocityKnownIdsRef.current.add(item.id));
+    await showReciprocityLocalNotification(newItems[0], { showAlert: true });
+  };
+
+  const loadReciprocityNotifications = async ({ notifyNew = false } = {}) => {
+    setReciprocityLoading(true);
+    try {
+      const res = await getReciprocityNotifications(currentUserId);
+      if (res?.success) {
+        const nextItems = res.data || [];
+        if (notifyNew) {
+          await notifyNewReciprocityItems(nextItems);
+        } else {
+          reciprocityKnownIdsRef.current = new Set(nextItems.map(item => item.id).filter(Boolean));
+        }
+        setReciprocityNotifications(nextItems);
+      }
+    } catch (e) {
+      console.error('loadReciprocityNotifications error:', e);
+    } finally {
+      setReciprocityLoading(false);
+    }
+  };
+
+  const markReciprocityNotifications = async (notificationIds, status = 'read') => {
+    const ids = Array.isArray(notificationIds) ? notificationIds.filter(Boolean) : [notificationIds].filter(Boolean);
+    if (ids.length === 0) return;
+
+    const previous = reciprocityNotifications;
+    setReciprocityNotifications(prev => (
+      status === 'dismissed'
+        ? prev.filter(item => !ids.includes(item.id))
+        : prev.map(item => ids.includes(item.id) ? { ...item, status } : item)
+    ));
+
+    const results = await Promise.all(
+      ids.map(id => updateReciprocityNotificationStatus(id, status, currentUserId))
+    );
+
+    if (results.some(res => !res?.success)) {
+      setReciprocityNotifications(previous);
+    }
+  };
+
+  const openReciprocityDetail = async (item) => {
+    const rawItems = item?.items?.length ? item.items : [item];
+    const first = rawItems[0];
+    const targetEvent = first?.original_event || item?.original_event || item?.originalEvents?.[0];
+    if (!targetEvent?.id) return;
+
+    if (item.status === 'unread') {
+      markReciprocityNotifications(rawItems.map(raw => raw.id), 'read');
+    }
+
+    navigation.navigate('EventDetail', {
+      eventId: targetEvent.id,
+      initialEvent: targetEvent,
+      initialSearchQuery: first?.source_guest_phone || first?.source_guest_name || item.source_guest_phone || item.source_guest_name || '',
+    });
+  };
+
+  const openReciprocitySheet = (item) => {
+    setSelectedReciprocityGroup(item);
+    if (item?.status === 'unread') {
+      const rawItems = item?.items?.length ? item.items : [item];
+      markReciprocityNotifications(rawItems.map(raw => raw.id), 'read');
+    }
+  };
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(groupedReciprocityNotifications.length / RECIPROCITY_PER_PAGE));
+    if (reciprocityPage > totalPages - 1) {
+      setReciprocityPage(Math.max(0, totalPages - 1));
+    }
+  }, [groupedReciprocityNotifications.length, reciprocityPage]);
+
+  const actionableReciprocityNotifications = groupedReciprocityNotifications.filter(item => item.status !== 'read');
+  const reciprocityUnreadCount = actionableReciprocityNotifications.filter(item => item.status === 'unread').length;
+  const reciprocityTotalPages = Math.max(1, Math.ceil(actionableReciprocityNotifications.length / RECIPROCITY_PER_PAGE));
+  const currentReciprocityItems = actionableReciprocityNotifications.slice(
+    reciprocityPage * RECIPROCITY_PER_PAGE,
+    reciprocityPage * RECIPROCITY_PER_PAGE + RECIPROCITY_PER_PAGE
+  );
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    reciprocityRealtimeSeenRef.current = new Set();
+    const channel = supabase
+      .channel(`reciprocity_notifications_${currentUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'event_reciprocity_notifications',
+          filter: `receiver_user_id=eq.${currentUserId}`,
+        },
+        (payload) => {
+          const item = payload.new;
+          showReciprocityLocalNotification(item, { showAlert: true });
+          loadReciprocityNotifications({ notifyNew: true });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'event_reciprocity_notifications',
+          filter: `receiver_user_id=eq.${currentUserId}`,
+        },
+        () => {
+          loadReciprocityNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    loadReciprocityNotifications();
+    const intervalId = setInterval(() => {
+      loadReciprocityNotifications({ notifyNew: true });
+    }, 8000);
+
+    return () => clearInterval(intervalId);
+  }, [currentUserId]);
+
   // 품앗이 필터 이전 버튼 핸들러
   const handlePumasiBack = () => {
     if (pumasiFilterStep === 3) {
@@ -1613,6 +1933,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     if ((user?.id || userInfo?.userId) && events.length > 0) {
       loadPumasiReceived();
       loadPumasiGave();
+      loadReciprocityNotifications();
     }
   }, [user?.id, userInfo?.userId, events.length]);
 
@@ -1668,37 +1989,21 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             }}
           >
             {banners.map((banner, idx) => (
-              <View key={idx} style={{ width: bannerWidth, paddingHorizontal: 20, paddingBottom: 4 }}>
-                <View style={[styles.welcomeCard, { backgroundColor: banner.bg }]}>
-                  {/* 텍스트 */}
-                  <View style={styles.welcomeContent}>
-                    <Text style={[styles.welcomeTitle, { color: banner.titleColor }]}>
-                      {banner.title}
-                    </Text>
-                    <Text style={[styles.welcomeSubtitle, { color: banner.subColor }]}>
-                      {banner.sub}
-                    </Text>
+              <View key={idx} style={styles.welcomeSlide}>
+                <ImageBackground
+                  source={isTablet ? banner.tabletImage : banner.mobileImage}
+                  style={[
+                    styles.welcomeCard,
+                    isTablet ? styles.welcomeCardTablet : styles.welcomeCardMobile,
+                    styles.welcomeImageCard,
+                  ]}
+                  imageStyle={styles.welcomeCardBackgroundImage}
+                  resizeMode="cover"
+                >
+                  <View style={styles.welcomeTextLayer}>
+                    <Text style={styles.welcomeTitle}>{banner.title}</Text>
                   </View>
-                  {/* 메인 아이콘 */}
-                  <View style={styles.bannerIconWrap}>
-                    {banner.image ? (
-                      <Image source={banner.image} style={styles.bannerMainImage} resizeMode="contain" />
-                    ) : (
-                      <Text style={styles.bannerMainIcon}>{banner.icon}</Text>
-                    )}
-                  </View>
-                  {/* 데코 이모지 */}
-                  {banner.deco1 && (
-                    <Text style={[styles.bannerDeco, { top: banner.deco1.top, right: banner.deco1.right }]}>
-                      {banner.deco1.emoji}
-                    </Text>
-                  )}
-                  {banner.deco2 && (
-                    <Text style={[styles.bannerDeco, { top: banner.deco2.top, right: banner.deco2.right }]}>
-                      {banner.deco2.emoji}
-                    </Text>
-                  )}
-                </View>
+                </ImageBackground>
               </View>
             ))}
           </ScrollView>
@@ -1981,8 +2286,116 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <View style={{ height: 8, backgroundColor: '#F2F4F6', marginHorizontal: -20, marginTop: -28, marginBottom: 28 }} />
 
+        {/* ━━━━━━━━━━━━━━━━ 돌아온 경조사 ━━━━━━━━━━━━━━━━ */}
+        <View style={styles.reciprocitySection}>
+          <View style={styles.reciprocityHeader}>
+            <View>
+              <Text style={styles.reciprocityTitle}>챙길 경조사</Text>
+              <Text style={styles.reciprocitySubTitle}>내 행사에 와줬던 분의 새 소식</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.reciprocityUnreadPill}
+              onPress={() => navigation.navigate('Reciprocity')}
+              activeOpacity={0.78}
+            >
+              <Text style={styles.reciprocityUnreadText}>
+                전체 보기
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {actionableReciprocityNotifications.length === 0 ? (
+            <TouchableOpacity
+              style={styles.reciprocityEmptyCard}
+              onPress={() => navigation.navigate('Reciprocity')}
+              activeOpacity={0.82}
+            >
+              <View style={styles.reciprocityEmptyIcon}>
+                <Ionicons name="heart-circle-outline" size={30} color="#3182F6" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.reciprocityEmptyTitle}>아직 챙길 경조사가 없어요</Text>
+                <Text style={styles.reciprocityEmptyText}>
+                  챙긴 내역과 새 소식을 전체 보기에서 확인할 수 있어요.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#B0B8C1" />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.reciprocityList}>
+              {actionableReciprocityNotifications.slice(0, 1).map((item) => {
+                const originalEvents = item.originalEvents || [];
+                const newEvents = item.newEvents || [];
+                const latestNewEvent = newEvents[0] || item.new_event || {};
+                const originalEventCount = originalEvents.length || item.items?.length || 1;
+                const firstOriginalEvent = originalEvents[0] || item.original_event || {};
+                const isUnread = item.status === 'unread';
+                const guestPhone = formatPhoneNumber(item.source_guest_phone);
+
+                return (
+                  <TouchableOpacity
+                    key={item.groupKey || item.id}
+                    style={[
+                      styles.reciprocityCard,
+                      isUnread && styles.reciprocityCardUnread,
+                    ]}
+                    onPress={() => navigation.navigate('Reciprocity')}
+                    activeOpacity={0.84}
+                  >
+                    <View style={styles.reciprocityCardGlow} pointerEvents="none" />
+                    <View style={styles.reciprocityCardTop}>
+                      <View style={styles.reciprocityAvatar}>
+                        <Image
+                          source={getReciprocityEventIcon(latestNewEvent.event_type)}
+                          style={styles.reciprocityAvatarImage}
+                          resizeMode="contain"
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.reciprocityCardTitle} numberOfLines={1}>
+                          새로 챙길 일 {actionableReciprocityNotifications.length}건
+                        </Text>
+                          <Text style={styles.reciprocityCardSub} numberOfLines={1}>
+                          최근 {item.source_guest_name || '하객'}님 · {getEventTypeText(latestNewEvent.event_type)}
+                        </Text>
+                        {!!guestPhone && (
+                          <View style={styles.reciprocityPhoneRow}>
+                            <Ionicons name="call-outline" size={12} color="#8B95A1" />
+                            <Text style={styles.reciprocityPhoneText} numberOfLines={1}>
+                              {guestPhone}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      {isUnread && <View style={styles.reciprocityDot} />}
+                    </View>
+
+                    <View style={styles.reciprocityMemoryBox}>
+                      <Text style={styles.reciprocityMemoryLabel}>함께했던 마음</Text>
+                      <Text style={styles.reciprocityMemoryText} numberOfLines={1}>
+                        {latestNewEvent.event_name || '새 경조사'}
+                      </Text>
+                      <Text style={styles.reciprocityMemorySubText} numberOfLines={1}>
+                        내 행사 {originalEventCount}회 방문 · 최근 {firstOriginalEvent.event_name || '이전 경조사'} {formatAmount(firstOriginalEvent.amount || item.source_amount || 0)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.reciprocityActions}>
+                      <Text style={styles.reciprocityHintText}>이전 기록 보고 마음 전하기</Text>
+                      <View style={styles.reciprocityPrimaryBtn}>
+                        <Text style={styles.reciprocityPrimaryText}>전체 보기</Text>
+                        <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
         {/* ━━━━━━━━━━━━━━━━ 품앗이 장부 ━━━━━━━━━━━━━━━━ */}
-        <View style={styles.pmSection}>
+        <View style={[styles.pmSection, styles.pmSectionHidden]}>
 
           {/* 헤더 */}
           <View style={styles.pmHeader}>
@@ -2270,6 +2683,138 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      <Modal
+        visible={!!selectedReciprocityGroup}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedReciprocityGroup(null)}
+      >
+        <TouchableWithoutFeedback onPress={() => setSelectedReciprocityGroup(null)}>
+          <View style={styles.reciprocitySheetOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.reciprocitySheet}>
+                {(() => {
+                  const item = selectedReciprocityGroup || {};
+                  const originalEvents = item.originalEvents || [];
+                  const newEvents = item.newEvents || [];
+                  const latestNewEvent = newEvents[0] || item.new_event || {};
+                  const guestPhone = formatPhoneNumber(item.source_guest_phone);
+                  const totalAmount = item.source_amount_total || item.source_amount || 0;
+
+                  return (
+                    <>
+                      <View style={styles.reciprocitySheetHandle} />
+                      <View style={styles.reciprocitySheetHeader}>
+                        <View style={styles.reciprocitySheetAvatar}>
+                          <Text style={styles.reciprocitySheetAvatarText}>
+                            {(item.source_guest_name || '?').charAt(0)}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.reciprocitySheetTitle} numberOfLines={1}>
+                            {item.source_guest_name || '하객'}님과의 기록
+                          </Text>
+                          {!!guestPhone && (
+                            <Text style={styles.reciprocitySheetPhone}>{guestPhone}</Text>
+                          )}
+                        </View>
+                        <TouchableOpacity
+                          style={styles.reciprocitySheetClose}
+                          onPress={() => setSelectedReciprocityGroup(null)}
+                          activeOpacity={0.75}
+                        >
+                          <Ionicons name="close" size={20} color="#6B7684" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <Text style={styles.reciprocitySheetIntro}>
+                        새 경조사 소식이 있어요. 이전에 오고 간 마음을 확인하고 자연스럽게 챙겨보세요.
+                      </Text>
+
+                      <View style={styles.reciprocitySheetSummary}>
+                        <View style={styles.reciprocitySheetSummaryItem}>
+                          <Text style={styles.reciprocitySheetSummaryLabel}>함께한 기록</Text>
+                          <Text style={styles.reciprocitySheetSummaryValue}>{originalEvents.length}회</Text>
+                        </View>
+                        <View style={styles.reciprocitySheetSummaryDivider} />
+                        <View style={styles.reciprocitySheetSummaryItem}>
+                          <Text style={styles.reciprocitySheetSummaryLabel}>오간 마음</Text>
+                          <Text style={styles.reciprocitySheetSummaryValue}>{formatAmount(totalAmount)}</Text>
+                        </View>
+                      </View>
+
+                      <ScrollView
+                        style={styles.reciprocitySheetScroll}
+                        contentContainerStyle={styles.reciprocitySheetScrollContent}
+                        showsVerticalScrollIndicator={false}
+                      >
+                        <View style={styles.reciprocitySheetBlock}>
+                          <Text style={styles.reciprocitySheetBlockTitle}>챙길 경조사</Text>
+                          <View style={styles.reciprocitySheetNewEvent}>
+                          <View style={styles.reciprocitySheetNewEventIcon}>
+                              <Image
+                                source={getReciprocityEventIcon(latestNewEvent.event_type)}
+                                style={styles.reciprocitySheetNewEventImage}
+                                resizeMode="contain"
+                              />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.reciprocitySheetNewEventTitle} numberOfLines={1}>
+                                {latestNewEvent.event_name || '새 경조사'}
+                              </Text>
+                              <Text style={styles.reciprocitySheetNewEventSub} numberOfLines={1}>
+                                {latestNewEvent.event_date ? formatDate(latestNewEvent.event_date) : '날짜 미정'}
+                                {newEvents.length > 1 ? ` · 외 ${newEvents.length - 1}개` : ''}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+
+                        <View style={styles.reciprocitySheetBlock}>
+                          <Text style={styles.reciprocitySheetBlockTitle}>함께했던 기록</Text>
+                          {originalEvents.length === 0 ? (
+                            <Text style={styles.reciprocitySheetEmptyText}>연결된 참여 기록이 없어요.</Text>
+                          ) : (
+                            originalEvents.map((event) => (
+                              <TouchableOpacity
+                                key={event.id || event.notificationId}
+                                style={styles.reciprocitySheetHistoryRow}
+                                onPress={() => {
+                                  setSelectedReciprocityGroup(null);
+                                  openReciprocityDetail({
+                                    ...item,
+                                    items: item.items?.filter(raw => raw.original_event_id === event.id) || item.items,
+                                    original_event: event,
+                                  });
+                                }}
+                                activeOpacity={0.78}
+                              >
+                                <View style={styles.reciprocitySheetHistoryIcon}>
+                                  <Ionicons name="heart-outline" size={17} color="#3182F6" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.reciprocitySheetHistoryTitle} numberOfLines={1}>
+                                    {event.event_name || '이전 경조사'}
+                                  </Text>
+                                  <Text style={styles.reciprocitySheetHistorySub} numberOfLines={1}>
+                                    {event.event_date ? `${formatDate(event.event_date)} · ` : ''}{formatAmount(event.amount || 0)}
+                                  </Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={16} color="#B0B8C1" />
+                              </TouchableOpacity>
+                            ))
+                          )}
+                        </View>
+                      </ScrollView>
+                    </>
+                  );
+                })()}
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
       
       {/* 🔥 일정 추가 모달 */}
       <EventAddModal 
@@ -3156,27 +3701,58 @@ const styles = StyleSheet.create({
   welcomeSection: {
     marginBottom: 24,
   },
+  welcomeSlide: {
+    width,
+    paddingHorizontal: 0,
+    paddingBottom: 4,
+  },
   welcomeCard: {
     borderRadius: 20,
-    paddingHorizontal: 22,
-    paddingVertical: 22,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    height: 148,
+    width: '100%',
     overflow: 'hidden',
     position: 'relative',
+  },
+  welcomeCardMobile: {
+    height: 124,
+  },
+  welcomeCardTablet: {
+    alignSelf: 'center',
+    width: '100%',
+    height: 148,
+  },
+  welcomeImageCard: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  welcomeCardBackgroundImage: {
+    borderRadius: 20,
+  },
+  welcomeTextLayer: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingLeft: isTablet ? 34 : 26,
+    paddingRight: isTablet ? 300 : 118,
   },
   welcomeContent: {
     flex: 1,
     zIndex: 1,
   },
   welcomeTitle: {
-    fontSize: 22,
+    fontSize: isTablet ? 24 : 20,
     fontWeight: '800',
     color: '#191F28',
     marginBottom: 8,
-    lineHeight: 30,
-    letterSpacing: -0.5,
+    lineHeight: isTablet ? 32 : 27,
+    letterSpacing: 0,
   },
   welcomeSubtitle: {
     fontSize: 13,
@@ -4659,8 +5235,433 @@ const styles = StyleSheet.create({
   },
 
   // ── 품앗이 장부 (pm prefix) ──
+  reciprocitySection: {
+    marginBottom: 28,
+  },
+  reciprocityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  reciprocityTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#191F28',
+  },
+  reciprocitySubTitle: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#8B95A1',
+  },
+  reciprocityUnreadPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#EBF3FE',
+  },
+  reciprocityUnreadText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#3182F6',
+  },
+  reciprocityEmptyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 18,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EEF1F4',
+  },
+  reciprocityEmptyIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F4F9FF',
+  },
+  reciprocityEmptyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#191F28',
+  },
+  reciprocityEmptyText: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 17,
+    color: '#8B95A1',
+  },
+  reciprocityList: {
+    gap: 10,
+  },
+  reciprocityCard: {
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EEF1F4',
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#174EA6',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 2,
+  },
+  reciprocityCardUnread: {
+    borderColor: '#B7D7FF',
+    backgroundColor: '#FBFDFF',
+  },
+  reciprocityCardGlow: {
+    position: 'absolute',
+    right: -36,
+    top: -42,
+    width: 108,
+    height: 108,
+    borderRadius: 54,
+    backgroundColor: '#EEF6FF',
+  },
+  reciprocityCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  reciprocityAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#EEF1F4',
+  },
+  reciprocityAvatarText: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#3182F6',
+  },
+  reciprocityAvatarImage: {
+    width: 42,
+    height: 42,
+  },
+  reciprocityCardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#191F28',
+  },
+  reciprocityCardSub: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7684',
+  },
+  reciprocityPhoneRow: {
+    marginTop: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  reciprocityPhoneText: {
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  reciprocityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#3182F6',
+  },
+  reciprocityMemoryBox: {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#EEF1F4',
+  },
+  reciprocityMemoryLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  reciprocityMemoryText: {
+    marginTop: 4,
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  reciprocityMemorySubText: {
+    marginTop: 3,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8B95A1',
+  },
+  reciprocityActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 13,
+  },
+  reciprocityHintText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  reciprocityPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: '#3182F6',
+  },
+  reciprocityPrimaryText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  reciprocitySheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.32)',
+  },
+  reciprocitySheet: {
+    maxHeight: '82%',
+    paddingTop: 10,
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 22,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    backgroundColor: '#FFFFFF',
+  },
+  reciprocitySheetHandle: {
+    alignSelf: 'center',
+    width: 38,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#D1D6DB',
+    marginBottom: 16,
+  },
+  reciprocitySheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  reciprocitySheetAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EBF3FE',
+  },
+  reciprocitySheetAvatarText: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#3182F6',
+  },
+  reciprocitySheetTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  reciprocitySheetPhone: {
+    marginTop: 3,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  reciprocitySheetIntro: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#EEF1F4',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 20,
+    color: '#4E5968',
+  },
+  reciprocitySheetClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F2F4F6',
+  },
+  reciprocitySheetSummary: {
+    marginTop: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: '#F7FAFF',
+    borderWidth: 1,
+    borderColor: '#E8F2FF',
+  },
+  reciprocitySheetSummaryItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  reciprocitySheetSummaryDivider: {
+    width: 1,
+    height: 34,
+    backgroundColor: '#DCEBFF',
+  },
+  reciprocitySheetSummaryLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  reciprocitySheetSummaryValue: {
+    marginTop: 5,
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  reciprocitySheetScroll: {
+    marginTop: 18,
+  },
+  reciprocitySheetScrollContent: {
+    paddingBottom: 8,
+    gap: 18,
+  },
+  reciprocitySheetBlock: {
+    gap: 10,
+  },
+  reciprocitySheetBlockTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  reciprocitySheetNewEvent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#F7FAFF',
+    borderWidth: 1,
+    borderColor: '#E8F2FF',
+  },
+  reciprocitySheetNewEventIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8F2FF',
+  },
+  reciprocitySheetNewEventImage: {
+    width: 38,
+    height: 38,
+  },
+  reciprocitySheetNewEventTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  reciprocitySheetNewEventSub: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  reciprocitySheetEmptyText: {
+    paddingVertical: 16,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  reciprocitySheetHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EEF1F4',
+  },
+  reciprocitySheetHistoryIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EBF3FE',
+  },
+  reciprocitySheetHistoryTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  reciprocitySheetHistorySub: {
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  reciprocityGhostBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#F2F4F6',
+  },
+  reciprocityGhostText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#6B7684',
+  },
+  reciprocityPager: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  reciprocityPageButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EBF3FE',
+    borderWidth: 1,
+    borderColor: '#D7E9FF',
+  },
+  reciprocityPageButtonDisabled: {
+    backgroundColor: '#F2F4F6',
+    borderColor: '#EEF1F4',
+  },
+  reciprocityPageText: {
+    minWidth: 44,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#4E5968',
+  },
   pmSection: {
     paddingBottom: 8,
+  },
+  pmSectionHidden: {
+    display: 'none',
   },
   pmHeader: {
     flexDirection: 'row',

@@ -61,8 +61,20 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "notification": {
+      "icon": "./assets/images/jeongdamlogo.png",
+      "color": "#191F28",
+      "iosDisplayInForeground": true
+    },
     "scheme": "gyeongjoapp",
     "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/jeongdamlogo.png",
+          "color": "#191F28"
+        }
+      ],
       "./plugins/withWorkManagerFix"
     ],
     "extra": {

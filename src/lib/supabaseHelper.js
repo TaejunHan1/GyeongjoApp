@@ -1234,6 +1234,27 @@ export const updateEvent = async (eventId, updates) => {
       .single();
 
     if (error) {
+      if (
+        Object.prototype.hasOwnProperty.call(updates, 'additional_info') &&
+        (error.code === 'PGRST116' || /0 rows|no rows|multiple/.test(error.message || ''))
+      ) {
+        const rpcRes = await supabase.rpc('update_shared_event_additional_info', {
+          p_actor_id: currentUser.id,
+          p_event_id: eventId,
+          p_additional_info: updates.additional_info || {},
+        });
+        const rpcData = Array.isArray(rpcRes.data) ? rpcRes.data[0] : rpcRes.data;
+        if (!rpcRes.error && rpcData?.success) {
+          return {
+            success: true,
+            data: {
+              id: eventId,
+              additional_info: updates.additional_info || {},
+              updated_at: processedUpdates.updated_at,
+            },
+          };
+        }
+      }
       throw error;
     }
 

@@ -16,15 +16,85 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { getUserEvents, getEventStatistics, deleteEvent } from '../../lib/supabaseHelper';
+import { getUserEvents, getEventStatistics, deleteEvent, updateEvent } from '../../lib/supabaseHelper';
 import { supabase } from '../../lib/supabase';
 import { getAlimtalkBalance } from '../../lib/alimtalkCredit';
 import { getCurrentUserInfo } from '../../lib/supabaseHelper';
+import {
+  getEventCardCoverPurchaseState,
+  purchaseEventCardCover,
+} from '../../lib/eventCardCoverCredit';
+import { getSharedEventsForCurrentUser } from '../../lib/eventSharing';
 import { normalizePhone, samePhone, isValidKoreanMobile } from '../../lib/phoneUtils';
 import SimpleModal from '../../components/SimpleModal';
 import ReceiptModal from '../../components/ReceiptModal';
 import { useSimpleAlert } from '../../hooks/useSimpleAlert';
 import { useTutorial } from '../../contexts/TutorialContext';
+
+const EVENT_CARD_COVERS = [
+  {
+    key: 'classic_ivory',
+    label: '클래식 아이보리',
+    description: '고급스러운 봉투 느낌',
+    price: 0,
+    image: require('../../../assets/event-card-covers/cover-classic-ivory.png'),
+  },
+  {
+    key: 'modern_blue',
+    label: '모던 블루',
+    description: '차분한 프리미엄 톤',
+    price: 60,
+    image: require('../../../assets/event-card-covers/cover-modern-blue.png'),
+  },
+  {
+    key: 'hanji_gold',
+    label: '한지 골드',
+    description: '전통 문양과 금박',
+    price: 90,
+    image: require('../../../assets/event-card-covers/cover-hanji-gold.png'),
+  },
+  {
+    key: 'floral_soft',
+    label: '플라워 소프트',
+    description: '밝은 꽃 장식',
+    price: 60,
+    image: require('../../../assets/event-card-covers/cover-floral-soft.png'),
+  },
+  {
+    key: 'black_premium',
+    label: '블랙 프리미엄',
+    description: '묵직한 행사 카드',
+    price: 120,
+    image: require('../../../assets/event-card-covers/cover-black-premium.png'),
+  },
+  {
+    key: 'minimal_lock',
+    label: '미니멀 락',
+    description: '정보 보호에 집중',
+    price: 50,
+    image: require('../../../assets/event-card-covers/cover-minimal-lock.png'),
+  },
+];
+
+const FREE_COVER_KEYS = EVENT_CARD_COVERS.filter((cover) => cover.price <= 0).map((cover) => cover.key);
+
+const parseAdditionalInfo = (value) => {
+  if (!value) return {};
+  if (typeof value === 'object') return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const getEventCoverKey = (event) => {
+  const info = parseAdditionalInfo(event?.additional_info);
+  return info.card_cover_key || null;
+};
+
+const getCoverByKey = (coverKey) => EVENT_CARD_COVERS.find((cover) => cover.key === coverKey) || null;
 
 export default function MyEventsScreen({ navigation, userInfo }) {
   const { startMyEventsTutorial, registerTarget, registerHandler, activeTutorial, step: tutorialStep } = useTutorial();
@@ -53,6 +123,11 @@ export default function MyEventsScreen({ navigation, userInfo }) {
   const { showAlert, alertProps } = useSimpleAlert();
   // 영수증 모달
   const [receiptModal, setReceiptModal] = useState({ visible: false, receipt: null });
+  // 주최 카드 덮개 구매/적용
+  const [coverSheetVisible, setCoverSheetVisible] = useState(false);
+  const [selectedCoverEvent, setSelectedCoverEvent] = useState(null);
+  const [ownedCoverKeys, setOwnedCoverKeys] = useState(FREE_COVER_KEYS);
+  const [coverPurchaseLoading, setCoverPurchaseLoading] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -139,7 +214,7 @@ export default function MyEventsScreen({ navigation, userInfo }) {
   const loadAllData = async () => {
     try {
       setLoading(true);
-      await Promise.all([loadHostedEvents(), loadParticipatedEvents(), loadAlimtalkBalance()]);
+      await Promise.all([loadHostedEvents(), loadParticipatedEvents(), loadAlimtalkBalance(), loadCoverPurchaseState()]);
       setDataLoaded(true);
       setLastLoadTime(Date.now());
     } finally {
@@ -156,15 +231,29 @@ export default function MyEventsScreen({ navigation, userInfo }) {
     }
   };
 
+  const loadCoverPurchaseState = async (userId = null) => {
+    try {
+      const res = await getEventCardCoverPurchaseState(userId);
+      if (res?.success) {
+        setOwnedCoverKeys(Array.from(new Set([...FREE_COVER_KEYS, ...(res.coverKeys || [])])));
+        if (typeof res.balance === 'number') setAlimtalkBalance(res.balance);
+      }
+    } catch (e) {
+      console.warn('event cover purchase state load failed:', e);
+    }
+  };
+
   // users 테이블 realtime 구독 — 같은 기기/다른 기기 어디서 차감돼도 즉시 반영
   React.useEffect(() => {
     let channel = null;
+    let eventsChannel = null;
     (async () => {
       const { getCurrentUserInfo } = await import('../../lib/supabaseHelper');
       const info = await getCurrentUserInfo();
       const uid = info?.user?.id;
       if (!uid) return;
       setCurrentUserId(uid);
+      loadCoverPurchaseState(uid);
       channel = supabase
         .channel(`myevents_balance_${uid}`)
         .on(
@@ -181,9 +270,63 @@ export default function MyEventsScreen({ navigation, userInfo }) {
           },
         )
         .subscribe();
+
+      eventsChannel = supabase
+        .channel(`myevents_events_${uid}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'events',
+            filter: `user_id=eq.${uid}`,
+          },
+          (payload) => {
+            const next = payload?.new;
+            if (!next?.id) return;
+            setHostedEvents(prev => prev.map(event => (
+              event.id === next.id
+                ? {
+                    ...event,
+                    ...next,
+                    status: determineEventStatus(next.event_date || event.event_date),
+                    stats: event.stats,
+                  }
+                : event
+            )));
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'events',
+            filter: `user_id=eq.${uid}`,
+          },
+          () => {
+            loadHostedEvents();
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'events',
+            filter: `user_id=eq.${uid}`,
+          },
+          (payload) => {
+            const deletedId = payload?.old?.id;
+            if (!deletedId) return;
+            setHostedEvents(prev => prev.filter(event => event.id !== deletedId));
+          },
+        )
+        .subscribe();
     })();
     return () => {
       if (channel) supabase.removeChannel(channel);
+      if (eventsChannel) supabase.removeChannel(eventsChannel);
     };
   }, []);
 
@@ -200,11 +343,30 @@ export default function MyEventsScreen({ navigation, userInfo }) {
 
   const loadHostedEvents = async () => {
     try {
-      const result = await getUserEvents();
-      if (!result.success) { setHostedEvents([]); return; }
-      const only = (result.data || []).filter(e =>
+      const [ownedResult, sharedResult] = await Promise.all([
+        getUserEvents(),
+        getSharedEventsForCurrentUser(),
+      ]);
+
+      if (!ownedResult.success && !sharedResult.success) { setHostedEvents([]); return; }
+
+      const ownedOnly = (ownedResult.data || []).filter(e =>
+        !e.is_personal_schedule && !e.isPersonalSchedule && e.source !== 'personal'
+      ).map(e => ({ ...e, shared_access: false, shared_role: 'owner' }));
+      const sharedOnly = (sharedResult.data || []).filter(e =>
         !e.is_personal_schedule && !e.isPersonalSchedule && e.source !== 'personal'
       );
+
+      const eventMap = new Map();
+      [...ownedOnly, ...sharedOnly].forEach((event) => {
+        if (!event?.id) return;
+        const current = eventMap.get(event.id);
+        if (!current || current.shared_access) eventMap.set(event.id, event);
+      });
+      const only = Array.from(eventMap.values()).sort((a, b) =>
+        new Date(b.created_at || 0) - new Date(a.created_at || 0)
+      );
+
       const withStats = await Promise.all(only.map(async (event) => {
         try {
           const s = await getEventStatistics(event.id);
@@ -359,6 +521,119 @@ export default function MyEventsScreen({ navigation, userInfo }) {
     } catch {}
   };
 
+  const openCoverSheet = (event) => {
+    if (event?.shared_access) {
+      return;
+    }
+    setSelectedCoverEvent(event);
+    setCoverSheetVisible(true);
+  };
+
+  const closeCoverSheet = () => {
+    if (coverPurchaseLoading) return;
+    setCoverSheetVisible(false);
+    setSelectedCoverEvent(null);
+  };
+
+  const applyCoverToEvent = async (event, coverKey) => {
+    if (!event?.id) return;
+    if (event.shared_access) {
+      showAlert({
+        title: '덮개 설정 권한이 없어요',
+        message: '카드 덮개는 행사를 만든 사람만 변경할 수 있어요.',
+      });
+      return;
+    }
+
+    const currentInfo = parseAdditionalInfo(event.additional_info);
+    const nextInfo = { ...currentInfo };
+    if (coverKey) {
+      nextInfo.card_cover_key = coverKey;
+    } else {
+      delete nextInfo.card_cover_key;
+    }
+
+    const result = await updateEvent(event.id, { additional_info: nextInfo });
+    if (!result?.success) {
+      showAlert({
+        title: '덮개 적용 실패',
+        message: result?.error || '잠시 후 다시 시도해주세요.',
+      });
+      return;
+    }
+
+    const updateLocalEvent = (item) => (
+      item.id === event.id ? { ...item, additional_info: nextInfo, updated_at: result.data?.updated_at || item.updated_at } : item
+    );
+    setHostedEvents(prev => prev.map(updateLocalEvent));
+    setSelectedCoverEvent(prev => (prev?.id === event.id ? updateLocalEvent(prev) : prev));
+    setCoverSheetVisible(false);
+  };
+
+  const purchaseAndApplyCover = async (cover) => {
+    if (!selectedCoverEvent || !cover || coverPurchaseLoading) return;
+    setCoverPurchaseLoading(true);
+
+    try {
+      const purchase = await purchaseEventCardCover({
+        userId: currentUserId,
+        coverKey: cover.key,
+        price: cover.price,
+      });
+
+      if (!purchase?.success) {
+        setAlimtalkBalance(purchase?.balance ?? alimtalkBalance);
+        showAlert({
+          title: purchase?.error === 'insufficient_balance' ? '크레딧이 부족해요' : '구매 실패',
+          message: purchase?.error === 'insufficient_balance'
+            ? `${cover.label} 덮개는 ${cover.price}크레딧이 필요해요.`
+            : purchase?.message || '잠시 후 다시 시도해주세요.',
+        });
+        return;
+      }
+
+      setOwnedCoverKeys(prev => Array.from(new Set([...prev, cover.key])));
+      if (typeof purchase.balance === 'number') setAlimtalkBalance(purchase.balance);
+      await applyCoverToEvent(selectedCoverEvent, cover.key);
+      loadCoverPurchaseState(currentUserId);
+    } finally {
+      setCoverPurchaseLoading(false);
+    }
+  };
+
+  const handleCoverSelect = (cover) => {
+    if (!selectedCoverEvent) return;
+    const currentCoverKey = getEventCoverKey(selectedCoverEvent);
+    if (currentCoverKey === cover.key) {
+      setCoverSheetVisible(false);
+      return;
+    }
+
+    const isOwned = cover.price <= 0 || ownedCoverKeys.includes(cover.key);
+
+    if (isOwned) {
+      applyCoverToEvent(selectedCoverEvent, cover.key);
+      return;
+    }
+
+    Alert.alert(
+      '덮개 구매',
+      `${cover.label} 덮개를 ${cover.price}크레딧으로 구매하고 바로 적용할까요?`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '구매',
+          onPress: () => purchaseAndApplyCover(cover),
+        },
+      ],
+    );
+  };
+
+  const handleRemoveCover = () => {
+    if (!selectedCoverEvent) return;
+    applyCoverToEvent(selectedCoverEvent, null);
+  };
+
   const filteredHostedEvents = hostedEvents.filter(e => {
     if (hostedFilter === 'active') return e.status === 'active';
     if (hostedFilter === 'completed') return e.status === 'completed';
@@ -495,16 +770,27 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                         confirmedCount: event.stats?.verifiedCount || 0,
                       },
                     };
+                    const coverKey = getEventCoverKey(event);
+                    const activeCover = getCoverByKey(coverKey);
+                    const CardContainer = activeCover ? View : TouchableOpacity;
                     return (
                       <View
                         key={event.id}
                         style={styles.eventCardWrap}
                         ref={index === 0 ? firstEventCardRef : null}
                       >
-                        <TouchableOpacity
-                          style={[styles.eventItem, unverified > 0 && styles.eventItemWithBanner]}
-                          onPress={() => navigation.navigate('EventDetail', navParams)}
-                          activeOpacity={0.6}
+                        <CardContainer
+                          style={[
+                            styles.eventItem,
+                            activeCover && styles.eventItemCovered,
+                            !activeCover && unverified > 0 && styles.eventItemWithBanner,
+                          ]}
+                          {...(!activeCover
+                            ? {
+                                onPress: () => navigation.navigate('EventDetail', navParams),
+                                activeOpacity: 0.6,
+                              }
+                            : {})}
                         >
                           {/* 아이콘 + 이름 + 삭제+상태 */}
                           <View style={styles.eventTopRow}>
@@ -524,13 +810,20 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                             </View>
 
                             <View style={styles.eventRightCol}>
-                              <TouchableOpacity
-                                style={styles.cardDeleteBtn}
-                                onPress={() => handleDeleteEvent(event.id, event.event_name)}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                              >
-                                <Ionicons name="trash-outline" size={15} color="#C5CCD5" />
-                              </TouchableOpacity>
+                              {!event.shared_access ? (
+                                <TouchableOpacity
+                                  style={styles.cardDeleteBtn}
+                                  onPress={() => handleDeleteEvent(event.id, event.event_name)}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                  <Ionicons name="trash-outline" size={15} color="#C5CCD5" />
+                                </TouchableOpacity>
+                              ) : (
+                                <View style={styles.sharedAccessBadge}>
+                                  <Ionicons name="people" size={11} color="#3182F6" />
+                                  <Text style={styles.sharedAccessBadgeText}>공유받음</Text>
+                                </View>
+                              )}
                               <View style={styles.statusRow}>
                                 <View style={[styles.statusDot, event.status === 'active' ? styles.statusDotActive : styles.statusDotDone]} />
                                 <Text style={[styles.statusLabel, event.status === 'active' ? styles.statusLabelActive : styles.statusLabelDone]}>
@@ -567,6 +860,23 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                             </View>
                           </View>
 
+                          {!activeCover && !event.shared_access && (
+                            <TouchableOpacity
+                              style={styles.eventCoverWideBtn}
+                              onPress={(pressEvent) => {
+                                pressEvent?.stopPropagation?.();
+                                openCoverSheet(event);
+                              }}
+                              activeOpacity={0.84}
+                            >
+                              <View style={styles.eventCoverWideIcon}>
+                                <Ionicons name="sparkles" size={15} color="#3182F6" />
+                              </View>
+                              <Text style={styles.eventCoverWideText}>덮개 꾸미기</Text>
+                              <Text style={styles.eventCoverWideSub}>카드 정보를 예쁘게 가리기</Text>
+                            </TouchableOpacity>
+                          )}
+
                           {/* 미확정 배너 — 카드 내부 하단에 붙임 */}
                           {unverified > 0 && (
                             <TouchableOpacity
@@ -584,7 +894,53 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                               <Ionicons name="chevron-forward" size={16} color="#C5CCD5" />
                             </TouchableOpacity>
                           )}
-                        </TouchableOpacity>
+                          {activeCover && (
+                            <TouchableOpacity
+                              style={styles.eventCoverOverlay}
+                              onPress={(pressEvent) => {
+                                pressEvent?.stopPropagation?.();
+                                navigation.navigate('EventDetail', navParams);
+                              }}
+                              activeOpacity={0.96}
+                            >
+                              <View style={styles.eventCoverWhiteShield} />
+                              <Image source={activeCover.image} style={styles.eventCoverImage} resizeMode="stretch" />
+                              <View style={styles.eventCoverBadge}>
+                                <Ionicons name="lock-closed" size={14} color="#FFFFFF" />
+                                <Text style={styles.eventCoverBadgeText}>덮개 적용중</Text>
+                              </View>
+                              <View style={styles.eventCoverHint}>
+                                <Ionicons name="chevron-forward" size={16} color="#8B95A1" />
+                              </View>
+                            </TouchableOpacity>
+                          )}
+                          {activeCover && !event.shared_access && (
+                            <TouchableOpacity
+                              style={styles.eventCoverEditBtn}
+                              onPress={(pressEvent) => {
+                                pressEvent?.stopPropagation?.();
+                                openCoverSheet(event);
+                              }}
+                              activeOpacity={0.8}
+                            >
+                              <Ionicons name="color-palette-outline" size={13} color="#191F28" />
+                              <Text style={styles.eventCoverEditText}>덮개 변경</Text>
+                            </TouchableOpacity>
+                          )}
+                          {activeCover && !event.shared_access && (
+                            <TouchableOpacity
+                              style={styles.eventCoverRemoveBtn}
+                              onPress={(pressEvent) => {
+                                pressEvent?.stopPropagation?.();
+                                applyCoverToEvent(event, null);
+                              }}
+                              activeOpacity={0.82}
+                            >
+                              <Ionicons name="close-circle-outline" size={13} color="#FFFFFF" />
+                              <Text style={styles.eventCoverRemoveText}>덮개 해제</Text>
+                            </TouchableOpacity>
+                          )}
+                        </CardContainer>
                       </View>
                     );
                   })}
@@ -718,6 +1074,96 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                 <Text style={styles.alertDeleteText}>삭제</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 주최 카드 덮개 설정 */}
+      <Modal
+        visible={coverSheetVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeCoverSheet}
+      >
+        <View style={styles.coverSheetOverlay}>
+          <TouchableOpacity style={styles.coverSheetBackdrop} activeOpacity={1} onPress={closeCoverSheet} />
+          <View style={styles.coverSheet}>
+            <View style={styles.coverSheetHandle} />
+            <View style={styles.coverSheetHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.coverSheetTitle}>카드 덮개 설정</Text>
+                <Text style={styles.coverSheetSub} numberOfLines={1}>
+                  {selectedCoverEvent?.event_name || '행사'} 정보를 예쁘게 가려둘 수 있어요
+                </Text>
+              </View>
+              <View style={styles.coverBalancePill}>
+                <Ionicons name="flash" size={13} color="#3182F6" />
+                <Text style={styles.coverBalanceText}>
+                  {alimtalkBalance == null ? '-' : alimtalkBalance}크레딧
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.coverNoneRow,
+                !getEventCoverKey(selectedCoverEvent) && styles.coverNoneRowActive,
+              ]}
+              onPress={handleRemoveCover}
+              activeOpacity={0.75}
+            >
+              <View style={styles.coverNoneIcon}>
+                <Ionicons name="eye-outline" size={18} color="#3182F6" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.coverNoneTitle}>덮개 없음</Text>
+                <Text style={styles.coverNoneSub}>카드 내용을 그대로 보여줘요</Text>
+              </View>
+              {!getEventCoverKey(selectedCoverEvent) && (
+                <Ionicons name="checkmark-circle" size={20} color="#3182F6" />
+              )}
+            </TouchableOpacity>
+
+            <ScrollView
+              style={styles.coverOptionScroll}
+              contentContainerStyle={styles.coverOptionList}
+              showsVerticalScrollIndicator={false}
+            >
+              {EVENT_CARD_COVERS.map((cover) => {
+                const isActive = getEventCoverKey(selectedCoverEvent) === cover.key;
+                const isOwned = cover.price <= 0 || ownedCoverKeys.includes(cover.key);
+                return (
+                  <TouchableOpacity
+                    key={cover.key}
+                    style={[styles.coverOptionCard, isActive && styles.coverOptionCardActive]}
+                    onPress={() => handleCoverSelect(cover)}
+                    activeOpacity={0.82}
+                    disabled={coverPurchaseLoading}
+                  >
+                    <Image source={cover.image} style={styles.coverOptionImage} resizeMode="cover" />
+                    <View style={styles.coverOptionInfo}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.coverOptionTitle}>{cover.label}</Text>
+                        <Text style={styles.coverOptionSub}>{cover.description}</Text>
+                      </View>
+                      <View style={[
+                        styles.coverPricePill,
+                        isOwned && styles.coverPricePillOwned,
+                        isActive && styles.coverPricePillActive,
+                      ]}>
+                        <Text style={[
+                          styles.coverPriceText,
+                          isOwned && styles.coverPriceTextOwned,
+                          isActive && styles.coverPriceTextActive,
+                        ]}>
+                          {isActive ? '적용중' : isOwned ? '보유' : `${cover.price}C`}
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -862,11 +1308,107 @@ const styles = StyleSheet.create({
     elevation: 3,
     overflow: 'hidden',
   },
+  eventItemCovered: {
+    aspectRatio: 900 / 520,
+    minHeight: 190,
+    maxHeight: 430,
+  },
   eventItemWithBanner: {
     paddingBottom: 0,
   },
   eventItemBorder: {},
-
+  eventCoverOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+    elevation: 20,
+    backgroundColor: '#FFFFFF',
+  },
+  eventCoverWhiteShield: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FFFFFF',
+  },
+  eventCoverImage: {
+    width: '100%',
+    height: '100%',
+    zIndex: 1,
+  },
+  eventCoverBadge: {
+    position: 'absolute',
+    left: 16,
+    bottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(25,31,40,0.68)',
+    zIndex: 2,
+  },
+  eventCoverBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  eventCoverEditBtn: {
+    position: 'absolute',
+    right: 14,
+    top: 14,
+    zIndex: 30,
+    elevation: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(229,232,235,0.9)',
+  },
+  eventCoverEditText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#191F28',
+  },
+  eventCoverRemoveBtn: {
+    position: 'absolute',
+    right: 14,
+    bottom: 14,
+    zIndex: 30,
+    elevation: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(25,31,40,0.72)',
+  },
+  eventCoverRemoveText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  eventCoverHint: {
+    position: 'absolute',
+    right: 16,
+    bottom: 18,
+    zIndex: 30,
+    elevation: 30,
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(229,232,235,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+  },
   // 미확정 배너 — 카드 내부 하단
   unverifiedBanner: {
     flexDirection: 'row',
@@ -937,6 +1479,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  sharedAccessBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#EBF3FF',
+  },
+  sharedAccessBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#3182F6',
   },
   statusRow: {
     flexDirection: 'row',
@@ -1016,6 +1572,39 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: '#C5CCD5',
+  },
+  eventCoverWideBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#F5F9FF',
+    borderWidth: 1,
+    borderColor: '#D6E8FF',
+  },
+  eventCoverWideIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: '#EBF3FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 9,
+  },
+  eventCoverWideText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#3182F6',
+    marginRight: 8,
+  },
+  eventCoverWideSub: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8B95A1',
+    textAlign: 'right',
   },
 
   // 참여 뱃지
@@ -1133,6 +1722,170 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: '#FF3B30',
+  },
+
+  // 카드 덮개 설정 바텀시트
+  coverSheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  coverSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.36)',
+  },
+  coverSheet: {
+    maxHeight: '82%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 10,
+    paddingHorizontal: 18,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 20,
+  },
+  coverSheetHandle: {
+    alignSelf: 'center',
+    width: 38,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#E5E8EB',
+    marginBottom: 16,
+  },
+  coverSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  coverSheetTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: -0.4,
+  },
+  coverSheetSub: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#8B95A1',
+  },
+  coverBalancePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#EBF3FF',
+  },
+  coverBalanceText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#3182F6',
+  },
+  coverNoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 13,
+    marginBottom: 12,
+  },
+  coverNoneRowActive: {
+    borderColor: '#3182F6',
+    backgroundColor: '#F5F9FF',
+  },
+  coverNoneIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: '#EBF3FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coverNoneTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  coverNoneSub: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#8B95A1',
+  },
+  coverOptionScroll: {
+    marginHorizontal: -2,
+  },
+  coverOptionList: {
+    paddingHorizontal: 2,
+    paddingBottom: 8,
+    gap: 12,
+  },
+  coverOptionCard: {
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    overflow: 'hidden',
+  },
+  coverOptionCardActive: {
+    borderColor: '#3182F6',
+    shadowColor: '#3182F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  coverOptionImage: {
+    width: '100%',
+    height: 128,
+    backgroundColor: '#F2F4F6',
+  },
+  coverOptionInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+  },
+  coverOptionTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  coverOptionSub: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#8B95A1',
+  },
+  coverPricePill: {
+    minWidth: 54,
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#191F28',
+  },
+  coverPricePillOwned: {
+    backgroundColor: '#F2F4F6',
+  },
+  coverPricePillActive: {
+    backgroundColor: '#3182F6',
+  },
+  coverPriceText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  coverPriceTextOwned: {
+    color: '#4E5968',
+  },
+  coverPriceTextActive: {
+    color: '#FFFFFF',
   },
 
   // 로딩
