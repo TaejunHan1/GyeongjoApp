@@ -18,6 +18,8 @@ const normalizeSavedFontFamily = (fontFamily) => {
 const fontFamilyFor = (fontFamily, fallback = SERIF_FONT) =>
   normalizeSavedFontFamily(fontFamily) || fallback;
 
+const splitManualLines = (value) => String(value ?? '').split(/\r?\n/);
+
 const buildEggPath = (w, h) =>
   `M ${w / 2} 0 ` +
   `C ${w * 0.86} 0, ${w} ${h * 0.42}, ${w} ${h * 0.68} ` +
@@ -209,14 +211,47 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
       const el = back[key] || templateBack[key];
       if (!el || !value) return null;
       const sizePx = scaledSize(el, 10);
+      // Saved/detail rendering draws Text directly, while the editor draws it inside
+      // a draggable box. Nudge the direct Text up to match the editor's visual baseline.
+      const baselineOffset = options.baselineOffset ?? sizePx * 0.28;
+      const manualLines = options.preserveManualLines ? splitManualLines(value) : null;
 
-      return (
+      return manualLines ? (
+        <View
+          style={{
+            position: 'absolute',
+            left: (el.x / 100) * width,
+            top: (el.y / 100) * height - baselineOffset,
+            width: ((el.w ?? 80) / 100) * width,
+            transform: [{ rotate: `${el.rotation || 0}deg` }],
+          }}
+        >
+          {manualLines.map((line, idx) => (
+            <Text
+              key={`${key}-line-${idx}`}
+              numberOfLines={1}
+              ellipsizeMode="clip"
+              style={{
+                textAlign: options.align || 'center',
+                fontFamily: fontFamilyFor(el.fontFamily),
+                fontSize: sizePx,
+                lineHeight: sizePx * 1.55,
+                color: el.color || options.color || '#3A3732',
+                fontWeight: el.bold ? '900' : options.weight || '500',
+                letterSpacing: el.letterSpacing ?? options.letterSpacing ?? 0,
+              }}
+            >
+              {line || ' '}
+            </Text>
+          ))}
+        </View>
+      ) : (
         <Text
           numberOfLines={options.lines === 1 ? 1 : undefined}
           style={{
             position: 'absolute',
             left: (el.x / 100) * width,
-            top: (el.y / 100) * height,
+            top: (el.y / 100) * height - baselineOffset,
             width: ((el.w ?? 80) / 100) * width,
             textAlign: options.align || 'center',
             fontFamily: fontFamilyFor(el.fontFamily),
@@ -224,7 +259,7 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
             lineHeight: options.lines && options.lines > 1 ? sizePx * 1.55 : undefined,
             color: el.color || options.color || '#3A3732',
             fontWeight: el.bold ? '900' : options.weight || '500',
-            letterSpacing: options.letterSpacing ?? 0,
+            letterSpacing: el.letterSpacing ?? options.letterSpacing ?? 0,
             transform: [{ rotate: `${el.rotation || 0}deg` }],
           }}
         >
@@ -253,8 +288,12 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
           <View style={{ position: 'absolute', width, height, backgroundColor: '#FFFDF9' }} />
         )}
 
+        {renderBackText('title', 'INVITATION', {
+          weight: '400',
+          letterSpacing: 0,
+        })}
         {renderBackText('invitation', backData.invitationText, {
-          lines: 8,
+          preserveManualLines: true,
           weight: '400',
           letterSpacing: 0.2,
         })}
@@ -265,6 +304,7 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
         ), {
           align: 'left',
           weight: '400',
+          baselineOffset: scaledSize(back.groomParents || templateBack.groomParents, 10) * 0.42,
         })}
         {renderBackText('brideParents', formatParentLine(
           backData.brideFather || '아버님',
@@ -273,12 +313,15 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
         ), {
           align: 'left',
           weight: '400',
+          baselineOffset: scaledSize(back.brideParents || templateBack.brideParents, 10) * 0.42,
         })}
         {renderBackText('groomName', invitation.groom, {
           letterSpacing: 2,
+          baselineOffset: scaledSize(back.groomName || templateBack.groomName, 10) * 0.42,
         })}
         {renderBackText('brideName', invitation.bride, {
           letterSpacing: 2,
+          baselineOffset: scaledSize(back.brideName || templateBack.brideName, 10) * 0.42,
         })}
         {renderBackText('dateLabel', '일  시  |', {
           align: 'left',
@@ -290,7 +333,7 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
           align: 'left',
         })}
         {!!invitation.venue && renderBackText('venue', invitation.venue, {
-          lines: 3,
+          preserveManualLines: true,
           align: 'left',
         })}
 
@@ -524,25 +567,39 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
       )}
 
       {/* 예식장 */}
-      {layout.venue && invitation.venue && (
-        <Text
-          numberOfLines={1}
-          style={{
-            position: 'absolute',
-            left: (layout.venue.x / 100) * width,
-            top: (layout.venue.y / 100) * height,
-            width: ((layout.venue.w ?? 100) / 100) * width,
-            textAlign: 'center',
-            fontFamily: fontFamilyFor(layout.venue.fontFamily),
-            fontSize: scaledSize(layout.venue, 9),
-            color: layout.venue.color || '#6B5B44',
-            fontWeight: layout.venue.bold ? '900' : '500',
-            transform: [{ rotate: `${layout.venue.rotation || 0}deg` }],
-          }}
-        >
-          {invitation.venue}
-        </Text>
-      )}
+      {layout.venue && invitation.venue && (() => {
+        const venueSize = scaledSize(layout.venue, 9);
+        const venueLines = splitManualLines(invitation.venue);
+        return (
+          <View
+            style={{
+              position: 'absolute',
+              left: (layout.venue.x / 100) * width,
+              top: (layout.venue.y / 100) * height,
+              width: ((layout.venue.w ?? 100) / 100) * width,
+              transform: [{ rotate: `${layout.venue.rotation || 0}deg` }],
+            }}
+          >
+            {venueLines.map((line, idx) => (
+              <Text
+                key={`venue-line-${idx}`}
+                numberOfLines={1}
+                ellipsizeMode="clip"
+                style={{
+                  textAlign: 'center',
+                  fontFamily: fontFamilyFor(layout.venue.fontFamily),
+                  fontSize: venueSize,
+                  lineHeight: venueSize * 1.55,
+                  color: layout.venue.color || '#6B5B44',
+                  fontWeight: layout.venue.bold ? '900' : '500',
+                }}
+              >
+                {line || ' '}
+              </Text>
+            ))}
+          </View>
+        );
+      })()}
 
       {/* 큰 날짜 (월/일 두 줄) — invitation.layout.dateBig 있을 때만 */}
       {layout.dateBig && invitation.date_str && (() => {

@@ -16,6 +16,7 @@ import {
   Platform,
   InteractionManager,
   Keyboard,
+  Vibration,
   Image,
   Animated,
 } from 'react-native';
@@ -24,7 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../styles/constants';
-import { getEventDetail, getEventContributions, getEventStatistics, addGuestBookEntry, updateGuestBookEntry, deleteGuestBookEntry, toggleGuestBookVerification } from '../../lib/supabaseHelper';
+import { getCurrentUserInfo, getEventDetail, getEventContributions, getEventStatistics, addGuestBookEntry, updateGuestBookEntry, deleteGuestBookEntry, toggleGuestBookVerification, updateEvent } from '../../lib/supabaseHelper';
 import { supabase } from '../../lib/supabase';
 import { sendAlimtalkWithCredit, getAlimtalkBalance } from '../../lib/alimtalkCredit';
 import { normalizePhone, samePhone } from '../../lib/phoneUtils';
@@ -70,7 +71,7 @@ export default function EventDetailScreen({ navigation, route }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-  const [activeTab, setActiveTab] = useState('all'); // 'all', 'verified', 'unverified'
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'groom', 'bride', 'verified', 'unverified'
   const [sortOrder, setSortOrder] = useState('default'); // 'default', 'amount_desc', 'amount_asc', 'name_asc', 'name_desc'
 
   // 성공 모달
@@ -105,6 +106,22 @@ export default function EventDetailScreen({ navigation, route }) {
   // 확정 관리 모달
   const [verifyManageModalVisible, setVerifyManageModalVisible] = useState(false);
   const [verifyPage, setVerifyPage] = useState(0); // 확정관리 페이지 (5개씩)
+  const [mealUnlocked, setMealUnlocked] = useState(false);
+  const [mealPasswordVisible, setMealPasswordVisible] = useState(false);
+  const [mealPassword, setMealPassword] = useState('');
+  const [mealPasswordError, setMealPasswordError] = useState('');
+  const [pendingMealAction, setPendingMealAction] = useState(null);
+  const [mealCompact, setMealCompact] = useState(true);
+  const [mealEditVisible, setMealEditVisible] = useState(false);
+  const [savingMealSettlement, setSavingMealSettlement] = useState(false);
+  const [mealFormError, setMealFormError] = useState('');
+  const [mealForm, setMealForm] = useState({
+    price: '',
+    contractedCount: '',
+    groomCount: '',
+    brideCount: '',
+  });
+  const mealPasswordShake = useRef(new Animated.Value(0)).current;
 
   // ── 바텀시트 애니메이션 (배경 fade / 시트 slide 분리) ──
   const bsAddFade     = useRef(new Animated.Value(0)).current;
@@ -112,11 +129,13 @@ export default function EventDetailScreen({ navigation, route }) {
   const bsVerifyFade  = useRef(new Animated.Value(0)).current;
   const bsVmFade      = useRef(new Animated.Value(0)).current;
   const bsSideFade    = useRef(new Animated.Value(0)).current;
+  const bsMealFade    = useRef(new Animated.Value(0)).current;
   const bsAddSlide    = useRef(new Animated.Value(600)).current;
   const bsStatSlide   = useRef(new Animated.Value(600)).current;
   const bsVerifySlide = useRef(new Animated.Value(600)).current;
   const bsVmSlide     = useRef(new Animated.Value(600)).current;
   const bsSideSlide   = useRef(new Animated.Value(600)).current;
+  const bsMealSlide   = useRef(new Animated.Value(600)).current;
 
   const openBS = useCallback((setVisible, fade, slide) => {
     setVisible(true);
@@ -589,6 +608,229 @@ export default function EventDetailScreen({ navigation, route }) {
     return new Intl.NumberFormat('ko-KR').format(parseInt(numbers));
   };
 
+  const parseAdditionalInfo = (value) => {
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    try {
+      return JSON.parse(value);
+    } catch (error) {
+      return {};
+    }
+  };
+
+  const getMealSettlement = () => {
+    const info = parseAdditionalInfo(event?.additional_info);
+    return info.meal_settlement || {};
+  };
+
+  const mealSettlement = getMealSettlement();
+  const mealTicketPrice = Number(mealSettlement.ticket_price || 0);
+  const mealContractedTicketCount = Number(mealSettlement.contracted_ticket_count || mealSettlement.ticket_count || 0);
+  const mealGroomTicketCount = Number(mealSettlement.groom_ticket_count || 0);
+  const mealBrideTicketCount = Number(mealSettlement.bride_ticket_count || 0);
+  const getMealContributionSide = (item) => {
+    const raw = item?.side || item?.relation_category || item?.relation_detail || '';
+    if (raw === 'bride' || raw === 'bride_side' || raw === '신부측') return 'bride';
+    return 'groom';
+  };
+  const mealTicketStats = contributions.reduce((acc, item) => {
+    const count = Number(item.ticket_count || 0);
+    if (count <= 0) return acc;
+    acc.total += count;
+    if (getMealContributionSide(item) === 'bride') {
+      acc.bride += count;
+    } else {
+      acc.groom += count;
+    }
+    return acc;
+  }, { total: 0, groom: 0, bride: 0 });
+  const mealRemainingTicketCount = mealContractedTicketCount - mealTicketStats.total;
+  const mealGroomRemainingTicketCount = mealGroomTicketCount - mealTicketStats.groom;
+  const mealBrideRemainingTicketCount = mealBrideTicketCount - mealTicketStats.bride;
+  const mealContractedTotalAmount = mealTicketPrice * mealContractedTicketCount;
+  const mealDistributedTotalAmount = mealTicketPrice * mealTicketStats.total;
+  const hasMealSettlement = mealTicketPrice > 0 || mealContractedTicketCount > 0 || mealGroomTicketCount > 0 || mealBrideTicketCount > 0;
+  const formatMealTicketDelta = (value) => {
+    if (value < 0) return `${formatAmountCard(Math.abs(value))}장 초과`;
+    return `${formatAmountCard(value)}장 남음`;
+  };
+  const formatProtectedMealAmount = (amount) => {
+    if (!mealUnlocked) return '금액 잠김';
+    return formatAmount(amount);
+  };
+
+  const getPhoneLast4Password = async () => {
+    const userResult = await getCurrentUserInfo();
+    const phone = userResult?.user?.phone || '';
+    const digits = String(phone).replace(/\D/g, '');
+    return digits.slice(-4);
+  };
+
+  const requestMealPassword = (action) => {
+    if (mealCompact && action === 'view') {
+      setMealCompact(false);
+    }
+    setPendingMealAction(action);
+    setMealPassword('');
+    setMealPasswordError('');
+    setMealPasswordVisible(true);
+  };
+
+  const closeMealPasswordModal = () => {
+    Keyboard.dismiss();
+    setMealPasswordVisible(false);
+    setMealPassword('');
+    setMealPasswordError('');
+    setPendingMealAction(null);
+  };
+
+  const closeMealEditModal = (extra) => {
+    Keyboard.dismiss();
+    closeBS(setMealEditVisible, bsMealFade, bsMealSlide, () => {
+      setMealFormError('');
+      if (typeof extra === 'function') extra();
+    });
+  };
+
+  const runMealAction = (action) => {
+    if (action === 'view') {
+      setMealUnlocked(true);
+      return;
+    }
+    if (action === 'edit') {
+      const settlement = getMealSettlement();
+      setMealForm({
+        price: settlement.ticket_price ? formatAmountInput(String(settlement.ticket_price)) : '',
+        contractedCount: (settlement.contracted_ticket_count || settlement.ticket_count) ? formatAmountInput(String(settlement.contracted_ticket_count || settlement.ticket_count)) : '',
+        groomCount: settlement.groom_ticket_count ? formatAmountInput(String(settlement.groom_ticket_count)) : '',
+        brideCount: settlement.bride_ticket_count ? formatAmountInput(String(settlement.bride_ticket_count)) : '',
+      });
+      setMealFormError('');
+      openBS(setMealEditVisible, bsMealFade, bsMealSlide);
+      return;
+    }
+    if (action === 'delete') {
+      showAlert({
+        title: '식대 정보 삭제',
+        message: '저장된 식권/식대 정산 정보를 삭제하시겠어요?',
+        confirmText: '삭제',
+        cancelText: '취소',
+        dangerous: true,
+        onConfirm: handleDeleteMealSettlement,
+      });
+    }
+  };
+
+  const handleConfirmMealPassword = async () => {
+    const triggerPasswordError = (message) => {
+      setMealPasswordError(message);
+      Vibration.vibrate(35);
+      mealPasswordShake.setValue(0);
+      Animated.sequence([
+        Animated.timing(mealPasswordShake, { toValue: 1, duration: 42, useNativeDriver: true }),
+        Animated.timing(mealPasswordShake, { toValue: -1, duration: 42, useNativeDriver: true }),
+        Animated.timing(mealPasswordShake, { toValue: 1, duration: 42, useNativeDriver: true }),
+        Animated.timing(mealPasswordShake, { toValue: 0, duration: 42, useNativeDriver: true }),
+      ]).start();
+    };
+
+    Keyboard.dismiss();
+    if (mealPassword.length < 4) {
+      triggerPasswordError('휴대폰 번호 뒤 4자리를 입력해주세요.');
+      return;
+    }
+    const expected = await getPhoneLast4Password();
+    if (!expected || expected.length < 4) {
+      triggerPasswordError('로그인한 휴대폰 번호를 확인할 수 없습니다.');
+      return;
+    }
+    if (mealPassword !== expected) {
+      triggerPasswordError('비밀번호가 맞지 않아요. 다시 입력해주세요.');
+      return;
+    }
+    const action = pendingMealAction;
+    setMealPasswordVisible(false);
+    setMealPassword('');
+    setMealPasswordError('');
+    setPendingMealAction(null);
+    runMealAction(action);
+  };
+
+  const saveMealSettlementInfo = async (nextSettlement) => {
+    if (!event) return { success: false, error: '이벤트 정보가 없습니다.' };
+    const nextAdditionalInfo = {
+      ...parseAdditionalInfo(event.additional_info),
+      meal_settlement: nextSettlement,
+    };
+    const result = await updateEvent(eventId, { additional_info: nextAdditionalInfo });
+    if (result.success) {
+      setEvent(prev => ({
+        ...prev,
+        ...(result.data || {}),
+        additional_info: nextAdditionalInfo,
+      }));
+    }
+    return result;
+  };
+
+  const handleSaveMealSettlement = async () => {
+    const price = parseInt(String(mealForm.price || '').replace(/[^0-9]/g, ''), 10) || 0;
+    const contractedCount = parseInt(String(mealForm.contractedCount || '').replace(/[^0-9]/g, ''), 10) || 0;
+    const groomCount = parseInt(String(mealForm.groomCount || '').replace(/[^0-9]/g, ''), 10) || 0;
+    const brideCount = parseInt(String(mealForm.brideCount || '').replace(/[^0-9]/g, ''), 10) || 0;
+    if (price <= 0) {
+      setMealFormError('식권 1장당 식대를 입력해주세요.');
+      return;
+    }
+    if (contractedCount <= 0) {
+      setMealFormError('전체 계약 식권 수를 입력해주세요.');
+      return;
+    }
+    if (groomCount <= 0 || brideCount <= 0) {
+      setMealFormError('신랑측/신부측 배정 식권 수를 모두 입력해주세요.');
+      return;
+    }
+    if (groomCount + brideCount !== contractedCount) {
+      setMealFormError('신랑측/신부측 배정 합계가 전체 계약 식권 수와 같아야 합니다.');
+      return;
+    }
+    Keyboard.dismiss();
+    setMealFormError('');
+    setSavingMealSettlement(true);
+    try {
+      const result = await saveMealSettlementInfo({
+        ticket_price: price,
+        contracted_ticket_count: contractedCount,
+        groom_ticket_count: groomCount,
+        bride_ticket_count: brideCount,
+        ticket_count: contractedCount,
+        updated_at: new Date().toISOString(),
+      });
+      if (result.success) {
+        setMealUnlocked(true);
+        closeMealEditModal(() => {
+          showAlert({ title: '저장 완료', message: '식대 정산 정보가 저장되었습니다.' });
+        });
+      } else {
+        showAlert({ title: '저장 실패', message: result.error || '식대 정보를 저장하지 못했습니다.' });
+      }
+    } catch (error) {
+      showAlert({ title: '저장 실패', message: '식대 정보 저장 중 오류가 발생했습니다.' });
+    } finally {
+      setSavingMealSettlement(false);
+    }
+  };
+
+  const handleDeleteMealSettlement = async () => {
+    const result = await saveMealSettlementInfo(null);
+    if (result.success) {
+      setMealUnlocked(false);
+      showAlert({ title: '삭제 완료', message: '식대 정산 정보가 삭제되었습니다.' });
+    } else {
+      showAlert({ title: '삭제 실패', message: result.error || '식대 정보를 삭제하지 못했습니다.' });
+    }
+  };
+
   // 검색 및 탭 필터링 계산
   const filteredContributions = contributions.filter(contribution => {
     // 검색 필터
@@ -600,6 +842,10 @@ export default function EventDetailScreen({ navigation, route }) {
       matchesTab = contribution.is_verified === true;
     } else if (activeTab === 'unverified') {
       matchesTab = contribution.is_verified === false;
+    } else if (activeTab === 'groom') {
+      matchesTab = getMealContributionSide(contribution) === 'groom';
+    } else if (activeTab === 'bride') {
+      matchesTab = getMealContributionSide(contribution) === 'bride';
     }
     
     return matchesSearch && matchesTab;
@@ -622,6 +868,13 @@ export default function EventDetailScreen({ navigation, route }) {
   const totalPages = Math.ceil(filteredContributions.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentPageContributions = filteredContributions.slice(startIndex, startIndex + itemsPerPage);
+  const listTabItems = [
+    { key: 'all', label: '전체', count: contributions.length },
+    { key: 'groom', label: '신랑측', count: contributions.filter(c => getMealContributionSide(c) === 'groom').length },
+    { key: 'bride', label: '신부측', count: contributions.filter(c => getMealContributionSide(c) === 'bride').length },
+    { key: 'unverified', label: '미확정', count: contributions.filter(c => !c.is_verified).length },
+    { key: 'verified', label: '확정', count: contributions.filter(c => c.is_verified).length },
+  ];
 
   // 검색어나 탭, 정렬이 변경되면 첫 페이지로 이동
   useEffect(() => {
@@ -1033,6 +1286,156 @@ export default function EventDetailScreen({ navigation, route }) {
         {/* 섹션 구분 */}
         <View style={styles.sectionGap} />
 
+        {/* 예식 정보 + 주최자 정산 */}
+        {event.event_type === 'wedding' && (
+          <>
+            <View style={styles.weddingInfoSection}>
+              <View style={styles.mealSettlementCard}>
+                <View style={styles.mealHeaderRow}>
+                  <View>
+                    <Text style={styles.mealTitle}>식대 정보</Text>
+                    <Text style={styles.mealSub}>
+                      {mealCompact ? '식권 현황만 간단히 보여요' : '식권 현황은 공개, 금액만 보호돼요'}
+                    </Text>
+                  </View>
+                  <View style={styles.mealHeaderActions}>
+                    {hasMealSettlement && (
+                      <TouchableOpacity
+                        style={styles.mealModeToggle}
+                        onPress={() => {
+                          setMealCompact(prev => {
+                            const next = !prev;
+                            if (next) setMealUnlocked(false);
+                            return next;
+                          });
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.mealModeToggleText}>
+                          간소화
+                        </Text>
+                        <View style={[styles.mealSwitchTrack, mealCompact && styles.mealSwitchTrackOn]}>
+                          <View style={[styles.mealSwitchThumb, mealCompact && styles.mealSwitchThumbOn]} />
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                    <View style={styles.mealLockBadge}>
+                      <Ionicons name={mealUnlocked ? 'lock-open-outline' : 'lock-closed-outline'} size={14} color="#8B95A1" />
+                      <Text style={styles.mealLockText}>{mealUnlocked ? '금액 열림' : '금액 잠김'}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {!hasMealSettlement ? (
+                  <TouchableOpacity
+                    style={styles.mealLockedBox}
+                    activeOpacity={0.8}
+                    onPress={() => requestMealPassword('edit')}
+                  >
+                    <View style={styles.mealLockedIcon}>
+                      <Ionicons name="receipt-outline" size={22} color="#3182F6" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.mealLockedTitle}>식권과 식대 정보를 입력해주세요</Text>
+                      <Text style={styles.mealLockedSub}>입력/수정 시 비밀번호가 필요해요</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#C5CCD5" />
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <View style={styles.mealSummaryGrid}>
+                      <View style={styles.mealSummaryItem}>
+                        <Text style={styles.mealSummaryLabel}>계약 식권</Text>
+                        <Text style={styles.mealSummaryValue}>{formatAmountCard(mealContractedTicketCount)}장</Text>
+                      </View>
+                      <View style={styles.mealSummaryItem}>
+                        <Text style={styles.mealSummaryLabel}>실제 배부</Text>
+                        <Text style={styles.mealSummaryValue}>{formatAmountCard(mealTicketStats.total)}장</Text>
+                      </View>
+                      <View style={styles.mealSummaryItem}>
+                        <Text style={styles.mealSummaryLabel}>잔여/초과</Text>
+                        <Text style={[
+                          styles.mealSummaryValue,
+                          mealRemainingTicketCount < 0 && { color: '#F04452' }
+                        ]}>
+                          {formatMealTicketDelta(mealRemainingTicketCount)}
+                        </Text>
+                      </View>
+                    </View>
+                    {!mealCompact && (
+                      <View style={[styles.mealSummaryGrid, { marginTop: 10 }]}>
+                        <View style={styles.mealSummaryItem}>
+                          <Text style={styles.mealSummaryLabel}>1인 식대</Text>
+                          <Text style={[
+                            styles.mealSummaryValue,
+                            !mealUnlocked && styles.mealProtectedValue
+                          ]}>
+                            {formatProtectedMealAmount(mealTicketPrice)}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                    <View style={styles.mealTicketSplitBox}>
+                      {[
+                        { label: '신랑측', assigned: mealGroomTicketCount, distributed: mealTicketStats.groom, remaining: mealGroomRemainingTicketCount },
+                        { label: '신부측', assigned: mealBrideTicketCount, distributed: mealTicketStats.bride, remaining: mealBrideRemainingTicketCount },
+                      ].map((item) => (
+                        <View key={item.label} style={styles.mealTicketSplitRow}>
+                          <Text style={styles.mealTicketSplitLabel}>{item.label}</Text>
+                          <Text style={styles.mealTicketSplitValue}>
+                            배정 {formatAmountCard(item.assigned)}장 · 배부 {formatAmountCard(item.distributed)}장
+                          </Text>
+                          <Text style={[
+                            styles.mealTicketSplitDelta,
+                            item.remaining < 0 && { color: '#F04452' }
+                          ]}>
+                            {formatMealTicketDelta(item.remaining)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                    {mealCompact ? (
+                      <View style={styles.mealCompactLockBox}>
+                        <Ionicons name="lock-closed-outline" size={15} color="#8B95A1" />
+                        <Text style={styles.mealCompactLockText}>식대와 예상 청구 금액은 숨겨져 있어요</Text>
+                      </View>
+                    ) : (
+                      <>
+                        <View style={styles.mealTotalBox}>
+                          <Text style={styles.mealTotalLabel}>예상 청구 식대</Text>
+                          <Text style={styles.mealTotalValue}>
+                            {formatProtectedMealAmount(mealContractedTotalAmount)}
+                          </Text>
+                          <Text style={styles.mealTotalSub}>
+                            실제 배부 기준 {formatProtectedMealAmount(mealDistributedTotalAmount)}
+                          </Text>
+                        </View>
+                        <View style={styles.mealActionRow}>
+                          <TouchableOpacity
+                            style={styles.mealActionBtn}
+                            onPress={() => mealUnlocked ? setMealUnlocked(false) : requestMealPassword('view')}
+                          >
+                            <Text style={styles.mealActionText}>{mealUnlocked ? '금액 숨기기' : '금액 보기'}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.mealActionBtn} onPress={() => requestMealPassword('edit')}>
+                            <Text style={styles.mealActionText}>수정</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.mealActionBtn} onPress={() => requestMealPassword('delete')}>
+                            <Text style={[styles.mealActionText, { color: '#F04452' }]}>삭제</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </>
+                    )}
+                  </>
+                )}
+              </View>
+
+            </View>
+
+            <View style={styles.sectionGap} />
+          </>
+        )}
+
         {/* ── 리스트 섹션 ── */}
         <View
           style={styles.newListSection}
@@ -1042,11 +1445,7 @@ export default function EventDetailScreen({ navigation, route }) {
           {/* 필터 탭 + 검색 */}
           <View style={styles.listControlRow}>
             <View style={styles.filterTabRow}>
-              {[
-                { key: 'all', label: '전체' },
-                { key: 'unverified', label: '미확정' },
-                { key: 'verified', label: '확정' },
-              ].map((tab) => (
+              {listTabItems.map((tab) => (
                 <TouchableOpacity
                   key={tab.key}
                   style={[styles.filterTab, activeTab === tab.key && styles.filterTabActive]}
@@ -1054,7 +1453,7 @@ export default function EventDetailScreen({ navigation, route }) {
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.filterTabText, activeTab === tab.key && styles.filterTabTextActive]}>
-                    {tab.label}
+                    {tab.label} {formatAmountCard(tab.count)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -1085,6 +1484,7 @@ export default function EventDetailScreen({ navigation, route }) {
                 })();
 
                 const isEditing = editingItemId === contribution.id;
+                const ticketCount = Number(contribution.ticket_count || 0);
 
                 return (
                   <View
@@ -1238,6 +1638,12 @@ export default function EventDetailScreen({ navigation, route }) {
                             {contribution.guest_phone ? (
                               <Text style={styles.flatPhone}>{contribution.guest_phone}</Text>
                             ) : null}
+                            {ticketCount > 0 && (
+                              <View style={styles.flatTicketBadge}>
+                                <Ionicons name="ticket-outline" size={12} color="#3182F6" />
+                                <Text style={styles.flatTicketBadgeText}>식권 {formatAmountCard(ticketCount)}장</Text>
+                              </View>
+                            )}
                           </View>
 
                           <View style={{ alignItems: 'flex-end' }}>
@@ -1913,6 +2319,218 @@ export default function EventDetailScreen({ navigation, route }) {
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* ── 식대 정산 비밀번호 확인 ── */}
+      <Modal
+        visible={mealPasswordVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeMealPasswordModal}
+      >
+        <KeyboardAvoidingView
+          style={styles.centerModalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.centerModalCard}>
+            <View style={styles.centerModalTopRow}>
+              <View style={styles.centerModalIcon}>
+                <Ionicons name="shield-checkmark" size={23} color="#3182F6" />
+              </View>
+              <TouchableOpacity
+                style={styles.centerModalClose}
+                onPress={closeMealPasswordModal}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={20} color="#8B95A1" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.centerModalTitle}>주최자 확인</Text>
+            <Text style={styles.centerModalDesc}>
+              민감한 식대 정보라 본인 확인 후 보여드릴게요.
+            </Text>
+            <View style={styles.passwordHintRow}>
+              <Ionicons name="phone-portrait-outline" size={15} color="#8B95A1" />
+              <Text style={styles.passwordHintText}>휴대폰 번호 뒤 4자리</Text>
+            </View>
+            <Animated.View
+              style={[
+                styles.passwordInputWrap,
+                {
+                  transform: [
+                    {
+                      translateX: mealPasswordShake.interpolate({
+                        inputRange: [-1, 1],
+                        outputRange: [-9, 9],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <TextInput
+                style={[styles.passwordInput, mealPasswordError && styles.passwordInputError]}
+                value={mealPassword}
+                onChangeText={(text) => {
+                  setMealPassword(text.replace(/[^0-9]/g, '').slice(0, 4));
+                  if (mealPasswordError) setMealPasswordError('');
+                }}
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={4}
+                placeholder="••••"
+                placeholderTextColor="#C5CCD5"
+                autoFocus
+                onSubmitEditing={handleConfirmMealPassword}
+              />
+            </Animated.View>
+            {!!mealPasswordError && (
+              <Text style={styles.passwordErrorText}>{mealPasswordError}</Text>
+            )}
+            <View style={styles.centerModalActions}>
+              <TouchableOpacity
+                style={styles.centerModalCancel}
+                onPress={closeMealPasswordModal}
+              >
+                <Text style={styles.centerModalCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.centerModalConfirm}
+                onPress={handleConfirmMealPassword}
+              >
+                <Text style={styles.centerModalConfirmText}>확인</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── 식대 정산 입력/수정 ── */}
+      <Modal
+        visible={mealEditVisible}
+        transparent
+        animationType="none"
+        onRequestClose={closeMealEditModal}
+      >
+        <KeyboardAvoidingView
+          style={styles.bsOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Animated.View style={[StyleSheet.absoluteFill, styles.bsBackdropAnim, { opacity: bsMealFade }]}>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeMealEditModal} />
+          </Animated.View>
+          <Animated.View style={[styles.bsContainer, { transform: [{ translateY: bsMealSlide }] }]}>
+            <View style={styles.bsHandle} />
+            <View style={styles.bsHeader}>
+              <Text style={styles.bsTitle}>식대 정산 정보</Text>
+              <TouchableOpacity onPress={closeMealEditModal} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={22} color="#8B95A1" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={{ paddingHorizontal: 20 }}
+              contentContainerStyle={{ paddingBottom: 8 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.bsLabel}>식권 1장당 식대</Text>
+              <View style={styles.bsAmountRow}>
+                <TextInput
+                  style={[styles.bsInput, { flex: 1, marginBottom: 0 }]}
+                  value={mealForm.price}
+                  onChangeText={(text) => {
+                    setMealForm(prev => ({ ...prev, price: formatAmountInput(text) }));
+                    if (mealFormError) setMealFormError('');
+                  }}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor="#C5CCD5"
+                />
+                <Text style={styles.bsAmountUnit}>원</Text>
+              </View>
+              <Text style={styles.bsLabel}>전체 계약 식권 수</Text>
+              <View style={styles.bsAmountRow}>
+                <TextInput
+                  style={[styles.bsInput, { flex: 1, marginBottom: 0 }]}
+                  value={mealForm.contractedCount}
+                  onChangeText={(text) => {
+                    setMealForm(prev => ({ ...prev, contractedCount: formatAmountInput(text) }));
+                    if (mealFormError) setMealFormError('');
+                  }}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor="#C5CCD5"
+                />
+                <Text style={styles.bsAmountUnit}>장</Text>
+              </View>
+              <View style={styles.mealSideInputRow}>
+                <View style={styles.mealSideInputCol}>
+                  <Text style={styles.bsLabel}>신랑측 배정</Text>
+                  <View style={styles.bsAmountRow}>
+                    <TextInput
+                      style={[styles.bsInput, { flex: 1, marginBottom: 0 }]}
+                      value={mealForm.groomCount}
+                      onChangeText={(text) => {
+                        setMealForm(prev => ({ ...prev, groomCount: formatAmountInput(text) }));
+                        if (mealFormError) setMealFormError('');
+                      }}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      placeholderTextColor="#C5CCD5"
+                    />
+                    <Text style={styles.bsAmountUnit}>장</Text>
+                  </View>
+                </View>
+                <View style={styles.mealSideInputCol}>
+                  <Text style={styles.bsLabel}>신부측 배정</Text>
+                  <View style={styles.bsAmountRow}>
+                    <TextInput
+                      style={[styles.bsInput, { flex: 1, marginBottom: 0 }]}
+                      value={mealForm.brideCount}
+                      onChangeText={(text) => {
+                        setMealForm(prev => ({ ...prev, brideCount: formatAmountInput(text) }));
+                        if (mealFormError) setMealFormError('');
+                      }}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      placeholderTextColor="#C5CCD5"
+                    />
+                    <Text style={styles.bsAmountUnit}>장</Text>
+                  </View>
+                </View>
+              </View>
+              {!!mealFormError && (
+                <Text style={styles.mealFormErrorText}>{mealFormError}</Text>
+              )}
+              <View style={styles.mealPreviewBox}>
+                <Text style={styles.mealPreviewLabel}>예상 청구 식대</Text>
+                <Text style={styles.mealPreviewValue}>
+                  {formatAmount(
+                    (parseInt(String(mealForm.price || '').replace(/[^0-9]/g, ''), 10) || 0) *
+                    (parseInt(String(mealForm.contractedCount || '').replace(/[^0-9]/g, ''), 10) || 0)
+                  )}
+                </Text>
+                <Text style={styles.mealPreviewSub}>
+                  신랑측/신부측 배정 합계 {
+                    formatAmountCard(
+                      (parseInt(String(mealForm.groomCount || '').replace(/[^0-9]/g, ''), 10) || 0) +
+                      (parseInt(String(mealForm.brideCount || '').replace(/[^0-9]/g, ''), 10) || 0)
+                    )
+                  }장
+                </Text>
+              </View>
+            </ScrollView>
+            <View style={styles.bsSaveWrap}>
+              <TouchableOpacity
+                style={[styles.bsSaveBtn, savingMealSettlement && { opacity: 0.6 }]}
+                onPress={handleSaveMealSettlement}
+                disabled={savingMealSettlement}
+              >
+                <Text style={styles.bsSaveBtnText}>{savingMealSettlement ? '저장 중...' : '저장'}</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* ── 하객 접수 바텀시트 ── */}
       <Modal
         visible={sideSelectVisible}
@@ -2267,6 +2885,347 @@ const styles = StyleSheet.create({
     height: 8,
     backgroundColor: '#F2F4F6',
   },
+  weddingInfoSection: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
+    gap: 12,
+  },
+  venueCompactCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 18,
+    backgroundColor: '#F8F9FA',
+    padding: 14,
+  },
+  venueCompactIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#EBF3FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  venueCompactTextBox: {
+    flex: 1,
+    minWidth: 0,
+  },
+  venueCompactLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#8B95A1',
+    marginBottom: 3,
+  },
+  venueCompactTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  venueCompactSub: {
+    fontSize: 12,
+    color: '#6B7684',
+    marginTop: 5,
+  },
+  venueToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 10,
+    height: 32,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  venueToggleButtonActive: {
+    backgroundColor: '#191F28',
+    borderColor: '#191F28',
+  },
+  venueToggleText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#6B7684',
+  },
+  venueToggleTextActive: {
+    color: '#FFFFFF',
+  },
+  venueToggleRow: {
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#F8F9FA',
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  venueToggleIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 11,
+    backgroundColor: '#EBF3FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  venueToggleRowText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#4E5968',
+  },
+  venueDetailBox: {
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+  },
+  venueDetailRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 10,
+  },
+  venueDetailLabel: {
+    width: 52,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#8B95A1',
+  },
+  venueDetailValue: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4E5968',
+    lineHeight: 18,
+  },
+  mealSettlementCard: {
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    padding: 16,
+  },
+  mealHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 14,
+  },
+  mealHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  mealModeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingLeft: 10,
+    paddingRight: 6,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#F2F4F6',
+  },
+  mealModeToggleText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#6B7684',
+  },
+  mealSwitchTrack: {
+    width: 34,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: '#D1D6DB',
+    padding: 2,
+    justifyContent: 'center',
+  },
+  mealSwitchTrackOn: {
+    backgroundColor: '#3182F6',
+  },
+  mealSwitchThumb: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  mealSwitchThumbOn: {
+    transform: [{ translateX: 14 }],
+  },
+  mealTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#191F28',
+  },
+  mealSub: {
+    fontSize: 12,
+    color: '#8B95A1',
+    marginTop: 4,
+  },
+  mealLockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#F2F4F6',
+  },
+  mealLockText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#8B95A1',
+  },
+  mealLockedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFF',
+    padding: 14,
+  },
+  mealLockedIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#EBF3FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mealLockedTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#191F28',
+    lineHeight: 20,
+  },
+  mealLockedSub: {
+    fontSize: 12,
+    color: '#8B95A1',
+    marginTop: 3,
+  },
+  mealSummaryGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  mealSummaryItem: {
+    flex: 1,
+    borderRadius: 14,
+    backgroundColor: '#F8F9FA',
+    padding: 14,
+  },
+  mealSummaryLabel: {
+    fontSize: 12,
+    color: '#8B95A1',
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  mealSummaryValue: {
+    fontSize: 17,
+    color: '#191F28',
+    fontWeight: '900',
+    letterSpacing: -0.4,
+  },
+  mealProtectedValue: {
+    fontSize: 15,
+    color: '#8B95A1',
+    letterSpacing: 0,
+  },
+  mealTotalBox: {
+    marginTop: 10,
+    borderRadius: 14,
+    backgroundColor: '#191F28',
+    padding: 16,
+  },
+  mealTotalLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.72)',
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  mealTotalValue: {
+    fontSize: 22,
+    color: '#FFFFFF',
+    fontWeight: '900',
+    letterSpacing: -0.6,
+  },
+  mealTotalSub: {
+    marginTop: 7,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.62)',
+    fontWeight: '700',
+  },
+  mealTicketSplitBox: {
+    marginTop: 10,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFF',
+    borderWidth: 1,
+    borderColor: '#E8F1FF',
+    padding: 12,
+    gap: 10,
+  },
+  mealTicketSplitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  mealTicketSplitLabel: {
+    width: 48,
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#3182F6',
+  },
+  mealTicketSplitValue: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4E5968',
+  },
+  mealTicketSplitDelta: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  mealCompactLockBox: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 14,
+    backgroundColor: '#F8F9FA',
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  mealCompactLockText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#8B95A1',
+  },
+  mealActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  mealActionBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#F2F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mealActionText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#4E5968',
+  },
 
   // ── 새 리스트 섹션 ────────────────────────────
   newListSection: {
@@ -2275,10 +3234,11 @@ const styles = StyleSheet.create({
   },
   listControlRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 14,
+    gap: 12,
   },
   filterDropdown: {
     flexDirection: 'row',
@@ -2291,7 +3251,9 @@ const styles = StyleSheet.create({
     color: '#191F28',
   },
   filterTabRow: {
+    flex: 1,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   filterTab: {
@@ -2355,6 +3317,22 @@ const styles = StyleSheet.create({
     color: '#3182F6',
     fontWeight: '500',
     marginTop: 2,
+  },
+  flatTicketBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#EBF3FF',
+  },
+  flatTicketBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#3182F6',
   },
   alimtalkBadge: {
     backgroundColor: '#FEE500',
@@ -4386,6 +5364,167 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  centerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.42)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  centerModalCard: {
+    width: '100%',
+    borderRadius: 26,
+    backgroundColor: '#FFFFFF',
+    padding: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.14,
+    shadowRadius: 28,
+    elevation: 12,
+  },
+  centerModalTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  centerModalIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 17,
+    backgroundColor: '#EBF3FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerModalClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F2F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerModalTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#191F28',
+    marginBottom: 7,
+  },
+  centerModalDesc: {
+    fontSize: 14,
+    color: '#6B7684',
+    lineHeight: 20,
+    marginBottom: 18,
+  },
+  passwordHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 8,
+  },
+  passwordHintText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#8B95A1',
+  },
+  passwordInputWrap: {
+    width: '100%',
+  },
+  passwordInput: {
+    width: '100%',
+    height: 58,
+    borderRadius: 16,
+    backgroundColor: '#F8F9FA',
+    textAlign: 'center',
+    fontSize: 25,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: 8,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#F2F4F6',
+  },
+  passwordInputError: {
+    backgroundColor: '#FFF1F0',
+    borderColor: '#FF6B6B',
+    marginBottom: 8,
+  },
+  passwordErrorText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E03131',
+    marginBottom: 16,
+  },
+  centerModalActions: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+  },
+  centerModalCancel: {
+    flex: 1,
+    height: 52,
+    borderRadius: 15,
+    backgroundColor: '#F2F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerModalCancelText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#4E5968',
+  },
+  centerModalConfirm: {
+    flex: 1,
+    height: 52,
+    borderRadius: 15,
+    backgroundColor: '#3182F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerModalConfirmText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  mealPreviewBox: {
+    marginTop: 8,
+    marginBottom: 10,
+    borderRadius: 14,
+    backgroundColor: '#F8F9FA',
+    padding: 16,
+  },
+  mealFormErrorText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E03131',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  mealPreviewLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8B95A1',
+    marginBottom: 6,
+  },
+  mealPreviewValue: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: -0.5,
+  },
+  mealPreviewSub: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  mealSideInputRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  mealSideInputCol: {
+    flex: 1,
   },
 
   // ── 확정 관리 바텀 시트 ────────────────────────

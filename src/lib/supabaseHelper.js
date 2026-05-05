@@ -1330,6 +1330,7 @@ export const getEventDetail = async (eventId) => {
           id,
           guest_name,
           amount,
+          ticket_count,
           relation_category,
           relation_detail,
           message,
@@ -1712,6 +1713,7 @@ export const getEventContributions = async (eventId) => {
         amount: item.amount || 0,
         relation_category: item.relation_to || '', // relation_to가 올바른 컬럼명
         relation_detail: item.relation_to || '',
+        ticket_count: item.ticket_count || 0,
         message: item.notes || '', // notes가 메시지 역할
         message_type: 'congratulation',
         is_verified: item.is_confirmed || false, // is_confirmed가 올바른 컬럼명
@@ -1769,6 +1771,7 @@ export const getEventContributions = async (eventId) => {
         guest_name,
         guest_phone,
         amount,
+        ticket_count,
         relation_category,
         relation_detail,
         side,

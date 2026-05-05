@@ -13,6 +13,7 @@ import {
   Easing,
   Share,
   Image,
+  ImageBackground,
   Modal,
   Pressable,
 } from 'react-native';
@@ -28,21 +29,112 @@ const { width } = Dimensions.get('window');
 const PREVIEW_CARD_WIDTH = 170;
 const SHEET_PREVIEW_WIDTH = Math.min(width - 72, 340);
 const PRINT_SIZE_GUIDE_IMAGE = require('../../../assets/studio/templates/floral/size.png');
-const PRINT_SIZE_GUIDE_WIDTH = Math.min(330, width - 52);
+const PAPER_INVITATION_HERO_IMAGE = require('../../../assets/studio/hero/paper-invitation-hero.png');
+const PRINT_SIZE_GUIDE_WIDTH = width - 68;
 const PRINT_SIZE_GUIDE_HEIGHT = PRINT_SIZE_GUIDE_WIDTH * (1086 / 1448);
 
-const FEATURE_LIST = [
-  { icon: 'flower-outline', label: '수채화 꽃·잎 장식', color: TC.green, bg: TC.greenSoft },
-  { icon: 'image-outline', label: '사진 자유 배치', color: TC.blue, bg: TC.blueSoft },
-  { icon: 'map-outline', label: '지도·교통 안내', color: TC.purple, bg: TC.purpleSoft },
-  { icon: 'document-text-outline', label: '고해상도 PDF', color: TC.orange, bg: TC.orangeSoft },
-];
+function TemplatePreviewCard({ template, selectedSide, onSelectSide, onOpen }) {
+  const hasBackPreview = !!template.backPreview;
+  const flip = useRef(new Animated.Value(selectedSide === 'back' ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(flip, {
+      toValue: selectedSide === 'back' ? 1 : 0,
+      duration: 360,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [flip, selectedSide]);
+
+  const frontRotate = flip.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+  const backRotate = flip.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['180deg', '360deg'],
+  });
+
+  return (
+    <TouchableOpacity
+      style={s.previewItem}
+      activeOpacity={0.85}
+      onPress={onOpen}
+    >
+      <View style={s.previewFlipStage}>
+        <Animated.View
+          style={[
+            s.previewFlipFace,
+            {
+              transform: [{ perspective: 900 }, { rotateY: frontRotate }],
+            },
+          ]}
+        >
+          <Image
+            source={template.preview}
+            style={s.previewImage}
+            resizeMode="cover"
+          />
+        </Animated.View>
+        {hasBackPreview && (
+          <Animated.View
+            style={[
+              s.previewFlipFace,
+              {
+                transform: [{ perspective: 900 }, { rotateY: backRotate }],
+              },
+            ]}
+          >
+            <Image
+              source={template.backPreview}
+              style={s.previewImage}
+              resizeMode="cover"
+            />
+          </Animated.View>
+        )}
+        <View style={s.previewOpenBadge} pointerEvents="none">
+          <Ionicons name="expand-outline" size={13} color="#fff" />
+          <Text style={s.previewOpenBadgeText}>크게 보기</Text>
+        </View>
+      </View>
+      {hasBackPreview && (
+        <View style={s.sideToggle} pointerEvents="box-none">
+          {[
+            { id: 'front', label: '앞면' },
+            { id: 'back', label: '뒷면' },
+          ].map((side) => {
+            const isSelected = selectedSide === side.id;
+            return (
+              <Pressable
+                key={side.id}
+                hitSlop={6}
+                style={[s.sideToggleButton, isSelected && s.sideToggleButtonActive]}
+                onPress={(event) => {
+                  event?.stopPropagation?.();
+                  onSelectSide(side.id);
+                }}
+              >
+                <Text style={[s.sideToggleText, isSelected && s.sideToggleTextActive]}>
+                  {side.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+      <Text style={s.previewName}>{template.name}</Text>
+      <Text style={s.previewSub}>{template.subtitle}</Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function BenefitsScreen({ navigation, userInfo, session, isAuthenticated }) {
   const [aiStatus, setAiStatus] = useState({ balance: 0 });
   const [heroFloat] = useState(new Animated.Value(0));
-  const [activeCategory, setActiveCategory] = useState('floral');
+  const [activeCategory, setActiveCategory] = useState('minimal');
   const [zoomTemplate, setZoomTemplate] = useState(null); // 바텀 시트 모달
+  const [templatePreviewSides, setTemplatePreviewSides] = useState({});
+  const [isSizeGuideOpen, setIsSizeGuideOpen] = useState(false);
   const sheetFade = useRef(new Animated.Value(0)).current;
   const sheetTranslateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
@@ -103,10 +195,6 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
     outputRange: [0, -6],
   });
 
-  const handleNotifyPaperInvite = () => {
-    // TODO: waitlist DB 저장 + 완료 토스트
-  };
-
   const handleShareReferral = async () => {
     try {
       await Share.share({
@@ -156,28 +244,20 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
                 { transform: [{ translateY: floatY }] },
               ]}
             >
-              {/* 장식 배경 이모지 */}
-              <Text style={[s.heroDeco, { top: 16, right: 20, fontSize: 40, opacity: 0.35 }]}>🌿</Text>
-              <Text style={[s.heroDeco, { bottom: 20, left: 16, fontSize: 32, opacity: 0.3 }]}>🌸</Text>
-
-              <View style={s.heroBadge}>
-                <Text style={s.heroBadgeText}>곧 출시</Text>
-              </View>
-
-              <Text style={s.heroTitle}>종이 청첩장{'\n'}디자이너</Text>
-              <Text style={s.heroSub}>
-                수채화 꽃·잎으로 꾸민 나만의 종이 청첩장{'\n'}
-                PDF로 받아 원하는 인쇄소에 맡기세요
-              </Text>
-
-              <TouchableOpacity
-                style={s.heroCta}
-                onPress={handleNotifyPaperInvite}
-                activeOpacity={0.85}
+              <ImageBackground
+                source={PAPER_INVITATION_HERO_IMAGE}
+                style={s.heroImageBg}
+                imageStyle={s.heroImage}
+                resizeMode="cover"
               >
-                <Ionicons name="notifications-outline" size={16} color="#fff" />
-                <Text style={s.heroCtaText}>출시 알림 받기</Text>
-              </TouchableOpacity>
+                <View style={s.heroTextScrim}>
+                  <Text style={s.heroTitle}>종이 청첩장{'\n'}디자이너</Text>
+                  <Text style={s.heroSub}>
+                    수채화 꽃·잎으로 꾸민 나만의 종이 청첩장{'\n'}
+                    PDF로 받아 원하는 인쇄소에 맡기세요
+                  </Text>
+                </View>
+              </ImageBackground>
             </Animated.View>
           </View>
         </StaggerItem>
@@ -185,10 +265,43 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
         {/* 템플릿 미리보기 (카테고리 + 가로 스크롤) */}
         <StaggerItem delay={80}>
           <View style={s.previewHead}>
-            <Text style={s.sectionLabel}>미리 보는 템플릿</Text>
+            <View>
+              <Text style={s.sectionLabel}>미리 보는 템플릿</Text>
+              <Text style={s.previewLead}>카드를 눌러 크게 보고 선택하세요</Text>
+            </View>
             <Text style={s.previewHint}>
               {MOBILE_TEMPLATES.filter((t) => t.category === activeCategory).length}종
             </Text>
+          </View>
+
+          <View style={s.previewSizeGuide}>
+            <Pressable
+              style={s.previewSizeGuideHeader}
+              onPress={() => setIsSizeGuideOpen((prev) => !prev)}
+            >
+              <View style={s.a6Paper}>
+                <Text style={s.a6Label}>A6</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.a6GuideTitle}>실제 인쇄 사이즈</Text>
+                <Text style={s.a6GuideSub}>105 × 148 mm 기준으로 제작돼요</Text>
+              </View>
+              <View style={s.sizeGuideAction}>
+                <Text style={s.sizeGuideActionText}>{isSizeGuideOpen ? '접기' : '보기'}</Text>
+                <Ionicons
+                  name={isSizeGuideOpen ? 'chevron-up' : 'chevron-down'}
+                  size={15}
+                  color={TC.inkMuted}
+                />
+              </View>
+            </Pressable>
+            {isSizeGuideOpen && (
+              <Image
+                source={PRINT_SIZE_GUIDE_IMAGE}
+                style={s.previewSizeGuideImage}
+                resizeMode="contain"
+              />
+            )}
           </View>
 
           {/* 카테고리 칩 */}
@@ -250,22 +363,25 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
               contentContainerStyle={s.previewRow}
             >
               {MOBILE_TEMPLATES.filter((t) => t.category === activeCategory).map(
-                (t) => (
-                  <TouchableOpacity
-                    key={t.id}
-                    style={s.previewItem}
-                    activeOpacity={0.85}
-                    onPress={() => openZoom(t)}
-                  >
-                    <Image
-                      source={t.preview}
-                      style={s.previewImage}
-                      resizeMode="cover"
+                (t) => {
+                  const hasBackPreview = !!t.backPreview;
+                  const selectedSide = hasBackPreview ? templatePreviewSides[t.id] || 'front' : 'front';
+
+                  return (
+                    <TemplatePreviewCard
+                      key={t.id}
+                      template={t}
+                      selectedSide={selectedSide}
+                      onOpen={() => openZoom(t)}
+                      onSelectSide={(side) => {
+                        setTemplatePreviewSides((prev) => ({
+                          ...prev,
+                          [t.id]: side,
+                        }));
+                      }}
                     />
-                    <Text style={s.previewName}>{t.name}</Text>
-                    <Text style={s.previewSub}>{t.subtitle}</Text>
-                  </TouchableOpacity>
-                )
+                  );
+                }
               )}
             </ScrollView>
           ) : (
@@ -277,26 +393,8 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
           )}
         </StaggerItem>
 
-        {/* 기능 4개 그리드 */}
-        <StaggerItem delay={160}>
-          <Text style={[s.sectionLabel, { marginTop: 28 }]}>이런 기능이 있어요</Text>
-        </StaggerItem>
-
-        <StaggerItem delay={220}>
-          <View style={s.featureGrid}>
-            {FEATURE_LIST.map((f, i) => (
-              <View key={i} style={s.featureCell}>
-                <View style={[s.featureBubble, { backgroundColor: f.bg }]}>
-                  <Ionicons name={f.icon} size={20} color={f.color} />
-                </View>
-                <Text style={s.featureText}>{f.label}</Text>
-              </View>
-            ))}
-          </View>
-        </StaggerItem>
-
         {/* 진행 과정 (3 step) */}
-        <StaggerItem delay={280}>
+        <StaggerItem delay={160}>
           <View style={s.stepsCard}>
             <Text style={s.stepsTitle}>어떻게 만드나요?</Text>
             <View style={s.stepRow}>
@@ -407,37 +505,45 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
                   </TouchableOpacity>
                 </View>
 
-                {/* 이미지 + 실제 사이즈 안내 — 시트가 길면 스크롤 */}
+                {/* 이미지 — 시트가 길면 스크롤 */}
                 <ScrollView
                   style={{ flexGrow: 0 }}
                   contentContainerStyle={{ paddingBottom: 8 }}
                   showsVerticalScrollIndicator={false}
                 >
-                  <View style={s.sheetImageWrap}>
-                    <Image
-                      source={zoomTemplate.preview}
-                      style={s.sheetImage}
-                      resizeMode="contain"
-                    />
-                  </View>
-
-                  {/* 실제 사이즈 안내 */}
-                  <View style={s.sizeGuide}>
-                    <View style={s.sizeGuideHeader}>
-                      <Ionicons name="resize-outline" size={16} color={TC.inkMuted} />
-                      <Text style={s.sizeGuideTitle}>실제 인쇄 사이즈</Text>
-                      <Text style={s.sizeGuideMeta}>A6 단면 · 105 × 148 mm</Text>
+                  {zoomTemplate.backPreview ? (
+                    <View style={s.sheetSpreadWrap}>
+                      <View style={s.sheetSideCard}>
+                        <Text style={s.sheetSideLabel}>앞면</Text>
+                        <Image
+                          source={zoomTemplate.preview}
+                          style={s.sheetSideImage}
+                          resizeMode="contain"
+                        />
+                      </View>
+                      <View style={s.sheetSideCard}>
+                        <Text style={s.sheetSideLabel}>뒷면</Text>
+                        <Image
+                          source={zoomTemplate.backPreview}
+                          style={s.sheetSideImage}
+                          resizeMode="contain"
+                        />
+                      </View>
                     </View>
-                    <Image
-                      source={PRINT_SIZE_GUIDE_IMAGE}
-                      style={s.sizeGuideImage}
-                      resizeMode="contain"
-                    />
-                  </View>
+                  ) : (
+                    <View style={s.sheetImageWrap}>
+                      <Image
+                        source={zoomTemplate.preview}
+                        style={s.sheetImage}
+                        resizeMode="contain"
+                      />
+                    </View>
+                  )}
                 </ScrollView>
 
                 {/* CTA — 이 템플릿으로 만들기 */}
                 <View style={s.sheetCtaWrap}>
+                  <Text style={s.sheetCtaHint}>앞면과 뒷면을 확인한 뒤 제작을 시작해요</Text>
                   <TouchableOpacity
                     style={s.sheetCta}
                     activeOpacity={0.85}
@@ -450,7 +556,7 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
                     }}
                   >
                     <Ionicons name="create-outline" size={18} color="#fff" />
-                    <Text style={s.sheetCtaText}>이 템플릿으로 만들기</Text>
+                    <Text style={s.sheetCtaText}>이 템플릿으로 종이 청첩장 만들기</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -501,29 +607,24 @@ const s = StyleSheet.create({
   // ═══ HERO 카드 ═══
   heroWrap: { paddingHorizontal: 20, paddingTop: 16 },
   heroCard: {
-    backgroundColor: '#F5EEE0',
     borderRadius: 24,
-    padding: 28,
-    minHeight: 240,
+    minHeight: 210,
     overflow: 'hidden',
-    position: 'relative',
+    backgroundColor: '#F8F1E7',
   },
-  heroDeco: {
-    position: 'absolute',
+  heroImageBg: {
+    minHeight: 210,
+    justifyContent: 'center',
   },
-  heroBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: TC.ink,
-    borderRadius: 8,
-    marginBottom: 14,
+  heroImage: {
+    borderRadius: 24,
   },
-  heroBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: 0.4,
+  heroTextScrim: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    paddingVertical: 26,
+    backgroundColor: 'rgba(255, 252, 246, 0.42)',
   },
   heroTitle: {
     fontSize: 28,
@@ -537,23 +638,6 @@ const s = StyleSheet.create({
     fontSize: 13,
     color: TC.inkSoft,
     lineHeight: 20,
-    letterSpacing: -0.2,
-    marginBottom: 20,
-  },
-  heroCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    backgroundColor: TC.ink,
-    borderRadius: 24,
-  },
-  heroCtaText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#fff',
     letterSpacing: -0.2,
   },
 
@@ -581,6 +665,51 @@ const s = StyleSheet.create({
     fontSize: 11,
     color: TC.inkMuted,
     fontWeight: '500',
+  },
+  previewLead: {
+    fontSize: 12,
+    color: TC.ink,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    paddingHorizontal: 20,
+    marginTop: -6,
+  },
+  previewSizeGuide: {
+    marginHorizontal: 20,
+    marginBottom: 14,
+    borderRadius: 14,
+    backgroundColor: '#F8F6F2',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E8E2D8',
+    overflow: 'hidden',
+  },
+  previewSizeGuideHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  sizeGuideAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingLeft: 8,
+  },
+  sizeGuideActionText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
+  previewSizeGuideImage: {
+    width: PRINT_SIZE_GUIDE_WIDTH,
+    height: PRINT_SIZE_GUIDE_HEIGHT,
+    alignSelf: 'center',
+    marginHorizontal: 14,
+    marginBottom: 14,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
   },
 
   // 카테고리 칩
@@ -664,11 +793,73 @@ const s = StyleSheet.create({
     alignItems: 'center',
     width: PREVIEW_CARD_WIDTH,
   },
+  previewFlipStage: {
+    width: PREVIEW_CARD_WIDTH,
+    height: PREVIEW_CARD_WIDTH * A6_ASPECT_RATIO,
+  },
+  previewFlipFace: {
+    ...StyleSheet.absoluteFillObject,
+    backfaceVisibility: 'hidden',
+  },
   previewImage: {
     width: PREVIEW_CARD_WIDTH,
     height: PREVIEW_CARD_WIDTH * A6_ASPECT_RATIO,
     borderRadius: 12,
     backgroundColor: '#FBF9F3',
+  },
+  previewOpenBadge: {
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    height: 26,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+  },
+  previewOpenBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  sideToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginTop: 8,
+    padding: 2,
+    borderRadius: 999,
+    backgroundColor: '#F1F1F1',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E1E1E1',
+  },
+  sideToggleButton: {
+    minWidth: 42,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+  },
+  sideToggleButtonActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  sideToggleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
+  sideToggleTextActive: {
+    color: TC.ink,
   },
 
   // 바텀 시트 모달
@@ -738,45 +929,30 @@ const s = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#FBF9F3',
   },
-
-  // 실제 사이즈 안내 — 컴팩트
-  sizeGuide: {
-    marginTop: 10,
-    marginHorizontal: 16,
-    backgroundColor: TC.bg,
-    borderRadius: 12,
-    paddingTop: 8,
-    paddingHorizontal: 10,
-    paddingBottom: 10,
-  },
-  sizeGuideHeader: {
-    flexDirection: 'row',
+  sheetSpreadWrap: {
+    flexDirection: 'column',
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 2,
-    marginBottom: 6,
+    gap: 18,
+    paddingHorizontal: 20,
   },
-  sizeGuideTitle: {
+  sheetSideCard: {
+    alignItems: 'center',
+  },
+  sheetSideImage: {
+    width: SHEET_PREVIEW_WIDTH,
+    height: SHEET_PREVIEW_WIDTH * A6_ASPECT_RATIO,
+    borderRadius: 12,
+    backgroundColor: '#FBF9F3',
+  },
+  sheetSideLabel: {
+    marginBottom: 8,
     fontSize: 12,
-    fontWeight: '700',
-    color: TC.ink,
-    letterSpacing: -0.2,
-  },
-  sizeGuideMeta: {
-    flex: 1,
-    fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '800',
     color: TC.inkMuted,
     letterSpacing: -0.2,
-    textAlign: 'right',
   },
-  sizeGuideImage: {
-    width: PRINT_SIZE_GUIDE_WIDTH,
-    height: PRINT_SIZE_GUIDE_HEIGHT,
-    alignSelf: 'center',
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-  },
+
   a6Guide: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -846,36 +1022,13 @@ const s = StyleSheet.create({
     letterSpacing: -0.2,
     marginTop: 2,
   },
-
-  // 기능 그리드
-  featureGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 20,
-    gap: 10,
-  },
-  featureCell: {
-    width: (width - 50) / 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: TC.card,
-    borderRadius: 14,
-    padding: 14,
-    gap: 10,
-  },
-  featureBubble: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  featureText: {
-    fontSize: 13,
+  sheetCtaHint: {
+    marginBottom: 10,
+    fontSize: 12,
     fontWeight: '700',
-    color: TC.ink,
+    color: TC.inkMuted,
+    textAlign: 'center',
     letterSpacing: -0.2,
-    flex: 1,
   },
 
   // Steps

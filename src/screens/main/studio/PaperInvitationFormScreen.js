@@ -150,10 +150,10 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
         bride: bride.trim(),
         date_str: formatDate(dateObj),
         time_str: formatTime(dateObj),
-        venue: venue.trim(),
+        venue,
         backData: supportsBackSide
           ? {
-              invitationText: invitationText.trim(),
+              invitationText,
               groomFather: groomFather.trim(),
               groomMother: groomMother.trim(),
               brideFather: brideFather.trim(),
@@ -369,8 +369,11 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
                     onChangeText={setVenue}
                     placeholder="그랜드 하얏트 서울 · 로즈홀 2층"
                     placeholderTextColor={TC.inkDim}
-                    style={s.input}
-                    maxLength={80}
+                    style={[s.input, s.compactTextArea]}
+                    multiline
+                    blurOnSubmit={false}
+                    textAlignVertical="top"
+                    maxLength={120}
                   />
                 </View>
               </>
@@ -386,6 +389,8 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
                     placeholderTextColor={TC.inkDim}
                     style={[s.input, s.textArea]}
                     multiline
+                    blurOnSubmit={false}
+                    textAlignVertical="top"
                     maxLength={160}
                   />
                 </View>
@@ -467,15 +472,20 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
           <View style={s.bottomBar}>
             {supportsBackSide && formStep === 2 && (
               <TouchableOpacity style={s.prevBtn} onPress={() => setFormStep(1)} activeOpacity={0.85}>
-                <Ionicons name="arrow-back" size={18} color={TC.ink} />
-                <Text style={s.prevBtnText}>이전</Text>
+                <Ionicons name="chevron-back" size={19} color={TC.ink} />
+                <Text style={s.prevBtnText}>앞면</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={[s.nextBtn, supportsBackSide && formStep === 2 && { flex: 1 }]} onPress={handleNext} activeOpacity={0.85}>
-              <Text style={s.nextBtnText}>
-                {supportsBackSide && formStep === 1 ? '다음 — 뒷면 입력' : '다음 — 위치 조정'}
-              </Text>
-              <Ionicons name="arrow-forward" size={18} color="#fff" />
+              <View style={{ flex: 1 }}>
+                <Text style={s.nextBtnEyebrow}>다음 단계</Text>
+                <Text style={s.nextBtnText}>
+                  {supportsBackSide && formStep === 1 ? '뒷면 입력' : '위치 조정'}
+                </Text>
+              </View>
+              <View style={s.nextIconBubble}>
+                <Ionicons name="arrow-forward" size={18} color="#fff" />
+              </View>
             </TouchableOpacity>
           </View>
       </KeyboardAvoidingView>
@@ -712,6 +722,12 @@ const s = StyleSheet.create({
     textAlignVertical: 'top',
     paddingTop: 2,
   },
+  compactTextArea: {
+    minHeight: 48,
+    lineHeight: 22,
+    textAlignVertical: 'top',
+    paddingTop: 2,
+  },
   relationCard: {
     marginHorizontal: 20,
     marginBottom: 8,
@@ -844,44 +860,67 @@ const s = StyleSheet.create({
   // 하단 다음 버튼
   bottomBar: {
     flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
-    backgroundColor: TC.bg,
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 18,
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
+    borderTopColor: '#EEF0F3',
   },
   nextBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    backgroundColor: TC.ink,
-    borderRadius: 14,
+    gap: 14,
+    flex: 1,
+    minHeight: 58,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    backgroundColor: '#111827',
+    borderRadius: 18,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 4,
   },
   prevBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
+    gap: 4,
+    minHeight: 54,
+    paddingHorizontal: 15,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
   },
   prevBtnText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
     color: TC.ink,
     letterSpacing: -0.3,
   },
+  nextBtnEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.62)',
+    letterSpacing: -0.1,
+    marginBottom: 2,
+  },
   nextBtnText: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '900',
     color: '#fff',
     letterSpacing: -0.3,
+  },
+  nextIconBubble: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   backHintCard: {
     flexDirection: 'row',

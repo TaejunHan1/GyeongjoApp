@@ -65,6 +65,8 @@ const normalizeSavedFontFamily = (fontFamily) => {
   return fontFamily;
 };
 
+const splitManualLines = (value) => String(value ?? '').split(/\r?\n/);
+
 // 텍스트 색상 옵션 — 청첩장에 어울리는 톤
 const COLOR_OPTIONS = [
   // 무채색
@@ -523,6 +525,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     }
     if (savedEl.shape) out.shape = savedEl.shape;
     if (savedEl.fontFamily) out.fontFamily = normalizeSavedFontFamily(savedEl.fontFamily);
+    if (savedEl.letterSpacing != null) out.letterSpacing = savedEl.letterSpacing;
     if (savedEl.locked) out.locked = true;
     if (savedEl.rotation != null) out.rotation = savedEl.rotation;
     if (savedEl.color) out.color = savedEl.color;
@@ -646,6 +649,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     color: text.greeting?.color,
   };
   const backConf = template.back || {};
+  const hasBackTitle = !!backConf.title;
   const makeBackText = (key, fallback) => {
     const conf = backConf[key] || fallback;
     return {
@@ -654,6 +658,9 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       w: ((conf.w ?? 80) / 100) * CANVAS_W,
       size: conf.size ?? 10,
       color: conf.color,
+      fontFamily: conf.fontFamily ? normalizeSavedFontFamily(conf.fontFamily) : undefined,
+      letterSpacing: conf.letterSpacing,
+      bold: conf.bold,
     };
   };
   const makeBackBox = (key, fallback) => {
@@ -667,6 +674,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     };
   };
   const initBackInvitation = makeBackText('invitation', { x: 18, y: 15.2, w: 64, size: 9.5, color: '#3A3732' });
+  const initBackTitle = makeBackText('title', { x: 18, y: 9.4, w: 64, size: 17, color: '#2C2A28', fontFamily: 'PlayfairDisplay', letterSpacing: 0 });
   const initBackGroomParents = makeBackText('groomParents', { x: 23, y: 39.7, w: 35, size: 8.5, color: '#3A3732' });
   const initBackBrideParents = makeBackText('brideParents', { x: 23, y: 44.1, w: 35, size: 8.5, color: '#3A3732' });
   const initBackGroomName = makeBackText('groomName', { x: 60, y: 39.3, w: 21, size: 13, color: '#2C2A28' });
@@ -700,6 +708,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       venue: merge(initVenue, 'venue'),
       dateBig: merge(initDateBig, 'dateBig'),
       greeting: merge(initGreeting, 'greeting'),
+      backTitle: mergeBack(initBackTitle, 'title'),
       backInvitation: mergeBack(initBackInvitation, 'invitation'),
       backGroomParents: mergeBack(initBackGroomParents, 'groomParents'),
       backBrideParents: mergeBack(initBackBrideParents, 'brideParents'),
@@ -757,6 +766,68 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       return { ...prev, [selected]: { ...el, x: el.x + dx, y: el.y + dy } };
     });
   };
+
+  const getElementBox = (el) => {
+    if (!el) return { w: 0, h: 0 };
+    if (el.w != null || el.h != null) {
+      return {
+        w: el.w ?? CANVAS_W,
+        h: el.h ?? (el.size ? el.size * 2.2 : 1),
+      };
+    }
+    return {
+      w: CANVAS_W,
+      h: el.size ? el.size * 2.2 : 1,
+    };
+  };
+
+  const alignSelected = (mode) => {
+    if (!selected) return;
+    setLayout((prev) => {
+      const el = prev[selected];
+      if (!el || el.locked) return prev;
+      const box = getElementBox(el);
+      const safeX = CANVAS_W * 0.08;
+      const safeY = CANVAS_H * 0.06;
+      const next = { ...el };
+
+      if (mode === 'centerX') next.x = (CANVAS_W - box.w) / 2;
+      if (mode === 'centerY') next.y = (CANVAS_H - box.h) / 2;
+      if (mode === 'safeLeft') next.x = safeX;
+      if (mode === 'safeRight') next.x = CANVAS_W - safeX - box.w;
+      if (mode === 'safeTop') next.y = safeY;
+      if (mode === 'safeBottom') next.y = CANVAS_H - safeY - box.h;
+
+      return { ...prev, [selected]: next };
+    });
+  };
+
+  const selectedMetrics = (() => {
+    if (!selected) return null;
+    const el = layout[selected];
+    if (!el) return null;
+    const box = getElementBox(el);
+    const centerDeltaX = Math.round(el.x + box.w / 2 - CANVAS_W / 2);
+    const centerDeltaY = Math.round(el.y + box.h / 2 - CANVAS_H / 2);
+    const leftGap = Math.round(el.x);
+    const rightGap = Math.round(CANVAS_W - el.x - box.w);
+    const topGap = Math.round(el.y);
+    const bottomGap = Math.round(CANVAS_H - el.y - box.h);
+    return {
+      centerDeltaX,
+      centerDeltaY,
+      leftGap,
+      rightGap,
+      topGap,
+      bottomGap,
+      horizontalGapDiff: Math.round(leftGap - rightGap),
+      verticalGapDiff: Math.round(topGap - bottomGap),
+      isCenterX: Math.abs(centerDeltaX) <= 1,
+      isCenterY: Math.abs(centerDeltaY) <= 1,
+      isEvenX: Math.abs(leftGap - rightGap) <= 1,
+      isEvenY: Math.abs(topGap - bottomGap) <= 1,
+    };
+  })();
 
   // 잠금 토글 — 잠그면 드래그/미세조정/크기/폰트 모두 차단
   const toggleLock = () => {
@@ -986,6 +1057,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
           : {}),
         ...(el.shape ? { shape: el.shape } : {}),
         ...(el.fontFamily ? { fontFamily: el.fontFamily } : {}),
+        ...(el.letterSpacing != null ? { letterSpacing: el.letterSpacing } : {}),
         ...(el.locked ? { locked: true } : {}),
         ...(el.rotation ? { rotation: el.rotation } : {}),
         ...(el.color ? { color: el.color } : {}),
@@ -1005,6 +1077,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
           ? {
               backData,
               back: {
+                ...(hasBackTitle ? { title: norm(layout.backTitle) } : {}),
                 invitation: norm(layout.backInvitation),
                 groomParents: norm(layout.backGroomParents),
                 brideParents: norm(layout.backBrideParents),
@@ -1077,7 +1150,9 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   const renderBackTextElement = (id, value, options = {}) => {
     const el = layout[id];
     if (!el || !value) return null;
-    const lineCount = options.lines || 1;
+    const manualLines = options.preserveManualLines ? splitManualLines(value) : null;
+    const lineCount = manualLines ? Math.max(1, manualLines.length) : options.lines || 1;
+    const lineHeight = lineCount === 1 ? el.size * 2.2 : el.size * 1.55;
     return (
       <DraggableElement
         id={id}
@@ -1086,7 +1161,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         initialX={el.x}
         initialY={el.y}
         width={Math.max(el.w, options.minWidth || 0)}
-        height={el.size * (lineCount === 1 ? 2.2 : lineCount * 1.45)}
+        height={manualLines ? lineHeight * lineCount : el.size * (lineCount === 1 ? 2.2 : lineCount * 1.45)}
         onMoveEnd={handleMoveEnd}
         onDragStart={() => setDragging(true)}
         onDragEnd={() => setDragging(false)}
@@ -1094,20 +1169,43 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         rotation={el.rotation}
         zIndex={4}
       >
-        <Text
-          numberOfLines={lineCount === 1 ? 1 : undefined}
-          style={{
-            textAlign: options.align || 'center',
-            fontFamily: el.fontFamily || SERIF_FONT,
-            fontSize: el.size,
-            lineHeight: lineCount === 1 ? undefined : el.size * 1.55,
-            color: el.color || options.color || '#3A3732',
-            fontWeight: el.bold ? '900' : options.weight || '500',
-            letterSpacing: options.letterSpacing ?? 0,
-          }}
-        >
-          {value}
-        </Text>
+        {manualLines ? (
+          <View pointerEvents="none" style={{ width: '100%' }}>
+            {manualLines.map((line, idx) => (
+              <Text
+                key={`${id}-line-${idx}`}
+                numberOfLines={1}
+                ellipsizeMode="clip"
+                style={{
+                  textAlign: options.align || 'center',
+                  fontFamily: el.fontFamily || SERIF_FONT,
+                  fontSize: el.size,
+                  lineHeight,
+                  color: el.color || options.color || '#3A3732',
+                  fontWeight: el.bold ? '900' : options.weight || '500',
+                  letterSpacing: el.letterSpacing ?? options.letterSpacing ?? 0,
+                }}
+              >
+                {line || ' '}
+              </Text>
+            ))}
+          </View>
+        ) : (
+          <Text
+            numberOfLines={lineCount === 1 ? 1 : undefined}
+            style={{
+              textAlign: options.align || 'center',
+              fontFamily: el.fontFamily || SERIF_FONT,
+              fontSize: el.size,
+              lineHeight: lineCount === 1 ? undefined : el.size * 1.55,
+              color: el.color || options.color || '#3A3732',
+              fontWeight: el.bold ? '900' : options.weight || '500',
+              letterSpacing: el.letterSpacing ?? options.letterSpacing ?? 0,
+            }}
+          >
+            {value}
+          </Text>
+        )}
       </DraggableElement>
     );
   };
@@ -1462,7 +1560,10 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
           </DraggableElement>
 
           {/* 장소 — 입력했을 때만 표시 (선택사항) */}
-          {!!formData.venue && (
+          {!!formData.venue && (() => {
+            const venueLines = splitManualLines(formData.venue);
+            const venueLineHeight = layout.venue.size * 1.55;
+            return (
             <DraggableElement
               id="venue"
               selected={selected === 'venue'}
@@ -1470,7 +1571,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               initialX={layout.venue.x}
               initialY={layout.venue.y}
               width={layout.venue.w}
-              height={layout.venue.size * 2.2}
+              height={Math.max(layout.venue.size * 2.2, venueLineHeight * venueLines.length)}
               onMoveEnd={handleMoveEnd}
               onDragStart={() => setDragging(true)}
               onDragEnd={() => setDragging(false)}
@@ -1478,20 +1579,28 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               rotation={layout.venue.rotation}
               zIndex={4}
             >
-              <Text
-                numberOfLines={1}
-                style={{
-                  textAlign: 'center',
-                  fontFamily: layout.venue.fontFamily || SERIF_FONT,
-                  fontSize: layout.venue.size,
-                  color: layout.venue.color || '#6B5B44',
-                  fontWeight: layout.venue.bold ? '900' : '500',
-                }}
-              >
-                {formData.venue}
-              </Text>
+              <View pointerEvents="none" style={{ width: '100%' }}>
+                {venueLines.map((line, idx) => (
+                  <Text
+                    key={`venue-line-${idx}`}
+                    numberOfLines={1}
+                    ellipsizeMode="clip"
+                    style={{
+                      textAlign: 'center',
+                      fontFamily: layout.venue.fontFamily || SERIF_FONT,
+                      fontSize: layout.venue.size,
+                      lineHeight: venueLineHeight,
+                      color: layout.venue.color || '#6B5B44',
+                      fontWeight: layout.venue.bold ? '900' : '500',
+                    }}
+                  >
+                    {line || ' '}
+                  </Text>
+                ))}
+              </View>
             </DraggableElement>
-          )}
+            );
+          })()}
 
           {/* 큰 날짜 (월/일 두 줄) — 템플릿에 dateBig 정의되고 일시 선택했을 때만 표시 */}
           {hasDateBig && bigDateText !== '' && (
@@ -1578,8 +1687,12 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                 />
               )}
 
+              {hasBackTitle && renderBackTextElement('backTitle', 'INVITATION', {
+                letterSpacing: layout.backTitle?.letterSpacing ?? 0,
+                weight: '400',
+              })}
               {renderBackTextElement('backInvitation', backData.invitationText, {
-                lines: 8,
+                preserveManualLines: true,
                 align: 'center',
                 weight: '400',
                 letterSpacing: 0.2,
@@ -1629,7 +1742,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                 weight: '500',
               })}
               {!!formData.venue && renderBackTextElement('backVenue', formData.venue, {
-                lines: 3,
+                preserveManualLines: true,
                 align: 'left',
                 weight: '500',
               })}
@@ -1661,6 +1774,17 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               </DraggableElement>
             </>
           )}
+
+          {selected && (
+            <View pointerEvents="none" style={s.guideLayer}>
+              <View style={s.guideCenterV} />
+              <View style={s.guideCenterH} />
+              <View style={s.guideSafeBox} />
+              <Text style={s.guideCenterVLabel}>세로 중앙</Text>
+              <Text style={s.guideCenterHLabel}>가로 중앙</Text>
+              <Text style={s.guideSafeLabel}>권장 여백</Text>
+            </View>
+          )}
           </Pressable>
       </View>
       </ScrollView>
@@ -1687,6 +1811,9 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                   : []),
             ]
           : [
+              ...(hasBackTitle
+                ? [{ id: 'backTitle', label: 'INVITATION', icon: 'text-outline' }]
+                : []),
               { id: 'backInvitation', label: '초대문구', icon: 'chatbubble-ellipses-outline' },
               { id: 'backGroomParents', label: '신랑측', icon: 'people-outline' },
               { id: 'backGroomName', label: '신랑', icon: 'person-outline' },
@@ -1921,6 +2048,63 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             {/* 위치 — 4방향 미세조정 (크게) */}
             {currentTab === 'position' && (
               <View style={[s.positionPad, lockedDimStyle]} pointerEvents={lockedPointer}>
+                {selectedMetrics && (
+                  <View style={s.measurePanel}>
+                    <View style={s.measureRow}>
+                      <Text style={s.measureLabel}>중앙</Text>
+                      <Text
+                        style={[
+                          s.measureValue,
+                          selectedMetrics.isCenterX && selectedMetrics.isCenterY && s.measureValueGood,
+                        ]}
+                      >
+                        X {selectedMetrics.centerDeltaX > 0 ? '+' : ''}
+                        {selectedMetrics.centerDeltaX}px · Y{' '}
+                        {selectedMetrics.centerDeltaY > 0 ? '+' : ''}
+                        {selectedMetrics.centerDeltaY}px
+                      </Text>
+                    </View>
+                    <View style={s.measureRow}>
+                      <Text style={s.measureLabel}>좌우</Text>
+                      <Text
+                        style={[
+                          s.measureValue,
+                          selectedMetrics.isEvenX && s.measureValueGood,
+                        ]}
+                      >
+                        L {selectedMetrics.leftGap}px / R {selectedMetrics.rightGap}px
+                      </Text>
+                    </View>
+                    <View style={s.measureRow}>
+                      <Text style={s.measureLabel}>상하</Text>
+                      <Text
+                        style={[
+                          s.measureValue,
+                          selectedMetrics.isEvenY && s.measureValueGood,
+                        ]}
+                      >
+                        T {selectedMetrics.topGap}px / B {selectedMetrics.bottomGap}px
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                <View style={s.alignQuickRow}>
+                  {[
+                    { id: 'centerX', label: '가로중앙' },
+                    { id: 'centerY', label: '세로중앙' },
+                    { id: 'safeLeft', label: '좌측여백' },
+                    { id: 'safeRight', label: '우측여백' },
+                  ].map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={s.alignQuickBtn}
+                      onPress={() => alignSelected(item.id)}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={s.alignQuickText}>{item.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
                 <View style={s.positionRow}>
                   <View style={s.positionSlot} />
                   <HoldButton style={s.positionBtn} onPress={() => nudge(0, -1)}>
@@ -2068,6 +2252,77 @@ const s = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
+  },
+  guideLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 99,
+    elevation: 99,
+  },
+  guideCenterV: {
+    position: 'absolute',
+    left: '50%',
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: 'rgba(49,130,246,0.48)',
+  },
+  guideCenterH: {
+    position: 'absolute',
+    top: '50%',
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(49,130,246,0.48)',
+  },
+  guideSafeBox: {
+    position: 'absolute',
+    left: '8%',
+    right: '8%',
+    top: '6%',
+    bottom: '6%',
+    borderWidth: 1,
+    borderColor: 'rgba(49,130,246,0.26)',
+    borderStyle: 'dashed',
+  },
+  guideCenterVLabel: {
+    position: 'absolute',
+    top: 8,
+    left: '50%',
+    marginLeft: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: 'rgba(49,130,246,0.86)',
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  guideCenterHLabel: {
+    position: 'absolute',
+    top: '50%',
+    right: 8,
+    marginTop: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: 'rgba(49,130,246,0.86)',
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  guideSafeLabel: {
+    position: 'absolute',
+    left: '8%',
+    top: '6%',
+    marginTop: 4,
+    marginLeft: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    color: TC.blue,
+    fontSize: 9,
+    fontWeight: '900',
   },
 
   selectedBorder: {
@@ -2355,8 +2610,62 @@ const s = StyleSheet.create({
   // 위치 D-pad (크게, 직관적)
   positionPad: {
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
     paddingVertical: 4,
+  },
+  alignQuickRow: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  measurePanel: {
+    width: '100%',
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: '#F7FAFF',
+    borderWidth: 1,
+    borderColor: '#DCEBFF',
+    gap: 5,
+  },
+  measureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  measureLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: TC.inkMuted,
+  },
+  measureValue: {
+    flex: 1,
+    textAlign: 'right',
+    fontSize: 11,
+    fontWeight: '800',
+    color: TC.ink,
+  },
+  measureValueGood: {
+    color: TC.blue,
+  },
+  alignQuickBtn: {
+    minWidth: 72,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#F2F7FF',
+    borderWidth: 1,
+    borderColor: '#D8E8FF',
+    alignItems: 'center',
+  },
+  alignQuickText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: TC.blue,
+    letterSpacing: -0.2,
   },
   positionRow: {
     flexDirection: 'row',

@@ -61,7 +61,8 @@ INSERT INTO alimtalk_packages
 VALUES
   ('pack_125', '기본',   '결혼식/장례식 1회 소규모',  10000, 125, 0,   'alimtalk_pack_125', 'alimtalk_pack_125', false, 1),
   ('pack_400', '추천',   '보너스 100건 포함',        30000, 300, 100, 'alimtalk_pack_400', 'alimtalk_pack_400', true,  2),
-  ('pack_700', '대용량', '보너스 200건 포함',        50000, 500, 200, 'alimtalk_pack_700', 'alimtalk_pack_700', false, 3)
+  ('pack_700', '대용량', '보너스 200건 포함',        50000, 500, 200, 'alimtalk_pack_700', 'alimtalk_pack_700', false, 3),
+  ('pack_1250', '방명록', '하객 접수 행사 이용권 1회 기준', 100000, 1250, 0, 'alimtalk_pack_1250', 'alimtalk_pack_1250', false, 4)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   description = EXCLUDED.description,

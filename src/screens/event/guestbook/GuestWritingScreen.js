@@ -19,12 +19,18 @@ import {
 import Svg, { Path, G } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
 import { useKeepAwake } from 'expo-keep-awake';
+import { Ionicons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useTutorial } from '../../../contexts/TutorialContext';
 import {
   getGuestbookPaperPurchaseState,
   purchaseGuestbookPaperTemplate,
 } from '../../../lib/guestbookPaperCredit';
+import {
+  GUESTBOOK_EVENT_UNLOCK_COST,
+  getGuestbookEventAccessState,
+  unlockGuestbookEvent,
+} from '../../../lib/guestbookEventCredit';
 
 const JEONGDAM_LOGO = require('../../../../assets/images/jeongdamlogo.png');
 
@@ -352,6 +358,7 @@ export default function GuestWritingScreen({ navigation, route }) {
   const [selectedPaperId, setSelectedPaperId] = useState(initialPaperId);
   const [ownedPaperIds, setOwnedPaperIds] = useState(DEFAULT_OWNED_PAPER_IDS);
   const [creditBalance, setCreditBalance] = useState(null);
+  const [eventAccessUnlocked, setEventAccessUnlocked] = useState(false);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [storeLoading, setStoreLoading] = useState(true);
   const selectedPaper = getPaperTemplate(selectedPaperId);
@@ -409,11 +416,18 @@ export default function GuestWritingScreen({ navigation, route }) {
   const loadPaperStoreState = useCallback(async () => {
     setStoreLoading(true);
     try {
-      const result = await getGuestbookPaperPurchaseState();
+      const [result, accessResult] = await Promise.all([
+        getGuestbookPaperPurchaseState(),
+        getGuestbookEventAccessState({ eventId: event?.id }),
+      ]);
       const nextOwned = new Set(DEFAULT_OWNED_PAPER_IDS);
       if (result?.success) {
         (result.templateIds || []).forEach((id) => nextOwned.add(id));
         setCreditBalance(result.balance ?? 0);
+      }
+      if (accessResult?.success) {
+        setEventAccessUnlocked(!!accessResult.unlocked);
+        setCreditBalance(accessResult.balance ?? result?.balance ?? 0);
       }
       setOwnedPaperIds(Array.from(nextOwned));
     } catch (e) {
@@ -422,7 +436,7 @@ export default function GuestWritingScreen({ navigation, route }) {
     } finally {
       setStoreLoading(false);
     }
-  }, []);
+  }, [event?.id]);
 
   useEffect(() => {
     loadPaperStoreState();
@@ -603,18 +617,77 @@ export default function GuestWritingScreen({ navigation, route }) {
     }
   }, [event?.id, navigation, selectedPaper, selectedPaperOwned]);
 
+  const startGuestbookDrawing = useCallback(() => {
+    if (tutorialStep?.id === 'me_guest_writing_start') {
+      tutorialAdvance();
+      pauseTutorial(); // 서명패드에서는 오버레이 숨김 → GuestConfirm에서 재개
+    }
+    enterDrawing();
+  }, [enterDrawing, pauseTutorial, tutorialAdvance, tutorialStep?.id]);
+
+  const handleUnlockAndStart = useCallback(async () => {
+    setPurchaseLoading(true);
+    try {
+      const result = await unlockGuestbookEvent({
+        eventId: event?.id,
+        price: GUESTBOOK_EVENT_UNLOCK_COST,
+      });
+
+      if (result?.success) {
+        setEventAccessUnlocked(true);
+        setCreditBalance(result.balance ?? 0);
+        startGuestbookDrawing();
+        return;
+      }
+
+      if (result?.error === 'insufficient_balance') {
+        setCreditBalance(result.balance ?? 0);
+        Alert.alert(
+          '크레딧 부족',
+          `방명록 시작에는 ${GUESTBOOK_EVENT_UNLOCK_COST.toLocaleString('ko-KR')}크레딧이 필요해요.\n현재 잔액: ${Number(result.balance ?? 0).toLocaleString('ko-KR')}크레딧`,
+          [
+            { text: '닫기', style: 'cancel' },
+            { text: '충전하러 가기', onPress: () => navigation.navigate('Credit') },
+          ]
+        );
+        return;
+      }
+
+      Alert.alert(
+        '이용권 설정 필요',
+        result?.error === 'setup_required'
+          ? '방명록 이용권 시스템 설정이 아직 적용되지 않았어요.\n관리자에게 설정을 요청해주세요.'
+          : '방명록 이용권 처리 중 오류가 발생했습니다.',
+        [{ text: '확인' }]
+      );
+    } catch (e) {
+      console.warn('[GuestbookEvent] 이용권 처리 실패:', e);
+      Alert.alert('오류', '방명록 이용권 처리 중 오류가 발생했습니다.', [{ text: '확인' }]);
+    } finally {
+      setPurchaseLoading(false);
+    }
+  }, [event?.id, navigation, startGuestbookDrawing]);
+
   const handleStartPress = useCallback(async () => {
     if (!selectedPaperOwned) {
       await handlePurchaseSelected();
       return;
     }
 
-    if (tutorialStep?.id === 'me_guest_writing_start') {
-      tutorialAdvance();
-      pauseTutorial(); // 서명패드에서는 오버레이 숨김 → GuestConfirm에서 재개
+    if (!eventAccessUnlocked) {
+      Alert.alert(
+        '방명록 시작',
+        `${GUESTBOOK_EVENT_UNLOCK_COST.toLocaleString('ko-KR')}크레딧이 차감됩니다.\n행사당 최초 1회만 차감되며, 신랑측/신부측 접수대를 모두 사용할 수 있어요.`,
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '시작하기', onPress: handleUnlockAndStart },
+        ]
+      );
+      return;
     }
-    enterDrawing();
-  }, [enterDrawing, handlePurchaseSelected, pauseTutorial, selectedPaperOwned, tutorialAdvance, tutorialStep?.id]);
+
+    startGuestbookDrawing();
+  }, [eventAccessUnlocked, handlePurchaseSelected, handleUnlockAndStart, selectedPaperOwned, startGuestbookDrawing]);
 
   // ── PanResponder (팜 리젝션: 움직이는 터치 = 펜) ─
   const panResponder = useRef(
@@ -806,11 +879,13 @@ export default function GuestWritingScreen({ navigation, route }) {
     const carouselCardWidth = Math.min(screenSize.width - 40, 360);
     const carouselGap = 12;
     const startButtonLabel = purchaseLoading
-      ? '구매 처리 중...'
+      ? '처리 중...'
       : storeLoading
-        ? '구매 정보 확인 중...'
+        ? '이용 정보 확인 중...'
         : selectedPaperOwned
-          ? '방명록 시작하기'
+          ? eventAccessUnlocked
+            ? '방명록 시작하기'
+            : `${GUESTBOOK_EVENT_UNLOCK_COST.toLocaleString('ko-KR')}크레딧으로 방명록 시작하기`
           : `${selectedPaper.price}크레딧으로 구매하기`;
 
     return (
@@ -953,11 +1028,36 @@ export default function GuestWritingScreen({ navigation, route }) {
 
         {/* 하단 버튼 */}
         <View style={intro.footer}>
+          {!storeLoading && (
+            <View style={intro.accessNotice}>
+              <View style={intro.accessNoticeIcon}>
+                <Ionicons
+                  name={eventAccessUnlocked ? 'checkmark-circle' : 'ticket-outline'}
+                  size={17}
+                  color={eventAccessUnlocked ? '#22C55E' : '#3182F6'}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={intro.accessNoticeTitle}>
+                  {eventAccessUnlocked
+                    ? '이 행사는 방명록 이용권이 활성화됐어요'
+                    : `방명록 시작 ${GUESTBOOK_EVENT_UNLOCK_COST.toLocaleString('ko-KR')}크레딧`}
+                </Text>
+                <Text style={intro.accessNoticeSub}>
+                  {eventAccessUnlocked
+                    ? '신랑측/신부측 접수대 모두 추가 차감 없이 사용할 수 있어요'
+                    : selectedPaperOwned
+                      ? '행사당 최초 1회만 차감되며, 양쪽 접수대를 모두 사용할 수 있어요'
+                      : '배경 구매 후 행사 이용권을 활성화하면 양쪽 접수대를 모두 사용할 수 있어요'}
+                </Text>
+              </View>
+            </View>
+          )}
           <TouchableOpacity
             ref={startBtnRef}
             style={[
               intro.startBtn,
-              { backgroundColor: selectedPaperOwned ? sideColor : '#191F28' },
+              { backgroundColor: selectedPaperOwned && eventAccessUnlocked ? sideColor : '#191F28' },
               (purchaseLoading || storeLoading) && intro.startBtnDisabled,
             ]}
             onPress={handleStartPress}
@@ -1453,6 +1553,38 @@ const intro = StyleSheet.create({
   footer: {
     paddingHorizontal: 20,
     paddingBottom: 40,
+  },
+  accessNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 13,
+    borderRadius: 16,
+    backgroundColor: '#F8F9FA',
+    borderWidth: 1,
+    borderColor: '#EEF2F7',
+    marginBottom: 10,
+  },
+  accessNoticeIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accessNoticeTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: -0.2,
+  },
+  accessNoticeSub: {
+    marginTop: 3,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7684',
+    lineHeight: 15,
   },
   startBtn: {
     height: 54, borderRadius: 14,
