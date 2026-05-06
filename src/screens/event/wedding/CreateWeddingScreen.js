@@ -154,7 +154,7 @@ const PLACEHOLDER_IMAGES = [
 // ── 사진 카테고리 ──
 const PHOTO_CATEGORIES = [
   { key: 'main',    label: '메인 사진',   icon: '🖼',  maxCount: 5,  required: false, desc: '청첩장 첫 화면에 표시될 대표 사진' },
-  { key: 'gallery', label: '갤러리 사진', icon: '📷',  maxCount: 10, required: false, desc: '갤러리 섹션에 표시될 추억 사진들' },
+  { key: 'gallery', label: '갤러리 사진', icon: '📷',  maxCount: 30, required: false, desc: '갤러리 섹션에 표시될 추억 사진들' },
 ];
 
 // ── 배경음악 목록 ──
@@ -1007,6 +1007,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
         aspect: [4, 3],
         quality: 0.8,
         allowsMultipleSelection: allowsMultiple,
+        selectionLimit: allowsMultiple ? remaining : 1,
       });
       if (!result.canceled && result.assets?.length > 0) {
         const userResult = await getCurrentUserInfo();

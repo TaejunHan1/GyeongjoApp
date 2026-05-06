@@ -20,6 +20,19 @@ const fontFamilyFor = (fontFamily, fallback = SERIF_FONT) =>
 
 const splitManualLines = (value) => String(value ?? '').split(/\r?\n/);
 
+const formatDisplayTime = (timeStr) => {
+  if (!timeStr) return '';
+  const value = String(timeStr).trim();
+  const koreanMatch = value.match(/^(오전|오후)\s*(\d{1,2}):(\d{2})$/);
+  if (koreanMatch) {
+    return `${koreanMatch[1]} ${Number(koreanMatch[2])}:${koreanMatch[3]}`;
+  }
+  const englishMatch = value.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!englishMatch) return value;
+  const period = englishMatch[3].toUpperCase() === 'PM' ? '오후' : '오전';
+  return `${period} ${Number(englishMatch[1])}:${englishMatch[2]}`;
+};
+
 const buildEggPath = (w, h) =>
   `M ${w / 2} 0 ` +
   `C ${w * 0.86} 0, ${w} ${h * 0.42}, ${w} ${h * 0.68} ` +
@@ -330,7 +343,7 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
         {renderBackText('venueLabel', '장  소  |', {
           align: 'left',
         })}
-        {renderBackText('date', `${invitation.date_str || ''}${invitation.time_str ? ` ${invitation.time_str}` : ''}`, {
+        {renderBackText('date', `${invitation.date_str || ''}${invitation.time_str ? ` ${formatDisplayTime(invitation.time_str)}` : ''}`, {
           align: 'left',
         })}
         {!!invitation.venue && renderBackText('venue', invitation.venue, {
@@ -564,7 +577,7 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
           }}
         >
           {invitation.date_str}
-          {invitation.time_str ? ` ${invitation.time_str}` : ''}
+          {invitation.time_str ? ` ${formatDisplayTime(invitation.time_str)}` : ''}
         </Text>
       )}
 

@@ -33,9 +33,9 @@ const formatDate = (d) => {
 const formatTime = (d) => {
   const h = d.getHours();
   const m = d.getMinutes();
-  const period = h < 12 ? 'AM' : 'PM';
+  const period = h < 12 ? '오전' : '오후';
   const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+  return `${period} ${hour12}:${String(m).padStart(2, '0')}`;
 };
 
 // 저장된 date_str/time_str 을 Date 객체로 복원 (수정 모드용)
@@ -45,13 +45,18 @@ const parseSavedDateTime = (date_str, time_str) => {
   if (!dm) return null;
   const dt = new Date(parseInt(dm[1]), parseInt(dm[2]) - 1, parseInt(dm[3]));
   if (time_str) {
-    const tm = time_str.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+    const tm =
+      time_str.match(/(오전|오후)\s*(\d+):(\d+)/) ||
+      time_str.match(/(\d+):(\d+)\s*(AM|PM)?/i);
     if (tm) {
-      let h = parseInt(tm[1]);
-      const min = parseInt(tm[2]);
-      const period = (tm[3] || '').toUpperCase();
+      const isKoreanPeriod = tm[1] === '오전' || tm[1] === '오후';
+      let h = parseInt(isKoreanPeriod ? tm[2] : tm[1]);
+      const min = parseInt(isKoreanPeriod ? tm[3] : tm[2]);
+      const period = isKoreanPeriod ? tm[1] : (tm[3] || '').toUpperCase();
       if (period === 'PM' && h < 12) h += 12;
       if (period === 'AM' && h === 12) h = 0;
+      if (period === '오후' && h < 12) h += 12;
+      if (period === '오전' && h === 12) h = 0;
       dt.setHours(h, min);
     }
   }

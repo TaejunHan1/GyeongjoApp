@@ -36,6 +36,19 @@ const EXPORT_WIDTH = 1024;
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
+const formatDisplayTime = (timeStr) => {
+  if (!timeStr) return '';
+  const value = String(timeStr).trim();
+  const koreanMatch = value.match(/^(오전|오후)\s*(\d{1,2}):(\d{2})$/);
+  if (koreanMatch) {
+    return `${koreanMatch[1]} ${Number(koreanMatch[2])}:${koreanMatch[3]}`;
+  }
+  const englishMatch = value.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!englishMatch) return value;
+  const period = englishMatch[3].toUpperCase() === 'PM' ? '오후' : '오전';
+  return `${period} ${Number(englishMatch[1])}:${englishMatch[2]}`;
+};
+
 export default function SavedInvitationsScreen({ navigation }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -207,7 +220,7 @@ export default function SavedInvitationsScreen({ navigation }) {
         {item.date_str && (
           <Text style={s.cardSub}>
             {item.date_str}
-            {item.time_str ? `  ${item.time_str}` : ''}
+            {item.time_str ? `  ${formatDisplayTime(item.time_str)}` : ''}
           </Text>
         )}
         {item.venue && <Text style={s.cardSub}>{item.venue}</Text>}
@@ -350,7 +363,7 @@ export default function SavedInvitationsScreen({ navigation }) {
                         <Ionicons name="calendar-outline" size={14} color={TC.inkMuted} />
                         <Text style={s.detailText}>
                           {detail.date_str}
-                          {detail.time_str ? `  ${detail.time_str}` : ''}
+                          {detail.time_str ? `  ${formatDisplayTime(detail.time_str)}` : ''}
                         </Text>
                       </View>
                     )}

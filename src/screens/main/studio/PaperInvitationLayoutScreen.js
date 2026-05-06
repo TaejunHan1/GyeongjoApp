@@ -67,6 +67,21 @@ const normalizeSavedFontFamily = (fontFamily) => {
 
 const splitManualLines = (value) => String(value ?? '').split(/\r?\n/);
 
+const formatDisplayTime = (timeStr) => {
+  if (!timeStr) return '';
+  const value = String(timeStr).trim();
+  const koreanMatch = value.match(/^(오전|오후)\s*(\d{1,2}):(\d{2})$/);
+  if (koreanMatch) {
+    return `${koreanMatch[1]} ${Number(koreanMatch[2])}:${koreanMatch[3]}`;
+  }
+  const englishMatch = value.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!englishMatch) return value;
+  const hour = Number(englishMatch[1]);
+  const minute = englishMatch[2];
+  const period = englishMatch[3].toUpperCase() === 'PM' ? '오후' : '오전';
+  return `${period} ${hour}:${minute}`;
+};
+
 // 텍스트 색상 옵션 — 청첩장에 어울리는 톤
 const COLOR_OPTIONS = [
   // 무채색
@@ -1559,7 +1574,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                 fontWeight: layout.date.bold ? '900' : '600',
               }}
             >
-              {formData.date_str}  {formData.time_str}
+              {formData.date_str}  {formatDisplayTime(formData.time_str)}
             </Text>
           </DraggableElement>
 
@@ -1741,7 +1756,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                 weight: '500',
                 minWidth: CANVAS_W * 0.18,
               })}
-              {renderBackTextElement('backDate', `${formData.date_str} ${formData.time_str}`, {
+              {renderBackTextElement('backDate', `${formData.date_str} ${formatDisplayTime(formData.time_str)}`, {
                 align: 'left',
                 weight: '500',
               })}
