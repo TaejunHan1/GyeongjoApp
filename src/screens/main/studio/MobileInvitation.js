@@ -26,7 +26,8 @@ export default function MobileInvitation({ template, data, width = 170, height =
   const px = (val) => val * scale;
 
   // 사진 프레임 shape에 맞는 border-radius
-  const getPhotoRadius = (shape, w) => {
+  const getPhotoRadius = (shape, w, radius) => {
+    if (radius != null) return { borderRadius: radius };
     switch (shape) {
       case 'circle':
         return { borderRadius: w / 2 };
@@ -67,7 +68,7 @@ export default function MobileInvitation({ template, data, width = 170, height =
             width: pctX(photo.w),
             height: pctY(photo.h),
             overflow: 'hidden',
-            ...getPhotoRadius(photo.shape, pctX(photo.w)),
+            ...getPhotoRadius(photo.shape, pctX(photo.w), photo.radius),
           }}
         >
           {data?.photoUri ? (

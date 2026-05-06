@@ -52,7 +52,7 @@ export default function TemplatePreview({ layout, width = 140, height = 200 }) {
                 ? toPx(layout.photo.w / 2, width)
                 : layout.photo.shape === 'arch'
                 ? toPx(layout.photo.w / 2, width)
-                : 6,
+                : layout.photo.radius ?? 6,
             borderTopLeftRadius:
               layout.photo.shape === 'arch' ? toPx(layout.photo.w / 2, width) : undefined,
             borderTopRightRadius:

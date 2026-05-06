@@ -278,6 +278,8 @@ CREATE POLICY alimtalk_tx_select_own ON alimtalk_transactions
 -- ============================================================================
 -- 9. 편의 뷰: 행사별 알림톡 사용 현황
 -- ============================================================================
+DROP VIEW IF EXISTS event_alimtalk_usage;
+
 CREATE OR REPLACE VIEW event_alimtalk_usage AS
 SELECT
   e.id              AS event_id,
@@ -293,6 +295,22 @@ LEFT JOIN alimtalk_transactions t ON t.event_id = e.id
 GROUP BY e.id;
 
 COMMENT ON VIEW event_alimtalk_usage IS '행사별 알림톡 발송 통계';
+
+-- ============================================================================
+-- 10. RPC 권한
+-- ----------------------------------------------------------------------------
+-- charge_alimtalk_credits는 스토어/RevenueCat 검증이 끝난 서버 함수에서만 호출한다.
+-- 클라이언트에 열어두면 임의 transaction_id로 크레딧을 충전할 수 있으므로 막아야 한다.
+-- ============================================================================
+REVOKE EXECUTE ON FUNCTION charge_alimtalk_credits(uuid, text, text, text, text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION charge_alimtalk_credits(uuid, text, text, text, text)
+  TO service_role;
+
+GRANT EXECUTE ON FUNCTION deduct_alimtalk_credit(uuid, uuid, uuid)
+  TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION refund_alimtalk_credit(uuid, uuid, uuid, text)
+  TO authenticated, anon, service_role;
 
 
 -- ============================================================================

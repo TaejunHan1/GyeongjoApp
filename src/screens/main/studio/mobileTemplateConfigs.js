@@ -240,7 +240,7 @@ export const MOBILE_TEMPLATES = [
     blank: require('../../../../assets/studio/templates/minimal/minimal5/blank.png'),
     backPreview: require('../../../../assets/studio/templates/minimal/minimal5/previewback.png'),
     hasBack: true,
-    photo: { shape: 'rectangle', x: 50, y: 38, w: 70, h: 55 },
+    photo: { shape: 'rectangle', x: 50, y: 38, w: 70, h: 55, radius: 0 },
     text: {
       names: { y: 74, size: 14, color: '#2C2A28', hideConnector: true },
       date: { y: 82, size: 9, color: '#5A5854' },

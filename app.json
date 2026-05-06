@@ -78,6 +78,8 @@
       "./plugins/withWorkManagerFix"
     ],
     "extra": {
+      "revenueCatIosApiKey": "test_pEzVqknUVJkMMaLuILgfqLVszLc",
+      "revenueCatAndroidApiKey": "test_pEzVqknUVJkMMaLuILgfqLVszLc",
       "eas": {
         "projectId": "6e007e44-78af-48b5-b36e-ab75a54ab3fa"
       }

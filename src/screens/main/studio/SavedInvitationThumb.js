@@ -27,7 +27,8 @@ const buildEggPath = (w, h) =>
   `C ${w * 0.22} ${h}, 0 ${h * 0.91}, 0 ${h * 0.68} ` +
   `C 0 ${h * 0.42}, ${w * 0.14} 0, ${w / 2} 0 Z`;
 
-const getPhotoRadius = (shape, w) => {
+const getPhotoRadius = (shape, w, radius) => {
+  if (radius != null) return { borderRadius: radius };
   switch (shape) {
     case 'circle':
       return { borderRadius: w / 2 };
@@ -127,9 +128,9 @@ function MiniCalendarThumb({ dateStr, width, height }) {
                   <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                     <Text
                       style={{
-                        fontSize: Math.max(8, rowH * 0.95),
+                        fontSize: Math.max(10, rowH * 1.22),
                         color: '#F1B7BE',
-                        lineHeight: Math.max(8, rowH),
+                        lineHeight: Math.max(10, rowH * 1.18),
                       }}
                     >
                       ♥
@@ -449,7 +450,8 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
               transform: [{ rotate: `${layout.photo.rotation || 0}deg` }],
               ...getPhotoRadius(
                 layout.photo.shape,
-                (layout.photo.w / 100) * width
+                (layout.photo.w / 100) * width,
+                layout.photo.radius ?? (template?.id === 'minimal-5' ? 0 : undefined)
               ),
             }}
           >

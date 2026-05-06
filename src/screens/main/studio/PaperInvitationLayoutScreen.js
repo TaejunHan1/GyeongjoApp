@@ -117,7 +117,8 @@ const FONT_OPTIONS = [
   { id: 'tangerine', label: 'Tangerine', sample: 'Aa', family: 'Tangerine' },
 ];
 
-const getPhotoRadius = (shape, w) => {
+const getPhotoRadius = (shape, w, radius) => {
+  if (radius != null) return { borderRadius: radius };
   switch (shape) {
     case 'circle':
       return { borderRadius: w / 2 };
@@ -220,9 +221,9 @@ function MiniCalendar({ dateStr, width, height }) {
                   <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                     <Text
                       style={{
-                        fontSize: Math.max(15, rowH * 0.95),
+                        fontSize: Math.max(18, rowH * 1.22),
                         color: '#F1B7BE',
-                        lineHeight: Math.max(15, rowH),
+                        lineHeight: Math.max(18, rowH * 1.18),
                       }}
                     >
                       ♥
@@ -524,6 +525,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       out.size = savedCanvasW ? savedEl.size * (CANVAS_W / savedCanvasW) : savedEl.size;
     }
     if (savedEl.shape) out.shape = savedEl.shape;
+    if (savedEl.radius != null) out.radius = savedEl.radius;
     if (savedEl.fontFamily) out.fontFamily = normalizeSavedFontFamily(savedEl.fontFamily);
     if (savedEl.letterSpacing != null) out.letterSpacing = savedEl.letterSpacing;
     if (savedEl.locked) out.locked = true;
@@ -584,6 +586,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     x: photoCenterX_px - photoWPx / 2,
     y: photoCenterY_px - photoHPx / 2,
     shape: photoConf.shape,
+    radius: photoConf.radius,
   };
 
   // 신랑·신부 각각 분리. 템플릿에 베이크인 "&" 있으면 connector 안 그림
@@ -1056,6 +1059,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             }
           : {}),
         ...(el.shape ? { shape: el.shape } : {}),
+        ...(el.radius != null ? { radius: el.radius } : {}),
         ...(el.fontFamily ? { fontFamily: el.fontFamily } : {}),
         ...(el.letterSpacing != null ? { letterSpacing: el.letterSpacing } : {}),
         ...(el.locked ? { locked: true } : {}),
@@ -1375,7 +1379,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                     overflow: 'hidden',
                     backgroundColor: 'rgba(168,149,119,0.15)',
                   },
-                  getPhotoRadius(layout.photo.shape, layout.photo.w),
+                  getPhotoRadius(layout.photo.shape, layout.photo.w, layout.photo.radius),
                 ]}
               >
                 {formData.photoUri ? (

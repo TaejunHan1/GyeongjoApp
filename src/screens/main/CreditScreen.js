@@ -18,6 +18,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../styles/constants';
 import { supabase } from '../../lib/supabase';
 import { getAlimtalkBalance } from '../../lib/alimtalkCredit';
+import {
+  getCreditStoreProducts,
+  purchaseCreditPackage,
+  refreshAfterCreditPurchase,
+} from '../../lib/revenueCatCredits';
 
 const formatKRW = (n) => `${Number(n || 0).toLocaleString('ko-KR')}원`;
 
@@ -61,6 +66,9 @@ export default function CreditScreen({ navigation, userInfo }) {
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [storeProductsById, setStoreProductsById] = useState({});
+  const [storeError, setStoreError] = useState(null);
 
   const loadAll = useCallback(async () => {
     const uid = userInfo?.userId;
@@ -86,6 +94,10 @@ export default function CreditScreen({ navigation, userInfo }) {
       setPackages(pkgRes.data);
       const recommended = pkgRes.data.find((p) => p.is_recommended);
       setSelectedPackage((prev) => prev || recommended?.id || pkgRes.data[0]?.id || null);
+
+      const productsRes = await getCreditStoreProducts(pkgRes.data, uid);
+      setStoreProductsById(productsRes.productsById || {});
+      setStoreError(productsRes.success ? null : productsRes.error);
     }
     if (txRes?.data) setTransactions(txRes.data);
   }, [userInfo?.userId]);
@@ -110,13 +122,35 @@ export default function CreditScreen({ navigation, userInfo }) {
     }
   };
 
-  const handleRecharge = () => {
-    if (!selectedPackage) return;
-    Alert.alert(
-      '결제 준비중',
-      '인앱결제 시스템이 심사 중입니다.\n곧 충전이 가능해질 예정이에요.',
-      [{ text: '확인' }]
-    );
+  const handleRecharge = async () => {
+    const uid = userInfo?.userId;
+    if (!selectedPkg || !uid || purchaseLoading) return;
+
+    setPurchaseLoading(true);
+    try {
+      const result = await purchaseCreditPackage(selectedPkg, uid);
+      if (result.cancelled) return;
+
+      if (!result.success) {
+        const message = result.error === 'missing_revenuecat_key'
+          ? 'RevenueCat API 키가 아직 설정되지 않았어요. 앱스토어/플레이스토어 상품 생성 후 키를 넣어주세요.'
+          : result.error === 'product_not_found'
+            ? '스토어에서 해당 상품을 찾지 못했어요. 상품 ID와 RevenueCat 상품 연결을 확인해주세요.'
+            : '결제를 완료하지 못했어요. 잠시 후 다시 시도해주세요.';
+        Alert.alert('충전 실패', message, [{ text: '확인' }]);
+        return;
+      }
+
+      await refreshAfterCreditPurchase();
+      await loadAll();
+      Alert.alert(
+        '결제 완료',
+        '결제가 완료됐어요. 크레딧 반영까지 몇 초 정도 걸릴 수 있어요.\n잔액이 바로 바뀌지 않으면 아래로 당겨 새로고침해주세요.',
+        [{ text: '확인' }],
+      );
+    } finally {
+      setPurchaseLoading(false);
+    }
   };
 
   const selectedPkg = packages.find((p) => p.id === selectedPackage);
@@ -169,6 +203,9 @@ export default function CreditScreen({ navigation, userInfo }) {
                 {packages.map((pkg) => {
                   const total = (pkg.credits || 0) + (pkg.bonus_credits || 0);
                   const isSelected = selectedPackage === pkg.id;
+                  const productId = Platform.OS === 'ios' ? pkg.apple_product_id : pkg.google_product_id;
+                  const storeProduct = productId ? storeProductsById[productId] : null;
+                  const priceText = storeProduct?.priceString || storeProduct?.price_string || formatKRW(pkg.price_krw);
                   return (
                     <TouchableOpacity
                       key={pkg.id}
@@ -198,7 +235,7 @@ export default function CreditScreen({ navigation, userInfo }) {
                             기본 {pkg.credits}건 + 보너스 {pkg.bonus_credits}건
                           </Text>
                         )}
-                        <Text style={styles.pkgPrice}>{formatKRW(pkg.price_krw)}</Text>
+                        <Text style={styles.pkgPrice}>{priceText}</Text>
                       </View>
 
                       <View style={styles.pkgRadio}>
@@ -214,21 +251,31 @@ export default function CreditScreen({ navigation, userInfo }) {
               </View>
 
               <TouchableOpacity
-                style={[styles.rechargeBtn, !selectedPkg && styles.rechargeBtnDisabled]}
+                style={[styles.rechargeBtn, (!selectedPkg || purchaseLoading) && styles.rechargeBtnDisabled]}
                 onPress={handleRecharge}
-                disabled={!selectedPkg}
+                disabled={!selectedPkg || purchaseLoading}
                 activeOpacity={0.85}
               >
-                <Ionicons name="card-outline" size={18} color="#fff" />
+                {purchaseLoading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="card-outline" size={18} color="#fff" />
+                )}
                 <Text style={styles.rechargeBtnText}>
-                  {selectedPkg ? `${formatKRW(selectedPkg.price_krw)} 충전하기` : '패키지를 선택해주세요'}
+                  {purchaseLoading
+                    ? '결제 진행 중'
+                    : selectedPkg
+                      ? `${formatKRW(selectedPkg.price_krw)} 충전하기`
+                      : '패키지를 선택해주세요'}
                 </Text>
               </TouchableOpacity>
 
               <View style={styles.noticeBox}>
                 <Ionicons name="information-circle-outline" size={14} color={Colors.gray500} />
                 <Text style={styles.noticeText}>
-                  현재 인앱결제 시스템 심사 중입니다. 정식 오픈 전까지 테스트용 크레딧이 지급됩니다.
+                  {storeError
+                    ? '스토어 상품을 불러오지 못했어요. 상품 ID와 RevenueCat 설정을 확인해주세요.'
+                    : '결제 완료 후 스토어 검증이 끝나면 크레딧이 자동으로 충전됩니다.'}
                 </Text>
               </View>
             </View>
