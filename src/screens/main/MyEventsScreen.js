@@ -74,6 +74,48 @@ const EVENT_CARD_COVERS = [
     price: 50,
     image: require('../../../assets/event-card-covers/cover-minimal-lock.png'),
   },
+  {
+    key: 'pearl_seal',
+    label: '펄 실링 커버',
+    description: '아이보리 실링 덮개',
+    price: 90,
+    image: require('../../../assets/event-card-covers/cover-pearl-seal.png'),
+  },
+  {
+    key: 'sage_clasp',
+    label: '세이지 클라스프',
+    description: '차분한 잠금 커버',
+    price: 90,
+    image: require('../../../assets/event-card-covers/cover-sage-clasp.png'),
+  },
+  {
+    key: 'onyx_seal',
+    label: '오닉스 실링',
+    description: '블랙 프리미엄 덮개',
+    price: 120,
+    image: require('../../../assets/event-card-covers/cover-onyx-seal.png'),
+  },
+  {
+    key: 'rose_camellia',
+    label: '로즈 카멜리아',
+    description: '부드러운 로즈 덮개',
+    price: 90,
+    image: require('../../../assets/event-card-covers/cover-rose-camellia.png'),
+  },
+  {
+    key: 'navy_plum',
+    label: '네이비 매화',
+    description: '금빛 매화 잠금 커버',
+    price: 110,
+    image: require('../../../assets/event-card-covers/cover-navy-plum.png'),
+  },
+  {
+    key: 'taupe_lattice',
+    label: '토프 창호',
+    description: '은은한 창호 덮개',
+    price: 90,
+    image: require('../../../assets/event-card-covers/cover-taupe-lattice.png'),
+  },
 ];
 
 const FREE_COVER_KEYS = EVENT_CARD_COVERS.filter((cover) => cover.price <= 0).map((cover) => cover.key);
