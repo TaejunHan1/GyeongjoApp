@@ -4,7 +4,7 @@
     "slug": "gyeongjoapp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/images/jeongdamlogo.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
@@ -42,6 +42,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.jeongdam.gyeongjoapp",
+      "versionCode": 7,
       "intentFilters": [
         {
           "action": "VIEW",

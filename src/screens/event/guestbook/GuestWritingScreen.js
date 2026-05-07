@@ -32,7 +32,8 @@ import {
   unlockGuestbookEvent,
 } from '../../../lib/guestbookEventCredit';
 
-const JEONGDAM_LOGO = require('../../../../assets/images/jeongdamlogo.png');
+const JEONGDAM_LOGO = require('../../../../assets/images/jeongdamlogonobackground.png');
+const DIGITAL_INK_LANGUAGE = 'ko';
 
 // Digital Ink Recognition — dev client 빌드에서만 동작
 let DigitalInk = null;
@@ -195,6 +196,27 @@ const PAPER_TEMPLATES = [
 
 const getPaperTemplate = (id) =>
   PAPER_TEMPLATES.find((template) => template.id === id) || PAPER_TEMPLATES[0];
+
+const normalizeRecognitionCandidates = (values = []) => {
+  const blocked = new Set(['정성을담아서', '정담', 'jeongdam']);
+  const seen = new Set();
+
+  return values
+    .flatMap((value) => String(value || '').split(/\n+/))
+    .map((value) => value.replace(/\s+/g, '').replace(/[^\u3131-\u318E\uAC00-\uD7A3a-zA-Z]/g, ''))
+    .filter((value) => value.length >= 1 && value.length <= 20)
+    .filter((value) => !blocked.has(value.toLowerCase()))
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 5);
+};
+
+const countInkPoints = (strokes = []) =>
+  strokes.reduce((sum, stroke) => sum + (Array.isArray(stroke) ? stroke.length : 0), 0);
 
 const DEFAULT_OWNED_PAPER_IDS = PAPER_TEMPLATES
   .filter((template) => Number(template.price || 0) <= 0)
@@ -524,9 +546,10 @@ export default function GuestWritingScreen({ navigation, route }) {
     }
     setMode('drawing');
     resetInactivityTimer();
-    // Android: Digital Ink 모델 백그라운드 다운로드
+    // Android: Digital Ink 모델과 인식기를 미리 준비해서 완료 시 대기 시간을 줄인다.
     if (Platform.OS === 'android' && DigitalInk) {
-      DigitalInk.downloadModel('ko').catch(() => {});
+      const prepareRecognizer = DigitalInk.warmUpRecognizer || DigitalInk.downloadModel;
+      prepareRecognizer(DIGITAL_INK_LANGUAGE).catch(() => {});
     }
   };
 
@@ -839,25 +862,67 @@ export default function GuestWritingScreen({ navigation, route }) {
     }
     setIsProcessing(true);
     try {
-      // 스크린샷 캡처 (디스플레이용)
-      const uri = await viewShotRef.current.capture();
+      const strokesSnapshot = inkStrokesRef.current.map((stroke) => [...stroke]);
+      const createRecognitionDebug = () => ({
+        platform: Platform.OS,
+        moduleLoaded: !!DigitalInk,
+        language: DIGITAL_INK_LANGUAGE,
+        strokeCount: strokesSnapshot.length,
+        pointCount: countInkPoints(strokesSnapshot),
+        stage: DigitalInk ? 'READY' : 'JS_MODULE_NOT_LOADED',
+        rawCandidates: [],
+        normalizedCandidates: [],
+      });
 
-      // 손글씨 인식 — iOS: Apple Vision, Android: Digital Ink (stroke)
-      let inkCandidates = [];
-      if (DigitalInk) {
-        try {
-          const strokesSnapshot = [...inkStrokesRef.current];
-          if (strokesSnapshot.length > 0) {
-            await DigitalInk.downloadModel('ko');
-            inkCandidates = await DigitalInk.recognize(strokesSnapshot, 'ko');
+      const recognizeHandwriting = async () => {
+        let inkCandidates = [];
+        let recognitionDebug = createRecognitionDebug();
+
+        if (DigitalInk) {
+          try {
+            if (strokesSnapshot.length > 0) {
+              inkCandidates = await DigitalInk.recognize(strokesSnapshot, DIGITAL_INK_LANGUAGE);
+              recognitionDebug.stage = 'RECOGNIZE';
+              recognitionDebug.rawCandidates = inkCandidates;
+              if (inkCandidates.length === 0 && DigitalInk.recognizeWithDebug) {
+                const debugResult = await DigitalInk.recognizeWithDebug(strokesSnapshot, DIGITAL_INK_LANGUAGE);
+                recognitionDebug = {
+                  ...recognitionDebug,
+                  ...debugResult,
+                  rawCandidates: debugResult?.candidates || [],
+                };
+                inkCandidates = debugResult?.candidates || [];
+              }
+            } else {
+              recognitionDebug.stage = 'NO_STROKES_JS';
+            }
+          } catch (e) {
+            recognitionDebug.stage = 'JS_EXCEPTION';
+            recognitionDebug.error = e?.message || String(e);
           }
-        } catch (e) {
-          // 인식 실패 시 빈 배열 유지
+
+          inkCandidates = normalizeRecognitionCandidates(inkCandidates);
+          recognitionDebug.normalizedCandidates = inkCandidates;
         }
-      }
+
+        return { inkCandidates, recognitionDebug };
+      };
+
+      const [uri, recognitionResult] = await Promise.all([
+        viewShotRef.current.capture(),
+        recognizeHandwriting(),
+      ]);
+      const { inkCandidates, recognitionDebug } = recognitionResult;
 
       clearCanvas();
-      navigation.navigate('GuestConfirm', { event, handwritingUri: uri, side, inkCandidates, paperTemplateId: selectedPaperId });
+      navigation.navigate('GuestConfirm', {
+        event,
+        handwritingUri: uri,
+        side,
+        inkCandidates,
+        recognitionDebug,
+        paperTemplateId: selectedPaperId,
+      });
     } catch (err) {
       console.error('Capture error:', err);
       Alert.alert('오류', '처리 중 오류가 발생했습니다.');

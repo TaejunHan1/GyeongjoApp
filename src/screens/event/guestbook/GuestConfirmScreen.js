@@ -17,7 +17,14 @@ import { useTutorial } from '../../../contexts/TutorialContext';
 const DEFAULT_AMOUNTS = [30000, 50000, 70000, 100000, 150000, 200000];
 
 export default function GuestConfirmScreen({ navigation, route }) {
-  const { event, handwritingUri, side = 'groom', inkCandidates = [], paperTemplateId } = route.params;
+  const {
+    event,
+    handwritingUri,
+    side = 'groom',
+    inkCandidates = [],
+    recognitionDebug = null,
+    paperTemplateId,
+  } = route.params;
   const sideColor  = side === 'groom' ? '#3182F6' : '#F04452';
   const sideBg     = side === 'groom' ? '#E8F3FF' : '#FFF0F1';
   const sideLabel  = side === 'groom' ? '신랑측 하객' : '신부측 하객';
@@ -142,7 +149,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
     setCandidates(filtered);
     setSelectedName(filtered[0] || '');
     setRecognizing(false);
-  }, []);
+  }, [inkCandidates]);
 
   // 주최자 알림톡 크레딧 조회 + realtime 구독
   useEffect(() => {
@@ -443,6 +450,16 @@ export default function GuestConfirmScreen({ navigation, route }) {
 
   const row1 = amountPresets.slice(0, 4);
   const row2 = amountPresets.slice(4, 6);
+  const recognitionDebugLines = recognitionDebug ? [
+    `stage: ${recognitionDebug.stage || '-'}`,
+    `moduleLoaded: ${String(recognitionDebug.moduleLoaded ?? '-')}`,
+    `language: ${recognitionDebug.languageTag || recognitionDebug.language || '-'} -> ${recognitionDebug.resolvedLanguageTag || '-'}`,
+    `strokes/points: ${recognitionDebug.strokeCount ?? '-'} / ${recognitionDebug.pointCount ?? '-'}`,
+    `model: before=${String(recognitionDebug.modelDownloadedBefore ?? '-')} after=${String(recognitionDebug.modelDownloadedAfter ?? recognitionDebug.modelDownloaded ?? '-')}`,
+    `raw: ${(recognitionDebug.rawCandidates || recognitionDebug.candidates || []).join(', ') || '[]'}`,
+    `normalized: ${(recognitionDebug.normalizedCandidates || []).join(', ') || '[]'}`,
+    recognitionDebug.error ? `error: ${recognitionDebug.error}` : null,
+  ].filter(Boolean) : [];
 
   return (
     <View style={[s.root, { backgroundColor: '#F2F4F6' }]}>
@@ -515,6 +532,15 @@ export default function GuestConfirmScreen({ navigation, route }) {
             {!nameConfirmed ? (
               <View ref={nameAreaRef} collapsable={false} style={{ gap: d.gap16 }}>
                 <Text style={[s.secTitle, { fontSize: d.titleFs }]}>성함을 확인해주세요</Text>
+
+                {candidates.length === 0 && recognitionDebugLines.length > 0 && (
+                  <View style={s.debugBox}>
+                    <Text style={s.debugTitle}>손글씨 인식 디버그</Text>
+                    {recognitionDebugLines.map((line, index) => (
+                      <Text key={`${line}-${index}`} style={s.debugText}>{line}</Text>
+                    ))}
+                  </View>
+                )}
 
                 {candidates.length > 0 && (
                   <View style={[s.candRow, { gap: d.gap8 }]}>
@@ -1049,6 +1075,25 @@ const s = StyleSheet.create({
   },
   secTitle: { fontWeight: '800', color: '#191F28', letterSpacing: -0.3 },
   greetText: { color: '#4E5968', fontWeight: '600' },
+  debugBox: {
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FDBA74',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 4,
+  },
+  debugTitle: {
+    color: '#9A3412',
+    fontWeight: '900',
+    marginBottom: 2,
+  },
+  debugText: {
+    color: '#7C2D12',
+    fontSize: 12,
+    fontWeight: '700',
+  },
 
   // 후보 칩
   candRow: { flexDirection: 'row', flexWrap: 'wrap' },
