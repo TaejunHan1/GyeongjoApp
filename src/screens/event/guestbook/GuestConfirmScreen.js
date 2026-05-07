@@ -450,12 +450,14 @@ export default function GuestConfirmScreen({ navigation, route }) {
 
   const row1 = amountPresets.slice(0, 4);
   const row2 = amountPresets.slice(4, 6);
+  const recognitionTiming = recognitionDebug?.timing || {};
   const recognitionDebugLines = recognitionDebug ? [
     `stage: ${recognitionDebug.stage || '-'}`,
     `moduleLoaded: ${String(recognitionDebug.moduleLoaded ?? '-')}`,
     `language: ${recognitionDebug.languageTag || recognitionDebug.language || '-'} -> ${recognitionDebug.resolvedLanguageTag || '-'}`,
     `strokes/points: ${recognitionDebug.strokeCount ?? '-'} / ${recognitionDebug.pointCount ?? '-'}`,
     `model: before=${String(recognitionDebug.modelDownloadedBefore ?? '-')} after=${String(recognitionDebug.modelDownloadedAfter ?? recognitionDebug.modelDownloaded ?? '-')}`,
+    `timing: capture=${recognitionTiming.captureMs ?? '-'}ms recognize=${recognitionTiming.recognizeMs ?? '-'}ms total=${recognitionTiming.totalBeforeNavigateMs ?? '-'}ms`,
     `raw: ${(recognitionDebug.rawCandidates || recognitionDebug.candidates || []).join(', ') || '[]'}`,
     `normalized: ${(recognitionDebug.normalizedCandidates || []).join(', ') || '[]'}`,
     recognitionDebug.error ? `error: ${recognitionDebug.error}` : null,

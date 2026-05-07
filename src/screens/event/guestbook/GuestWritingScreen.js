@@ -218,6 +218,11 @@ const normalizeRecognitionCandidates = (values = []) => {
 const countInkPoints = (strokes = []) =>
   strokes.reduce((sum, stroke) => sum + (Array.isArray(stroke) ? stroke.length : 0), 0);
 
+const nowMs = () => {
+  if (global.performance?.now) return global.performance.now();
+  return Date.now();
+};
+
 const DEFAULT_OWNED_PAPER_IDS = PAPER_TEMPLATES
   .filter((template) => Number(template.price || 0) <= 0)
   .map((template) => template.id);
@@ -862,6 +867,7 @@ export default function GuestWritingScreen({ navigation, route }) {
     }
     setIsProcessing(true);
     try {
+      const doneStartedAt = nowMs();
       const strokesSnapshot = inkStrokesRef.current.map((stroke) => [...stroke]);
       const createRecognitionDebug = () => ({
         platform: Platform.OS,
@@ -875,6 +881,7 @@ export default function GuestWritingScreen({ navigation, route }) {
       });
 
       const recognizeHandwriting = async () => {
+        const startedAt = nowMs();
         let inkCandidates = [];
         let recognitionDebug = createRecognitionDebug();
 
@@ -905,22 +912,43 @@ export default function GuestWritingScreen({ navigation, route }) {
           recognitionDebug.normalizedCandidates = inkCandidates;
         }
 
+        recognitionDebug.timing = {
+          ...(recognitionDebug.timing || {}),
+          recognizeMs: Math.round(nowMs() - startedAt),
+        };
         return { inkCandidates, recognitionDebug };
       };
 
+      const captureHandwriting = async () => {
+        const startedAt = nowMs();
+        const uri = await viewShotRef.current.capture();
+        return {
+          uri,
+          captureMs: Math.round(nowMs() - startedAt),
+        };
+      };
+
       const [uri, recognitionResult] = await Promise.all([
-        viewShotRef.current.capture(),
+        captureHandwriting(),
         recognizeHandwriting(),
       ]);
       const { inkCandidates, recognitionDebug } = recognitionResult;
+      const timing = {
+        ...(recognitionDebug?.timing || {}),
+        captureMs: uri.captureMs,
+        totalBeforeNavigateMs: Math.round(nowMs() - doneStartedAt),
+      };
 
       clearCanvas();
       navigation.navigate('GuestConfirm', {
         event,
-        handwritingUri: uri,
+        handwritingUri: uri.uri,
         side,
         inkCandidates,
-        recognitionDebug,
+        recognitionDebug: {
+          ...recognitionDebug,
+          timing,
+        },
         paperTemplateId: selectedPaperId,
       });
     } catch (err) {

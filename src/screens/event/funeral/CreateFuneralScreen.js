@@ -1021,7 +1021,7 @@ export default function CreateFuneralScreen({ navigation, route }) {
 
     } catch (error) {
       console.error('🔍 [DEBUG] 부고 저장 오류:', error);
-      showTossModal('오류', '부고 생성 중 문제가 발생했어요', () => {});
+      showTossModal('오류', error.message || '부고 생성 중 문제가 발생했어요', () => {});
     } finally {
       setIsLoading(false);
     }

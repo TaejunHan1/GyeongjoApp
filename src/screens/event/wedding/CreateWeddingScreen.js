@@ -1502,7 +1502,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
         throw new Error(result.error);
       }
     } catch (error) {
-      showAlert('오류', '결혼식 청첩장 생성 중 문제가 발생했어요');
+      showAlert('오류', error.message || '결혼식 청첩장 생성 중 문제가 발생했어요');
     } finally {
       setIsLoading(false);
     }

@@ -4,6 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { buildEventSlugBase, buildSlugCandidate } from './slugUtils';
 
+export const EVENT_CREATION_FREE_LIMIT = 2;
+export const EVENT_CREATION_CREDIT_COST = 5;
+
 /**
  * 실시간 연결 상태 테스트
  */
@@ -177,6 +180,169 @@ export const upgradeUserSubscription = async (userId = null, subscriptionType = 
     return { success: true, data };
   } catch (error) {
     return { success: false, error: '구독 업그레이드에 실패했습니다.' };
+  }
+};
+
+/**
+ * 경조사 생성 크레딧 상태 조회
+ */
+export const getEventCreationCreditState = async (userId = null) => {
+  try {
+    let targetUserId = userId;
+
+    if (!targetUserId) {
+      const userInfo = await getCurrentUserInfo();
+      if (!userInfo.success) {
+        return { success: false, error: '사용자 인증이 필요합니다.' };
+      }
+      targetUserId = userInfo.user.id;
+    }
+
+    const { data, error } = await supabase.rpc('get_event_creation_credit_state', {
+      p_user_id: targetUserId,
+      p_free_limit: EVENT_CREATION_FREE_LIMIT,
+      p_price_credits: EVENT_CREATION_CREDIT_COST,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    const state = Array.isArray(data) ? data[0] : data;
+    if (!state?.success) {
+      return { success: false, error: state?.error || '크레딧 상태 조회에 실패했습니다.' };
+    }
+
+    return {
+      success: true,
+      balance: Number(state.balance || 0),
+      freeUsed: Number(state.free_used || 0),
+      freeRemaining: Number(state.free_remaining || 0),
+      priceCredits: Number(state.price_credits || EVENT_CREATION_CREDIT_COST),
+      welcomeSeen: !!state.welcome_seen,
+    };
+  } catch (error) {
+    return { success: false, error: '크레딧 상태 조회에 실패했습니다.' };
+  }
+};
+
+/**
+ * 경조사 생성 전 무료권/크레딧 예약
+ */
+export const consumeEventCreationCredit = async (eventType, userId = null) => {
+  try {
+    let targetUserId = userId;
+
+    if (!targetUserId) {
+      const userInfo = await getCurrentUserInfo();
+      if (!userInfo.success) {
+        return { success: false, error: '사용자 인증이 필요합니다.' };
+      }
+      targetUserId = userInfo.user.id;
+    }
+
+    const { data, error } = await supabase.rpc('consume_event_creation_credit', {
+      p_user_id: targetUserId,
+      p_event_type: eventType,
+      p_price_credits: EVENT_CREATION_CREDIT_COST,
+      p_free_limit: EVENT_CREATION_FREE_LIMIT,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    const result = Array.isArray(data) ? data[0] : data;
+    if (!result?.success) {
+      return {
+        success: false,
+        error: result?.error || '크레딧 사용에 실패했습니다.',
+        balance: Number(result?.new_balance || 0),
+        freeRemaining: Number(result?.free_remaining || 0),
+        priceCredits: Number(result?.price_credits || EVENT_CREATION_CREDIT_COST),
+      };
+    }
+
+    return {
+      success: true,
+      paymentMethod: result.payment_method,
+      balance: Number(result.new_balance || 0),
+      freeUsed: Number(result.free_used || 0),
+      freeRemaining: Number(result.free_remaining || 0),
+      priceCredits: Number(result.price_credits || EVENT_CREATION_CREDIT_COST),
+    };
+  } catch (error) {
+    return { success: false, error: '크레딧 사용에 실패했습니다.' };
+  }
+};
+
+/**
+ * 이벤트 생성 실패 시 예약한 무료권/크레딧 되돌리기
+ */
+export const refundEventCreationCredit = async ({
+  userId,
+  paymentMethod,
+  priceCredits = EVENT_CREATION_CREDIT_COST,
+  reason = 'event_create_failed',
+}) => {
+  if (!userId || !paymentMethod) {
+    return { success: false, error: '환불 정보가 부족합니다.' };
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('refund_event_creation_credit', {
+      p_user_id: userId,
+      p_payment_method: paymentMethod,
+      p_price_credits: priceCredits,
+      p_reason: reason,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    const result = Array.isArray(data) ? data[0] : data;
+    return {
+      success: !!result?.success,
+      balance: Number(result?.new_balance || 0),
+      freeUsed: Number(result?.free_used || 0),
+    };
+  } catch (error) {
+    return { success: false, error: '크레딧 복구에 실패했습니다.' };
+  }
+};
+
+/**
+ * 경조사 생성 크레딧 안내 모달 확인 처리
+ */
+export const markEventCreationWelcomeSeen = async (userId = null) => {
+  try {
+    let targetUserId = userId;
+
+    if (!targetUserId) {
+      const userInfo = await getCurrentUserInfo();
+      if (!userInfo.success) {
+        return { success: false, error: '사용자 인증이 필요합니다.' };
+      }
+      targetUserId = userInfo.user.id;
+    }
+
+    const { data, error } = await supabase.rpc('mark_event_creation_welcome_seen', {
+      p_user_id: targetUserId,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    const result = Array.isArray(data) ? data[0] : data;
+    return {
+      success: !!result?.success,
+      welcomeSeen: !!result?.welcome_seen,
+      error: result?.error,
+    };
+  } catch (error) {
+    return { success: false, error: '안내 확인 처리에 실패했습니다.' };
   }
 };
 
@@ -963,6 +1129,9 @@ export const getAllUserEvents = async (passedUserInfo = null) => {
  * 새 이벤트 생성 (메시지 기능 및 이미지 업로드 포함) - 화이트리스트 방식
  */
 export const createEvent = async (eventData) => {
+  let creationCredit = null;
+  let currentUser = null;
+
   try {
     
     const userResult = await getCurrentUserInfo();
@@ -970,7 +1139,11 @@ export const createEvent = async (eventData) => {
       throw new Error(userResult.error);
     }
 
-    const currentUser = userResult.user;
+    currentUser = userResult.user;
+
+    if (eventData.event_type === 'funeral') {
+      throw new Error('부고장 만들기는 준비 중입니다. 곧 사용할 수 있도록 준비하고 있습니다.');
+    }
 
     // ✅ 허용된 컬럼들만 화이트리스트로 추출 (실제 DB 컬럼들만)
     const allowedColumns = [
@@ -1213,6 +1386,14 @@ export const createEvent = async (eventData) => {
       });
     }
 
+    creationCredit = await consumeEventCreationCredit(eventData.event_type, currentUser.id);
+    if (!creationCredit.success) {
+      if (creationCredit.error === 'insufficient_balance') {
+        throw new Error(`무료 생성 2회를 모두 사용했습니다. 청첩장 만들기는 ${creationCredit.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 필요합니다.`);
+      }
+      throw new Error(creationCredit.error || '크레딧 사용에 실패했습니다.');
+    }
+
     const { data, error } = await supabase
       .from('events')
       .insert([processedEventData])
@@ -1226,10 +1407,20 @@ export const createEvent = async (eventData) => {
     
     return {
       success: true,
-      data
+      data,
+      creationCredit
     };
 
   } catch (error) {
+    if (creationCredit?.success && currentUser?.id) {
+      await refundEventCreationCredit({
+        userId: currentUser.id,
+        paymentMethod: creationCredit.paymentMethod,
+        priceCredits: creationCredit.priceCredits,
+        reason: `event_create_failed:${String(error.message || 'unknown').slice(0, 120)}`,
+      });
+    }
+
     return {
       success: false,
       error: error.message || '이벤트 생성에 실패했습니다.'

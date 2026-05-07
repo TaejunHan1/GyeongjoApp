@@ -36,7 +36,10 @@ import {
   getEventGuestBook,
   getMonthlyStatistics,
   getEventStatistics,
-  getUserSubscriptionInfo
+  getEventCreationCreditState,
+  markEventCreationWelcomeSeen,
+  EVENT_CREATION_CREDIT_COST,
+  EVENT_CREATION_FREE_LIMIT
 } from '../../lib/supabaseHelper';
 import * as Notifications from 'expo-notifications';
 import NotificationPermissionModal from '../../components/NotificationPermissionModal';
@@ -53,6 +56,7 @@ const RECIPROCITY_EVENT_ICONS = {
   wedding: require('../../../assets/icons/reciprocity/wedding.png'),
   funeral: require('../../../assets/icons/reciprocity/funeral.png'),
 };
+const JEONGDAM_LOGO = require('../../../assets/images/jeongdamlogo.png');
 
 // 🔥 이벤트 역할 구분
 const EVENT_ROLES = {
@@ -390,8 +394,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const weddingMakeBtnRef = useRef(null);
   const funeralMakeBtnRef = useRef(null);
   const tutorialCheckedRef = useRef(false);
+  const welcomeCreditCheckedRef = useRef(null);
+  const wasHomeTutorialActiveRef = useRef(false);
   const [user, setUser] = useState(null);
-  const [userSubscription, setUserSubscription] = useState(null);
   const [events, setEvents] = useState([]);
   const [activeEvents, setActiveEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -416,8 +421,13 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const [showTossConfirmModal, setShowTossConfirmModal] = useState(false); // 🔥 토스 스타일 확인 모달
   const [showTossSuccessModal, setShowTossSuccessModal] = useState(false); // 🔥 토스 스타일 성공 모달
   const [showCreateEventModal, setShowCreateEventModal] = useState(false); // 경조사 만들기 모달
-  const [showPremiumModal, setShowPremiumModal] = useState(false); // 🔥 프리미엄 업그레이드 모달
-  const [premiumModalType, setPremiumModalType] = useState(''); // 'wedding' or 'funeral'
+  const [showEventCreationWelcomeModal, setShowEventCreationWelcomeModal] = useState(false);
+  const [eventCreationCreditState, setEventCreationCreditState] = useState({
+    balance: 0,
+    freeRemaining: EVENT_CREATION_FREE_LIMIT,
+    priceCredits: EVENT_CREATION_CREDIT_COST,
+    welcomeSeen: true,
+  });
   const [monthlyStats, setMonthlyStats] = useState({
     totalEvents: 0,
     monthlyEvents: 0,
@@ -510,7 +520,8 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         loadUserData(),
         loadEvents(),
         loadActiveEvents(),
-        loadMonthlyStatistics()
+        loadMonthlyStatistics(),
+        user?.id ? refreshEventCreationCreditState() : Promise.resolve()
       ]).then(() => {
         setLastLoadTime(now);
         setDataLoaded(true);
@@ -547,6 +558,71 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       }
     })();
   }, [user?.id]);
+
+  const refreshEventCreationCreditState = async ({ showWelcomeIfReady = false } = {}) => {
+    if (!user?.id) return null;
+
+    const state = await getEventCreationCreditState(user.id);
+    if (!state.success) return null;
+
+    setEventCreationCreditState(state);
+
+    if (showWelcomeIfReady && !state.welcomeSeen) {
+      setShowEventCreationWelcomeModal(true);
+    }
+
+    return state;
+  };
+
+  useEffect(() => {
+    if (!user?.id) {
+      welcomeCreditCheckedRef.current = null;
+      return;
+    }
+
+    if (welcomeCreditCheckedRef.current === user.id) return;
+    welcomeCreditCheckedRef.current = user.id;
+
+    (async () => {
+      const state = await refreshEventCreationCreditState();
+      if (!state || state.welcomeSeen) return;
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('tutorial_home_completed')
+        .eq('id', user.id)
+        .single();
+
+      if (!error && data?.tutorial_home_completed) {
+        setShowEventCreationWelcomeModal(true);
+      }
+    })();
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (activeTutorial === 'home') {
+      wasHomeTutorialActiveRef.current = true;
+      return;
+    }
+
+    if (!user?.id || !wasHomeTutorialActiveRef.current || activeTutorial !== null) return;
+    wasHomeTutorialActiveRef.current = false;
+
+    setTimeout(() => {
+      refreshEventCreationCreditState({ showWelcomeIfReady: true });
+    }, 700);
+  }, [activeTutorial, user?.id]);
+
+  const handleCloseEventCreationWelcomeModal = async () => {
+    setShowEventCreationWelcomeModal(false);
+    if (!user?.id) return;
+
+    await markEventCreationWelcomeSeen(user.id);
+    setEventCreationCreditState(prev => ({
+      ...prev,
+      welcomeSeen: true,
+    }));
+  };
 
   // 더미 행사 존재 보장 — 신규 유저가 튜토리얼 시작 전에 하나 생성
   const ensureDemoEvent = async (uid) => {
@@ -839,8 +915,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           auth_method: 'phone'
         });
         
-        // 구독 정보 로드
-        await loadSubscriptionInfo(userInfo.userId);
         return;
       }
       
@@ -848,8 +922,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       if (session?.user) {
         setUser(session.user);
         
-        // 구독 정보 로드
-        await loadSubscriptionInfo(session.user.id);
         return;
       }
       
@@ -866,8 +938,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           auth_method: 'phone'
         });
         
-        // 구독 정보 로드
-        await loadSubscriptionInfo(parsedUserInfo.userId);
         return;
       }
       
@@ -875,50 +945,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       const { data: { user }, error } = await supabase.auth.getUser();
       if (user) {
         setUser(user);
-        
-        // 구독 정보 로드
-        await loadSubscriptionInfo(user.id);
       } else {
       }
       
     } catch (error) {
     }
   };
-
-  // 🔥 구독 정보 로드 함수
-  const loadSubscriptionInfo = async (userId) => {
-    try {
-      const result = await getUserSubscriptionInfo(userId);
-      
-      // subscription 객체 추출 및 필드명 변환
-      const subscriptionInfo = result?.subscription ? {
-        subscription_type: result.subscription.type || 'free',
-        max_wedding_events: result.subscription.maxWeddingEvents || 1,
-        max_funeral_events: result.subscription.maxFuneralEvents || 1,
-        current_wedding_events: result.subscription.currentWeddingEvents || 0,
-        current_funeral_events: result.subscription.currentFuneralEvents || 0
-      } : {
-        subscription_type: 'free',
-        max_wedding_events: 1,
-        max_funeral_events: 1,
-        current_wedding_events: 0,
-        current_funeral_events: 0
-      };
-      
-      
-      setUserSubscription(subscriptionInfo);
-    } catch (error) {
-      // 기본값 설정
-      setUserSubscription({
-        subscription_type: 'free',
-        max_wedding_events: 1,
-        max_funeral_events: 1,
-        current_wedding_events: 0,
-        current_funeral_events: 0
-      });
-    }
-  };
-
   // 🔥 개선된 이벤트 로드 함수 - 명확한 사용자 정보 전달
   const loadEvents = async () => {
     try {
@@ -1031,27 +1063,16 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   };
 
 
-  // 🔥 수정된 빠른 시작 버튼 핸들러 - 구독 제한 체크 포함
+  // 빠른 시작 버튼 핸들러
   const handleQuickStart = async (eventType) => {
-    // 구독 제한 체크
-    const userId = user?.id;
-    if (userId && userSubscription) {
-      const { checkEventCreationLimit } = require('../../lib/supabaseHelper');
-      const canCreate = await checkEventCreationLimit(eventType, userId);
-      
-      if (!canCreate) {
-        setPremiumModalType(eventType);
-        setShowPremiumModal(true);
-        return;
-      }
-    }
-
     if (eventType === 'wedding') {
       // 🆕 결혼식은 전용 스크린으로
       navigation.navigate('CreateWedding');
     } else if (eventType === 'funeral') {
-      // 🔄 부고는 전용 스크린으로 수정
-      navigation.navigate('CreateFuneral');
+      Alert.alert(
+        '부고장 준비중',
+        '부고장 만들기는 곧 사용할 수 있도록 준비하고 있습니다.'
+      );
     } else {
       // 🔄 기타 타입들은 기존 방식 유지
       navigation.navigate('CreateEvent', { eventType });
@@ -1946,30 +1967,35 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         <View style={styles.headerLeft}>
           <View style={styles.headerTop}>
             <Text style={styles.headerTitle}>정담</Text>
-            {userSubscription && (
-              <View style={[
-                styles.headerBadge,
-                userSubscription.subscription_type === 'premium'
-                  ? styles.headerBadgePremium
-                  : styles.headerBadgeFree
-              ]}>
-                <Text style={[
-                  styles.headerBadgeText,
-                  userSubscription.subscription_type === 'premium'
-                    ? styles.headerBadgeTextPremium
-                    : styles.headerBadgeTextFree
-                ]}>
-                  {userSubscription.subscription_type === 'premium' ? 'PREMIUM' : 'FREE'}
-                </Text>
-              </View>
-            )}
           </View>
           <Text style={styles.headerSubtitle}>
-            {userSubscription?.subscription_type === 'premium'
-              ? `${userName}님, 프리미엄을 이용중입니다`
-              : `${userName}님, 안녕하세요`
-            }
+            {userName}님, 안녕하세요
           </Text>
+          <View style={styles.creditStatusRow}>
+            <View style={styles.creditStatusPill}>
+              <View style={[styles.creditStatusMark, styles.creditStatusMarkCredit]}>
+                <Text style={styles.creditStatusMarkText}>C</Text>
+              </View>
+              <Text style={styles.creditStatusText}>
+                크레딧 {eventCreationCreditState.balance}개
+              </Text>
+            </View>
+            <View style={styles.creditStatusPill}>
+              <View style={[styles.creditStatusMark, styles.creditStatusMarkFree]}>
+                <Text style={styles.creditStatusMarkText}>2</Text>
+              </View>
+              <Text style={styles.creditStatusText}>
+                무료 생성 {eventCreationCreditState.freeRemaining}회
+              </Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.headerLogoSpot}>
+          <Image
+            source={JEONGDAM_LOGO}
+            style={styles.headerLogoLarge}
+            resizeMode="contain"
+          />
         </View>
       </View>
 
@@ -2039,10 +2065,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             <TouchableOpacity
               style={styles.quickItem}
               onPress={() => handleQuickStart('wedding')}
-              disabled={
-                userSubscription?.subscription_type === 'free' &&
-                userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events
-              }
             >
               <Image
                 source={RECIPROCITY_EVENT_ICONS.wedding}
@@ -2053,25 +2075,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               <Text style={styles.quickSubtitle}>행복한 결혼 소식을 전해보세요</Text>
               <TouchableOpacity
                 ref={weddingMakeBtnRef}
-                style={[
-                  styles.quickButton,
-                  {
-                    backgroundColor: userSubscription?.subscription_type === 'free' &&
-                    userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events
-                    ? '#BDC3C7' : Colors.wedding
-                  }
-                ]}
+                style={[styles.quickButton, { backgroundColor: Colors.wedding }]}
                 onPress={() => handleQuickStart('wedding')}
-                disabled={
-                  userSubscription?.subscription_type === 'free' &&
-                  userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events
-                }
               >
-                <Text style={styles.quickButtonText}>
-                  {userSubscription?.subscription_type === 'free' &&
-                   userSubscription?.current_wedding_events >= userSubscription?.max_wedding_events
-                   ? '제한됨' : '만들기'}
-                </Text>
+                <Text style={styles.quickButtonText}>만들기</Text>
               </TouchableOpacity>
               <View style={styles.quickTypeIndicator}>
                 <Text style={styles.quickTypeText}>경사</Text>
@@ -2081,11 +2088,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             <TouchableOpacity
               style={styles.quickItem}
               onPress={() => handleQuickStart('funeral')}
-              disabled={
-                userSubscription?.subscription_type === 'free' &&
-                userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events
-              }
             >
+              <View style={styles.comingSoonBadge}>
+                <Text style={styles.comingSoonBadgeText}>곧 오픈</Text>
+              </View>
               <Image
                 source={RECIPROCITY_EVENT_ICONS.funeral}
                 style={{ width: 120, height: 120 }}
@@ -2095,25 +2101,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               <Text style={styles.quickSubtitle}>슬픈 소식을 정중하게 전달하세요</Text>
               <TouchableOpacity
                 ref={funeralMakeBtnRef}
-                style={[
-                  styles.quickButton,
-                  {
-                    backgroundColor: userSubscription?.subscription_type === 'free' &&
-                    userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events
-                    ? '#BDC3C7' : Colors.funeral
-                  }
-                ]}
+                style={[styles.quickButton, styles.quickButtonComingSoon]}
                 onPress={() => handleQuickStart('funeral')}
-                disabled={
-                  userSubscription?.subscription_type === 'free' &&
-                  userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events
-                }
               >
-                <Text style={styles.quickButtonText}>
-                  {userSubscription?.subscription_type === 'free' &&
-                   userSubscription?.current_funeral_events >= userSubscription?.max_funeral_events
-                   ? '제한됨' : '만들기'}
-                </Text>
+                <Text style={styles.quickButtonText}>준비중</Text>
               </TouchableOpacity>
               <View style={[styles.quickTypeIndicator, { backgroundColor: Colors.funeral }]}>
                 <Text style={[styles.quickTypeText, { color: Colors.white }]}>조사</Text>
@@ -3143,7 +3134,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
                 <View style={styles.createEventModalOptions}>
                   <TouchableOpacity
-                    style={styles.createEventModalOption}
+                    style={[styles.createEventModalOption, styles.createEventModalOptionComingSoon]}
                     activeOpacity={0.7}
                     onPress={() => {
                       setShowCreateEventModal(false);
@@ -3182,8 +3173,13 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                       />
                     </View>
                     <View style={styles.createEventModalOptionInfo}>
-                      <Text style={styles.createEventModalOptionTitle}>부고장 만들기</Text>
-                      <Text style={styles.createEventModalOptionDesc}>장례 안내와 조의금 관리</Text>
+                      <View style={styles.createEventModalOptionTitleRow}>
+                        <Text style={styles.createEventModalOptionTitle}>부고장 만들기</Text>
+                        <View style={styles.createEventModalComingSoonBadge}>
+                          <Text style={styles.createEventModalComingSoonText}>준비중</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.createEventModalOptionDesc}>곧 사용할 수 있도록 준비하고 있어요</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color={Colors.gray400} />
                   </TouchableOpacity>
@@ -3201,90 +3197,38 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* 🔥 프리미엄 업그레이드 모달 */}
       <Modal
-        visible={showPremiumModal}
-        transparent={true}
+        visible={showEventCreationWelcomeModal}
+        transparent
         animationType="fade"
-        onRequestClose={() => setShowPremiumModal(false)}
+        onRequestClose={handleCloseEventCreationWelcomeModal}
       >
-        <View style={styles.premiumModalOverlay}>
-          <View style={styles.premiumModalContainer}>
-            {/* 헤더 */}
-            <View style={styles.premiumModalHeader}>
-              <View style={styles.premiumBadge}>
-                <Ionicons name="star" size={20} color="#FFD700" />
-                <Text style={styles.premiumBadgeText}>PREMIUM</Text>
-              </View>
-              <TouchableOpacity 
-                style={styles.premiumCloseButton}
-                onPress={() => setShowPremiumModal(false)}
-              >
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
+        <View style={styles.eventCreationWelcomeOverlay}>
+          <View style={styles.eventCreationWelcomeCard}>
+            <View style={styles.eventCreationWelcomeIconWrap}>
+              <Ionicons name="gift-outline" size={30} color="#0F766E" />
             </View>
-
-            {/* 메인 콘텐츠 */}
-            <View style={styles.premiumModalContent}>
-              <Text style={styles.premiumModalTitle}>
-                {premiumModalType === 'wedding' ? '청첩장' : '부고장'} 무제한 생성
+            <Text style={styles.eventCreationWelcomeTitle}>
+              정담 시작 선물이 도착했어요
+            </Text>
+            <Text style={styles.eventCreationWelcomeDesc}>
+              처음 {EVENT_CREATION_FREE_LIMIT}개의 청첩장은 무료로 만들 수 있어요.
+              {'\n'}이후 청첩장 만들기는 {EVENT_CREATION_CREDIT_COST}크레딧이 사용됩니다.
+              {'\n'}가입 선물로 크레딧 10개를 드렸어요.
+            </Text>
+            <View style={styles.eventCreationWelcomeNotice}>
+              <Ionicons name="information-circle-outline" size={17} color="#8B5E00" />
+              <Text style={styles.eventCreationWelcomeNoticeText}>
+                부고장은 곧 제공될 예정입니다.
               </Text>
-              <Text style={styles.premiumModalSubtitle}>
-                프리미엄 플랜으로 업그레이드하고 제한 없이 이용하세요
-              </Text>
-
-              {/* 기능 리스트 */}
-              <View style={styles.premiumFeatureList}>
-                <View style={styles.premiumFeatureItem}>
-                  <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-                  <Text style={styles.premiumFeatureText}>무제한 경조사 생성</Text>
-                </View>
-                <View style={styles.premiumFeatureItem}>
-                  <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-                  <Text style={styles.premiumFeatureText}>프리미엄 템플릿 이용</Text>
-                </View>
-                <View style={styles.premiumFeatureItem}>
-                  <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-                  <Text style={styles.premiumFeatureText}>고급 통계 및 분석</Text>
-                </View>
-                <View style={styles.premiumFeatureItem}>
-                  <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-                  <Text style={styles.premiumFeatureText}>우선 고객 지원</Text>
-                </View>
-              </View>
-
-              {/* 현재 제한 표시 */}
-              <View style={styles.premiumCurrentLimit}>
-                <Ionicons name="information-circle-outline" size={16} color="#FF9800" />
-                <Text style={styles.premiumLimitText}>
-                  무료 플랜: {premiumModalType === 'wedding' ? '결혼식' : '장례식'} 1개 제한
-                </Text>
-              </View>
             </View>
-
-            {/* 버튼 영역 */}
-            <View style={styles.premiumModalButtons}>
-              <TouchableOpacity
-                style={styles.premiumCancelButton}
-                onPress={() => setShowPremiumModal(false)}
-              >
-                <Text style={styles.premiumCancelText}>나중에</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.premiumUpgradeButton}
-                onPress={() => {
-                  setShowPremiumModal(false);
-                  // TODO: 프리미엄 업그레이드 페이지로 이동 또는 웹뷰 열기
-                  Alert.alert('준비 중', '프리미엄 업그레이드 기능을 준비 중입니다.\n곧 더 나은 서비스로 찾아뵙겠습니다!');
-                }}
-              >
-                <View style={styles.premiumUpgradeContent}>
-                  <Ionicons name="star" size={16} color="#FFFFFF" />
-                  <Text style={styles.premiumUpgradeText}>프리미엄 시작하기</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={styles.eventCreationWelcomeButton}
+              activeOpacity={0.85}
+              onPress={handleCloseEventCreationWelcomeModal}
+            >
+              <Text style={styles.eventCreationWelcomeButtonText}>확인</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -3642,17 +3586,37 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 8 : 50,
+    paddingTop: Platform.OS === 'ios' ? 18 : 58,
     paddingBottom: 16,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F2F4F6',
   },
   headerLeft: {},
+  headerLogoSpot: {
+    width: 78,
+    height: 78,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAF9',
+    borderWidth: 1,
+    borderColor: '#E6EEEB',
+    shadowColor: '#0F766E',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 3,
+  },
+  headerLogoLarge: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+  },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   headerTitle: {
     fontSize: 22,
@@ -3660,33 +3624,52 @@ const styles = StyleSheet.create({
     color: '#191F28',
     letterSpacing: -0.3,
   },
-  headerBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  headerBadgeFree: {
-    backgroundColor: '#E5E8EB',
-  },
-  headerBadgePremium: {
-    backgroundColor: '#FF5722',
-  },
-  headerBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-  },
-  headerBadgeTextFree: {
-    color: '#191F28',
-  },
-  headerBadgeTextPremium: {
-    color: '#FFFFFF',
-  },
   headerSubtitle: {
     fontSize: 13,
     color: '#8B95A1',
     marginTop: 4,
     fontWeight: '400',
+  },
+  creditStatusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  creditStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#F2F8F7',
+    borderWidth: 1,
+    borderColor: '#D8EDEA',
+  },
+  creditStatusMark: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creditStatusMarkCredit: {
+    backgroundColor: '#0F766E',
+  },
+  creditStatusMarkFree: {
+    backgroundColor: '#B45309',
+  },
+  creditStatusMarkText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    lineHeight: 12,
+  },
+  creditStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#191F28',
   },
 
   // 콘텐츠
@@ -3866,6 +3849,9 @@ const styles = StyleSheet.create({
     minWidth: 100,
     alignItems: 'center',
   },
+  quickButtonComingSoon: {
+    backgroundColor: '#A7AEB8',
+  },
   quickButtonText: {
     fontSize: 14,
     fontWeight: '600',
@@ -3885,6 +3871,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.3,
+  },
+  comingSoonBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    zIndex: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#F2F4F6',
+  },
+  comingSoonBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#6B7280',
   },
 
   // 내가 주최한 경조사 - Toss 표준
@@ -5039,164 +5040,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  // 🔥 프리미엄 모달 스타일
-  premiumModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-
-  premiumModalContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    width: '100%',
-    maxWidth: 380,
-    paddingBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 25,
-  },
-
-  premiumModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
-  },
-
-  premiumBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF8E1',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
-  },
-
-  premiumBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#F57C00',
-    letterSpacing: 0.5,
-  },
-
-  premiumCloseButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  premiumModalContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-  },
-
-  premiumModalTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-
-  premiumModalSubtitle: {
-    fontSize: 15,
-    color: '#666666',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 28,
-  },
-
-  premiumFeatureList: {
-    gap: 16,
-    marginBottom: 24,
-  },
-
-  premiumFeatureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-
-  premiumFeatureText: {
-    fontSize: 15,
-    color: '#333333',
-    fontWeight: '500',
-  },
-
-  premiumCurrentLimit: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF3E0',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    gap: 8,
-  },
-
-  premiumLimitText: {
-    fontSize: 13,
-    color: '#F57C00',
-    fontWeight: '500',
-  },
-
-  premiumModalButtons: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-
-  premiumCancelButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-
-  premiumCancelText: {
-    fontSize: 15,
-    color: '#666666',
-    fontWeight: '600',
-  },
-
-  premiumUpgradeButton: {
-    flex: 2,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#FF6B6B',
-    alignItems: 'center',
-    shadowColor: '#FF6B6B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-
-  premiumUpgradeContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-
-  premiumUpgradeText: {
-    fontSize: 15,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 위젯 공통
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -6141,6 +5984,76 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
 
+  eventCreationWelcomeOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.46)',
+  },
+  eventCreationWelcomeCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingHorizontal: 22,
+    paddingTop: 24,
+    paddingBottom: 18,
+    alignItems: 'center',
+  },
+  eventCreationWelcomeIconWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: '#E7F5F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  eventCreationWelcomeTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#191F28',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  eventCreationWelcomeDesc: {
+    fontSize: 14,
+    color: '#4E5968',
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  eventCreationWelcomeNotice: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: '#FFF7E6',
+  },
+  eventCreationWelcomeNoticeText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#8B5E00',
+    fontWeight: '600',
+  },
+  eventCreationWelcomeButton: {
+    width: '100%',
+    marginTop: 18,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: '#0F766E',
+  },
+  eventCreationWelcomeButtonText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+
   // 경조사 만들기 바텀시트 모달
   createEventModalOverlay: {
     flex: 1,
@@ -6184,6 +6097,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
   },
+  createEventModalOptionComingSoon: {
+    opacity: 0.78,
+  },
   createEventModalIconWrap: {
     width: 88,
     height: 88,
@@ -6195,11 +6111,28 @@ const styles = StyleSheet.create({
   createEventModalOptionInfo: {
     flex: 1,
   },
+  createEventModalOptionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 2,
+  },
   createEventModalOptionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: Colors.textPrimary,
-    marginBottom: 2,
+  },
+  createEventModalComingSoonBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#EEF2F7',
+  },
+  createEventModalComingSoonText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#6B7280',
   },
   createEventModalOptionDesc: {
     fontSize: 13,

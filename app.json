@@ -42,7 +42,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.jeongdam.gyeongjoapp",
-      "versionCode": 7,
+      "versionCode": 9,
       "intentFilters": [
         {
           "action": "VIEW",
