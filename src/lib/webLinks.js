@@ -1,0 +1,46 @@
+import Constants from 'expo-constants';
+
+export const WEB_BASE_URL = 'https://jeongdamm.com';
+
+export const getWebBaseUrl = () => {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    const hostUri = Constants.expoConfig?.hostUri || Constants.manifest?.hostUri || '';
+    const devIp = hostUri.split(':')[0];
+    if (devIp) return `http://${devIp}:3000`;
+  }
+
+  return WEB_BASE_URL;
+};
+
+const cleanPath = (path) => `/${String(path || '').replace(/^\/+/, '')}`;
+
+export const getWebApiUrl = (path) => `${WEB_BASE_URL}${cleanPath(path)}`;
+
+const getEventId = (eventOrId) =>
+  typeof eventOrId === 'object'
+    ? eventOrId?.id || eventOrId?.event_id
+    : eventOrId;
+
+const getPublicSlug = (eventOrId) =>
+  typeof eventOrId === 'object'
+    ? eventOrId?.public_slug || eventOrId?.publicSlug
+    : null;
+
+const getTemplateStyle = (eventOrId, fallbackTemplate = 'modern') =>
+  typeof eventOrId === 'object'
+    ? eventOrId?.template_style || eventOrId?.templateStyle || fallbackTemplate
+    : fallbackTemplate;
+
+export const getInvitationUrl = (eventOrId, fallbackTemplate = 'modern') => {
+  const publicSlug = getPublicSlug(eventOrId);
+  if (publicSlug) return `${getWebBaseUrl()}/w/${publicSlug}`;
+
+  const eventId = getEventId(eventOrId);
+  const templateStyle = getTemplateStyle(eventOrId, fallbackTemplate);
+  return `${getWebBaseUrl()}/template/${eventId}?template=${templateStyle}`;
+};
+
+export const getContributionUrl = (eventOrId) => {
+  const eventId = getEventId(eventOrId);
+  return `${getWebBaseUrl()}/contribute/${eventId}`;
+};

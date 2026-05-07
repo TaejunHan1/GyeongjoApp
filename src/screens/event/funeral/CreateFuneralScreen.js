@@ -5,6 +5,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   StyleSheet,
   SafeAreaView,
   ScrollView,
@@ -15,7 +16,6 @@ import {
   Modal,
   Animated,
   Easing,
-  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,7 +26,7 @@ import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUs
 import DaumPostcode from '../../../components/DaumPostcode';
 import FuneralTemplatePreview from '../templates/FuneralTemplatePreview';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
 // 토스 컬러 시스템
 const TossColors = {
@@ -58,28 +58,36 @@ const FUNERAL_PHOTO_CATEGORIES = {
 };
 
 // 토스 스타일 모달 컴포넌트
-const TossModal = ({ visible, title, message, onConfirm, onCancel, confirmText = "확인", cancelText = "취소" }) => (
-  <Modal visible={visible} transparent animationType="fade">
-    <View style={styles.tossModalOverlay}>
-      <View style={styles.tossModalContainer}>
-        <View style={styles.tossModalContent}>
-          <Text style={styles.tossModalTitle}>{title}</Text>
-          <Text style={styles.tossModalMessage}>{message}</Text>
+const TossModal = ({ visible, title, message, onConfirm, onCancel, confirmText = "확인", cancelText = "취소" }) => {
+  const closeByBackdrop = onCancel || onConfirm;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={closeByBackdrop}>
+      <TouchableWithoutFeedback onPress={closeByBackdrop}>
+        <View style={styles.tossModalOverlay}>
+          <TouchableWithoutFeedback>
+            <View style={styles.tossModalContainer}>
+              <View style={styles.tossModalContent}>
+                <Text style={styles.tossModalTitle}>{title}</Text>
+                <Text style={styles.tossModalMessage}>{message}</Text>
+              </View>
+              <View style={styles.tossModalButtons}>
+                {onCancel && (
+                  <TouchableOpacity style={styles.tossModalCancelButton} onPress={onCancel}>
+                    <Text style={styles.tossModalCancelText}>{cancelText}</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.tossModalConfirmButton} onPress={onConfirm}>
+                  <Text style={styles.tossModalConfirmText}>{confirmText}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
         </View>
-        <View style={styles.tossModalButtons}>
-          {onCancel && (
-            <TouchableOpacity style={styles.tossModalCancelButton} onPress={onCancel}>
-              <Text style={styles.tossModalCancelText}>{cancelText}</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity style={styles.tossModalConfirmButton} onPress={onConfirm}>
-            <Text style={styles.tossModalConfirmText}>{confirmText}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
-  </Modal>
-);
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+};
 
 // 토스 스타일 달력 컴포넌트 (부고용 - 과거 날짜 허용)
 const TossDatePicker = ({ visible, selectedDate, onSelect, onClose, allowPastDates = true }) => {
@@ -133,9 +141,11 @@ const TossDatePicker = ({ visible, selectedDate, onSelect, onClose, allowPastDat
   const today = new Date();
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.tossPickerOverlay}>
-        <View style={styles.tossPickerContainer}>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.tossPickerOverlay}>
+          <TouchableWithoutFeedback>
+            <View style={styles.tossPickerContainer}>
           <View style={styles.tossPickerHeader}>
             <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={24} color={TossColors.textSecondary} />
@@ -198,8 +208,10 @@ const TossDatePicker = ({ visible, selectedDate, onSelect, onClose, allowPastDat
               );
             })}
           </View>
+            </View>
+          </TouchableWithoutFeedback>
         </View>
-      </View>
+      </TouchableWithoutFeedback>
     </Modal>
   );
 };
@@ -220,9 +232,11 @@ const TossTimePicker = ({ visible, selectedTime, onSelect, onClose }) => {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.tossPickerOverlay}>
-        <View style={styles.tossPickerContainer}>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.tossPickerOverlay}>
+          <TouchableWithoutFeedback>
+            <View style={styles.tossPickerContainer}>
           <View style={styles.tossPickerHeader}>
             <TouchableOpacity onPress={onClose}>
               <Text style={styles.timePickerCancelText}>취소</Text>
@@ -280,8 +294,10 @@ const TossTimePicker = ({ visible, selectedTime, onSelect, onClose }) => {
               </ScrollView>
             </View>
           </View>
+            </View>
+          </TouchableWithoutFeedback>
         </View>
-      </View>
+      </TouchableWithoutFeedback>
     </Modal>
   );
 };
@@ -388,13 +404,9 @@ export default function CreateFuneralScreen({ navigation, route }) {
     photos: 0,
     messageSettings: 0,
     message: 0,
-    money: 0,
   });
 
   // 토스 스타일 피커 상태
-  const [showTossDatePicker, setShowTossDatePicker] = useState(false);
-  const [showTossTimePicker, setShowTossTimePicker] = useState(false);
-  const [showAddressSearch, setShowAddressSearch] = useState(false);
   const [showFuneralAddressSearch, setShowFuneralAddressSearch] = useState(false);
   const [showTemplatePreview, setShowTemplatePreview] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState(null);
@@ -521,30 +533,6 @@ export default function CreateFuneralScreen({ navigation, route }) {
     }
   };
 
-  // 부고 타입에 따른 조의금 설정
-  const getMoneyPresets = () => {
-    return [
-      { 
-        id: 'basic',
-        label: '기본',
-        amounts: [30000, 50000, 100000],
-        description: '가까운 지인들과 함께',
-      },
-      { 
-        id: 'standard',
-        label: '일반',
-        amounts: [50000, 100000, 200000],
-        description: '일반적인 조의금',
-      },
-      { 
-        id: 'premium',
-        label: '정식',
-        amounts: [100000, 200000, 300000],
-        description: '정식 조문',
-      },
-    ];
-  };
-
   const handleFuneralAddressComplete = (data) => {
     console.log('장례식장 주소 검색 완료:', data);
     
@@ -608,10 +596,6 @@ export default function CreateFuneralScreen({ navigation, route }) {
     } catch (error) {
       return null;
     }
-  };
-
-  const formatAmount = (amount) => {
-    return new Intl.NumberFormat('ko-KR').format(amount) + '원';
   };
 
   // 사진 관련 함수들
@@ -1168,11 +1152,26 @@ export default function CreateFuneralScreen({ navigation, route }) {
       
       {eventData.familyMembers.map((member, index) => (
         <View key={index} style={styles.familyMemberRow}>
-          <View style={styles.familyMemberInput}>
-            <Text style={styles.inputLabel}>{member.relation}</Text>
+          <View style={styles.familyRelationInput}>
+            <Text style={styles.inputLabel}>관계</Text>
             <TextInput
               style={styles.textInput}
-              placeholder={`예: 홍길동, 홍길순 (여러 명인 경우 쉼표로 구분)`}
+              placeholder="장남"
+              value={member.relation}
+              onChangeText={(text) => {
+                const updatedMembers = [...eventData.familyMembers];
+                updatedMembers[index].relation = text;
+                setEventData({ ...eventData, familyMembers: updatedMembers });
+              }}
+              placeholderTextColor={TossColors.textTertiary}
+            />
+          </View>
+
+          <View style={styles.familyNamesInput}>
+            <Text style={styles.inputLabel}>상주명</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="홍길동, 홍길순"
               value={member.names}
               onChangeText={(text) => {
                 const updatedMembers = [...eventData.familyMembers];
@@ -1723,82 +1722,6 @@ export default function CreateFuneralScreen({ navigation, route }) {
     );
   };
 
-  const renderMoneyForm = () => {
-    const moneyPresets = getMoneyPresets();
-    
-    return (
-      <Animated.View 
-        style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
-        onLayout={(event) => {
-          sectionPositions.current.money = event.nativeEvent.layout.y;
-        }}
-      >
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>조의금 설정</Text>
-          <Text style={styles.sectionSubtitle}>참석자들이 선택할 수 있는 조의금 금액을 설정해주세요</Text>
-        </View>
-        
-        <View style={styles.moneyPresetContainer}>
-          {moneyPresets.map((preset) => {
-            const isSelected = JSON.stringify(eventData.presetAmounts) === JSON.stringify(preset.amounts);
-            
-            return (
-              <TouchableOpacity
-                key={preset.id}
-                style={[
-                  styles.moneyPresetCard,
-                  isSelected && styles.moneyPresetCardSelected,
-                ]}
-                onPress={() => setEventData({ ...eventData, presetAmounts: preset.amounts })}
-              >
-                <View style={styles.moneyPresetHeader}>
-                  <View style={styles.moneyPresetInfo}>
-                    <Text style={[
-                      styles.moneyPresetLabel,
-                      isSelected && styles.moneyPresetLabelSelected,
-                    ]}>
-                      {preset.label}
-                    </Text>
-                    <Text style={[
-                      styles.moneyPresetDescription,
-                      isSelected && styles.moneyPresetDescriptionSelected,
-                    ]}>
-                      {preset.description}
-                    </Text>
-                  </View>
-                  {isSelected && (
-                    <View style={styles.moneyPresetCheckIcon}>
-                      <Ionicons name="checkmark-circle" size={24} color={TossColors.primary} />
-                    </View>
-                  )}
-                </View>
-                
-                <View style={styles.moneyPresetAmounts}>
-                  {preset.amounts.map((amount, index) => (
-                    <View
-                      key={index}
-                      style={[
-                        styles.moneyAmountChip,
-                        isSelected && styles.moneyAmountChipSelected,
-                      ]}
-                    >
-                      <Text style={[
-                        styles.moneyAmountText,
-                        isSelected && styles.moneyAmountTextSelected,
-                      ]}>
-                        {formatAmount(amount)}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </Animated.View>
-    );
-  };
-
   const renderTemplateSelection = () => (
     <Animated.View style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
       <View style={styles.sectionHeader}>
@@ -1868,7 +1791,9 @@ export default function CreateFuneralScreen({ navigation, route }) {
     <ScrollView 
       ref={scrollViewRef}
       style={styles.scrollView} 
+      contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
     >
       {renderDeceasedInfoForm()}
       {renderFamilyMembersForm()}
@@ -1878,12 +1803,15 @@ export default function CreateFuneralScreen({ navigation, route }) {
       {renderPhotoUploadForm()}
       {renderMessageSettingsForm()}
       {renderMessageForm()}
-      {renderMoneyForm()}
     </ScrollView>
   );
 
   const renderStep2 = () => (
-    <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.scrollView}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+    >
       {renderTemplateSelection()}
     </ScrollView>
   );
@@ -2084,6 +2012,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: TossColors.secondary,
   },
+  scrollContent: {
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
   
   // 섹션
   section: {
@@ -2115,8 +2047,7 @@ const styles = StyleSheet.create({
   
   // 폼 요소
   formRow: {
-    flexDirection: 'row',
-    gap: 12,
+    gap: 0,
   },
   inputWrapper: {
     flex: 1,
@@ -2187,11 +2118,15 @@ const styles = StyleSheet.create({
   familyMemberRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
+    gap: 10,
     marginBottom: 20,
   },
-  familyMemberInput: {
+  familyRelationInput: {
+    width: 96,
+    marginBottom: 0,
+  },
+  familyNamesInput: {
     flex: 1,
-    marginRight: 12,
     marginBottom: 0,
   },
   removeFamilyButton: {
@@ -2591,74 +2526,6 @@ const styles = StyleSheet.create({
   photoSummaryDetail: {
     fontSize: 12,
     color: TossColors.textTertiary,
-  },
-  
-  // 조의금 설정 - 토스 스타일
-  moneyPresetContainer: {
-    gap: 16,
-  },
-  moneyPresetCard: {
-    backgroundColor: TossColors.surface,
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: TossColors.border,
-  },
-  moneyPresetCardSelected: {
-    backgroundColor: TossColors.secondary,
-    borderColor: TossColors.primary,
-    borderWidth: 2,
-  },
-  moneyPresetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  moneyPresetInfo: {
-    flex: 1,
-  },
-  moneyPresetLabel: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: TossColors.text,
-    marginBottom: 4,
-  },
-  moneyPresetLabelSelected: {
-    color: TossColors.primary,
-  },
-  moneyPresetDescription: {
-    fontSize: 14,
-    color: TossColors.textSecondary,
-    lineHeight: 20,
-  },
-  moneyPresetDescriptionSelected: {
-    color: TossColors.primary,
-  },
-  moneyPresetCheckIcon: {
-    marginLeft: 12,
-  },
-  moneyPresetAmounts: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  moneyAmountChip: {
-    backgroundColor: TossColors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  moneyAmountChipSelected: {
-    backgroundColor: TossColors.primary + '20',
-  },
-  moneyAmountText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: TossColors.textSecondary,
-  },
-  moneyAmountTextSelected: {
-    color: TossColors.primary,
   },
   
   // 템플릿 선택

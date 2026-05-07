@@ -208,6 +208,80 @@ const PETAL_QTYS = [
   { id: 'many',   label: '많이' },
 ];
 
+const EMPTY_WEDDING_EVENT_DATA = {
+  type: 'wedding',
+  groomName: '',
+  brideName: '',
+  groomContact: '',
+  brideContact: '',
+  groomBankName: '',
+  groomAccountNumber: '',
+  brideBankName: '',
+  brideAccountNumber: '',
+  groomFatherName: '',
+  groomMotherName: '',
+  groomFatherContact: '',
+  groomMotherContact: '',
+  groomFatherBankName: '',
+  groomFatherAccountNumber: '',
+  groomMotherBankName: '',
+  groomMotherAccountNumber: '',
+  brideFatherName: '',
+  brideMotherName: '',
+  brideFatherContact: '',
+  brideMotherContact: '',
+  brideFatherBankName: '',
+  brideFatherAccountNumber: '',
+  brideMotherBankName: '',
+  brideMotherAccountNumber: '',
+  date: null,
+  ceremonyTime: null,
+  location: '',
+  detailedAddress: '',
+  allowMessages: true,
+  messageSettings: { placeholder: '축하의 메시지를 남겨주세요.', requireLogin: true },
+  images: [],
+  customMessage: '',
+  parkingInfo: '',
+  selectedTemplate: null,
+  familyRelations: ['신랑측', '신부측'],
+  presetAmounts: [100000, 200000, 300000],
+};
+
+const TEST_WEDDING_EVENT_DATA = {
+  ...EMPTY_WEDDING_EVENT_DATA,
+  groomName: '김민수',
+  brideName: '이서연',
+  groomContact: '1234-5678',
+  brideContact: '8765-4321',
+  groomBankName: 'KB국민은행',
+  groomAccountNumber: '324702-04-117022',
+  brideBankName: '신한은행',
+  brideAccountNumber: '110-456-789012',
+  groomFatherName: '김영호',
+  groomMotherName: '박순희',
+  groomFatherContact: '1111-2222',
+  groomMotherContact: '3333-4444',
+  groomFatherBankName: 'NH농협은행',
+  groomFatherAccountNumber: '302-1234-5678-91',
+  groomMotherBankName: '우리은행',
+  groomMotherAccountNumber: '1002-567-891234',
+  brideFatherName: '이정수',
+  brideMotherName: '최미영',
+  brideFatherContact: '5555-6666',
+  brideMotherContact: '7777-8888',
+  brideFatherBankName: '하나은행',
+  brideFatherAccountNumber: '267-910123-45678',
+  brideMotherBankName: '카카오뱅크',
+  brideMotherAccountNumber: '3333-12-3456789',
+  date: '2026-05-14',
+  ceremonyTime: '13:00',
+  location: '신라호텔 다이너스티홀 3층',
+  detailedAddress: '서울 중구 동호로 249',
+  customMessage: '서로가 마주보며 다져온 사랑을\n이제 함께 한 곳을 바라보며\n걸어갈 수 있는 큰 사랑으로 키우고자 합니다.\n\n저희 두 사람이 사랑의 이름으로\n지켜나갈 수 있게 앞날을\n축복해 주시면 감사하겠습니다.',
+  parkingInfo: '지하 주차장 2시간 무료',
+};
+
 // ── 템플릿 목록 ──
 const TEMPLATES = [
   {
@@ -806,35 +880,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
   }, [registerHandler]);
 
   const [step, setStep] = useState(1);
-  const [eventData, setEventData] = useState({
-    type: 'wedding',
-    groomName: '김민수', brideName: '이서연',
-    groomContact: '1234-5678', brideContact: '8765-4321',
-    groomBankName: 'KB국민은행', groomAccountNumber: '324702-04-117022',
-    brideBankName: '신한은행', brideAccountNumber: '110-456-789012',
-    // 부모님
-    groomFatherName: '김영호', groomMotherName: '박순희',
-    groomFatherContact: '1111-2222', groomMotherContact: '3333-4444',
-    groomFatherBankName: 'NH농협은행', groomFatherAccountNumber: '302-1234-5678-91',
-    groomMotherBankName: '우리은행', groomMotherAccountNumber: '1002-567-891234',
-    brideFatherName: '이정수', brideMotherName: '최미영',
-    brideFatherContact: '5555-6666', brideMotherContact: '7777-8888',
-    brideFatherBankName: '하나은행', brideFatherAccountNumber: '267-910123-45678',
-    brideMotherBankName: '카카오뱅크', brideMotherAccountNumber: '3333-12-3456789',
-    // 일시/장소
-    date: '2026-05-14', ceremonyTime: '13:00',
-    location: '신라호텔 다이너스티홀 3층', detailedAddress: '서울 중구 동호로 249',
-    // 방명록
-    allowMessages: true,
-    messageSettings: { placeholder: '축하의 메시지를 남겨주세요.', requireLogin: true },
-    // 사진/기타
-    images: [],
-    customMessage: '서로가 마주보며 다져온 사랑을\n이제 함께 한 곳을 바라보며\n걸어갈 수 있는 큰 사랑으로 키우고자 합니다.\n\n저희 두 사람이 사랑의 이름으로\n지켜나갈 수 있게 앞날을\n축복해 주시면 감사하겠습니다.',
-    parkingInfo: '지하 주차장 2시간 무료',
-    selectedTemplate: null,
-    familyRelations: ['신랑측', '신부측'],
-    presetAmounts: [100000, 200000, 300000],
-  });
+  const [eventData, setEventData] = useState(EMPTY_WEDDING_EVENT_DATA);
 
   // 모달/상태
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -885,6 +931,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
   // 애니메이션
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
+  const testButtonAnim = useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
     Animated.parallel([
@@ -893,8 +940,37 @@ export default function CreateWeddingScreen({ navigation, route }) {
     ]).start();
   }, [step]);
 
+  React.useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(testButtonAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(testButtonAnim, {
+          toValue: 0,
+          duration: 900,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [testButtonAnim]);
+
   // ── 헬퍼 함수들 ──
   const updateForm = (key, value) => setEventData(prev => ({ ...prev, [key]: value }));
+  const fillTestWeddingData = () => {
+    setEventData({
+      ...TEST_WEDDING_EVENT_DATA,
+      images: [],
+      selectedTemplate: null,
+    });
+    setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), 50);
+  };
   const showAlert = (title, message) => setAlertInfo({ visible: true, title, message });
   const closeAlert = () => setAlertInfo({ visible: false, title: '', message: '' });
 
@@ -1873,26 +1949,53 @@ export default function CreateWeddingScreen({ navigation, route }) {
 
         {/* ── 하단 버튼 ── */}
         {step < 3 && (
-          <View style={[s.footer, { paddingBottom: insets.bottom + 8 }]}>
-            {step === 2 && (
-              <TouchableOpacity style={s.prevBtn} onPress={() => setStep(1)} activeOpacity={0.85}>
-                <Text style={s.prevBtnText}>이전</Text>
-              </TouchableOpacity>
+          <>
+            {step === 1 && (
+              <Animated.View
+                style={[
+                  s.testFillWrap,
+                  {
+                    bottom: insets.bottom + 78,
+                    transform: [{
+                      translateY: testButtonAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, -5],
+                      }),
+                    }],
+                  },
+                ]}
+              >
+                <TouchableOpacity
+                  style={s.testFillBtn}
+                  onPress={fillTestWeddingData}
+                  activeOpacity={0.86}
+                >
+                  <Ionicons name="flash" size={14} color={C.primary} />
+                  <Text style={s.testFillText}>테스트 입력</Text>
+                </TouchableOpacity>
+              </Animated.View>
             )}
-            <TouchableOpacity
-              ref={nextBtnRef}
-              style={[s.nextBtn, (isLoading || imageUploadState.isUploading) && { opacity: 0.6 }]}
-              onPress={handleNext}
-              disabled={isLoading || imageUploadState.isUploading}
-              activeOpacity={0.88}
-            >
-              <Text style={s.nextBtnText}>
-                {isLoading ? '생성 중...'
-                  : imageUploadState.isUploading ? '이미지 업로드 중...'
-                  : step === 1 ? '다음' : '결혼식 청첩장 만들기'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+            <View style={[s.footer, { paddingBottom: insets.bottom + 8 }]}>
+              {step === 2 && (
+                <TouchableOpacity style={s.prevBtn} onPress={() => setStep(1)} activeOpacity={0.85}>
+                  <Text style={s.prevBtnText}>이전</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                ref={nextBtnRef}
+                style={[s.nextBtn, (isLoading || imageUploadState.isUploading) && { opacity: 0.6 }]}
+                onPress={handleNext}
+                disabled={isLoading || imageUploadState.isUploading}
+                activeOpacity={0.88}
+              >
+                <Text style={s.nextBtnText}>
+                  {isLoading ? '생성 중...'
+                    : imageUploadState.isUploading ? '이미지 업로드 중...'
+                    : step === 1 ? '다음' : '결혼식 청첩장 만들기'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
         )}
 
         {/* ===== 모달들 ===== */}
@@ -2540,6 +2643,17 @@ const s = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: C.bg,
     shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 4,
   },
+  testFillWrap: {
+    position: 'absolute',
+    right: 18,
+    zIndex: 20,
+  },
+  testFillBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#D6E8FF',
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
+  },
+  testFillText: { fontSize: 12, fontWeight: '800', color: C.primary },
   prevBtn: { flex: 1, backgroundColor: C.bg, paddingVertical: 18, borderRadius: 14, alignItems: 'center' },
   prevBtnText: { fontSize: 17, fontWeight: '700', color: '#4E5968' },
   nextBtn: {

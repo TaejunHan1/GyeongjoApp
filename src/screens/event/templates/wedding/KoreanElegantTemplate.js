@@ -32,6 +32,7 @@ import {
   HeartPulse,
   KoreanElegantCalendar,
 } from './WeddingCommonComponents';
+import { getInvitationUrl } from '../../../../lib/webLinks';
 import styles from './WeddingStyles';
 
 const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
@@ -100,9 +101,7 @@ const KoreanElegantTemplate = ({ eventData = {}, categorizedImages = {} }) => {
       const location = eventData.location || '웨딩홀';
       
       // 템플릿 공유 로직 - 웹 링크로 이동
-      const WEB_BASE_URL = 'https://contribution-web-srgt.vercel.app';
-      const eventId = eventData.id || eventData.event_id || 'sample-event';
-      const templateUrl = `${WEB_BASE_URL}/template/${eventId}?template=korean`;
+      const templateUrl = getInvitationUrl(eventData, 'korean');
       
       
       await Share.share({

@@ -19,12 +19,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
-import Constants from 'expo-constants';
 import QRCode from 'react-native-qrcode-svg';
 import { Colors } from '../../styles/constants';
 import { getEventDetail, getEventMessages, createEventMessage, updateEvent } from '../../lib/supabaseHelper';
 import { supabase } from '../../lib/supabase';
 import { syncEventToWeb } from '../../lib/webSync';
+import { getInvitationUrl } from '../../lib/webLinks';
 import WeddingTemplatePreview from './templates/WeddingTemplatePreview';
 import FuneralTemplatePreview from './templates/FuneralTemplatePreview';
 import { GlobalFallingEffect } from './templates/wedding/WeddingCommonComponents';
@@ -565,16 +565,8 @@ export default function EventDisplayScreen({ navigation, route }) {
   // 🔥 QR 코드 관련 함수들
   const getQRValue = () => {
     if (!event) return '';
-    // dev 모드: Expo Metro가 알고 있는 현재 Mac의 IP를 그대로 재사용 (매번 재연결 시 자동 반영)
-    // prod 모드: Vercel 도메인
-    let WEB_BASE_URL = 'https://contribution-web-srgt.vercel.app';
-    if (__DEV__) {
-      const hostUri = Constants.expoConfig?.hostUri || Constants.manifest?.hostUri || '';
-      const devIp = hostUri.split(':')[0];
-      if (devIp) WEB_BASE_URL = `http://${devIp}:3000`;
-    }
     const templateStyle = getFinalTemplateStyle();
-    return `${WEB_BASE_URL}/template/${event.id}?template=${templateStyle}`;
+    return getInvitationUrl(event, templateStyle);
   };
 
   const handleQRShare = async () => {

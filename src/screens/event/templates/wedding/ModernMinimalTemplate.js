@@ -33,6 +33,7 @@ import {
   MainPhotoSlideshow,
   GuestBookMessages,
 } from './WeddingCommonComponents';
+import { getInvitationUrl } from '../../../../lib/webLinks';
 
 // 꽃잎 떨어지는 컴포넌트 (heroHeight 파라미터 추가)
 const FallingFlowers = ({ heroHeight = height * 0.85 }) => {
@@ -396,9 +397,7 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
       const location = eventData.location || '더 플라자 호텔';
       
       // 템플릿 공유 로직 - 웹 링크로 이동
-      const WEB_BASE_URL = 'https://contribution-web-srgt.vercel.app';
-      const eventId = eventData.id || eventData.event_id || 'sample-event';
-      const templateUrl = `${WEB_BASE_URL}/template/${eventId}?template=modern`;
+      const templateUrl = getInvitationUrl(eventData, 'modern');
       
       
       await Share.share({

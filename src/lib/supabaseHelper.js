@@ -2,6 +2,7 @@
 import { supabase } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
+import { buildEventSlugBase, buildSlugCandidate } from './slugUtils';
 
 /**
  * 실시간 연결 상태 테스트
@@ -728,7 +729,8 @@ export const getUserEvents = async (passedUserInfo = null) => {
         allow_messages,
         message_placeholder,
         additional_info,
-        image_urls
+        image_urls,
+        public_slug
       `)
       .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false });
@@ -748,6 +750,36 @@ export const getUserEvents = async (passedUserInfo = null) => {
       error: error.message || '이벤트를 불러올 수 없습니다.'
     };
   }
+};
+
+const createUniquePublicSlug = async (eventData) => {
+  const baseSlug = buildEventSlugBase({
+    eventType: eventData.event_type,
+    groomName: eventData.groom_name,
+    brideName: eventData.bride_name,
+    mainPersonName: eventData.main_person_name,
+    deceasedName: eventData.deceasedName || eventData.deceased_name,
+    fallbackId: Date.now(),
+  });
+
+  for (let index = 1; index <= 100; index += 1) {
+    const candidate = buildSlugCandidate(baseSlug, index);
+    const { data, error } = await supabase
+      .from('events')
+      .select('id')
+      .eq('public_slug', candidate)
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      return candidate;
+    }
+  }
+
+  return `${baseSlug}-${Date.now().toString(36)}`;
 };
 
 /**
@@ -945,7 +977,7 @@ export const createEvent = async (eventData) => {
       // 기본 컬럼들
       'event_type', 'event_name', 'main_person_name', 'family_relations', 
       'preset_amounts', 'status', 'event_date', 'is_finalized',
-      'image_urls', 'location', 'detailed_address', 'template_style',
+      'image_urls', 'location', 'detailed_address', 'template_style', 'public_slug',
       
       // 결혼식 관련 컬럼들
       'bride_name', 'groom_name', 'bride_father_name', 'bride_mother_name', 
@@ -1174,6 +1206,12 @@ export const createEvent = async (eventData) => {
       }
     }
 
+    if (!processedEventData.public_slug) {
+      processedEventData.public_slug = await createUniquePublicSlug({
+        ...eventData,
+        ...processedEventData,
+      });
+    }
 
     const { data, error } = await supabase
       .from('events')

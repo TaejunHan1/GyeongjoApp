@@ -1,16 +1,8 @@
 // src/lib/webSync.js - 웹 동기화 (Supabase 직접 사용)
-import Constants from 'expo-constants';
-
-// 웹 페이지 기본 URL (QR 코드 링크용)
-// dev: Expo Metro의 현재 Mac IP 자동 재사용 (:3000) / prod: Vercel
-const getWebBaseUrl = () => {
-  if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    const hostUri = Constants.expoConfig?.hostUri || Constants.manifest?.hostUri || '';
-    const devIp = hostUri.split(':')[0];
-    if (devIp) return `http://${devIp}:3000`;
-  }
-  return 'https://contribution-web-srgt.vercel.app';
-};
+import {
+  getContributionUrl as buildContributionUrl,
+  getInvitationUrl,
+} from './webLinks';
 
 /**
  * 이벤트 데이터를 웹에 동기화
@@ -51,7 +43,7 @@ export const generateQRWithSync = async (eventData) => {
 
     // 2. QR 코드 URL 생성
     const templateType = eventData.template_style || eventData.templateStyle || 'modern';
-    const qrUrl = `${getWebBaseUrl()}/template/${eventData.id}?template=${templateType}`;
+    const qrUrl = getInvitationUrl(eventData, templateType);
 
     console.log('🔗 QR 코드 URL 생성:', qrUrl);
 
@@ -95,14 +87,14 @@ export const syncEventStatusToWeb = async (eventId, status) => {
  * 웹 페이지 URL 가져오기
  */
 export const getWebPageUrl = (eventId, templateType = 'modern') => {
-  return `${getWebBaseUrl()}/template/${eventId}?template=${templateType}`;
+  return getInvitationUrl(eventId, templateType);
 };
 
 /**
  * 기부 페이지 URL 가져오기
  */
 export const getContributionUrl = (eventId) => {
-  return `${getWebBaseUrl()}/contribute/${eventId}`;
+  return buildContributionUrl(eventId);
 };
 
 export default {

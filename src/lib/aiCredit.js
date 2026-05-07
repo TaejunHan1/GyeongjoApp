@@ -7,10 +7,10 @@
 // ----------------------------------------------------------------------------
 import { supabase } from './supabase';
 import { getCurrentUserInfo } from './supabaseHelper';
+import { getWebApiUrl } from './webLinks';
 
-const WEB_BASE = 'https://contribution-web-srgt.vercel.app';
-const AI_BUDGET_URL = `${WEB_BASE}/api/ai-budget`;
-const AI_MONEY_URL  = `${WEB_BASE}/api/ai-money`;
+const AI_BUDGET_URL = getWebApiUrl('/api/ai-budget');
+const AI_MONEY_URL  = getWebApiUrl('/api/ai-money');
 
 // 기능별 크레딧 차감량 (서버 쪽과 동일하게 유지)
 export const AI_COST = {

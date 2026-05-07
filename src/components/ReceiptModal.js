@@ -15,8 +15,9 @@ import {
 } from 'react-native';
 import Svg, { Circle, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getWebApiUrl } from '../lib/webLinks';
 
-const RECEIPT_API = 'https://contribution-web-srgt.vercel.app/api/get-receipt';
+const RECEIPT_API = getWebApiUrl('/api/get-receipt');
 
 // 웹과 동일한 매핑
 const SIDE_MAP = { groom: '신랑측', bride: '신부측' };

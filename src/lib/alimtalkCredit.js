@@ -7,9 +7,9 @@
 
 import { supabase } from './supabase';
 import { getCurrentUserInfo } from './supabaseHelper';
+import { getWebApiUrl } from './webLinks';
 
-const ALIMTALK_API_URL =
-  'https://contribution-web-srgt.vercel.app/api/send-alimtalk-receipt';
+const ALIMTALK_API_URL = getWebApiUrl('/api/send-alimtalk-receipt');
 
 // ----------------------------------------------------------------------------
 // 내부: 현재 로그인된 userId 얻기

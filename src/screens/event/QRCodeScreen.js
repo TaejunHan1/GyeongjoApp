@@ -15,22 +15,12 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
-import Constants from 'expo-constants';
 import { Colors } from '../../styles/constants';
 import { getEventDetail } from '../../lib/supabaseHelper';
+import { getContributionUrl } from '../../lib/webLinks';
 
 const { width } = Dimensions.get('window');
 const QR_SIZE = Math.min(width - 80, 300);
-
-// dev: Expo Metro의 현재 Mac IP 자동 재사용 / prod: Vercel
-const getWebBaseUrl = () => {
-  if (__DEV__) {
-    const hostUri = Constants.expoConfig?.hostUri || Constants.manifest?.hostUri || '';
-    const devIp = hostUri.split(':')[0];
-    if (devIp) return `http://${devIp}:3000`;
-  }
-  return 'https://contribution-web-srgt.vercel.app';
-};
 
 export default function QRCodeScreen({ navigation, route }) {
   const { eventId } = route.params;
@@ -52,7 +42,7 @@ export default function QRCodeScreen({ navigation, route }) {
         setEvent(result.data);
         
         // 웹 링크 생성 (QR 코드로 접근할 수 있는 공개 URL)
-        const webUrl = `${getWebBaseUrl()}/contribute/${result.data.id}`;
+        const webUrl = getContributionUrl(result.data);
         setQrValue(webUrl);
         
         // 헤더 제목 업데이트

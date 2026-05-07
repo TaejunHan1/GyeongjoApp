@@ -2045,7 +2045,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               }
             >
               <Image
-                source={require('../../../assets/wedding-Photoroom.png')}
+                source={RECIPROCITY_EVENT_ICONS.wedding}
                 style={{ width: 120, height: 120 }}
                 resizeMode="contain"
               />
@@ -2087,7 +2087,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               }
             >
               <Image
-                source={require('../../../assets/funeral-Photoroom.png')}
+                source={RECIPROCITY_EVENT_ICONS.funeral}
                 style={{ width: 120, height: 120 }}
                 resizeMode="contain"
               />
@@ -3152,7 +3152,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                   >
                     <View style={[styles.createEventModalIconWrap, { backgroundColor: '#FFF0F5' }]}>
                       <Image
-                        source={require('../../../assets/wedding-Photoroom.png')}
+                        source={RECIPROCITY_EVENT_ICONS.wedding}
                         style={{ width: 80, height: 80 }}
                         resizeMode="contain"
                       />
@@ -3176,7 +3176,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                   >
                     <View style={[styles.createEventModalIconWrap, { backgroundColor: '#F0F0F5' }]}>
                       <Image
-                        source={require('../../../assets/funeral-Photoroom.png')}
+                        source={RECIPROCITY_EVENT_ICONS.funeral}
                         style={{ width: 80, height: 80 }}
                         resizeMode="contain"
                       />

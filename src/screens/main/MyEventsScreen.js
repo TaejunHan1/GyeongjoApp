@@ -118,6 +118,11 @@ const EVENT_CARD_COVERS = [
   },
 ];
 
+const EVENT_TYPE_IMAGES = {
+  wedding: require('../../../assets/icons/reciprocity/wedding.png'),
+  funeral: require('../../../assets/icons/reciprocity/funeral.png'),
+};
+
 const FREE_COVER_KEYS = EVENT_CARD_COVERS.filter((cover) => cover.price <= 0).map((cover) => cover.key);
 
 const parseAdditionalInfo = (value) => {
@@ -838,9 +843,9 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                           <View style={styles.eventTopRow}>
                             <View style={[styles.eventTypeIcon, event.event_type === 'funeral' && styles.eventTypeIconFuneral]}>
                               {event.event_type === 'wedding' ? (
-                                <Image source={require('../../../assets/images/Wedding.png')} style={styles.eventTypeImage} resizeMode="contain" />
+                                <Image source={EVENT_TYPE_IMAGES.wedding} style={styles.eventTypeImage} resizeMode="contain" />
                               ) : event.event_type === 'funeral' ? (
-                                <Image source={require('../../../assets/images/Funeral.png')} style={styles.eventTypeImage} resizeMode="contain" />
+                                <Image source={EVENT_TYPE_IMAGES.funeral} style={styles.eventTypeImage} resizeMode="contain" />
                               ) : (
                                 <Ionicons name="calendar" size={18} color="#FFFFFF" />
                               )}
@@ -1012,9 +1017,9 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                       <View style={styles.eventTopRow}>
                         <View style={[styles.eventTypeIcon, event.event_type === 'funeral' && styles.eventTypeIconFuneral]}>
                           {event.event_type === 'wedding' ? (
-                            <Image source={require('../../../assets/images/Wedding.png')} style={styles.eventTypeImage} resizeMode="contain" />
+                            <Image source={EVENT_TYPE_IMAGES.wedding} style={styles.eventTypeImage} resizeMode="contain" />
                           ) : event.event_type === 'funeral' ? (
-                            <Image source={require('../../../assets/images/Funeral.png')} style={styles.eventTypeImage} resizeMode="contain" />
+                            <Image source={EVENT_TYPE_IMAGES.funeral} style={styles.eventTypeImage} resizeMode="contain" />
                           ) : (
                             <Ionicons name="calendar" size={18} color="#FFFFFF" />
                           )}

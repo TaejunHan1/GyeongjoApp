@@ -40,6 +40,7 @@ import {
   GuestBookMessages,
 } from './WeddingCommonComponents';
 import { WebView } from 'react-native-webview';
+import { getInvitationUrl } from '../../../../lib/webLinks';
 import styles from './WeddingStyles';
 
 // 랜덤 인사말 목록 - 더 길고 아름답게 수정
@@ -457,9 +458,7 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
       const location = eventData.location || '더 플라자 지스텀하우스 22층';
       
       // 템플릿 공유 로직 - 웹 링크로 이동
-      const WEB_BASE_URL = 'https://contribution-web-srgt.vercel.app';
-      const eventId = eventData.id || eventData.event_id || 'sample-event';
-      const templateUrl = `${WEB_BASE_URL}/template/${eventId}?template=romantic`;
+      const templateUrl = getInvitationUrl(eventData, 'romantic');
       
       
       await Share.share({
