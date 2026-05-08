@@ -307,6 +307,11 @@ export default function GuestConfirmScreen({ navigation, route }) {
         input_method: 'handwriting',
         handwriting_image_url: handwritingImageUrl,
         side,
+        additional_info: {
+          created_via: 'app_guest_reception',
+          receipt_requested: !!(cleanPhone && finalAmount),
+          source_screen: 'GuestConfirmScreen',
+        },
       };
 
       const { data: insertedData, error } = await supabase

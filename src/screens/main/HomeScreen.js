@@ -49,6 +49,7 @@ import {
   getReciprocityNotifications,
   updateReciprocityNotificationStatus,
 } from '../../lib/eventReciprocity';
+import { getInvitationUrl } from '../../lib/webLinks';
 
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
@@ -428,6 +429,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     priceCredits: EVENT_CREATION_CREDIT_COST,
     welcomeSeen: true,
   });
+  const [creditShortageModal, setCreditShortageModal] = useState({
+    visible: false,
+    eventType: 'wedding',
+    balance: 0,
+    priceCredits: EVENT_CREATION_CREDIT_COST,
+  });
   const [monthlyStats, setMonthlyStats] = useState({
     totalEvents: 0,
     monthlyEvents: 0,
@@ -462,6 +469,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const eventIdsRef = useRef([]);
   const reciprocityRealtimeSeenRef = useRef(new Set());
   const reciprocityKnownIdsRef = useRef(new Set());
+  const reciprocityNotifyAfterRef = useRef(new Date().toISOString());
 
   // 토스 모달 애니메이션 값들
   const confirmModalSlideAnim = useRef(new Animated.Value(0)).current;
@@ -1064,6 +1072,72 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
 
   // 빠른 시작 버튼 핸들러
+  const getCreationCreditNotice = (state = eventCreationCreditState) => {
+    const freeRemaining = Number(state?.freeRemaining || 0);
+    const priceCredits = Number(state?.priceCredits || EVENT_CREATION_CREDIT_COST);
+    const balance = Number(state?.balance || 0);
+
+    if (freeRemaining > 0) {
+      return {
+        isPaid: false,
+        text: `무료 생성 ${freeRemaining}회 남음`,
+        detail: `이번 생성은 무료 생성 횟수 1회가 사용됩니다.`,
+      };
+    }
+
+    return {
+      isPaid: true,
+      text: `${priceCredits}크레딧 차감`,
+      detail: `무료 생성 횟수를 모두 사용해서 이번 생성에는 ${priceCredits}크레딧이 차감됩니다. 현재 잔액은 ${balance}크레딧입니다.`,
+    };
+  };
+
+  const closeCreditShortageModal = () => {
+    setCreditShortageModal(prev => ({
+      ...prev,
+      visible: false,
+    }));
+  };
+
+  const showCreditShortageModal = (eventType, state) => {
+    setCreditShortageModal({
+      visible: true,
+      eventType,
+      balance: Number(state?.balance || 0),
+      priceCredits: Number(state?.priceCredits || EVENT_CREATION_CREDIT_COST),
+    });
+  };
+
+  const handleEventCreationIntent = async (eventType) => {
+    if (eventType === 'funeral') {
+      handleQuickStart(eventType);
+      return;
+    }
+
+    const latestState = await refreshEventCreationCreditState();
+    const state = latestState || eventCreationCreditState;
+    const notice = getCreationCreditNotice(state);
+
+    if (!notice.isPaid) {
+      handleQuickStart(eventType);
+      return;
+    }
+
+    if (Number(state?.balance || 0) < Number(state?.priceCredits || EVENT_CREATION_CREDIT_COST)) {
+      showCreditShortageModal(eventType, state);
+      return;
+    }
+
+    Alert.alert(
+      `${state?.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 차감됩니다`,
+      `${eventType === 'funeral' ? '부고장' : '청첩장'} 만들기를 완료하면 ${state?.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 사용됩니다.\n계속 진행할까요?`,
+      [
+        { text: '취소', style: 'cancel' },
+        { text: '진행하기', onPress: () => handleQuickStart(eventType) },
+      ]
+    );
+  };
+
   const handleQuickStart = async (eventType) => {
     if (eventType === 'wedding') {
       // 🆕 결혼식은 전용 스크린으로
@@ -1492,7 +1566,11 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const [reciprocityLoading, setReciprocityLoading] = useState(false);
   const [reciprocityPage, setReciprocityPage] = useState(0);
   const [selectedReciprocityGroup, setSelectedReciprocityGroup] = useState(null);
+  const [recentGuestbookMessages, setRecentGuestbookMessages] = useState([]);
+  const [expandedGuestbookEventIds, setExpandedGuestbookEventIds] = useState({});
+  const [guestbookPageByEventIds, setGuestbookPageByEventIds] = useState({});
   const RECIPROCITY_PER_PAGE = 3;
+  const EVENT_GUESTBOOK_PER_PAGE = 3;
 
   // 줬음 기록된 guest_book id 세트
   const gaveLinkedIds = new Set(pumasiGave.map(g => g.linked_guest_id).filter(Boolean));
@@ -1542,6 +1620,70 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         .filter(Boolean))]
     : [];
 
+  const parseGuestAdditionalInfo = (value) => {
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  };
+
+  const isReceptionGuestEntry = (entry) => {
+    const info = parseGuestAdditionalInfo(entry?.additional_info);
+    return Number(entry?.amount || 0) > 0 && (
+      entry?.input_method === 'handwriting' ||
+      !!entry?.handwriting_image_url ||
+      info.created_via === 'app_guest_reception'
+    );
+  };
+
+  const getNewEventPersonName = (event = {}) => {
+    const mainName = String(event.main_person_name || '').trim();
+    if (mainName) return mainName;
+
+    const groomName = String(event.groom_name || '').trim();
+    const brideName = String(event.bride_name || '').trim();
+    if (groomName && brideName) return `${groomName} · ${brideName}`;
+    return groomName || brideName || '상대';
+  };
+
+  const openInvitationPreview = async (event) => {
+    if (!event?.id) return;
+    try {
+      await Linking.openURL(getInvitationUrl(event, event.template_style || 'modern-dark'));
+    } catch (error) {
+      console.warn('open invitation failed:', error);
+      Alert.alert('알림', '모바일 청첩장을 열 수 없습니다.');
+    }
+  };
+
+  const getRecentGuestbookForEvent = (eventId) => (
+    recentGuestbookMessages.filter(item => item.event_id === eventId)
+  );
+
+  const toggleGuestbookForEvent = (eventId) => {
+    setExpandedGuestbookEventIds(prev => ({
+      ...prev,
+      [eventId]: !prev[eventId],
+    }));
+
+    setGuestbookPageByEventIds(prev => ({
+      ...prev,
+      [eventId]: 0,
+    }));
+  };
+
+  const setGuestbookPageForEvent = (eventId, nextPage, totalPages) => {
+    const safeTotalPages = Math.max(1, totalPages);
+    const safePage = Math.min(Math.max(0, nextPage), safeTotalPages - 1);
+    setGuestbookPageByEventIds(prev => ({
+      ...prev,
+      [eventId]: safePage,
+    }));
+  };
+
 
   // 내가 받음: 이미 로드된 hostedEvents 기반으로 guest_book 전체 로드
   const loadPumasiReceived = async () => {
@@ -1569,13 +1711,13 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       // limit 10000으로 전체 로드 (Supabase 기본 1000행 제한 우회)
       const { data: guestData } = await supabase
         .from('guest_book')
-        .select('id, guest_name, amount, relation_category, relation_detail, event_id, created_at')
+        .select('id, guest_name, amount, relation_category, relation_detail, event_id, created_at, input_method, handwriting_image_url, additional_info')
         .in('event_id', eventIds)
         .order('created_at', { ascending: false })
         .limit(10000);
 
       if (guestData) {
-        const enriched = guestData.map(g => ({
+        const enriched = guestData.filter(isReceptionGuestEntry).map(g => ({
           ...g,
           event_name: eventList.find(e => e.id === g.event_id)?.event_name || '',
           event_type: eventList.find(e => e.id === g.event_id)?.event_type || '',
@@ -1585,6 +1727,66 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       }
     } catch (e) {
       console.error('loadPumasiReceived error:', e);
+    }
+  };
+
+  const loadRecentGuestbookMessages = async () => {
+    try {
+      const userId = user?.id || userInfo?.userId;
+      if (!userId) return;
+
+      let eventList = hostedEvents.length > 0
+        ? hostedEvents.map(e => ({
+            id: e.id,
+            event_name: e.event_name || e.title || '',
+            event_type: e.event_type || '',
+          }))
+        : null;
+
+      if (!eventList || eventList.length === 0) {
+        const { data: evData } = await supabase
+          .from('events')
+          .select('id, event_name, event_type')
+          .eq('user_id', userId)
+          .limit(200);
+        if (!evData || evData.length === 0) {
+          setRecentGuestbookMessages([]);
+          return;
+        }
+        eventList = evData;
+      }
+
+      const eventIds = eventList.map(e => e.id).filter(Boolean);
+      if (eventIds.length === 0) {
+        setRecentGuestbookMessages([]);
+        return;
+      }
+
+      const { data: guestData, error } = await supabase
+        .from('guest_book')
+        .select('id, event_id, guest_name, guest_phone, message, amount, created_at, input_method, handwriting_image_url, additional_info')
+        .in('event_id', eventIds)
+        .order('created_at', { ascending: false })
+        .limit(80);
+
+      if (error) throw error;
+
+      const enriched = (guestData || [])
+        .filter(item => !isReceptionGuestEntry(item))
+        .filter(item => String(item.message || '').trim().length > 0)
+        .map(item => {
+          const eventInfo = eventList.find(e => e.id === item.event_id) || {};
+          return {
+            ...item,
+            event_name: eventInfo.event_name || '',
+            event_type: eventInfo.event_type || '',
+          };
+        })
+        .slice(0, 5);
+
+      setRecentGuestbookMessages(enriched);
+    } catch (e) {
+      console.error('loadRecentGuestbookMessages error:', e);
     }
   };
 
@@ -1719,7 +1921,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         group.newEventMap.set(newEventId, {
           ...item.new_event,
           notificationId: item.id,
-          created_at: item.created_at,
+          notification_created_at: item.created_at,
         });
       }
     });
@@ -1752,8 +1954,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   const showReciprocityLocalNotification = async (item, options = {}) => {
     try {
-      if (!item?.id || reciprocityRealtimeSeenRef.current.has(item.id)) return;
-      reciprocityRealtimeSeenRef.current.add(item.id);
+      const notificationKey = item?.new_event_id || item?.id;
+      if (!notificationKey || reciprocityRealtimeSeenRef.current.has(notificationKey)) return;
+      if (item.created_at && new Date(item.created_at) < new Date(reciprocityNotifyAfterRef.current)) return;
+      reciprocityRealtimeSeenRef.current.add(notificationKey);
 
       const body = `${item.source_guest_name || '하객'}님이 새 경조사를 만들었어요.`;
 
@@ -1802,6 +2006,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const notifyNewReciprocityItems = async (items = []) => {
     const newItems = items.filter(item => (
       item?.id && !reciprocityKnownIdsRef.current.has(item.id)
+      && (!item.created_at || new Date(item.created_at) >= new Date(reciprocityNotifyAfterRef.current))
     ));
 
     if (newItems.length === 0) return;
@@ -1883,9 +2088,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   }, [groupedReciprocityNotifications.length, reciprocityPage]);
 
   const actionableReciprocityNotifications = groupedReciprocityNotifications.filter(item => item.status !== 'read');
+  const visibleReciprocityNotifications = groupedReciprocityNotifications.filter(item => item.status !== 'dismissed');
   const reciprocityUnreadCount = actionableReciprocityNotifications.filter(item => item.status === 'unread').length;
-  const reciprocityTotalPages = Math.max(1, Math.ceil(actionableReciprocityNotifications.length / RECIPROCITY_PER_PAGE));
-  const currentReciprocityItems = actionableReciprocityNotifications.slice(
+  const reciprocityTotalPages = Math.max(1, Math.ceil(visibleReciprocityNotifications.length / RECIPROCITY_PER_PAGE));
+  const currentReciprocityItems = visibleReciprocityNotifications.slice(
     reciprocityPage * RECIPROCITY_PER_PAGE,
     reciprocityPage * RECIPROCITY_PER_PAGE + RECIPROCITY_PER_PAGE
   );
@@ -1907,7 +2113,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         (payload) => {
           const item = payload.new;
           showReciprocityLocalNotification(item, { showAlert: true });
-          loadReciprocityNotifications({ notifyNew: true });
+          loadReciprocityNotifications();
         }
       )
       .on(
@@ -1934,7 +2140,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
     loadReciprocityNotifications();
     const intervalId = setInterval(() => {
-      loadReciprocityNotifications({ notifyNew: true });
+      loadReciprocityNotifications();
     }, 8000);
 
     return () => clearInterval(intervalId);
@@ -1954,6 +2160,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     if ((user?.id || userInfo?.userId) && events.length > 0) {
       loadPumasiReceived();
       loadPumasiGave();
+      loadRecentGuestbookMessages();
       loadReciprocityNotifications();
     }
   }, [user?.id, userInfo?.userId, events.length]);
@@ -2064,7 +2271,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           >
             <TouchableOpacity
               style={styles.quickItem}
-              onPress={() => handleQuickStart('wedding')}
+              onPress={() => handleEventCreationIntent('wedding')}
             >
               <Image
                 source={RECIPROCITY_EVENT_ICONS.wedding}
@@ -2076,7 +2283,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               <TouchableOpacity
                 ref={weddingMakeBtnRef}
                 style={[styles.quickButton, { backgroundColor: Colors.wedding }]}
-                onPress={() => handleQuickStart('wedding')}
+                onPress={() => handleEventCreationIntent('wedding')}
               >
                 <Text style={styles.quickButtonText}>만들기</Text>
               </TouchableOpacity>
@@ -2087,7 +2294,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
             <TouchableOpacity
               style={styles.quickItem}
-              onPress={() => handleQuickStart('funeral')}
+              onPress={() => handleEventCreationIntent('funeral')}
             >
               <View style={styles.comingSoonBadge}>
                 <Text style={styles.comingSoonBadgeText}>곧 오픈</Text>
@@ -2102,7 +2309,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               <TouchableOpacity
                 ref={funeralMakeBtnRef}
                 style={[styles.quickButton, styles.quickButtonComingSoon]}
-                onPress={() => handleQuickStart('funeral')}
+                onPress={() => handleEventCreationIntent('funeral')}
               >
                 <Text style={styles.quickButtonText}>준비중</Text>
               </TouchableOpacity>
@@ -2146,79 +2353,173 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             </View>
           ) : currentEvents.length > 0 ? (
             <View style={styles.eventsList}>
-              {currentEvents.map((event) => (
-                <TouchableOpacity
-                  key={event.id}
-                  style={styles.eventCardNew}
-                  onPress={() => handleActiveEventPress(event)}
-                  activeOpacity={0.8}
-                >
-                  {/* 상단: 배지 + D-day + 날짜 */}
-                  <View style={styles.eventCardHeader}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <View style={[
-                        styles.eventTypeBadgeNew,
-                        { backgroundColor: event.event_type === 'funeral' ? '#F1F5F9' : '#FFF1F2' }
-                      ]}>
-                        <Text style={[
-                          styles.eventTypeBadgeTextNew,
-                          { color: getEventStatusColor(event.event_type) }
-                        ]}>
-                          {getEventTypeText(event.event_type)}
-                        </Text>
-                      </View>
-                      {getDDay(event.event_date) && (
-                        <View style={[
-                          styles.eventTypeBadgeNew,
-                          { backgroundColor: event.event_type === 'funeral' ? '#F1F5F9' : '#FFF1F2' }
-                        ]}>
-                          <Text style={[
-                            styles.eventTypeBadgeTextNew,
-                            { color: getEventStatusColor(event.event_type) }
+              {currentEvents.map((event) => {
+                const eventGuestbookMessages = getRecentGuestbookForEvent(event.id);
+                const guestbookExpanded = !!expandedGuestbookEventIds[event.id];
+                const guestbookTotalPages = Math.max(1, Math.ceil(eventGuestbookMessages.length / EVENT_GUESTBOOK_PER_PAGE));
+                const guestbookPage = Math.min(
+                  guestbookPageByEventIds[event.id] || 0,
+                  guestbookTotalPages - 1
+                );
+                const pagedGuestbookMessages = eventGuestbookMessages.slice(
+                  guestbookPage * EVENT_GUESTBOOK_PER_PAGE,
+                  guestbookPage * EVENT_GUESTBOOK_PER_PAGE + EVENT_GUESTBOOK_PER_PAGE
+                );
+
+                return (
+                  <View key={event.id} style={styles.eventCardNew}>
+                    <TouchableOpacity
+                      onPress={() => handleActiveEventPress(event)}
+                      activeOpacity={0.8}
+                    >
+                      {/* 상단: 배지 + D-day + 날짜 */}
+                      <View style={styles.eventCardHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View style={[
+                            styles.eventTypeBadgeNew,
+                            { backgroundColor: event.event_type === 'funeral' ? '#F1F5F9' : '#FFF1F2' }
                           ]}>
-                            {getDDay(event.event_date)}
+                            <Text style={[
+                              styles.eventTypeBadgeTextNew,
+                              { color: getEventStatusColor(event.event_type) }
+                            ]}>
+                              {getEventTypeText(event.event_type)}
+                            </Text>
+                          </View>
+                          {getDDay(event.event_date) && (
+                            <View style={[
+                              styles.eventTypeBadgeNew,
+                              { backgroundColor: event.event_type === 'funeral' ? '#F1F5F9' : '#FFF1F2' }
+                            ]}>
+                              <Text style={[
+                                styles.eventTypeBadgeTextNew,
+                                { color: getEventStatusColor(event.event_type) }
+                              ]}>
+                                {getDDay(event.event_date)}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.eventDateBadge}>
+                          <Text style={styles.eventDateBadgeText}>
+                            {formatDateWithTime(event.event_date, event.event_time)}
                           </Text>
                         </View>
-                      )}
-                    </View>
-                    <View style={styles.eventDateBadge}>
-                      <Text style={styles.eventDateBadgeText}>
-                        {formatDateWithTime(event.event_date, event.event_time)}
+                      </View>
+
+                      {/* 중간: 이벤트명 + 장소 */}
+                      <Text style={styles.eventCardTitle} numberOfLines={1}>
+                        {event.event_name || event.title}
                       </Text>
-                    </View>
-                  </View>
+                      <View style={styles.eventCardLocationRow}>
+                        <Ionicons name="location-outline" size={15} color={Colors.gray400} />
+                        <Text style={styles.eventCardLocation} numberOfLines={1}>
+                          {event.location || '장소 미정'}
+                        </Text>
+                      </View>
 
-                  {/* 중간: 이벤트명 + 장소 */}
-                  <Text style={styles.eventCardTitle} numberOfLines={1}>
-                    {event.event_name || event.title}
-                  </Text>
-                  <View style={styles.eventCardLocationRow}>
-                    <Ionicons name="location-outline" size={15} color={Colors.gray400} />
-                    <Text style={styles.eventCardLocation} numberOfLines={1}>
-                      {event.location || '장소 미정'}
-                    </Text>
-                  </View>
+                      {/* 하단: 참여 통계 */}
+                      <View style={styles.eventCardStatsBar}>
+                        <View style={styles.eventCardStatItem}>
+                          <Ionicons name="people-outline" size={16} color={Colors.gray500} />
+                          <Text style={styles.eventCardStatText}>
+                            {event.total_contributions || 0}명 참여
+                          </Text>
+                        </View>
+                        <Text style={styles.eventCardStatAmount}>
+                          {event.total_amount
+                            ? (event.total_amount >= 10000
+                                ? `${Math.floor(event.total_amount / 10000).toLocaleString()}만원`
+                                : `${event.total_amount.toLocaleString()}원`)
+                            : '0원'
+                          }
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
 
-                  {/* 하단: 참여 통계 */}
-                  <View style={styles.eventCardStatsBar}>
-                    <View style={styles.eventCardStatItem}>
-                      <Ionicons name="people-outline" size={16} color={Colors.gray500} />
-                      <Text style={styles.eventCardStatText}>
-                        {event.total_contributions || 0}명 참여
-                      </Text>
-                    </View>
-                    <Text style={styles.eventCardStatAmount}>
-                      {event.total_amount
-                        ? (event.total_amount >= 10000
-                            ? `${Math.floor(event.total_amount / 10000).toLocaleString()}만원`
-                            : `${event.total_amount.toLocaleString()}원`)
-                        : '0원'
-                      }
-                    </Text>
-                  </View>
+                    {eventGuestbookMessages.length > 0 && (
+                      <View style={[
+                        styles.eventGuestbookPanel,
+                        guestbookExpanded && styles.eventGuestbookPanelOpen,
+                      ]}>
+                        <TouchableOpacity
+                          style={styles.eventGuestbookToggle}
+                          onPress={() => toggleGuestbookForEvent(event.id)}
+                          activeOpacity={0.78}
+                        >
+                          <View style={styles.eventGuestbookToggleLeft}>
+                            <Ionicons name="chatbubble-ellipses-outline" size={17} color="#8B5CF6" />
+                            <Text style={styles.eventGuestbookToggleText}>
+                              새 방명록 {eventGuestbookMessages.length}개
+                            </Text>
+                          </View>
+                          <Ionicons
+                            name={guestbookExpanded ? 'chevron-up' : 'chevron-down'}
+                            size={18}
+                            color="#8B95A1"
+                          />
+                        </TouchableOpacity>
 
-                </TouchableOpacity>
-              ))}
+                        {guestbookExpanded && (
+                          <View style={styles.eventGuestbookMessages}>
+                            {pagedGuestbookMessages.map((messageItem) => (
+                              <View key={messageItem.id} style={styles.eventGuestbookMessageRow}>
+                                <Text style={styles.eventGuestbookMessageName} numberOfLines={1}>
+                                  {messageItem.guest_name || '익명'}
+                                </Text>
+                                <Text style={styles.eventGuestbookMessageText} numberOfLines={2}>
+                                  {messageItem.message}
+                                </Text>
+                                <Text style={styles.eventGuestbookMessageDate}>
+                                  {formatDate(messageItem.created_at)}
+                                </Text>
+                              </View>
+                            ))}
+
+                            {guestbookTotalPages > 1 && (
+                              <View style={styles.eventGuestbookPagination}>
+                                <TouchableOpacity
+                                  style={[
+                                    styles.eventGuestbookPageButton,
+                                    guestbookPage === 0 && styles.eventGuestbookPageButtonDisabled,
+                                  ]}
+                                  activeOpacity={0.78}
+                                  disabled={guestbookPage === 0}
+                                  onPress={() => setGuestbookPageForEvent(event.id, guestbookPage - 1, guestbookTotalPages)}
+                                >
+                                  <Ionicons
+                                    name="chevron-back"
+                                    size={16}
+                                    color={guestbookPage === 0 ? '#CBD5E1' : '#6D28D9'}
+                                  />
+                                </TouchableOpacity>
+                                <Text style={styles.eventGuestbookPageText}>
+                                  {guestbookPage + 1} / {guestbookTotalPages}
+                                </Text>
+                                <TouchableOpacity
+                                  style={[
+                                    styles.eventGuestbookPageButton,
+                                    guestbookPage >= guestbookTotalPages - 1 && styles.eventGuestbookPageButtonDisabled,
+                                  ]}
+                                  activeOpacity={0.78}
+                                  disabled={guestbookPage >= guestbookTotalPages - 1}
+                                  onPress={() => setGuestbookPageForEvent(event.id, guestbookPage + 1, guestbookTotalPages)}
+                                >
+                                  <Ionicons
+                                    name="chevron-forward"
+                                    size={16}
+                                    color={guestbookPage >= guestbookTotalPages - 1 ? '#CBD5E1' : '#6D28D9'}
+                                  />
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
               
               {/* 🔥 페이지네이션 컨트롤 */}
               {hostedTotalPages > 1 && (
@@ -2295,7 +2596,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             </TouchableOpacity>
           </View>
 
-          {actionableReciprocityNotifications.length === 0 ? (
+          {visibleReciprocityNotifications.length === 0 ? (
             <TouchableOpacity
               style={styles.reciprocityEmptyCard}
               onPress={() => navigation.navigate('Reciprocity')}
@@ -2314,7 +2615,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             </TouchableOpacity>
           ) : (
             <View style={styles.reciprocityList}>
-              {actionableReciprocityNotifications.slice(0, 1).map((item) => {
+              {visibleReciprocityNotifications.slice(0, 1).map((item) => {
                 const originalEvents = item.originalEvents || [];
                 const newEvents = item.newEvents || [];
                 const latestNewEvent = newEvents[0] || item.new_event || {};
@@ -2322,6 +2623,9 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                 const firstOriginalEvent = originalEvents[0] || item.original_event || {};
                 const isUnread = item.status === 'unread';
                 const guestPhone = formatPhoneNumber(item.source_guest_phone);
+                const newEventPersonName = getNewEventPersonName(latestNewEvent);
+                const newEventDate = formatDateWithTime(latestNewEvent.event_date, latestNewEvent.event_time);
+                const newEventCreatedAt = latestNewEvent.created_at ? formatDate(latestNewEvent.created_at) : null;
 
                 return (
                   <TouchableOpacity
@@ -2330,7 +2634,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                       styles.reciprocityCard,
                       isUnread && styles.reciprocityCardUnread,
                     ]}
-                    onPress={() => navigation.navigate('Reciprocity')}
+                    onPress={() => openReciprocitySheet(item)}
                     activeOpacity={0.84}
                   >
                     <View style={styles.reciprocityCardGlow} pointerEvents="none" />
@@ -2344,10 +2648,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.reciprocityCardTitle} numberOfLines={1}>
-                          새로 챙길 일 {actionableReciprocityNotifications.length}건
+                          새로 챙길 일 {visibleReciprocityNotifications.length}건
                         </Text>
                           <Text style={styles.reciprocityCardSub} numberOfLines={1}>
-                          최근 {item.source_guest_name || '하객'}님 · {getEventTypeText(latestNewEvent.event_type)}
+                          {newEventPersonName}님 · {getEventTypeText(latestNewEvent.event_type)}
                         </Text>
                         {!!guestPhone && (
                           <View style={styles.reciprocityPhoneRow}>
@@ -2362,21 +2666,28 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                     </View>
 
                     <View style={styles.reciprocityMemoryBox}>
-                      <Text style={styles.reciprocityMemoryLabel}>함께했던 마음</Text>
+                      <Text style={styles.reciprocityMemoryLabel}>새로 만든 경조사</Text>
                       <Text style={styles.reciprocityMemoryText} numberOfLines={1}>
                         {latestNewEvent.event_name || '새 경조사'}
                       </Text>
                       <Text style={styles.reciprocityMemorySubText} numberOfLines={1}>
-                        내 행사 {originalEventCount}회 방문 · 최근 {firstOriginalEvent.event_name || '이전 경조사'} {formatAmount(firstOriginalEvent.amount || item.source_amount || 0)}
+                        {newEventDate}{newEventCreatedAt ? ` · 등록 ${newEventCreatedAt}` : ''}
+                      </Text>
+                      <Text style={styles.reciprocityMemorySubText} numberOfLines={1}>
+                        내 행사 {originalEventCount}회 접수 · 최근 {firstOriginalEvent.event_name || '이전 경조사'} {formatAmount(firstOriginalEvent.amount || item.source_amount || 0)}
                       </Text>
                     </View>
 
                     <View style={styles.reciprocityActions}>
-                      <Text style={styles.reciprocityHintText}>이전 기록 보고 마음 전하기</Text>
-                      <View style={styles.reciprocityPrimaryBtn}>
-                        <Text style={styles.reciprocityPrimaryText}>전체 보기</Text>
+                      <Text style={styles.reciprocityHintText}>일시와 이전 접수 기록을 확인해요</Text>
+                      <TouchableOpacity
+                        style={styles.reciprocityPrimaryBtn}
+                        onPress={() => openInvitationPreview(latestNewEvent)}
+                        activeOpacity={0.82}
+                      >
+                        <Text style={styles.reciprocityPrimaryText}>청첩장 보기</Text>
                         <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
-                      </View>
+                      </TouchableOpacity>
                     </View>
                   </TouchableOpacity>
                 );
@@ -2692,6 +3003,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                   const latestNewEvent = newEvents[0] || item.new_event || {};
                   const guestPhone = formatPhoneNumber(item.source_guest_phone);
                   const totalAmount = item.source_amount_total || item.source_amount || 0;
+                  const newEventPersonName = getNewEventPersonName(latestNewEvent);
 
                   return (
                     <>
@@ -2699,12 +3011,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                       <View style={styles.reciprocitySheetHeader}>
                         <View style={styles.reciprocitySheetAvatar}>
                           <Text style={styles.reciprocitySheetAvatarText}>
-                            {(item.source_guest_name || '?').charAt(0)}
+                            {(newEventPersonName || '?').charAt(0)}
                           </Text>
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.reciprocitySheetTitle} numberOfLines={1}>
-                            {item.source_guest_name || '하객'}님과의 기록
+                            {newEventPersonName}님과의 기록
                           </Text>
                           {!!guestPhone && (
                             <Text style={styles.reciprocitySheetPhone}>{guestPhone}</Text>
@@ -2720,7 +3032,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                       </View>
 
                       <Text style={styles.reciprocitySheetIntro}>
-                        새 경조사 소식이 있어요. 이전에 오고 간 마음을 확인하고 자연스럽게 챙겨보세요.
+                        {newEventPersonName}님이 새 경조사를 만들었어요. 이전에 내 행사에 접수된 기록을 확인하고 자연스럽게 챙겨보세요.
                       </Text>
 
                       <View style={styles.reciprocitySheetSummary}>
@@ -2743,7 +3055,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                         <View style={styles.reciprocitySheetBlock}>
                           <Text style={styles.reciprocitySheetBlockTitle}>챙길 경조사</Text>
                           <View style={styles.reciprocitySheetNewEvent}>
-                          <View style={styles.reciprocitySheetNewEventIcon}>
+                            <View style={styles.reciprocitySheetNewEventIcon}>
                               <Image
                                 source={getReciprocityEventIcon(latestNewEvent.event_type)}
                                 style={styles.reciprocitySheetNewEventImage}
@@ -2755,10 +3067,17 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                                 {latestNewEvent.event_name || '새 경조사'}
                               </Text>
                               <Text style={styles.reciprocitySheetNewEventSub} numberOfLines={1}>
-                                {latestNewEvent.event_date ? formatDate(latestNewEvent.event_date) : '날짜 미정'}
+                                {formatDateWithTime(latestNewEvent.event_date, latestNewEvent.event_time)}
                                 {newEvents.length > 1 ? ` · 외 ${newEvents.length - 1}개` : ''}
                               </Text>
                             </View>
+                            <TouchableOpacity
+                              style={styles.reciprocityGhostBtn}
+                              onPress={() => openInvitationPreview(latestNewEvent)}
+                              activeOpacity={0.82}
+                            >
+                              <Text style={styles.reciprocityGhostText}>보기</Text>
+                            </TouchableOpacity>
                           </View>
                         </View>
 
@@ -3133,14 +3452,14 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                 <Text style={styles.createEventModalSubtitle}>어떤 경조사를 준비하시나요?</Text>
 
                 <View style={styles.createEventModalOptions}>
-                  <TouchableOpacity
-                    style={[styles.createEventModalOption, styles.createEventModalOptionComingSoon]}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      setShowCreateEventModal(false);
-                      handleQuickStart('wedding');
-                    }}
-                  >
+              <TouchableOpacity
+                style={[styles.createEventModalOption, styles.createEventModalOptionComingSoon]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  setShowCreateEventModal(false);
+                  handleEventCreationIntent('wedding');
+                }}
+              >
                     <View style={[styles.createEventModalIconWrap, { backgroundColor: '#FFF0F5' }]}>
                       <Image
                         source={RECIPROCITY_EVENT_ICONS.wedding}
@@ -3151,6 +3470,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                     <View style={styles.createEventModalOptionInfo}>
                       <Text style={styles.createEventModalOptionTitle}>청첩장 만들기</Text>
                       <Text style={styles.createEventModalOptionDesc}>결혼식 초대장과 부조금 관리</Text>
+                      <Text style={[
+                        styles.createEventModalCreditText,
+                        getCreationCreditNotice().isPaid && styles.createEventModalCreditTextPaid,
+                      ]}>
+                        {getCreationCreditNotice().text}
+                      </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color={Colors.gray400} />
                   </TouchableOpacity>
@@ -3160,11 +3485,11 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                   <TouchableOpacity
                     style={styles.createEventModalOption}
                     activeOpacity={0.7}
-                    onPress={() => {
-                      setShowCreateEventModal(false);
-                      handleQuickStart('funeral');
-                    }}
-                  >
+                onPress={() => {
+                  setShowCreateEventModal(false);
+                  handleEventCreationIntent('funeral');
+                }}
+              >
                     <View style={[styles.createEventModalIconWrap, { backgroundColor: '#F0F0F5' }]}>
                       <Image
                         source={RECIPROCITY_EVENT_ICONS.funeral}
@@ -3180,6 +3505,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                         </View>
                       </View>
                       <Text style={styles.createEventModalOptionDesc}>곧 사용할 수 있도록 준비하고 있어요</Text>
+                      <Text style={[
+                        styles.createEventModalCreditText,
+                        getCreationCreditNotice().isPaid && styles.createEventModalCreditTextPaid,
+                      ]}>
+                        {getCreationCreditNotice().text}
+                      </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color={Colors.gray400} />
                   </TouchableOpacity>
@@ -3190,6 +3521,71 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                   onPress={() => setShowCreateEventModal(false)}
                 >
                   <Text style={styles.createEventModalCancelText}>닫기</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        visible={creditShortageModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeCreditShortageModal}
+      >
+        <TouchableWithoutFeedback onPress={closeCreditShortageModal}>
+          <View style={styles.creditShortageOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.creditShortageCard}>
+                <TouchableOpacity
+                  style={styles.creditShortageClose}
+                  activeOpacity={0.75}
+                  onPress={closeCreditShortageModal}
+                >
+                  <Ionicons name="close" size={20} color="#6B7280" />
+                </TouchableOpacity>
+
+                <View style={styles.creditShortageIconWrap}>
+                  <View style={styles.creditShortageIconBack} />
+                  <Ionicons name="wallet-outline" size={34} color="#B45309" />
+                </View>
+
+                <Text style={styles.creditShortageTitle}>크레딧이 부족해요</Text>
+                <Text style={styles.creditShortageDesc}>
+                  무료 생성 {EVENT_CREATION_FREE_LIMIT}회를 모두 사용했습니다.
+                  {'\n'}{creditShortageModal.eventType === 'funeral' ? '부고장' : '청첩장'} 만들기는 {creditShortageModal.priceCredits}크레딧이 필요해요.
+                </Text>
+
+                <View style={styles.creditShortageSummary}>
+                  <View style={styles.creditShortageSummaryItem}>
+                    <Text style={styles.creditShortageSummaryLabel}>현재 잔액</Text>
+                    <Text style={styles.creditShortageSummaryValue}>
+                      {creditShortageModal.balance}크레딧
+                    </Text>
+                  </View>
+                  <View style={styles.creditShortageSummaryDivider} />
+                  <View style={styles.creditShortageSummaryItem}>
+                    <Text style={styles.creditShortageSummaryLabel}>필요 크레딧</Text>
+                    <Text style={[styles.creditShortageSummaryValue, styles.creditShortageRequiredValue]}>
+                      {creditShortageModal.priceCredits}크레딧
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.creditShortageNotice}>
+                  <Ionicons name="information-circle-outline" size={17} color="#0F766E" />
+                  <Text style={styles.creditShortageNoticeText}>
+                    크레딧 충전 기능은 준비되는 대로 연결할게요.
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.creditShortageButton}
+                  activeOpacity={0.85}
+                  onPress={closeCreditShortageModal}
+                >
+                  <Text style={styles.creditShortageButtonText}>확인</Text>
                 </TouchableOpacity>
               </View>
             </TouchableWithoutFeedback>
@@ -4017,6 +4413,91 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#3182F6',
+  },
+  eventGuestbookPanel: {
+    marginTop: 12,
+    borderRadius: 12,
+    backgroundColor: '#FAF7FF',
+    borderWidth: 1,
+    borderColor: '#EFE7FF',
+    overflow: 'hidden',
+  },
+  eventGuestbookPanelOpen: {
+    backgroundColor: '#FFFFFF',
+  },
+  eventGuestbookToggle: {
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  eventGuestbookToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  eventGuestbookToggleText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#6D28D9',
+  },
+  eventGuestbookMessages: {
+    borderTopWidth: 1,
+    borderTopColor: '#EFE7FF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  eventGuestbookMessageRow: {
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3EFFD',
+  },
+  eventGuestbookMessageName: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#191F28',
+  },
+  eventGuestbookMessageText: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+    color: '#4E5968',
+  },
+  eventGuestbookMessageDate: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  eventGuestbookPagination: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingTop: 2,
+  },
+  eventGuestbookPageButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5F3FF',
+  },
+  eventGuestbookPageButtonDisabled: {
+    backgroundColor: '#F8FAFC',
+  },
+  eventGuestbookPageText: {
+    minWidth: 42,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#6D28D9',
   },
 
   // 🔥 더보기 버튼
@@ -5984,6 +6465,138 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
 
+  creditShortageOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 22,
+    backgroundColor: 'rgba(15, 23, 42, 0.52)',
+  },
+  creditShortageCard: {
+    width: '100%',
+    maxWidth: 366,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    paddingHorizontal: 22,
+    paddingTop: 26,
+    paddingBottom: 18,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.18,
+    shadowRadius: 28,
+    elevation: 12,
+  },
+  creditShortageClose: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creditShortageIconWrap: {
+    width: 70,
+    height: 70,
+    borderRadius: 22,
+    backgroundColor: '#FFF7ED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 17,
+    overflow: 'hidden',
+  },
+  creditShortageIconBack: {
+    position: 'absolute',
+    width: 48,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: '#FDE68A',
+    opacity: 0.45,
+    transform: [{ rotate: '-12deg' }],
+  },
+  creditShortageTitle: {
+    fontSize: 21,
+    fontWeight: '800',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  creditShortageDesc: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: '#4B5563',
+    textAlign: 'center',
+  },
+  creditShortageSummary: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginTop: 20,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    overflow: 'hidden',
+  },
+  creditShortageSummaryItem: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  creditShortageSummaryDivider: {
+    width: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  creditShortageSummaryLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '700',
+    marginBottom: 5,
+  },
+  creditShortageSummaryValue: {
+    fontSize: 17,
+    color: '#111827',
+    fontWeight: '900',
+  },
+  creditShortageRequiredValue: {
+    color: '#B45309',
+  },
+  creditShortageNotice: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+  },
+  creditShortageNoticeText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#0F766E',
+    fontWeight: '700',
+  },
+  creditShortageButton: {
+    width: '100%',
+    marginTop: 16,
+    paddingVertical: 14,
+    borderRadius: 13,
+    alignItems: 'center',
+    backgroundColor: '#111827',
+  },
+  creditShortageButtonText: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+
   eventCreationWelcomeOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -6137,6 +6750,15 @@ const styles = StyleSheet.create({
   createEventModalOptionDesc: {
     fontSize: 13,
     color: Colors.textSecondary,
+  },
+  createEventModalCreditText: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F766E',
+  },
+  createEventModalCreditTextPaid: {
+    color: '#D97706',
   },
   createEventModalDivider: {
     height: 1,

@@ -1,6 +1,6 @@
 // App.js - AsyncStorage와 Supabase Auth 둘 다 체크
 import React, { useState, useEffect, useRef } from 'react';
-import { Alert, Platform, LogBox } from 'react-native';
+import { Platform, LogBox } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Font from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -31,6 +31,7 @@ import { TutorialProvider } from './src/contexts/TutorialContext';
 import TutorialOverlay from './src/components/TutorialOverlay';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import GlobalAlertHost from './src/components/GlobalAlertHost';
 
 
 // Expo 네이티브 알림 초기화 (Expo Go에서는 제한됨)
@@ -329,7 +330,14 @@ export default function App() {
   };
 
   if (loading) {
-    return <LoadingScreen />;
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <LoadingScreen />
+          <GlobalAlertHost />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
   }
 
   return (
@@ -350,6 +358,7 @@ export default function App() {
             />
           )}
           {isAuthenticated && <TutorialOverlay scope="app" />}
+          <GlobalAlertHost />
           <Toast />
         </TutorialProvider>
       </SafeAreaProvider>

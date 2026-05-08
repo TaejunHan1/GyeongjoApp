@@ -37,7 +37,13 @@ export async function getReciprocityNotifications(userId = null) {
           event_name,
           event_type,
           event_date,
-          main_person_name
+          event_time,
+          created_at,
+          main_person_name,
+          groom_name,
+          bride_name,
+          template_style,
+          public_slug
         )
       `)
       .eq('receiver_user_id', uid)
