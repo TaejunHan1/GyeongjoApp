@@ -3610,7 +3610,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             <Text style={styles.eventCreationWelcomeDesc}>
               처음 {EVENT_CREATION_FREE_LIMIT}개의 청첩장은 무료로 만들 수 있어요.
               {'\n'}이후 청첩장 만들기는 {EVENT_CREATION_CREDIT_COST}크레딧이 사용됩니다.
-              {'\n'}가입 선물로 크레딧 10개를 드렸어요.
+              {'\n'}가입 선물로 크레딧 20개를 드렸어요.
             </Text>
             <View style={styles.eventCreationWelcomeNotice}>
               <Ionicons name="information-circle-outline" size={17} color="#8B5E00" />

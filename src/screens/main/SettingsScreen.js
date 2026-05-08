@@ -9,12 +9,15 @@ import {
   ScrollView,
   Alert,
   Switch,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../../styles/constants';
 import { supabase } from '../../lib/supabase';
+import { deleteCurrentAccount } from '../../lib/accountDeletion';
 
 export default function SettingsScreen({ navigation, userInfo, session, onLogout }) {
   const [settings, setSettings] = useState({
@@ -26,6 +29,7 @@ export default function SettingsScreen({ navigation, userInfo, session, onLogout
   });
   
   const [loading, setLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -108,6 +112,8 @@ export default function SettingsScreen({ navigation, userInfo, session, onLogout
   };
 
   const handleDeleteAccount = () => {
+    if (deleteLoading) return;
+
     Alert.alert(
       '계정 삭제',
       '정말로 계정을 삭제하시겠어요?\n\n이 작업은 되돌릴 수 없으며, 모든 데이터가 영구적으로 삭제됩니다.',
@@ -116,8 +122,20 @@ export default function SettingsScreen({ navigation, userInfo, session, onLogout
         {
           text: '삭제',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert('준비중', '계정 삭제 기능을 준비 중입니다.');
+          onPress: async () => {
+            setDeleteLoading(true);
+            const result = await deleteCurrentAccount({
+              userId: userInfo?.userId || session?.user?.id,
+              phone: userInfo?.phone || userInfo?.userPhone || session?.user?.phone,
+            });
+
+            if (!result.success) {
+              setDeleteLoading(false);
+              Alert.alert('계정 삭제 실패', result.error || '잠시 후 다시 시도해주세요.');
+              return;
+            }
+
+            if (onLogout) await onLogout();
           },
         },
       ]
@@ -283,7 +301,11 @@ export default function SettingsScreen({ navigation, userInfo, session, onLogout
             </View>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
+          <TouchableOpacity
+            style={[styles.deleteButton, deleteLoading && styles.deleteButtonDisabled]}
+            onPress={handleDeleteAccount}
+            disabled={deleteLoading}
+          >
             <Text style={styles.deleteButtonText}>계정 삭제</Text>
           </TouchableOpacity>
         </View>
@@ -296,6 +318,18 @@ export default function SettingsScreen({ navigation, userInfo, session, onLogout
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      <Modal visible={deleteLoading} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={styles.deleteLoadingOverlay}>
+          <View style={styles.deleteLoadingCard}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.deleteLoadingTitle}>삭제 처리 중입니다</Text>
+            <Text style={styles.deleteLoadingMessage}>
+              계정과 관련 데이터를 정리하고 있어요.{'\n'}잠시만 기다려주세요.
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -489,10 +523,42 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
   },
+  deleteButtonDisabled: {
+    opacity: 0.45,
+  },
   deleteButtonText: {
     fontSize: 14,
     color: Colors.gray400,
     textDecorationLine: 'underline',
+  },
+  deleteLoadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.58)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+  },
+  deleteLoadingCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: Colors.white,
+    borderRadius: 18,
+    paddingVertical: 28,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+  },
+  deleteLoadingTitle: {
+    marginTop: 16,
+    fontSize: 17,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  deleteLoadingMessage: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 20,
+    color: Colors.textSecondary,
+    textAlign: 'center',
   },
   
   // 앱 정보

@@ -1,5 +1,5 @@
 // 전역 navigation ref — 컴포넌트 밖(Context 등)에서 navigation 호출용
-import { createNavigationContainerRef, StackActions } from '@react-navigation/native';
+import { createNavigationContainerRef } from '@react-navigation/native';
 
 export const navigationRef = createNavigationContainerRef();
 
@@ -7,12 +7,18 @@ export const navigationRef = createNavigationContainerRef();
 // (전체 reset하면 MyEventsScreen 등이 리마운트되며 튜토리얼 체크 ref가 초기화됨)
 export function resetToTab(tabName) {
   if (!navigationRef.isReady()) return;
-  try {
-    // 스택 최상위(MainTabs)까지 pop — EventDetail / GuestWriting / GuestConfirm 등 모두 제거
-    navigationRef.dispatch(StackActions.popToTop());
-  } catch (_) {
-    // 이미 MainTabs밖에 없으면 조용히 패스
+
+  const state = navigationRef.getRootState?.();
+  const currentRoute = state?.routes?.[state.index];
+  const isAlreadyAtRootTabs = currentRoute?.name === 'MainTabs' && state?.routes?.length === 1;
+
+  // 루트 스택이 MainTabs 하나뿐인 상태에서 popToTop을 보내면 개발 경고가 발생한다.
+  if (!isAlreadyAtRootTabs && navigationRef.canGoBack()) {
+    navigationRef.goBack();
+    requestAnimationFrame(() => resetToTab(tabName));
+    return;
   }
-  // MainTabs 내부에서 해당 탭으로 전환 (탭 스크린은 리마운트 안 됨)
+
+  // MainTabs 내부에서 해당 탭으로 전환
   navigationRef.navigate('MainTabs', { screen: tabName });
 }

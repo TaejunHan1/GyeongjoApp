@@ -1148,14 +1148,20 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
           {
             text: '목록 보기',
             onPress: () => {
-              navigation.popToTop();
+              if (navigation.canGoBack()) {
+                navigation.popToTop();
+              }
               setTimeout(() => navigation.navigate('SavedInvitations'), 100);
             },
           },
           {
             text: '확인',
             style: 'cancel',
-            onPress: () => navigation.popToTop(),
+            onPress: () => {
+              if (navigation.canGoBack()) {
+                navigation.popToTop();
+              }
+            },
           },
         ]
       );

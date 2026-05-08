@@ -1,11 +1,12 @@
 // App.js - AsyncStorage와 Supabase Auth 둘 다 체크
 import React, { useState, useEffect, useRef } from 'react';
-import { Platform, LogBox } from 'react-native';
+import { Platform, LogBox, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Font from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import Toast from 'react-native-toast-message';
+import { Ionicons } from '@expo/vector-icons';
 
 // Expo Go에서 나오는 알림 관련 경고 숨기기
 LogBox.ignoreLogs([
@@ -33,6 +34,92 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import GlobalAlertHost from './src/components/GlobalAlertHost';
 
+const TOAST_META = {
+  success: {
+    icon: 'checkmark-circle',
+    color: '#15803D',
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+  },
+  error: {
+    icon: 'alert-circle',
+    color: '#DC2626',
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  info: {
+    icon: 'notifications',
+    color: '#2563EB',
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+  },
+};
+
+const AppToast = ({ text1, text2, type = 'info' }) => {
+  const meta = TOAST_META[type] || TOAST_META.info;
+
+  return (
+    <View style={[toastStyles.card, { borderColor: meta.borderColor }]}>
+      <View style={[toastStyles.iconWrap, { backgroundColor: meta.backgroundColor }]}>
+        <Ionicons name={meta.icon} size={22} color={meta.color} />
+      </View>
+      <View style={toastStyles.copy}>
+        {!!text1 && <Text style={toastStyles.title} numberOfLines={1}>{text1}</Text>}
+        {!!text2 && <Text style={toastStyles.message} numberOfLines={2}>{text2}</Text>}
+      </View>
+    </View>
+  );
+};
+
+const toastConfig = {
+  success: (props) => <AppToast {...props} type="success" />,
+  error: (props) => <AppToast {...props} type="error" />,
+  info: (props) => <AppToast {...props} type="info" />,
+};
+
+const toastStyles = StyleSheet.create({
+  card: {
+    width: '91%',
+    minHeight: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.14,
+    shadowRadius: 22,
+    elevation: 8,
+  },
+  iconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  copy: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#111827',
+    letterSpacing: 0,
+  },
+  message: {
+    marginTop: 3,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7280',
+    lineHeight: 18,
+    letterSpacing: 0,
+  },
+});
 
 // Expo 네이티브 알림 초기화 (Expo Go에서는 제한됨)
 const initializeNotifications = async () => {
@@ -359,7 +446,7 @@ export default function App() {
           )}
           {isAuthenticated && <TutorialOverlay scope="app" />}
           <GlobalAlertHost />
-          <Toast />
+          <Toast config={toastConfig} topOffset={54} />
         </TutorialProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

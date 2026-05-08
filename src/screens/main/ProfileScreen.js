@@ -14,6 +14,7 @@ import {
   Platform,
   TextInput,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
@@ -21,6 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../styles/constants';
 import { supabase } from '../../lib/supabase';
 import { getAlimtalkBalance } from '../../lib/alimtalkCredit';
+import { deleteCurrentAccount } from '../../lib/accountDeletion';
 
 // 스마트패스 카카오톡 채널
 const KAKAO_CHANNEL_URL = 'https://pf.kakao.com/_WsUuX/chat';
@@ -31,6 +33,7 @@ export default function ProfileScreen({ navigation, userInfo, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [balance, setBalance] = useState(0);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // 이름 편집 모달
   const [editOpen, setEditOpen] = useState(false);
@@ -152,18 +155,31 @@ export default function ProfileScreen({ navigation, userInfo, onLogout }) {
 
   // ── 계정 삭제 ──
   const handleDeleteAccount = () => {
+    if (deleteLoading) return;
+
     Alert.alert(
       '계정 삭제',
-      '정말 계정을 삭제하시겠습니까?\n모든 경조사 데이터가 영구적으로 삭제됩니다.',
+      '정말 계정을 삭제하시겠습니까?\n등록한 경조사, 방명록, 부조 내역, 업로드 이미지가 삭제되며 복구할 수 없습니다.',
       [
         { text: '취소', style: 'cancel' },
         {
           text: '삭제',
           style: 'destructive',
-          onPress: () => Alert.alert('안내', '계정 삭제 요청은 문의하기를 통해 접수됩니다.\n카카오톡 채널로 연결할게요.', [
-            { text: '취소', style: 'cancel' },
-            { text: '문의하기', onPress: openKakaoChannel },
-          ]),
+          onPress: async () => {
+            setDeleteLoading(true);
+            const result = await deleteCurrentAccount({
+              userId: userInfo?.userId,
+              phone: profile?.phone || userInfo?.phone || userInfo?.userPhone,
+            });
+
+            if (!result.success) {
+              setDeleteLoading(false);
+              Alert.alert('계정 삭제 실패', result.error || '잠시 후 다시 시도해주세요.');
+              return;
+            }
+
+            if (onLogout) await onLogout();
+          },
         },
       ]
     );
@@ -253,7 +269,12 @@ export default function ProfileScreen({ navigation, userInfo, onLogout }) {
             <Ionicons name="log-out-outline" size={18} color={Colors.error} />
             <Text style={styles.logoutText}>로그아웃</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteAccount} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={[styles.deleteBtn, deleteLoading && styles.deleteBtnDisabled]}
+            onPress={handleDeleteAccount}
+            activeOpacity={0.7}
+            disabled={deleteLoading}
+          >
             <Text style={styles.deleteText}>계정 삭제</Text>
           </TouchableOpacity>
         </View>
@@ -318,6 +339,18 @@ export default function ProfileScreen({ navigation, userInfo, onLogout }) {
             </TouchableOpacity>
           </TouchableOpacity>
         </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={deleteLoading} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={styles.deleteLoadingOverlay}>
+          <View style={styles.deleteLoadingCard}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.deleteLoadingTitle}>삭제 처리 중입니다</Text>
+            <Text style={styles.deleteLoadingMessage}>
+              계정과 관련 데이터를 정리하고 있어요.{'\n'}잠시만 기다려주세요.
+            </Text>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -470,6 +503,7 @@ const styles = StyleSheet.create({
   },
   logoutText: { color: Colors.error, fontSize: 14, fontWeight: '600' },
   deleteBtn: { alignItems: 'center', paddingVertical: 8 },
+  deleteBtnDisabled: { opacity: 0.45 },
   deleteText: { color: Colors.gray500, fontSize: 12, textDecorationLine: 'underline' },
 
   // 앱 정보
@@ -505,6 +539,35 @@ const styles = StyleSheet.create({
   modalCancelText: { color: Colors.textPrimary, fontSize: 14, fontWeight: '600' },
   modalConfirmBtn: { flex: 1, paddingVertical: 13, alignItems: 'center', backgroundColor: Colors.error, borderRadius: 10 },
   modalConfirmText: { color: Colors.white, fontSize: 14, fontWeight: '700' },
+  deleteLoadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.58)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+  },
+  deleteLoadingCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: Colors.white,
+    borderRadius: 18,
+    paddingVertical: 28,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+  },
+  deleteLoadingTitle: {
+    marginTop: 16,
+    fontSize: 17,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  deleteLoadingMessage: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 20,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
 
   // 이름 편집 바텀시트
   sheetOverlay: {
