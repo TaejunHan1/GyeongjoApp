@@ -24,6 +24,12 @@ import { sendVerificationSms, generateVerificationCode } from '../../lib/solapiS
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../styles/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  REVIEW_USER_NAME,
+  REVIEW_VERIFICATION_CODE,
+  isReviewPhone,
+  signInReviewUser,
+} from '../../lib/reviewAccess';
 
 const { width, height } = Dimensions.get('window');
 
@@ -393,13 +399,17 @@ export default function PhoneAuthScreen() {
   const handleSendVerification = async () => {
     if (isLoading) return;
     
-    if (isSignUp && !name.trim()) {
-      showModal('이름을 입력해주세요', '정담에서 사용할 이름을 입력해주세요.', [{ text: '확인', primary: true }]);
-      return;
-    }
     const numbers = phoneNumber.replace(/[^\d]/g, '');
     if (numbers.length !== 11) {
       showModal('휴대폰 번호를 확인해주세요', '올바른 휴대폰 번호를 입력해주세요.', [{ text: '확인', primary: true }]);
+      return;
+    }
+
+    const formattedPhone = `+82${numbers.slice(1)}`;
+    const isReviewLogin = isReviewPhone(formattedPhone);
+
+    if (isSignUp && !name.trim() && !isReviewLogin) {
+      showModal('이름을 입력해주세요', '정담에서 사용할 이름을 입력해주세요.', [{ text: '확인', primary: true }]);
       return;
     }
     
@@ -416,10 +426,14 @@ export default function PhoneAuthScreen() {
     }
     
     setIsLoading(true);
-    
-    const formattedPhone = `+82${numbers.slice(1)}`;
 
     try {
+      if (isReviewLogin) {
+        console.log('🧪 심사용 로그인 인증번호 화면으로 이동');
+        animateToVerification();
+        return;
+      }
+
       console.log('📱 SMS 인증번호 발송 요청:', formattedPhone);
       
       const result = await sendSmsCode(formattedPhone);
@@ -446,6 +460,32 @@ export default function PhoneAuthScreen() {
     const formattedPhone = `+82${numbers.slice(1)}`;
     
     try {
+      if (isReviewPhone(formattedPhone)) {
+        if (verificationCode !== REVIEW_VERIFICATION_CODE) {
+          showModal('인증번호가 맞지 않아요', '심사용 인증번호를 다시 확인해주세요.', [{ text: '다시 입력', onPress: () => setVerificationCode('') }]);
+          setIsLoading(false);
+          return;
+        }
+
+        const reviewUserInfo = await signInReviewUser();
+
+        showModal(
+          '인증 완료',
+          `${reviewUserInfo.userName || REVIEW_USER_NAME}으로 로그인합니다.`,
+          [{
+            text: '정담 시작하기',
+            primary: true,
+            onPress: () => {
+              if (setUserInfo && setIsAuthenticated) {
+                setUserInfo(reviewUserInfo);
+                setIsAuthenticated(true);
+              }
+            },
+          }]
+        );
+        return;
+      }
+
       console.log('🔍 SMS 인증번호 검증 시작:', { phone: formattedPhone, code: verificationCode });
       
       const { data: verificationData, error: selectError } = await supabase

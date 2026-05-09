@@ -120,6 +120,7 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
   const dateInfo = formatKoreanDate(eventData.date || eventData.event_date);
   const dateStr = dateInfo?.full || '';
   const timeStr = formatKoreanTime(eventData.ceremonyTime || eventData.ceremony_time);
+  const displayTimeStr = timeStr.replace('시 ', '시 ');
 
   // ── 장소 ──
   const locName = eventData.hallName || eventData.hall_name || eventData.location || '';
@@ -135,20 +136,22 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
   const weddingDate = eventData.date || eventData.event_date;
   let dDayText = '';
   if (weddingDate) {
-    const diff = Math.ceil((new Date(weddingDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    const baseDate = dateInfo
+      ? new Date(dateInfo.year, dateInfo.month - 1, dateInfo.day)
+      : new Date(weddingDate);
+    const diff = Math.ceil((baseDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     if (diff > 0) dDayText = `D-${diff}`;
     else if (diff === 0) dDayText = 'D-Day';
     else dDayText = `D+${Math.abs(diff)}`;
   }
 
   // ── 달력 ──
-  const calDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const calDays = ['일', '월', '화', '수', '목', '금', '토'];
   let calYear = 2026, calMonth = 5, calDay = 14;
   if (weddingDate) {
-    try {
-      const d = new Date(weddingDate);
-      if (!isNaN(d.getTime())) { calYear = d.getFullYear(); calMonth = d.getMonth() + 1; calDay = d.getDate(); }
-    } catch {}
+    calYear = dateInfo.year;
+    calMonth = dateInfo.month;
+    calDay = dateInfo.day;
   }
   const firstDow = new Date(calYear, calMonth - 1, 1).getDay();
   const daysInMonth = new Date(calYear, calMonth, 0).getDate();
@@ -331,9 +334,6 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
         </View>
         {/* 이름 - 사진 아래 */}
         <View style={s.heroTextSection}>
-          <View style={s.heroLabelBg}>
-            <Text style={s.heroLabelText}>Invitation</Text>
-          </View>
           <Text style={s.heroNamesText}>
             {groomName}  <Text style={s.heroHeart}>♥</Text>  {brideName}
           </Text>
@@ -369,58 +369,61 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
 
         {/* ── 달력 ── */}
         {weddingDate && (
-          <View style={s.section}>
+          <View style={[s.section, s.dateSection]}>
             <Text style={s.sectionLabel}>Date</Text>
             <View style={s.divider} />
-            <Text style={s.calMonthYear}>{calYear} / {String(calMonth).padStart(2, '0')}</Text>
+            <View style={s.dateSummaryWrap}>
+              <View style={s.dateMainRow}>
+                <Text style={s.dateMainText}>{calYear}</Text>
+                <Text style={s.dateSlash}>/</Text>
+                <Text style={s.dateMainText}>{String(calMonth).padStart(2, '0')}</Text>
+              </View>
+              <View style={s.dateTimeBox}>
+                <Text style={s.dateTimeLabel}>TIME</Text>
+                <Text style={s.dateTimeText}>{displayTimeStr}</Text>
+              </View>
+            </View>
+
             <View style={s.calendarWrap}>
-              {/* 요일 헤더 */}
               <View style={s.calDayHeaderRow}>
                 {calDays.map((d, i) => (
                   <View key={i} style={s.calDayHeaderCell}>
-                    <Text style={[s.calDayHeaderText, (i === 0) && { color: '#E8A0A0' }]}>{d}</Text>
+                    <Text style={[s.calDayHeaderText, i === 0 && s.calSundayText]}>{d}</Text>
                   </View>
                 ))}
               </View>
               <View style={s.calDayHeaderDivider} />
-              {/* 날짜 그리드 — 결혼일은 하트로 표시 */}
               <View style={s.calGrid}>
                 {Array.from({ length: firstDow }).map((_, i) => (
-                  <View key={`e${i}`} style={s.calCell} />
+                  <View key={`empty-${i}`} style={s.calCell} />
                 ))}
                 {Array.from({ length: daysInMonth }).map((_, i) => {
                   const day = i + 1;
-                  const isWedding = day === calDay;
                   const dow = (firstDow + i) % 7;
                   const isSunday = dow === 0;
-                  if (isWedding) {
-                    return (
-                      <View key={i} style={s.calCell}>
+                  const isWedding = day === calDay;
+
+                  return (
+                    <View key={day} style={s.calCell}>
+                      {isWedding ? (
                         <View style={s.calHeartWrap}>
                           <Text style={s.calHeartText}>♥</Text>
                           <Text style={s.calHeartDay}>{day}</Text>
                         </View>
-                      </View>
-                    );
-                  }
-                  return (
-                    <View key={i} style={s.calCell}>
-                      <View style={s.calDayCircle}>
-                        <Text style={[s.calDayText, isSunday && { color: '#E8A0A0' }]}>{day}</Text>
-                      </View>
+                      ) : (
+                        <Text style={[s.calDayText, isSunday && s.calSundayText]}>{day}</Text>
+                      )}
                     </View>
                   );
                 })}
               </View>
-              {dDayText && (
+              {dDayText ? (
                 <View style={s.calFooter}>
                   <Text style={s.calFooterText}>
-                    {groomName} ♥ {brideName}의 결혼식이{' '}
-                    <Text style={{ color: C.accent, fontWeight: '700' }}>{dDayText}</Text>
-                    {' '}남았습니다
+                    {groomName} ♥ {brideName}의 결혼식이 <Text style={s.dateDdayStrong}>{dDayText}</Text> 남았습니다
                   </Text>
                 </View>
-              )}
+              ) : null}
             </View>
           </View>
         )}
@@ -826,7 +829,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)',
   },
   heroTextSection: {
-    alignItems: 'center', paddingVertical: 32, backgroundColor: C.bg,
+    alignItems: 'center', paddingTop: 20, paddingBottom: 22, backgroundColor: C.bg,
   },
   heroLabelBg: {
     backgroundColor: C.bg, paddingHorizontal: 16, paddingVertical: 4, marginBottom: 16,
@@ -845,11 +848,12 @@ const s = StyleSheet.create({
 
   // ── 섹션 ──
   section: {
-    backgroundColor: C.bg, paddingHorizontal: 24, paddingVertical: 40,
+    backgroundColor: C.bg, paddingHorizontal: 24, paddingVertical: 34,
   },
   sectionLabel: {
     fontSize: 12, fontWeight: '400', color: C.accent, letterSpacing: 4,
     textAlign: 'center', textTransform: 'uppercase', marginBottom: 12,
+    fontFamily: 'PlayfairDisplay',
   },
   divider: {
     width: 40, height: 1, backgroundColor: C.border, alignSelf: 'center', marginBottom: 24,
@@ -876,6 +880,75 @@ const s = StyleSheet.create({
   contactBtnText: { fontSize: 14, fontWeight: '400', color: C.main },
 
   // ── 달력 ──
+  dateSection: {
+    paddingTop: 40,
+    paddingHorizontal: 24,
+  },
+  dateSummaryWrap: {
+    alignItems: 'center',
+    marginBottom: 26,
+  },
+  dateMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 0,
+    marginBottom: 18,
+  },
+  dateMainText: {
+    fontSize: 30,
+    fontWeight: '300',
+    color: C.main,
+    letterSpacing: 2,
+    lineHeight: 38,
+    fontFamily: 'PlayfairDisplay',
+  },
+  dateSlash: {
+    fontSize: 30,
+    fontWeight: '200',
+    color: C.main,
+    marginHorizontal: 10,
+    lineHeight: 38,
+    fontFamily: 'PlayfairDisplay',
+  },
+  dateTimeBox: {
+    alignSelf: 'center',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(154, 139, 122, 0.28)',
+    paddingVertical: 9,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateTimeLabel: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: '#B8A894',
+    letterSpacing: 2,
+    marginRight: 12,
+    textTransform: 'uppercase',
+    fontFamily: 'PlayfairDisplay',
+  },
+  dateTimeText: {
+    fontSize: 16,
+    fontWeight: '400',
+    color: '#6F6255',
+    letterSpacing: 0,
+    lineHeight: 18,
+  },
+  dateDdayText: {
+    marginTop: 12,
+    fontSize: 13,
+    color: C.sub,
+    fontWeight: '300',
+    textAlign: 'center',
+  },
+  dateDdayStrong: {
+    color: C.accent,
+    fontWeight: '700',
+  },
   calFullDate: {
     fontSize: 14, fontWeight: '300', color: C.sub, textAlign: 'center', marginBottom: 4,
   },
@@ -886,14 +959,29 @@ const s = StyleSheet.create({
   calendarWrap: { alignSelf: 'center', width: '100%', paddingHorizontal: 4 },
   calDayHeaderRow: { flexDirection: 'row', marginBottom: 10 },
   calDayHeaderCell: { flex: 1, alignItems: 'center' },
-  calDayHeaderText: { fontSize: 13, fontWeight: '600', color: C.sub },
-  calDayHeaderDivider: { height: 1, backgroundColor: C.border, marginBottom: 10 },
+  calDayHeaderText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.sub,
+  },
+  calSundayText: { color: '#EE9A9D' },
+  calDayHeaderDivider: { height: 1, backgroundColor: C.border, marginBottom: 42 },
   calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  calCell: { width: `${100 / 7}%`, alignItems: 'center', paddingVertical: 6 },
+  calCell: {
+    width: `${100 / 7}%`,
+    height: 68,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   calDayCircle: {
     width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
   },
-  calDayText: { fontSize: 15, fontWeight: '400', color: C.main },
+  calDayText: {
+    fontSize: 18,
+    fontWeight: '400',
+    color: C.main,
+    fontFamily: 'NanumMyeongjo',
+  },
   // 결혼일 하트 표시
   calHeartWrap: {
     width: 38, height: 38, alignItems: 'center', justifyContent: 'center', position: 'relative',
@@ -902,13 +990,21 @@ const s = StyleSheet.create({
     fontSize: 34, color: '#E8A0A0', position: 'absolute',
   },
   calHeartDay: {
-    fontSize: 12, fontWeight: '700', color: '#fff', zIndex: 2,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+    zIndex: 2,
   },
   calFooter: {
-    marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.border,
+    marginTop: 42, paddingTop: 22, borderTopWidth: 1, borderTopColor: C.border,
     alignItems: 'center',
   },
-  calFooterText: { fontSize: 13, color: C.sub, fontWeight: '300' },
+  calFooterText: {
+    fontSize: 15,
+    color: C.sub,
+    fontWeight: '300',
+    fontFamily: 'NanumMyeongjo',
+  },
 
   // ── 갤러리 (2행 × N열 가로 스크롤) ──
   galleryOuter: { marginHorizontal: -24, marginTop: 4, position: 'relative' },

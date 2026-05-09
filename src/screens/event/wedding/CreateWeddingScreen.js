@@ -23,6 +23,37 @@ import TutorialOverlay from '../../../components/TutorialOverlay';
 
 const { width } = Dimensions.get('window');
 
+const formatLocalDateKey = (value) => {
+  if (!value) return null;
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return String(value);
+};
+
+const getImageIdentity = (image) => (
+  image?.storagePath ||
+  image?.publicUrl ||
+  image?.originalUri ||
+  image?.uri ||
+  image?.id ||
+  ''
+);
+
+const dedupeImages = (images = []) => {
+  const seen = new Set();
+  return images.filter((image) => {
+    const key = getImageIdentity(image);
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
 // ── 컬러 시스템 ──
 const C = {
   primary: '#3182F6',
@@ -1043,15 +1074,19 @@ export default function CreateWeddingScreen({ navigation, route }) {
   };
 
   // ── 사진 관련 ──
-  const getCategoryImageCount = (cat) => eventData.images.filter(img => img.category === cat).length;
-  const getCategoryImages = (cat) => eventData.images.filter(img => img.category === cat);
-  const getCategorizedImages = () => ({
-    main: eventData.images.filter(img => img.category === 'main'),
-    gallery: eventData.images.filter(img => img.category === 'gallery'),
-    groom: eventData.images.filter(img => img.category === 'groom'),
-    bride: eventData.images.filter(img => img.category === 'bride'),
-    all: eventData.images,
-  });
+  const getCategoryImageCount = (cat) => dedupeImages(eventData.images.filter(img => img.category === cat)).length;
+  const getCategoryImages = (cat) => dedupeImages(eventData.images.filter(img => img.category === cat));
+  const buildCategorizedImages = (images = []) => {
+    const uniqueImages = dedupeImages(images);
+    return {
+      main: uniqueImages.filter(img => img.category === 'main'),
+      gallery: uniqueImages.filter(img => img.category === 'gallery'),
+      groom: uniqueImages.filter(img => img.category === 'groom'),
+      bride: uniqueImages.filter(img => img.category === 'bride'),
+      all: uniqueImages,
+    };
+  };
+  const getCategorizedImages = () => buildCategorizedImages(eventData.images);
 
   const removeImage = async (imageId) => {
     setEventData(prev => {
@@ -1415,7 +1450,8 @@ export default function CreateWeddingScreen({ navigation, route }) {
     setIsLoading(true);
     try {
       const eventTitle = `${eventData.groomName} ♥ ${eventData.brideName} 결혼식`;
-      const categorizedImages = getCategorizedImages();
+      const uniqueEventImages = dedupeImages(eventData.images);
+      const categorizedImages = buildCategorizedImages(uniqueEventImages);
 
       // 테스트용: 메인 사진 없으면 랜덤 플레이스홀더 1장 삽입
       if (categorizedImages.main.length === 0) {
@@ -1436,15 +1472,13 @@ export default function CreateWeddingScreen({ navigation, route }) {
         preset_amounts: eventData.presetAmounts,
         status: 'active',
         is_finalized: false,
-        image_urls: eventData.images.map(img => ({
+        image_urls: uniqueEventImages.map(img => ({
           uri: img.publicUrl || img.uri, category: img.category, categoryLabel: img.categoryLabel,
           id: img.id, storagePath: img.storagePath || null, publicUrl: img.publicUrl || null, eventId: img.eventId || null,
         })),
         allow_messages: eventData.allowMessages,
         message_placeholder: eventData.messageSettings.placeholder,
-        event_date: eventData.date
-          ? (eventData.date instanceof Date ? eventData.date.toISOString().split('T')[0] : String(eventData.date))
-          : null,
+        event_date: formatLocalDateKey(eventData.date),
         location: fullLocation || null,
         detailed_address: eventData.detailedAddress.trim() || null,
         main_person_name: `${eventData.groomName}, ${eventData.brideName}`,
@@ -1478,7 +1512,6 @@ export default function CreateWeddingScreen({ navigation, route }) {
           groom_mother_bank_name: eventData.groomMotherBankName?.trim() || null,
           bride_father_bank_name: eventData.brideFatherBankName?.trim() || null,
           bride_mother_bank_name: eventData.brideMotherBankName?.trim() || null,
-          categorized_images: categorizedImages,
           message_settings: eventData.messageSettings,
           background_music: templateMusicMap[eventData.selectedTemplate?.id] || null,
           background_petal: templatePetalMap[eventData.selectedTemplate?.id] || null,

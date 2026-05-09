@@ -410,7 +410,17 @@ export const formatKoreanDate = (dateString) => {
   if (!dateString) return defaultResult;
   
   try {
-    const date = new Date(dateString);
+    let date;
+    if (dateString instanceof Date) {
+      date = dateString;
+    } else if (typeof dateString === 'string') {
+      const match = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      date = match
+        ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+        : new Date(dateString);
+    } else {
+      date = new Date(dateString);
+    }
     if (isNaN(date.getTime())) {
       return defaultResult;
     }

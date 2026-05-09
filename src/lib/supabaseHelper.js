@@ -1182,9 +1182,28 @@ export const createEvent = async (eventData) => {
     processedEventData.allow_messages = eventData.allow_messages !== undefined ? eventData.allow_messages : true;
     processedEventData.message_placeholder = eventData.message_placeholder || getDefaultMessagePlaceholder(eventData.event_type);
 
+    const getImageIdentity = (image) => (
+      image?.storagePath ||
+      image?.publicUrl ||
+      image?.uri ||
+      image?.id ||
+      ''
+    );
+
+    const dedupeImageList = (images = []) => {
+      const seen = new Set();
+      return images.filter((image) => {
+        const key = typeof image === 'string' ? image : getImageIdentity(image);
+        if (!key) return true;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+
     // 🔥 이미지 처리 - 이미 업로드된 이미지들의 publicUrl 저장
     if (eventData.image_urls && Array.isArray(eventData.image_urls)) {
-      processedEventData.image_urls = eventData.image_urls.map(img => {
+      processedEventData.image_urls = dedupeImageList(eventData.image_urls).map(img => {
         // 이미지가 문자열인 경우 (URL)
         if (typeof img === 'string') {
           return {
@@ -1231,7 +1250,6 @@ export const createEvent = async (eventData) => {
           gallery: [],
           groom: [],
           bride: [],
-          all: []
         };
         
         processedEventData.image_urls.forEach(img => {
@@ -1252,8 +1270,9 @@ export const createEvent = async (eventData) => {
             categorizedImages.bride.push(imageData);
           }
           
-          // 모든 이미지는 all에도 추가
-          categorizedImages.all.push(imageData);
+          if (img.category === 'all') {
+            categorizedImages.gallery.push(imageData);
+          }
         });
         
         processedEventData.additional_info.categorized_images = categorizedImages;
