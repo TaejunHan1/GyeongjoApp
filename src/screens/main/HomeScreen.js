@@ -467,6 +467,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const bannerScrollRef = useRef(null);
   const bannerWidth = Dimensions.get('window').width;
   const eventIdsRef = useRef([]);
+  const hostedEventMetaRef = useRef(new Map());
   const reciprocityRealtimeSeenRef = useRef(new Set());
   const reciprocityKnownIdsRef = useRef(new Set());
   const reciprocityNotifyAfterRef = useRef(new Date().toISOString());
@@ -543,6 +544,21 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   // eventIds ref를 최신 상태로 유지
   useEffect(() => {
     eventIdsRef.current = events.map(e => e.id).filter(id => id);
+    hostedEventMetaRef.current = new Map(
+      events
+        .filter(event => {
+          const isNotPersonalSchedule = !(event.source === 'personal' || event.is_personal_schedule);
+          const isHostedEvent = event.created_by || (event.user_id && !event.is_personal_schedule);
+          return event.id && isNotPersonalSchedule && isHostedEvent;
+        })
+        .map(event => [
+          event.id,
+          {
+            event_name: event.event_name || event.title || '',
+            event_type: event.event_type || '',
+          },
+        ])
+    );
   }, [events]);
 
   // 홈 튜토리얼 자동 시작 — 로그인 후 첫 진입 시 1회
@@ -828,6 +844,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           // 내 이벤트인 경우만 처리
           if (currentEventIds.includes(contributionEventId)) {
             handleContributionChange(changeType, contributionData, currentEventIds);
+            handleGuestbookRealtimeChange(changeType, contributionData);
           }
         }
       )
@@ -846,6 +863,45 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
     setDataLoaded(false);
     loadMonthlyStatistics();
+  };
+
+  const handleGuestbookRealtimeChange = (eventType, entry) => {
+    const eventId = entry?.event_id;
+    if (!eventId || !hostedEventMetaRef.current.has(eventId)) return;
+
+    if (eventType === 'DELETE') {
+      setRecentGuestbookMessages(prev => prev.filter(item => item.id !== entry.id));
+      return;
+    }
+
+    if (isReceptionGuestEntry(entry) || !String(entry.message || '').trim()) {
+      setRecentGuestbookMessages(prev => prev.filter(item => item.id !== entry.id));
+      return;
+    }
+
+    const eventInfo = hostedEventMetaRef.current.get(eventId) || {};
+    const nextItem = {
+      ...entry,
+      event_name: eventInfo.event_name || '',
+      event_type: eventInfo.event_type || '',
+    };
+
+    setRecentGuestbookMessages(prev => {
+      const withoutSame = prev.filter(item => item.id !== nextItem.id);
+      return [nextItem, ...withoutSame]
+        .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+        .slice(0, 80);
+    });
+
+    setExpandedGuestbookEventIds(prev => ({
+      ...prev,
+      [eventId]: true,
+    }));
+
+    setGuestbookPageByEventIds(prev => ({
+      ...prev,
+      [eventId]: 0,
+    }));
   };
 
   // 🔥 월별 통계 로드 함수
