@@ -52,9 +52,31 @@ App Store Connect 심사 메모 예시:
 3. 인증번호 화면에서 `000000`을 입력한다.
 4. 홈 화면으로 정상 진입하는지 확인한다.
 
-## 3. 다음에 볼 항목
+## 3. iOS 권한 문구
 
-- iOS 권한 문구: 사진 접근 권한 설명 추가 필요
+상태: 앱 설정 반영 완료
+
+관련 파일:
+- `app.json`
+- `src/screens/event/wedding/CreateWeddingScreen.js`
+- `src/screens/event/funeral/CreateFuneralScreen.js`
+- `src/screens/main/studio/PaperInvitationFormScreen.js`
+
+처리 방식:
+- 청첩장/부고장/종이 청첩장 사진 선택을 위해 `expo-image-picker`가 사진 보관함 권한을 요청한다.
+- App Store 심사에서 권한 사용 목적이 명확히 보이도록 `ios.infoPlist`에 사진 접근/저장 권한 설명을 추가했다.
+
+추가한 권한 문구:
+- `NSPhotoLibraryUsageDescription`: 청첩장, 부고장, 종이 청첩장에 사용할 사진을 선택하기 위해 사진 보관함 접근 권한이 필요합니다.
+- `NSPhotoLibraryAddUsageDescription`: 완성된 청첩장 이미지나 QR 코드 자료를 기기에 저장하기 위해 사진 보관함 저장 권한이 필요합니다.
+
+확인할 일:
+1. iOS 기기에서 청첩장 만들기 또는 종이 청첩장 만들기로 이동한다.
+2. 사진 선택 버튼을 누른다.
+3. iOS 권한 팝업에 위 목적 문구가 자연스럽게 표시되는지 확인한다.
+
+## 남은 항목
+
 - 준비중으로 노출되는 설정 메뉴 정리
 - 크레딧/IAP 흐름 점검
 - 방명록 사용자 콘텐츠 관리/삭제 흐름 점검

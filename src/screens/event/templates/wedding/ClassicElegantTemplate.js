@@ -377,6 +377,8 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
                 <Text style={s.dateMainText}>{calYear}</Text>
                 <Text style={s.dateSlash}>/</Text>
                 <Text style={s.dateMainText}>{String(calMonth).padStart(2, '0')}</Text>
+                <Text style={s.dateSlash}>/</Text>
+                <Text style={s.dateMainText}>{String(calDay).padStart(2, '0')}</Text>
               </View>
               <View style={s.dateTimeBox}>
                 <Text style={s.dateTimeLabel}>TIME</Text>

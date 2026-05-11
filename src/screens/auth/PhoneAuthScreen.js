@@ -27,7 +27,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   REVIEW_USER_NAME,
   REVIEW_VERIFICATION_CODE,
+  INTERNAL_TEST_VERIFICATION_CODE,
+  isBypassAuthPhone,
+  isInternalTestPhone,
   isReviewPhone,
+  signInInternalTestUser,
   signInReviewUser,
 } from '../../lib/reviewAccess';
 
@@ -406,14 +410,14 @@ export default function PhoneAuthScreen() {
     }
 
     const formattedPhone = `+82${numbers.slice(1)}`;
-    const isReviewLogin = isReviewPhone(formattedPhone);
+    const isBypassLogin = isBypassAuthPhone(formattedPhone);
 
-    if (isSignUp && !name.trim() && !isReviewLogin) {
+    if (isSignUp && !name.trim() && !isBypassLogin) {
       showModal('이름을 입력해주세요', '정담에서 사용할 이름을 입력해주세요.', [{ text: '확인', primary: true }]);
       return;
     }
     
-    if (isSignUp && isDuplicatePhone) {
+    if (isSignUp && isDuplicatePhone && !isBypassLogin) {
       showModal(
         '이미 가입된 번호예요',
         '로그인 화면에서 계속하실까요?',
@@ -428,8 +432,8 @@ export default function PhoneAuthScreen() {
     setIsLoading(true);
 
     try {
-      if (isReviewLogin) {
-        console.log('🧪 심사용 로그인 인증번호 화면으로 이동');
+      if (isBypassLogin) {
+        console.log('🧪 SMS 발송 없는 테스트 로그인 인증번호 화면으로 이동');
         animateToVerification();
         return;
       }
@@ -478,6 +482,32 @@ export default function PhoneAuthScreen() {
             onPress: () => {
               if (setUserInfo && setIsAuthenticated) {
                 setUserInfo(reviewUserInfo);
+                setIsAuthenticated(true);
+              }
+            },
+          }]
+        );
+        return;
+      }
+
+      if (isInternalTestPhone(formattedPhone)) {
+        if (verificationCode !== INTERNAL_TEST_VERIFICATION_CODE) {
+          showModal('인증번호가 맞지 않아요', '테스트용 인증번호를 다시 확인해주세요.', [{ text: '다시 입력', onPress: () => setVerificationCode('') }]);
+          setIsLoading(false);
+          return;
+        }
+
+        const testUserInfo = await signInInternalTestUser(formattedPhone);
+
+        showModal(
+          '인증 완료',
+          `${testUserInfo.userName || '정담 테스트 계정'}으로 로그인합니다.`,
+          [{
+            text: '정담 시작하기',
+            primary: true,
+            onPress: () => {
+              if (setUserInfo && setIsAuthenticated) {
+                setUserInfo(testUserInfo);
                 setIsAuthenticated(true);
               }
             },
@@ -686,7 +716,12 @@ export default function PhoneAuthScreen() {
   };
 
   const handleMainButtonPress = () => {
-    if (isSignUp && isDuplicatePhone) {
+    const numbers = phoneNumber.replace(/[^\d]/g, '');
+    const formattedPhone = numbers.length === 11 ? `+82${numbers.slice(1)}` : '';
+
+    if (isBypassAuthPhone(formattedPhone)) {
+      handleSendVerification();
+    } else if (isSignUp && isDuplicatePhone) {
       // 회원가입인데 이미 가입된 번호 → 로그인으로 전환
       handleSwitchToLogin();
     } else if (!isSignUp && !isDuplicatePhone && duplicateCheckMessage === '미가입 번호') {
@@ -698,6 +733,12 @@ export default function PhoneAuthScreen() {
   };
 
   const getMainButtonText = () => {
+    const numbers = phoneNumber.replace(/[^\d]/g, '');
+    const formattedPhone = numbers.length === 11 ? `+82${numbers.slice(1)}` : '';
+
+    if (isBypassAuthPhone(formattedPhone)) {
+      return '인증번호 입력하기';
+    }
     if (isSignUp && isDuplicatePhone) {
       return '로그인하기';
     }
@@ -712,7 +753,10 @@ export default function PhoneAuthScreen() {
     
     const numbers = phoneNumber.replace(/[^\d]/g, '');
     if (numbers.length !== 11) return true;
-    
+
+    const formattedPhone = `+82${numbers.slice(1)}`;
+    if (isBypassAuthPhone(formattedPhone)) return false;
+
     if (isSignUp && !name.trim()) return true;
     
     return false;
