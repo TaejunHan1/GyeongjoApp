@@ -965,11 +965,11 @@ const s = StyleSheet.create({
     color: C.sub,
   },
   calSundayText: { color: '#EE9A9D' },
-  calDayHeaderDivider: { height: 1, backgroundColor: C.border, marginBottom: 42 },
+  calDayHeaderDivider: { height: 1, backgroundColor: C.border, marginBottom: 10 },
   calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   calCell: {
     width: `${100 / 7}%`,
-    height: 68,
+    aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -977,10 +977,9 @@ const s = StyleSheet.create({
     width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
   },
   calDayText: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '400',
     color: C.main,
-    fontFamily: 'NanumMyeongjo',
   },
   // 결혼일 하트 표시
   calHeartWrap: {
@@ -996,14 +995,13 @@ const s = StyleSheet.create({
     zIndex: 2,
   },
   calFooter: {
-    marginTop: 42, paddingTop: 22, borderTopWidth: 1, borderTopColor: C.border,
+    marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: C.border,
     alignItems: 'center',
   },
   calFooterText: {
-    fontSize: 15,
+    fontSize: 13,
     color: C.sub,
     fontWeight: '300',
-    fontFamily: 'NanumMyeongjo',
   },
 
   // ── 갤러리 (2행 × N열 가로 스크롤) ──
