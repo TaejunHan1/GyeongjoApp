@@ -39,13 +39,10 @@ import EventDisplayScreen from '../screens/event/EventDisplayScreen';
 import MoneyGuideScreen from '../screens/main/guides/participant/MoneyGuideScreen';
 import MannerGuideScreen from '../screens/main/guides/participant/MannerGuideScreen';
 import EtiquetteGuideScreen from '../screens/main/guides/participant/EtiquetteGuideScreen';
-import RecommendServiceScreen from '../screens/main/guides/participant/RecommendServiceScreen';
 
 // 🆕 주최자용 가이드 관련 화면들
 import WeddingPrepGuideScreen from '../screens/main/guides/host/WeddingPrepGuideScreen';
 import FuneralPrepGuideScreen from '../screens/main/guides/host/FuneralPrepGuideScreen';
-import BudgetCalculatorScreen from '../screens/main/guides/host/BudgetCalculatorScreen';
-import VendorListScreen from '../screens/main/guides/host/VendorListScreen';
 import FAQScreen from '../screens/main/guides/FAQScreen';
 
 import SettingsScreen from '../screens/main/SettingsScreen';
@@ -54,11 +51,6 @@ import ContributionSettingsScreen from '../screens/main/ContributionSettingsScre
 // 디지털 방명록 화면
 import GuestWritingScreen from '../screens/event/guestbook/GuestWritingScreen';
 import GuestConfirmScreen from '../screens/event/guestbook/GuestConfirmScreen';
-
-// 🆕 장소/업체 관련 화면들
-import VenueSearchScreen from '../screens/venue/VenueSearchScreen';
-import WeddingVenueListScreen from '../screens/venue/WeddingVenueListScreen';
-import FuneralVenueListScreen from '../screens/venue/FuneralVenueListScreen';
 
 import { Colors } from '../styles/constants';
 
@@ -469,33 +461,6 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
           )}
         </Stack.Screen>
 
-        <Stack.Screen 
-          name="RecommendService" 
-          options={{
-            headerShown: true,
-            title: '추천 서비스',
-            headerStyle: {
-              backgroundColor: Colors.white,
-              borderBottomWidth: 1,
-              borderBottomColor: Colors.gray100,
-            },
-            headerTitleStyle: {
-              fontSize: 18,
-              fontWeight: '600',
-              color: Colors.textPrimary,
-            },
-            headerTintColor: Colors.textPrimary,
-          }}
-        >
-          {(props) => (
-            <RecommendServiceScreen 
-              {...props} 
-              userInfo={userInfo}
-              session={session}
-            />
-          )}
-        </Stack.Screen>
-
         {/* 🆕 주최자용 가이드 관련 화면들 */}
         <Stack.Screen 
           name="WeddingPrepGuide"
@@ -544,60 +509,6 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
         >
           {(props) => (
             <FuneralPrepGuideScreen 
-              {...props} 
-              userInfo={userInfo}
-              session={session}
-            />
-          )}
-        </Stack.Screen>
-
-        <Stack.Screen 
-          name="BudgetCalculator"
-          options={{
-            headerShown: false,
-            title: '예산 계산기',
-            headerStyle: {
-              backgroundColor: Colors.white,
-              borderBottomWidth: 1,
-              borderBottomColor: Colors.gray100,
-            },
-            headerTitleStyle: {
-              fontSize: 18,
-              fontWeight: '600',
-              color: Colors.textPrimary,
-            },
-            headerTintColor: Colors.textPrimary,
-          }}
-        >
-          {(props) => (
-            <BudgetCalculatorScreen 
-              {...props} 
-              userInfo={userInfo}
-              session={session}
-            />
-          )}
-        </Stack.Screen>
-
-        <Stack.Screen 
-          name="VendorList" 
-          options={{
-            headerShown: true,
-            title: '업체 리스트',
-            headerStyle: {
-              backgroundColor: Colors.white,
-              borderBottomWidth: 1,
-              borderBottomColor: Colors.gray100,
-            },
-            headerTitleStyle: {
-              fontSize: 18,
-              fontWeight: '600',
-              color: Colors.textPrimary,
-            },
-            headerTintColor: Colors.textPrimary,
-          }}
-        >
-          {(props) => (
-            <VendorListScreen 
               {...props} 
               userInfo={userInfo}
               session={session}
@@ -668,35 +579,6 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
           )}
         </Stack.Screen>
 
-        {/* 🆕 장소 관련 화면들 */}
-        <Stack.Screen 
-          name="WeddingVenueList" 
-          options={{
-            headerShown: true,
-            title: '결혼식장 목록',
-            headerStyle: {
-              backgroundColor: Colors.white,
-              borderBottomWidth: 1,
-              borderBottomColor: Colors.gray100,
-            },
-            headerTitleStyle: {
-              fontSize: 18,
-              fontWeight: '600',
-              color: Colors.textPrimary,
-            },
-            headerTintColor: Colors.textPrimary,
-          }}
-        >
-          {(props) => (
-            <WeddingVenueListScreen 
-              {...props} 
-              userInfo={userInfo}
-              session={session}
-              isAuthenticated={isAuthenticated}
-            />
-          )}
-        </Stack.Screen>
-
         {/* 디지털 방명록 — 하객 필기 화면 (전체화면, 헤더 없음) */}
         <Stack.Screen
           name="GuestWriting"
@@ -717,34 +599,6 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
           }}
         >
           {(props) => <GuestConfirmScreen {...props} />}
-        </Stack.Screen>
-
-        <Stack.Screen
-          name="FuneralVenueList"
-          options={{
-            headerShown: true,
-            title: '장례식장 목록',
-            headerStyle: {
-              backgroundColor: Colors.white,
-              borderBottomWidth: 1,
-              borderBottomColor: Colors.gray100,
-            },
-            headerTitleStyle: {
-              fontSize: 18,
-              fontWeight: '600',
-              color: Colors.textPrimary,
-            },
-            headerTintColor: Colors.textPrimary,
-          }}
-        >
-          {(props) => (
-            <FuneralVenueListScreen
-              {...props}
-              userInfo={userInfo}
-              session={session}
-              isAuthenticated={isAuthenticated}
-            />
-          )}
         </Stack.Screen>
 
         {/* 알림톡 크레딧 */}

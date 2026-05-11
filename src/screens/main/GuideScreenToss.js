@@ -318,7 +318,7 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
     {
       id: 'wedding-prep',
       title: '결혼식 준비',
-      subtitle: '체크리스트부터 예산까지',
+      subtitle: '체크리스트와 준비 일정',
       icon: 'heart-outline',
       screen: 'WeddingPrepGuide',
       isNew: true,
@@ -329,16 +329,6 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
       subtitle: '절차와 준비사항',
       icon: 'flower-outline',
       screen: 'FuneralPrepGuide',
-    },
-    {
-      id: 'budget-calc',
-      title: '예산 계산기',
-      subtitle: 'AI 예산 추천',
-      icon: 'calculator-outline',
-      screen: 'BudgetCalculator',
-      isAi: true,
-      aiFeature: 'budget',
-      aiCost: AI_COST.budget,
     },
   ];
 

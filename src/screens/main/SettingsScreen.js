@@ -25,7 +25,6 @@ export default function SettingsScreen({ navigation, userInfo, session, onLogout
     eventReminders: true,
     contributionReminders: false,
     darkMode: false,
-    autoBackup: true,
   });
   
   const [loading, setLoading] = useState(false);
@@ -103,14 +102,6 @@ export default function SettingsScreen({ navigation, userInfo, session, onLogout
     );
   };
 
-  const handleDataExport = () => {
-    Alert.alert('준비중', '데이터 내보내기 기능을 준비 중입니다.');
-  };
-
-  const handleDataBackup = () => {
-    Alert.alert('준비중', '데이터 백업 기능을 준비 중입니다.');
-  };
-
   const handleDeleteAccount = () => {
     if (deleteLoading) return;
 
@@ -162,12 +153,6 @@ export default function SettingsScreen({ navigation, userInfo, session, onLogout
               </Text>
             </View>
           </View>
-          <TouchableOpacity 
-            style={styles.editProfileButton}
-            onPress={() => Alert.alert('준비중', '프로필 편집 기능을 준비 중입니다.')}
-          >
-            <Text style={styles.editProfileText}>편집</Text>
-          </TouchableOpacity>
         </View>
 
         {/* 알림 설정 */}
@@ -217,15 +202,6 @@ export default function SettingsScreen({ navigation, userInfo, session, onLogout
           />
           
           <SettingItem
-            icon="cloud-upload"
-            title="자동 백업"
-            subtitle="데이터 자동 클라우드 백업"
-            value={settings.autoBackup}
-            onValueChange={(value) => updateSetting('autoBackup', value)}
-            type="switch"
-          />
-          
-          <SettingItem
             icon="settings"
             title="부조금 기본 설정"
             subtitle="미리 설정할 부조금 금액 관리"
@@ -234,52 +210,23 @@ export default function SettingsScreen({ navigation, userInfo, session, onLogout
           />
         </View>
 
-        {/* 데이터 관리 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>데이터 관리</Text>
-          
-          <SettingItem
-            icon="download"
-            title="데이터 내보내기"
-            subtitle="Excel, PDF로 데이터 내보내기"
-            onPress={handleDataExport}
-            type="arrow"
-          />
-          
-          <SettingItem
-            icon="cloud"
-            title="백업 및 복원"
-            subtitle="수동 백업 및 데이터 복원"
-            onPress={handleDataBackup}
-            type="arrow"
-          />
-        </View>
-
         {/* 지원 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>지원</Text>
-          
-          <SettingItem
-            icon="help-circle"
-            title="도움말"
-            subtitle="앱 사용법 및 FAQ"
-            onPress={() => Alert.alert('준비중', '도움말 기능을 준비 중입니다.')}
-            type="arrow"
-          />
-          
-          <SettingItem
-            icon="mail"
-            title="문의하기"
-            subtitle="버그 신고나 건의사항"
-            onPress={() => Alert.alert('준비중', '문의하기 기능을 준비 중입니다.')}
-            type="arrow"
-          />
-          
+
           <SettingItem
             icon="document-text"
-            title="이용약관 및 개인정보처리방침"
-            subtitle="서비스 약관 확인"
-            onPress={() => Alert.alert('준비중', '약관 보기 기능을 준비 중입니다.')}
+            title="이용약관"
+            subtitle="서비스 이용약관 확인"
+            onPress={() => navigation.navigate('Terms')}
+            type="arrow"
+          />
+
+          <SettingItem
+            icon="shield-checkmark"
+            title="개인정보 처리방침"
+            subtitle="개인정보 수집 및 이용 안내"
+            onPress={() => navigation.navigate('Privacy')}
             type="arrow"
           />
         </View>

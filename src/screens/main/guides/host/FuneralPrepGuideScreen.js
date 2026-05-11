@@ -363,41 +363,6 @@ export default function FuneralPrepGuideScreen({ navigation, userInfo, session }
           </View>
         </View>
 
-        {/* 관련 서비스 */}
-        <View style={styles.relatedSection}>
-          <Text style={styles.relatedTitle}>관련 서비스</Text>
-          <View style={styles.relatedServices}>
-            <TouchableOpacity 
-              style={styles.relatedService}
-              onPress={() => Alert.alert(
-                '준비중',
-                '장례비용 계산기 서비스를 준비중입니다.\n곧 더 나은 서비스로 찾아뵙겠습니다.',
-                [{ text: '확인', style: 'default' }]
-              )}
-            >
-              <Ionicons name="calculator" size={20} color={Colors.primary} />
-              <Text style={styles.relatedServiceText}>장례비용 계산기</Text>
-              <View style={styles.preparingBadge}>
-                <Text style={styles.preparingText}>준비중</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.relatedService}
-              onPress={() => Alert.alert(
-                '준비중',
-                '장례 업체 리스트 서비스를 준비중입니다.\n곧 더 나은 서비스로 찾아뵙겠습니다.',
-                [{ text: '확인', style: 'default' }]
-              )}
-            >
-              <Ionicons name="business" size={20} color={Colors.primary} />
-              <Text style={styles.relatedServiceText}>장례 업체 리스트</Text>
-              <View style={styles.preparingBadge}>
-                <Text style={styles.preparingText}>준비중</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* 하단 여백 */}
         <View style={{ height: 100 }} />
       </Animated.ScrollView>
