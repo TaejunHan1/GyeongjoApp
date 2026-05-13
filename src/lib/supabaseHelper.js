@@ -7,6 +7,54 @@ import { buildEventSlugBase, buildSlugCandidate } from './slugUtils';
 export const EVENT_CREATION_FREE_LIMIT = 2;
 export const EVENT_CREATION_CREDIT_COST = 5;
 
+const base64ToBytes = (base64) => {
+  const binary = global.atob
+    ? global.atob(base64)
+    : (typeof Buffer !== 'undefined' ? Buffer.from(base64, 'base64').toString('binary') : null);
+
+  if (!binary) {
+    throw new Error('base64 디코더를 사용할 수 없습니다.');
+  }
+
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+};
+
+const readImageUriForUpload = async (imageUri) => {
+  if (!imageUri) {
+    throw new Error('이미지 경로가 없습니다.');
+  }
+
+  if (imageUri.startsWith('data:')) {
+    const [metadata, base64 = ''] = imageUri.split(',');
+    const contentType = metadata.match(/^data:(.*?);base64/)?.[1] || 'image/jpeg';
+    return {
+      fileData: base64ToBytes(base64),
+      contentType,
+    };
+  }
+
+  if (imageUri.startsWith('file://') || imageUri.startsWith('content://')) {
+    const base64 = await FileSystem.readAsStringAsync(imageUri, {
+      encoding: 'base64',
+    });
+    const ext = (imageUri.split('.').pop() || '').split('?')[0].toLowerCase();
+    return {
+      fileData: base64ToBytes(base64),
+      contentType: ext === 'png' ? 'image/png' : 'image/jpeg',
+    };
+  }
+
+  const response = await fetch(imageUri);
+  if (!response.ok) throw new Error(`파일을 불러올 수 없습니다 (status: ${response.status})`);
+  const fileData = await response.arrayBuffer();
+  const contentType = response.headers?.get?.('content-type') || 'image/jpeg';
+  return { fileData, contentType };
+};
+
 /**
  * 실시간 연결 상태 테스트
  */
@@ -659,12 +707,13 @@ export const deleteEventStorageImages = async (userId, eventId) => {
 export const uploadImageToStorage = async (imageUri, fileName, userId, eventId = null) => {
   try {
     
-    // 1. 파일 읽기 (fetch → ArrayBuffer: 비동기 non-blocking, JS 스레드 블로킹 없음)
+    // 1. 파일 읽기. iOS 로컬 파일은 fetch가 멈추는 경우가 있어 FileSystem으로 처리한다.
     let fileData;
+    let detectedContentType = 'image/jpeg';
     try {
-      const response = await fetch(imageUri);
-      if (!response.ok) throw new Error(`파일을 불러올 수 없습니다 (status: ${response.status})`);
-      fileData = await response.arrayBuffer();
+      const readResult = await readImageUriForUpload(imageUri);
+      fileData = readResult.fileData;
+      detectedContentType = readResult.contentType || detectedContentType;
       if (!fileData || fileData.byteLength === 0) throw new Error('파일이 비어있습니다.');
     } catch (fileError) {
       throw new Error(`파일 읽기 실패: ${fileError.message}`);
@@ -680,11 +729,10 @@ export const uploadImageToStorage = async (imageUri, fileName, userId, eventId =
     
     
     // 3. Supabase Storage에 업로드
-    const contentType = 'image/jpeg';
     const { data, error } = await supabase.storage
       .from('event-images')
       .upload(uniqueFileName, fileData, {
-        contentType,
+        contentType: detectedContentType,
         upsert: true,
       });
 
@@ -1141,10 +1189,6 @@ export const createEvent = async (eventData) => {
 
     currentUser = userResult.user;
 
-    if (eventData.event_type === 'funeral') {
-      throw new Error('부고장 만들기는 준비 중입니다. 곧 사용할 수 있도록 준비하고 있습니다.');
-    }
-
     // ✅ 허용된 컬럼들만 화이트리스트로 추출 (실제 DB 컬럼들만)
     const allowedColumns = [
       // 기본 컬럼들
@@ -1158,9 +1202,11 @@ export const createEvent = async (eventData) => {
       'ceremony_time', 'reception_time', 'custom_message', 'dress_code', 'parking_info',
       
       // 부고 관련 컬럼들 (실제 DB 컬럼들만)
-      'deceased_age', 'death_date', 'deceased_gender', 'casket_date', 'casket_time',
+      'birth_date', 'deceased_age', 'age_calculation_method', 'death_date', 'death_time',
+      'deceased_gender', 'religious_rite', 'funeral_method', 'casket_date', 'casket_time',
       'burial_date', 'burial_time', 'burial_location', 'secondary_burial_location',
       'primary_contact', 'secondary_contact', 'funeral_director', 'funeral_home',
+      'visitation_type', 'visitation_note', 'parking_transport_info', 'condolence_accounts',
       
       // 메시지 관련 컬럼들
       'allow_messages', 'message_placeholder', 'additional_info'
@@ -1301,6 +1347,17 @@ export const createEvent = async (eventData) => {
       if (eventData.deceasedAge || eventData.deceased_age) {
         processedEventData.deceased_age = parseInt(eventData.deceasedAge || eventData.deceased_age);
       }
+
+      if (eventData.birthDate || eventData.birth_date) {
+        const birthDate = eventData.birthDate || eventData.birth_date;
+        if (birthDate instanceof Date && !isNaN(birthDate.getTime())) {
+          processedEventData.birth_date = birthDate.toISOString().split('T')[0];
+        } else if (typeof birthDate === 'string') {
+          processedEventData.birth_date = birthDate;
+        }
+      }
+
+      processedEventData.age_calculation_method = eventData.ageCalculationMethod || eventData.age_calculation_method || 'korean_year';
       
       if (eventData.deathDate || eventData.death_date) {
         const deathDate = eventData.deathDate || eventData.death_date;
@@ -1310,8 +1367,19 @@ export const createEvent = async (eventData) => {
           processedEventData.death_date = deathDate;
         }
       }
+
+      if (eventData.deathTime || eventData.death_time) {
+        const deathTime = eventData.deathTime || eventData.death_time;
+        if (deathTime instanceof Date && !isNaN(deathTime.getTime())) {
+          processedEventData.death_time = deathTime.toTimeString().split(' ')[0];
+        } else if (typeof deathTime === 'string') {
+          processedEventData.death_time = deathTime;
+        }
+      }
       
       processedEventData.deceased_gender = eventData.deceasedGender || eventData.deceased_gender || '남';
+      processedEventData.religious_rite = eventData.religiousRite || eventData.religious_rite || null;
+      processedEventData.funeral_method = eventData.funeralMethod || eventData.funeral_method || null;
       
       // 장례 일정 변환
       if (eventData.casketDate || eventData.casket_date) {
@@ -1357,11 +1425,24 @@ export const createEvent = async (eventData) => {
       processedEventData.secondary_contact = eventData.secondaryContact || eventData.secondary_contact || null;
       processedEventData.funeral_director = eventData.funeralDirector || eventData.funeral_director || null;
       processedEventData.funeral_home = eventData.funeralHome || eventData.funeral_home || null;
+      processedEventData.visitation_type = eventData.visitationType || eventData.visitation_type || 'available';
+      processedEventData.visitation_note = eventData.visitationNote || eventData.visitation_note || null;
+      processedEventData.parking_transport_info = eventData.parkingTransportInfo || eventData.parking_transport_info || null;
+      processedEventData.condolence_accounts = eventData.condolenceAccounts || eventData.condolence_accounts || [];
 
       // 테이블에 없는 필드들과 family_members는 additional_info에 저장
       processedEventData.additional_info = {
         ...eventData.additional_info,
         family_members: validFamilyMembers, // 🔥 상주 정보를 family_members로 저장
+        birth_date: processedEventData.birth_date,
+        age_calculation_method: processedEventData.age_calculation_method,
+        death_time: processedEventData.death_time,
+        religious_rite: processedEventData.religious_rite,
+        funeral_method: processedEventData.funeral_method,
+        visitation_type: processedEventData.visitation_type,
+        visitation_note: processedEventData.visitation_note,
+        parking_transport_info: processedEventData.parking_transport_info,
+        condolence_accounts: processedEventData.condolence_accounts,
         funeral_start_date: eventData.funeral_start_date,
         funeral_end_date: eventData.funeral_end_date,
         created_via: 'app_v2.3',
@@ -1758,6 +1839,48 @@ export const getEventMessages = async (eventId, limit = 50) => {
     return { success: true, data: data || [] };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+};
+
+/**
+ * 이벤트 메시지 삭제
+ */
+export const deleteEventMessage = async (messageId, actorUserId = null) => {
+  try {
+    if (!messageId) {
+      return { success: false, error: '삭제할 메시지를 찾을 수 없습니다.' };
+    }
+
+    if (actorUserId) {
+      const { data, error } = await supabase.rpc('delete_event_message_for_owner', {
+        p_message_id: messageId,
+        p_actor_id: actorUserId,
+      });
+
+      if (!error) {
+        const result = Array.isArray(data) ? data[0] : data;
+        if (result?.success) return { success: true };
+        return { success: false, error: result?.error || '메시지를 삭제하지 못했습니다.' };
+      }
+
+      // RPC가 아직 배포되지 않은 개발 DB에서는 기존 delete 정책으로 한 번 더 시도한다.
+      if (error.code !== '42883' && !String(error.message || '').includes('delete_event_message_for_owner')) {
+        throw error;
+      }
+    }
+
+    const { error: deleteError } = await supabase
+      .from('event_messages')
+      .delete()
+      .eq('id', messageId);
+
+    if (deleteError) throw deleteError;
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || '메시지 삭제에 실패했습니다.',
+    };
   }
 };
 
@@ -2345,9 +2468,14 @@ export const getActiveEvents = async () => {
         message_placeholder,
         additional_info,
         image_urls,
+        birth_date,
         deceased_age,
+        age_calculation_method,
         death_date,
+        death_time,
         deceased_gender,
+        religious_rite,
+        funeral_method,
         casket_date,
         casket_time,
         burial_date,
@@ -2357,7 +2485,11 @@ export const getActiveEvents = async () => {
         primary_contact,
         secondary_contact,
         funeral_director,
-        funeral_home
+        funeral_home,
+        visitation_type,
+        visitation_note,
+        parking_transport_info,
+        condolence_accounts
       `)
       .eq('user_id', currentUser.id)
       .eq('status', 'active')
@@ -2402,6 +2534,21 @@ export const getActiveEvents = async () => {
         if (additionalInfo.funeral_end_date) {
           processedEvent.funeral_end_date = additionalInfo.funeral_end_date;
         }
+        [
+          'birth_date',
+          'age_calculation_method',
+          'death_time',
+          'religious_rite',
+          'funeral_method',
+          'visitation_type',
+          'visitation_note',
+          'parking_transport_info',
+          'condolence_accounts',
+        ].forEach(key => {
+          if (processedEvent[key] === undefined && additionalInfo[key] !== undefined) {
+            processedEvent[key] = additionalInfo[key];
+          }
+        });
         
       }
       

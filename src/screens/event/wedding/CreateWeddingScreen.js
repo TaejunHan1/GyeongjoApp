@@ -365,6 +365,20 @@ const TEMPLATES = [
     features: ['클래퍼보드', '영화 포스터', '다크 골드'],
   },
   {
+    id: 'runic-rift', name: '웨딩 데이 스크립트',
+    description: '사진과 필기체 무드가 중심이 되는 감성 모바일 청첩장',
+    preview: require('../../../../assets/images/runic-rift-preview.png'),
+    style: 'runic-rift',
+    features: ['포토 커버', '필기체 무드', '감성 갤러리'],
+  },
+  {
+    id: 'photo-book', name: '포토북 에디션',
+    description: '아카이브 카드와 앨범 페이지로 구성한 포토북형 청첩장',
+    preview: require('../../../../assets/images/photo-book-preview.png'),
+    style: 'photo-book',
+    features: ['아카이브 카드', '앨범 페이지', '블루 그레이 톤'],
+  },
+  {
     id: 'elegant-garden', name: '오로라 블랙',
     description: '준비중입니다',
     preview: require('../../../../assets/images/aa1.png'),
@@ -943,6 +957,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
   const [currentPreviewIntroId, setCurrentPreviewIntroId] = useState('none');
   const [currentPreviewTapToOpen, setCurrentPreviewTapToOpen] = useState(false);
   const [showIntroOverlay, setShowIntroOverlay] = useState(false);
+  const [showFrameModal, setShowFrameModal] = useState(false);
   const [currentPreviewPetalQty, setCurrentPreviewPetalQty] = useState('normal');
   const [currentPreviewPetalColor, setCurrentPreviewPetalColor] = useState('pink');
   const currentPreviewTemplateRef = useRef(null);
@@ -2144,6 +2159,17 @@ export default function CreateWeddingScreen({ navigation, route }) {
                 </TouchableOpacity>
               )}
 
+              {/* 프레임 */}
+              {(previewTemplate?.id !== 'ticket-flight' || ticketFlightBoarded) && (
+                <TouchableOpacity
+                  style={s.previewCtrlBtn}
+                  onPress={() => setShowFrameModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="albums-outline" size={17} color="#fff" />
+                </TouchableOpacity>
+              )}
+
               {/* 인트로 — 웜 오렌지·러브 티켓·시네마 로맨스는 자체 인트로가 있어 별도 선택 불가 */}
               {previewTemplate?.id !== 'vintage-app' && previewTemplate?.id !== 'ticket-flight' && previewTemplate?.id !== 'cinema-romance' && (
                 <TouchableOpacity
@@ -2390,6 +2416,31 @@ export default function CreateWeddingScreen({ navigation, route }) {
             </View>
           </Modal>
 
+          {/* 프레임 선택 모달 */}
+          <Modal visible={showFrameModal} transparent animationType="slide" onRequestClose={() => setShowFrameModal(false)}>
+            <View style={s.mOverlay} onStartShouldSetResponder={() => true}>
+              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowFrameModal(false)} />
+              <View style={s.mSheet}>
+                <View style={s.mHandle} />
+                <View style={s.mHeaderRow}>
+                  <Text style={s.mTitle}>사진 프레임</Text>
+                  <TouchableOpacity style={s.mCloseBtn} onPress={() => setShowFrameModal(false)}>
+                    <Ionicons name="close" size={16} color="rgba(60,60,67,0.6)" />
+                  </TouchableOpacity>
+                </View>
+                <View style={s.frameComingSoon}>
+                  <View style={s.frameComingSoonIcon}>
+                    <Ionicons name="albums-outline" size={26} color="#8a6a3f" />
+                  </View>
+                  <Text style={s.frameComingSoonTitle}>프레임 기능 준비 중</Text>
+                  <Text style={s.frameComingSoonDesc}>
+                    사진 프레임 종류와 적용 방식은 추후 업데이트에서 설정할 수 있게 준비할 예정입니다.
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
           {/* 인트로 선택 모달 */}
           <WeddingIntroSelectModal
             visible={showIntroModal}
@@ -2605,6 +2656,18 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(210,210,215,0.64)',
     alignItems: 'center', justifyContent: 'center',
   },
+  frameComingSoon: { alignItems: 'center', paddingTop: 26, paddingBottom: 18, paddingHorizontal: 10 },
+  frameComingSoonIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#F8F2E8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  frameComingSoonTitle: { fontSize: 18, fontWeight: '700', color: C.text, marginBottom: 8 },
+  frameComingSoonDesc: { fontSize: 13, lineHeight: 20, color: C.textSub, textAlign: 'center' },
 
   // 리스트 행 — 하단 hairline 구분선
   mRow: {

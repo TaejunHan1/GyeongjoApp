@@ -381,7 +381,7 @@ export default function EventDisplayScreen({ navigation, route }) {
       return event.template_style;
     }
     
-    const defaultStyle = getEventType() === 'funeral' ? 'traditional-dark' : 'modern-dark';
+    const defaultStyle = getEventType() === 'funeral' ? 'modern-card' : 'modern-dark';
     return defaultStyle;
   };
 
@@ -533,7 +533,7 @@ export default function EventDisplayScreen({ navigation, route }) {
 
     if (event) {
       return {
-        allowMessages: event.allow_messages || false,
+        allowMessages: event.allow_messages ?? true,
         messageSettings: {
           placeholder: event.message_placeholder || 
                       (event.event_type === 'funeral' ? '삼가 고인의 명복을 빕니다.' : '축하합니다!'),

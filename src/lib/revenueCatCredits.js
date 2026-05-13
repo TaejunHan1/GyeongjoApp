@@ -12,6 +12,8 @@ const REVENUECAT_KEYS = {
 
 let configuredUserId = null;
 
+const wait = (delayMs) => new Promise(resolve => setTimeout(resolve, delayMs));
+
 function getRevenueCatApiKey() {
   if (Platform.OS === 'ios') return REVENUECAT_KEYS.ios;
   if (Platform.OS === 'android') return REVENUECAT_KEYS.android;
@@ -34,7 +36,7 @@ export async function configureRevenueCat(userId) {
   }
 
   const apiKey = getRevenueCatApiKey();
-  if (!apiKey || apiKey.includes('replace_')) {
+  if (!apiKey || apiKey.includes('replace_') || apiKey.startsWith('test_')) {
     return { success: false, error: 'missing_revenuecat_key' };
   }
 
@@ -97,22 +99,42 @@ export async function purchaseCreditPackage(pkg, userId) {
   }
 }
 
-export async function refreshAfterCreditPurchase(delayMs = 1800) {
-  await new Promise(resolve => setTimeout(resolve, delayMs));
+export async function refreshAfterCreditPurchase(userId, options = {}) {
+  const {
+    attempts = 5,
+    delayMs = 1800,
+    since = null,
+  } = options;
 
-  const [{ data: userData }, { data: txData }] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase
+  let resolvedUserId = userId || null;
+  if (!resolvedUserId) {
+    const { data: userData } = await supabase.auth.getUser();
+    resolvedUserId = userData?.user?.id || null;
+  }
+
+  let latestCharge = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await wait(delayMs);
+
+    let query = supabase
       .from('alimtalk_transactions')
       .select('id, type, credits_change, balance_after, created_at')
       .eq('type', 'charge')
       .order('created_at', { ascending: false })
-      .limit(1),
-  ]);
+      .limit(1);
+
+    if (resolvedUserId) query = query.eq('user_id', resolvedUserId);
+    if (since) query = query.gte('created_at', since);
+
+    const { data: txData } = await query;
+    latestCharge = txData?.[0] || null;
+    if (latestCharge) break;
+  }
 
   return {
     success: true,
-    userId: userData?.user?.id || null,
-    latestCharge: txData?.[0] || null,
+    userId: resolvedUserId,
+    latestCharge,
   };
 }

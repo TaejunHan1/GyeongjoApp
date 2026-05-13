@@ -75,11 +75,6 @@ App Store Connect 심사 메모 예시:
 2. 사진 선택 버튼을 누른다.
 3. iOS 권한 팝업에 위 목적 문구가 자연스럽게 표시되는지 확인한다.
 
-## 남은 항목
-
-- 크레딧/IAP 흐름 점검
-- 방명록 사용자 콘텐츠 관리/삭제 흐름 점검
-
 ## 4. 준비중 메뉴 정리
 
 상태: 앱 코드 정리 완료
@@ -102,3 +97,67 @@ App Store Connect 심사 메모 예시:
 1. 설정 화면에서 `준비중` 알림만 뜨는 메뉴가 보이지 않는지 확인한다.
 2. 설정 화면의 `이용약관`, `개인정보 처리방침`이 각각 실제 화면으로 이동하는지 확인한다.
 3. 가이드 화면에서 예산/업체/추천서비스 메뉴가 보이지 않는지 확인한다.
+
+## 5. 알림톡 크레딧/IAP 흐름
+
+상태: 앱 코드 점검 완료, 외부 콘솔 설정 필요
+
+관련 파일:
+- `docs/credit-iap-setup.md`
+- `src/screens/main/CreditScreen.js`
+- `src/lib/revenueCatCredits.js`
+- `database-alimtalk-credits.sql`
+- `supabase/functions/revenuecat-credit-webhook/index.ts`
+- `app.json`
+- `.env.example`
+
+처리 방식:
+- 앱 결제는 Apple/Google 스토어 인앱결제를 RevenueCat SDK로 실행한다.
+- 앱에서 직접 크레딧 잔액을 올리지 않는다.
+- RevenueCat Webhook이 Supabase Edge Function을 호출하고, Edge Function만 `charge_alimtalk_credits` RPC로 충전 거래를 만든다.
+- 결제 완료 후 앱은 새 충전 거래가 생겼는지 여러 번 확인해서 웹훅 지연에 대응한다.
+- RevenueCat 키가 placeholder/test key이면 충전 버튼을 비활성화한다.
+
+스토어 상품 ID:
+- `alimtalk_pack_125`
+- `alimtalk_pack_400`
+- `alimtalk_pack_700`
+- `alimtalk_pack_1250`
+
+제출 전 확인할 일:
+1. App Store Connect에 인앱 상품 4개를 소모성 상품으로 만든다.
+2. RevenueCat에 iOS 앱과 같은 상품 ID 4개를 연결한다.
+3. RevenueCat iOS public SDK key를 EAS production 환경변수에 등록한다.
+4. Supabase Edge Function `revenuecat-credit-webhook`을 배포하고 `REVENUECAT_WEBHOOK_SECRET`을 설정한다.
+5. RevenueCat Webhook URL을 Supabase Edge Function URL로 연결한다.
+6. Sandbox Apple Account로 결제 후 `alimtalk_transactions`와 `users.alimtalk_balance` 반영을 확인한다.
+7. 앱 버전 심사 제출 시 앱 내 구입 4개도 함께 심사에 포함한다.
+
+## 6. 방명록 사용자 콘텐츠 관리/삭제 흐름
+
+상태: 앱 코드 연결 완료, DB RPC 반영 필요
+
+관련 파일:
+- `src/screens/event/EventDetailScreen.js`
+- `src/lib/supabaseHelper.js`
+- `database-event-message-moderation.sql`
+- `database-account-deletion.sql`
+
+처리 방식:
+- 축의대/하객 접수로 저장된 `guest_book` 부조 내역은 행사 상세 화면에서 수정, 확정, 확정 취소, 삭제할 수 있다.
+- 모바일 청첩장/부고장에 남겨진 공개 메시지(`event_messages`)는 행사 상세 화면의 `방명록 메시지 관리` 섹션에서 주최자/공동관리자가 삭제할 수 있다.
+- 행사 삭제 또는 계정 삭제 시 `events` 기준 연결 데이터가 함께 정리되도록 기존 계정 삭제 SQL에서 처리한다.
+- 보기 전용으로 공유된 사용자는 수정/삭제 버튼을 사용할 수 없다.
+
+Supabase에서 해야 할 일:
+1. Supabase SQL Editor에 `database-event-message-moderation.sql` 전체를 실행한다.
+2. 테스트 행사에 모바일 청첩장/부고장 메시지를 하나 남긴다.
+3. 앱의 행사 상세 화면에서 `방명록 메시지 관리` 섹션이 보이는지 확인한다.
+4. 메시지 `삭제`를 눌렀을 때 목록에서 사라지고, 모바일 청첩장/부고장에도 더 이상 노출되지 않는지 확인한다.
+
+심사 설명 문구 예시:
+> 하객이 남긴 방명록/축하 메시지는 행사 주최자가 앱의 행사 상세 화면에서 확인하고 삭제할 수 있습니다. 부적절한 메시지나 개인정보가 포함된 메시지는 즉시 삭제할 수 있으며, 계정 삭제 시 관련 행사와 방명록 데이터도 함께 삭제됩니다.
+
+## 남은 항목
+
+- App Store Connect 활성화 후 인앱 상품 생성 및 Sandbox 결제 확인

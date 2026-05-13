@@ -1199,10 +1199,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       // 🆕 결혼식은 전용 스크린으로
       navigation.navigate('CreateWedding');
     } else if (eventType === 'funeral') {
-      Alert.alert(
-        '부고장 준비중',
-        '부고장 만들기는 곧 사용할 수 있도록 준비하고 있습니다.'
-      );
+      navigation.navigate('CreateFuneral');
     } else {
       // 🔄 기타 타입들은 기존 방식 유지
       navigation.navigate('CreateEvent', { eventType });
@@ -1376,7 +1373,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     // 나의 경조사 관리에서 클릭: 디스플레이 모드로 이동 (기존 로직)
     if (source === 'management') {
       // DB에서 저장된 이미지와 템플릿 정보 파싱
-      const templateStyle = event.template_style || (event.event_type === 'funeral' ? 'traditional-dark' : 'modern-dark');
+      const templateStyle = event.template_style || (event.event_type === 'funeral' ? 'modern-card' : 'modern-dark');
       
       // additional_info에서 카테고리별 이미지 정보 추출
       const additionalInfo = event.additional_info || {};
@@ -1708,7 +1705,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const openInvitationPreview = async (event) => {
     if (!event?.id) return;
     try {
-      await Linking.openURL(getInvitationUrl(event, event.template_style || 'modern-dark'));
+      await Linking.openURL(getInvitationUrl(event, event.template_style || (event.event_type === 'funeral' ? 'modern-card' : 'modern-dark')));
     } catch (error) {
       console.warn('open invitation failed:', error);
       Alert.alert('알림', '모바일 청첩장을 열 수 없습니다.');
@@ -2352,9 +2349,6 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               style={styles.quickItem}
               onPress={() => handleEventCreationIntent('funeral')}
             >
-              <View style={styles.comingSoonBadge}>
-                <Text style={styles.comingSoonBadgeText}>곧 오픈</Text>
-              </View>
               <Image
                 source={RECIPROCITY_EVENT_ICONS.funeral}
                 style={{ width: 120, height: 120 }}
@@ -2364,10 +2358,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
               <Text style={styles.quickSubtitle}>슬픈 소식을 정중하게 전달하세요</Text>
               <TouchableOpacity
                 ref={funeralMakeBtnRef}
-                style={[styles.quickButton, styles.quickButtonComingSoon]}
+                style={[styles.quickButton, { backgroundColor: Colors.funeral }]}
                 onPress={() => handleEventCreationIntent('funeral')}
               >
-                <Text style={styles.quickButtonText}>준비중</Text>
+                <Text style={styles.quickButtonText}>만들기</Text>
               </TouchableOpacity>
               <View style={[styles.quickTypeIndicator, { backgroundColor: Colors.funeral }]}>
                 <Text style={[styles.quickTypeText, { color: Colors.white }]}>조사</Text>
@@ -3556,11 +3550,8 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                     <View style={styles.createEventModalOptionInfo}>
                       <View style={styles.createEventModalOptionTitleRow}>
                         <Text style={styles.createEventModalOptionTitle}>부고장 만들기</Text>
-                        <View style={styles.createEventModalComingSoonBadge}>
-                          <Text style={styles.createEventModalComingSoonText}>준비중</Text>
-                        </View>
                       </View>
-                      <Text style={styles.createEventModalOptionDesc}>곧 사용할 수 있도록 준비하고 있어요</Text>
+                      <Text style={styles.createEventModalOptionDesc}>부고장과 조의금 관리를 시작해보세요</Text>
                       <Text style={[
                         styles.createEventModalCreditText,
                         getCreationCreditNotice().isPaid && styles.createEventModalCreditTextPaid,

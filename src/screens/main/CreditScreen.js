@@ -124,16 +124,19 @@ export default function CreditScreen({ navigation, userInfo }) {
 
   const handleRecharge = async () => {
     const uid = userInfo?.userId;
-    if (!selectedPkg || !uid || purchaseLoading) return;
+    if (!selectedPkg || !uid || !canPurchase) return;
 
     setPurchaseLoading(true);
     try {
+      const purchaseStartedAt = new Date().toISOString();
       const result = await purchaseCreditPackage(selectedPkg, uid);
       if (result.cancelled) return;
 
       if (!result.success) {
         const message = result.error === 'missing_revenuecat_key'
-          ? 'RevenueCat API 키가 아직 설정되지 않았어요. 앱스토어/플레이스토어 상품 생성 후 키를 넣어주세요.'
+          ? 'RevenueCat API 키가 아직 설정되지 않았어요. EAS 환경변수에 스토어별 public SDK key를 넣어주세요.'
+          : result.error === 'missing_product_id'
+            ? '선택한 패키지에 스토어 상품 ID가 없어요. DB 패키지 설정을 확인해주세요.'
           : result.error === 'product_not_found'
             ? '스토어에서 해당 상품을 찾지 못했어요. 상품 ID와 RevenueCat 상품 연결을 확인해주세요.'
             : '결제를 완료하지 못했어요. 잠시 후 다시 시도해주세요.';
@@ -141,11 +144,17 @@ export default function CreditScreen({ navigation, userInfo }) {
         return;
       }
 
-      await refreshAfterCreditPurchase();
+      const refreshResult = await refreshAfterCreditPurchase(uid, {
+        since: purchaseStartedAt,
+        attempts: 6,
+        delayMs: 2000,
+      });
       await loadAll();
       Alert.alert(
-        '결제 완료',
-        '결제가 완료됐어요. 크레딧 반영까지 몇 초 정도 걸릴 수 있어요.\n잔액이 바로 바뀌지 않으면 아래로 당겨 새로고침해주세요.',
+        refreshResult.latestCharge ? '충전 완료' : '결제 확인 중',
+        refreshResult.latestCharge
+          ? '크레딧 충전이 완료됐어요.'
+          : '결제는 완료됐고 스토어 검증을 기다리고 있어요.\n잔액이 바로 바뀌지 않으면 아래로 당겨 새로고침해주세요.',
         [{ text: '확인' }],
       );
     } finally {
@@ -154,6 +163,15 @@ export default function CreditScreen({ navigation, userInfo }) {
   };
 
   const selectedPkg = packages.find((p) => p.id === selectedPackage);
+  const selectedProductId = selectedPkg
+    ? (Platform.OS === 'ios' ? selectedPkg.apple_product_id : selectedPkg.google_product_id)
+    : null;
+  const selectedStoreProduct = selectedProductId ? storeProductsById[selectedProductId] : null;
+  const storeUnavailable = !!storeError || !selectedProductId || !selectedStoreProduct;
+  const canPurchase = !!selectedPkg && !purchaseLoading && !storeUnavailable;
+  const selectedPriceText = selectedStoreProduct?.priceString
+    || selectedStoreProduct?.price_string
+    || (selectedPkg ? formatKRW(selectedPkg.price_krw) : null);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -251,9 +269,9 @@ export default function CreditScreen({ navigation, userInfo }) {
               </View>
 
               <TouchableOpacity
-                style={[styles.rechargeBtn, (!selectedPkg || purchaseLoading) && styles.rechargeBtnDisabled]}
+                style={[styles.rechargeBtn, !canPurchase && styles.rechargeBtnDisabled]}
                 onPress={handleRecharge}
-                disabled={!selectedPkg || purchaseLoading}
+                disabled={!canPurchase}
                 activeOpacity={0.85}
               >
                 {purchaseLoading ? (
@@ -264,8 +282,10 @@ export default function CreditScreen({ navigation, userInfo }) {
                 <Text style={styles.rechargeBtnText}>
                   {purchaseLoading
                     ? '결제 진행 중'
+                    : storeUnavailable
+                      ? '스토어 설정 확인 필요'
                     : selectedPkg
-                      ? `${formatKRW(selectedPkg.price_krw)} 충전하기`
+                      ? `${selectedPriceText} 충전하기`
                       : '패키지를 선택해주세요'}
                 </Text>
               </TouchableOpacity>
@@ -274,7 +294,9 @@ export default function CreditScreen({ navigation, userInfo }) {
                 <Ionicons name="information-circle-outline" size={14} color={Colors.gray500} />
                 <Text style={styles.noticeText}>
                   {storeError
-                    ? '스토어 상품을 불러오지 못했어요. 상품 ID와 RevenueCat 설정을 확인해주세요.'
+                    ? '스토어 상품을 불러오지 못했어요. RevenueCat 키, 상품 ID, 스토어 상품 연결을 확인해주세요.'
+                    : selectedPkg && !selectedStoreProduct
+                      ? '선택한 패키지가 아직 스토어 상품과 연결되지 않았어요.'
                     : '결제 완료 후 스토어 검증이 끝나면 크레딧이 자동으로 충전됩니다.'}
                 </Text>
               </View>

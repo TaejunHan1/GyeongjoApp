@@ -18,6 +18,64 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
+const FUNERAL_PREVIEW_FRAME_WIDTH = Math.min(width - 40, 360);
+const FUNERAL_PREVIEW_FRAME_HEIGHT = Math.round(FUNERAL_PREVIEW_FRAME_WIDTH * 1.78);
+const FUNERAL_PREVIEW_FULL_HERO_HEIGHT = FUNERAL_PREVIEW_FRAME_HEIGHT;
+const FUNERAL_PREVIEW_PAPER_HERO_HEIGHT = Math.round(Math.min(width - 64, 340) * 1.78);
+const FUNERAL_EDITOR_FRAME_WIDTH = width * 0.88;
+const IS_TABLET_PREVIEW = Math.min(width, height) >= 600;
+const TABLET_MEMORIAL_TEXT_Y_OFFSET = IS_TABLET_PREVIEW ? -10 : 0;
+const MOBILE_NAME_TEXT_Y_OFFSET = IS_TABLET_PREVIEW ? 0 : 1;
+const FUNERAL_MAIN_PHOTO_LAYOUT_DEFAULT = {
+  scale: 1,
+  translateX: 0,
+  translateY: 0,
+};
+const FUNERAL_MEMORIAL_TEXT_LAYOUT_DEFAULT = {
+  scale: 1,
+  translateX: 0,
+  translateY: 0,
+};
+const FUNERAL_PHOTO_FRAME_SOURCES = {
+  'funeral-template-modern-card': require('../../../../assets/funeral/templates/funeral-template-modern-card.png'),
+  'funeral-template-editorial-timeline': require('../../../../assets/funeral/templates/funeral-template-editorial-timeline.png'),
+  'funeral-template-paper-letter': require('../../../../assets/funeral/templates/funeral-template-paper-letter.png'),
+  'funeral-template-certificate': require('../../../../assets/funeral/templates/funeral-template-certificate.png'),
+  'funeral-template-classic-flower': require('../../../../assets/funeral/templates/funeral-template-classic-flower.png'),
+};
+const MODERN_FUNERAL_BACKGROUND = require('../../../../assets/event-card-covers/cover-hanji-gold.png');
+const MODERN_FUNERAL_FLOWER_CORNER = require('../../../../assets/studio/elements/2-white-flowers-bottom-left.png');
+const MODERN_FUNERAL_COTTON_FLOWER = require('../../../../assets/studio/elements/14-cotton-flower.png');
+const MODERN_FUNERAL_DIVIDER = require('../../../../assets/studio/elements/18-divider-flower-horizontal.png');
+const MODERN_FUNERAL_OLIVE_BRANCH = require('../../../../assets/studio/elements/7-olive-branch.png');
+const MODERN_FUNERAL_SINGLE_LEAF = require('../../../../assets/studio/elements/10-single-leaf-small.png');
+const MODERN_FUNERAL_MAGNOLIA_PETALS = require('../../../../assets/studio/elements/12-magnolia-petals.png');
+const FUNERAL_PHOTO_FRAME_ASPECT_RATIOS = {
+  'funeral-template-modern-card': 1024 / 1535,
+  'funeral-template-editorial-timeline': 941 / 1672,
+  'funeral-template-paper-letter': 941 / 1672,
+  'funeral-template-certificate': 941 / 1672,
+  'funeral-template-classic-flower': 1024 / 1535,
+};
+const FUNERAL_MEMORIAL_FONT_FAMILIES = {
+  serif: 'NanumMyeongjo',
+  sans: 'GowunDodum',
+  'nanum-myeongjo': 'NanumMyeongjo',
+  hahmlet: 'Hahmlet',
+  'gowun-batang': 'GowunBatang',
+  'gowun-dodum': 'GowunDodum',
+  sunflower: 'Sunflower',
+  'black-han': 'BlackHanSans',
+  'yeon-sung': 'YeonSung',
+  'single-day': 'SingleDay',
+  playfair: 'PlayfairDisplay',
+  garamond: 'EBGaramond',
+  cinzel: 'Cinzel',
+  'great-vibes': 'Great Vibes',
+  italianno: 'Italianno',
+  dancing: 'DancingScript',
+  tangerine: 'Tangerine',
+};
 
 // 메시지 입력 모달 컴포넌트
 const MessageModal = ({ visible, onClose, onSubmit, placeholder, eventType }) => {
@@ -209,8 +267,370 @@ const MessageList = ({ messages, eventType }) => {
   );
 };
 
+const getAdditionalInfo = (eventData) => eventData.additional_info || eventData.additionalInfo || {};
+
+const normalizeMainPhotoLayout = (layout) => {
+  const base = layout && typeof layout === 'object' ? layout : {};
+  const scale = Number(base.scale);
+  const translateX = Number(base.translateX);
+  const translateY = Number(base.translateY);
+
+  return {
+    scale: Number.isFinite(scale) ? Math.min(3, Math.max(0.25, scale)) : FUNERAL_MAIN_PHOTO_LAYOUT_DEFAULT.scale,
+    translateX: Number.isFinite(translateX) ? Math.min(5000, Math.max(-5000, translateX)) : FUNERAL_MAIN_PHOTO_LAYOUT_DEFAULT.translateX,
+    translateY: Number.isFinite(translateY) ? Math.min(5000, Math.max(-5000, translateY)) : FUNERAL_MAIN_PHOTO_LAYOUT_DEFAULT.translateY,
+  };
+};
+
+const getMainPhotoLayout = (eventData) => {
+  const additionalInfo = getAdditionalInfo(eventData);
+  const mainPhotoLayout = eventData.mainPhotoLayout || eventData.main_photo_layout || additionalInfo.main_photo_layout || additionalInfo.mainPhotoLayout;
+  return normalizeMainPhotoLayout(mainPhotoLayout);
+};
+
+const getMainPhotoTransformStyle = (eventData) => {
+  const layout = getMainPhotoLayout(eventData);
+  return {
+    transform: [
+      { translateX: layout.translateX },
+      { translateY: layout.translateY },
+      { scale: layout.scale },
+    ],
+  };
+};
+
+const normalizeMemorialTextLayout = (layout) => {
+  const base = layout && typeof layout === 'object' ? layout : {};
+  const scale = Number(base.scale);
+  const translateX = Number(base.translateX);
+  const translateY = Number(base.translateY);
+
+  return {
+    scale: Number.isFinite(scale) ? Math.min(1.8, Math.max(0.35, scale)) : FUNERAL_MEMORIAL_TEXT_LAYOUT_DEFAULT.scale,
+    translateX: Number.isFinite(translateX) ? Math.min(500, Math.max(-500, translateX)) : FUNERAL_MEMORIAL_TEXT_LAYOUT_DEFAULT.translateX,
+    translateY: Number.isFinite(translateY) ? Math.min(500, Math.max(-500, translateY)) : FUNERAL_MEMORIAL_TEXT_LAYOUT_DEFAULT.translateY,
+  };
+};
+
+const getPhotoFrameSource = (eventData) => {
+  const additionalInfo = getAdditionalInfo(eventData);
+  const frame = additionalInfo.photo_frame || additionalInfo.photoFrame || eventData.photoFrame;
+  const frameKey = frame?.key || frame?.id || eventData.photoFrameKey;
+  return FUNERAL_PHOTO_FRAME_SOURCES[frameKey] || FUNERAL_PHOTO_FRAME_SOURCES['funeral-template-modern-card'];
+};
+
+const getPhotoFrameAspectRatio = (eventData) => {
+  const additionalInfo = getAdditionalInfo(eventData);
+  const frame = additionalInfo.photo_frame || additionalInfo.photoFrame || eventData.photoFrame;
+  const frameKey = frame?.key || frame?.id || eventData.photoFrameKey;
+  return FUNERAL_PHOTO_FRAME_ASPECT_RATIOS[frameKey] || FUNERAL_PHOTO_FRAME_ASPECT_RATIOS['funeral-template-modern-card'];
+};
+
+const getMemorialTextSetting = (eventData, target) => {
+  const additionalInfo = getAdditionalInfo(eventData);
+  const isDate = target === 'date';
+  const fontId = isDate
+    ? eventData.memorialDateFontId || additionalInfo.memorial_date_font_id || 'serif'
+    : eventData.memorialNameFontId || additionalInfo.memorial_name_font_id || 'serif';
+  const color = isDate
+    ? eventData.memorialDateColor || additionalInfo.memorial_date_color || '#555555'
+    : eventData.memorialNameColor || additionalInfo.memorial_name_color || '#222222';
+  const layout = normalizeMemorialTextLayout(
+    isDate
+      ? additionalInfo.memorial_date_layout || eventData.memorialDateLayout
+      : additionalInfo.memorial_name_layout || eventData.memorialNameLayout
+  );
+  const visible = isDate
+    ? additionalInfo.memorial_date_visible !== false && eventData.memorialDateVisible !== false
+    : additionalInfo.memorial_name_visible !== false && eventData.memorialNameVisible !== false;
+  const fontFamily = FUNERAL_MEMORIAL_FONT_FAMILIES[fontId] || FUNERAL_MEMORIAL_FONT_FAMILIES.serif;
+
+  return {
+    color,
+    fontFamily,
+    fontWeight: fontFamily ? '400' : undefined,
+    layout,
+    visible,
+  };
+};
+
+const formatMemorialDateOnly = (value) => {
+  const date = toValidDate(value);
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}. ${month}. ${day}`;
+};
+
+const getMemorialPeriodText = (eventData) => {
+  const birthDate = getFuneralValue(eventData, 'birthDate', 'birth_date');
+  const deathDate = getFuneralValue(eventData, 'deathDate', 'death_date');
+  const birthText = formatMemorialDateOnly(birthDate);
+  const deathText = formatMemorialDateOnly(deathDate);
+
+  if (birthText && deathText) return `${birthText} ~ ${deathText}`;
+  return birthText || deathText || '';
+};
+
+const FuneralComposedPhoto = ({ eventData, uri, style }) => {
+  if (!uri) return null;
+
+  const containerStyle = { ...(StyleSheet.flatten(style) || {}) };
+  delete containerStyle.resizeMode;
+  const nameSetting = getMemorialTextSetting(eventData, 'name');
+  const dateSetting = getMemorialTextSetting(eventData, 'date');
+  const mainPhotoTransformStyle = getMainPhotoTransformStyle(eventData);
+  const frameSource = getPhotoFrameSource(eventData);
+  const frameAspectRatio = getPhotoFrameAspectRatio(eventData);
+  delete containerStyle.height;
+  containerStyle.aspectRatio = frameAspectRatio;
+  const numericFrameWidth = typeof containerStyle.width === 'number' ? containerStyle.width : null;
+  const estimatedFrameWidth = numericFrameWidth || (width - 60);
+  const translateScale = estimatedFrameWidth / FUNERAL_EDITOR_FRAME_WIDTH;
+  const deceasedName = eventData.deceasedName || eventData.deceased_name || '김○○';
+  const periodText = getMemorialPeriodText(eventData);
+
+  const getTextTransform = (layout, extraY = 0) => ({
+    transform: [
+      { translateX: layout.translateX * translateScale },
+      { translateY: (layout.translateY * translateScale) + TABLET_MEMORIAL_TEXT_Y_OFFSET + extraY },
+      { scale: layout.scale },
+    ],
+  });
+
+  return (
+    <View style={[containerStyle, styles.funeralComposedPhoto]}>
+      <View style={[styles.funeralComposedFrameCanvas, { aspectRatio: frameAspectRatio }]}>
+        <Image
+          source={{ uri }}
+          style={[styles.funeralComposedBaseImage, mainPhotoTransformStyle]}
+          resizeMode="cover"
+        />
+        <Image
+          source={frameSource}
+          style={styles.funeralComposedFrameImage}
+          resizeMode="cover"
+        />
+        {nameSetting.visible && (
+          <View
+            pointerEvents="none"
+            style={[styles.funeralComposedNameOverlay, getTextTransform(nameSetting.layout, MOBILE_NAME_TEXT_Y_OFFSET)]}
+          >
+            <Text
+              style={[
+                styles.funeralComposedNameText,
+                { color: nameSetting.color, fontFamily: nameSetting.fontFamily, fontWeight: nameSetting.fontWeight },
+              ]}
+            >
+              故 {deceasedName}
+            </Text>
+          </View>
+        )}
+        {dateSetting.visible && Boolean(periodText) && (
+          <View
+            pointerEvents="none"
+            style={[styles.funeralComposedDateOverlay, getTextTransform(dateSetting.layout)]}
+          >
+            <Text
+              style={[
+                styles.funeralComposedDateText,
+                { color: dateSetting.color, fontFamily: dateSetting.fontFamily, fontWeight: dateSetting.fontWeight },
+              ]}
+            >
+              {periodText}
+            </Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
+
+const getFuneralValue = (eventData, camelKey, snakeKey) => {
+  const additionalInfo = getAdditionalInfo(eventData);
+  return eventData[camelKey] || eventData[snakeKey] || additionalInfo[snakeKey] || additionalInfo[camelKey];
+};
+
+const getVisitationLabel = (type) => ({
+  available: '조문 가능',
+  after_time: '조문 시간 안내',
+  family_only: '가족장',
+  decline: '조문 사양',
+}[type] || null);
+
+const getCondolenceAccounts = (eventData) => {
+  const additionalInfo = getAdditionalInfo(eventData);
+  return eventData.condolenceAccounts || eventData.condolence_accounts || additionalInfo.condolence_accounts || [];
+};
+
+const getFuneralGuidanceItems = (eventData) => {
+  const items = [];
+  const religiousRite = getFuneralValue(eventData, 'religiousRite', 'religious_rite');
+  const funeralMethod = getFuneralValue(eventData, 'funeralMethod', 'funeral_method');
+  const visitationType = getFuneralValue(eventData, 'visitationType', 'visitation_type');
+  const visitationNote = getFuneralValue(eventData, 'visitationNote', 'visitation_note');
+  const parkingTransportInfo = getFuneralValue(eventData, 'parkingTransportInfo', 'parking_transport_info');
+  const accounts = getCondolenceAccounts(eventData);
+
+  if (religiousRite || funeralMethod) {
+    items.push({
+      label: '예식',
+      value: [religiousRite, funeralMethod].filter(Boolean).join(' · '),
+    });
+  }
+  if (visitationType || visitationNote) {
+    items.push({
+      label: '조문',
+      value: [getVisitationLabel(visitationType), visitationNote].filter(Boolean).join(' · '),
+    });
+  }
+  if (parkingTransportInfo) {
+    items.push({ label: '주차/교통', value: parkingTransportInfo });
+  }
+  if (accounts.length > 0) {
+    items.push({
+      label: '부의금 계좌',
+      value: accounts
+        .map(account => `${account.bank_name || account.bankName || ''} ${account.account_number || account.accountNumber || ''} ${account.owner_name || account.ownerName || ''}`.trim())
+        .filter(Boolean)
+        .join('\n'),
+    });
+  }
+
+  return items;
+};
+
+const toValidDate = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatDateText = (value) => {
+  const date = toValidDate(value);
+  if (!date) return '';
+  return date.toLocaleDateString('ko-KR', {
+    month: '2-digit',
+    day: '2-digit',
+    ...(value && String(value).includes('-') && { year: 'numeric' }),
+  });
+};
+
+const formatTimeText = (value) => {
+  if (!value) return '';
+  const date = toValidDate(value);
+  if (date && !Number.isNaN(date.getTime())) {
+    return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  return value;
+};
+
+const toDateObject = (value) => {
+  if (!value) return null;
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const toTimeObject = (value) => {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    return {
+      hour: value.getHours(),
+      minute: value.getMinutes(),
+      second: value.getSeconds(),
+    };
+  }
+
+  if (typeof value !== 'string') return null;
+  const timeText = value.trim().slice(0, 5);
+  const [hourText, minuteText] = timeText.split(':');
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+
+  return { hour, minute, second: 0 };
+};
+
+const combineDateAndTime = (dateValue, timeValue) => {
+  const date = toDateObject(dateValue);
+  if (!date) return null;
+
+  const time = toTimeObject(timeValue);
+  if (!time) return date;
+
+  const merged = new Date(date);
+  merged.setHours(time.hour, time.minute, time.second || 0, 0);
+  return merged;
+};
+
+const getCurrentFuneralStep = (eventData) => {
+  const now = new Date();
+  const casketDate = combineDateAndTime(
+    eventData.casketDate || eventData.casket_date,
+    eventData.casketTime || eventData.casket_time
+  );
+  const burialDate = combineDateAndTime(
+    eventData.burialDate || eventData.burial_date,
+    eventData.burialTime || eventData.burial_time
+  );
+
+  if (casketDate && burialDate) {
+    if (now >= casketDate && now < burialDate) return '입관';
+    if (now >= burialDate) return '장지';
+  } else if (casketDate && now >= casketDate) {
+    return '입관';
+  } else if (burialDate && now >= burialDate) {
+    return '발인';
+  }
+
+  return null;
+};
+
+const getFamilyMembersForPreview = (eventData) => {
+  const source = (eventData.familyMembers || eventData.family_members || []).filter(
+    (member) => member && member.names && member.names.trim()
+  );
+
+  if (source.length > 0) {
+    return source.slice(0, 6);
+  }
+
+  return [
+    { relation: '배우자', names: '김○○' },
+    { relation: '장남', names: '김○○' },
+    { relation: '차남', names: '김○○' },
+    { relation: '장녀', names: '김○○' },
+    { relation: '차녀', names: '김○○' },
+  ];
+};
+
+const getDeceasedAge = (eventData) => {
+  const age = getFuneralValue(eventData, 'deceasedAge', 'deceased_age') || getFuneralValue(eventData, 'age', 'age');
+  return age ? `${age}세` : '미입력';
+};
+
+const FuneralGuidanceSection = ({ eventData, variant = 'light' }) => {
+  const items = getFuneralGuidanceItems(eventData);
+  if (items.length === 0) return null;
+
+  return (
+    <View style={[styles.funeralGuideSection, variant === 'dark' && styles.funeralGuideSectionDark]}>
+      <Text style={[styles.funeralGuideTitle, variant === 'dark' && styles.funeralGuideTitleDark]}>안내</Text>
+      {items.map(item => (
+        <View key={item.label} style={styles.funeralGuideItem}>
+          <Text style={[styles.funeralGuideLabel, variant === 'dark' && styles.funeralGuideLabelDark]}>{item.label}</Text>
+          <Text style={[styles.funeralGuideValue, variant === 'dark' && styles.funeralGuideValueDark]}>{item.value}</Text>
+        </View>
+      ))}
+    </View>
+  );
+};
+
 // 템플릿 1: 증명서 스타일 (CertificateFuneralNotice 기반)
-const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, messageSettings, onMessageSubmit }) => {
+const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, messageSettings, onMessageSubmit, isPreviewMode }) => {
   const [currentDate] = useState(new Date());
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -269,7 +689,7 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
             <View style={styles.certificateDeceasedSection}>
               {mainImage && (
                 <View style={styles.certificatePhotoWrapper}>
-                  <Image source={{ uri: mainImage }} style={styles.certificatePhoto} />
+                  <FuneralComposedPhoto eventData={eventData} uri={mainImage} style={styles.certificatePhoto} />
                 </View>
               )}
               
@@ -452,6 +872,8 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
               </View>
             </View>
 
+            <FuneralGuidanceSection eventData={eventData} />
+
             {/* 상주의 말 */}
             {(eventData.customMessage || eventData.custom_message) && (
               <View style={styles.certificateMessageSection}>
@@ -483,6 +905,7 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
           </View>
 
           {/* 부조하기 버튼 */}
+          {!isPreviewMode && (
           <View style={styles.certificateButtons}>
             <TouchableOpacity style={styles.certificateButton}>
               <Text style={styles.certificateButtonText}>부조하기</Text>
@@ -499,11 +922,12 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
               <Text style={styles.certificateShareButtonText}>공유하기</Text>
             </TouchableOpacity>
           </View>
+          )}
 
         </View>
 
         {/* 메시지 입력 모달 */}
-        {allowMessages && (
+        {!isPreviewMode && allowMessages && (
           <MessageModal
             visible={showMessageModal}
             onClose={() => setShowMessageModal(false)}
@@ -518,7 +942,7 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
 };
 
 // 템플릿 2: 공문서 스타일 (OfficialFuneralNotice 기반)
-const OfficialTemplate = ({ eventData, categorizedImages, allowMessages, messageSettings, onMessageSubmit }) => {
+const OfficialTemplate = ({ eventData, categorizedImages, allowMessages, messageSettings, onMessageSubmit, isPreviewMode }) => {
   const [currentDate] = useState(new Date());
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -579,7 +1003,7 @@ const OfficialTemplate = ({ eventData, categorizedImages, allowMessages, message
             <View style={styles.officialCardContent}>
               {mainImage && (
                 <View style={styles.officialPhotoWrapper}>
-                  <Image source={{ uri: mainImage }} style={styles.officialPhoto} />
+                  <FuneralComposedPhoto eventData={eventData} uri={mainImage} style={styles.officialPhoto} />
                 </View>
               )}
               <Text style={styles.officialDeceasedName}>
@@ -781,6 +1205,8 @@ const OfficialTemplate = ({ eventData, categorizedImages, allowMessages, message
             </View>
           </View>
 
+          <FuneralGuidanceSection eventData={eventData} />
+
           {/* 상주의 말 */}
           {(eventData.customMessage || eventData.custom_message) && (
             <View style={styles.officialCard}>
@@ -810,6 +1236,7 @@ const OfficialTemplate = ({ eventData, categorizedImages, allowMessages, message
           )}
 
           {/* 부조하기 버튼 */}
+          {!isPreviewMode && (
           <View style={styles.officialButtons}>
             <TouchableOpacity style={styles.officialButton}>
               <Text style={styles.officialButtonText}>부조하기</Text>
@@ -826,6 +1253,7 @@ const OfficialTemplate = ({ eventData, categorizedImages, allowMessages, message
               <Text style={styles.officialShareButtonText}>공유하기</Text>
             </TouchableOpacity>
           </View>
+          )}
 
           {/* 마지막 인사 */}
           <View style={styles.officialFooter}>
@@ -837,7 +1265,7 @@ const OfficialTemplate = ({ eventData, categorizedImages, allowMessages, message
         </View>
 
         {/* 메시지 입력 모달 */}
-        {allowMessages && (
+        {!isPreviewMode && allowMessages && (
           <MessageModal
             visible={showMessageModal}
             onClose={() => setShowMessageModal(false)}
@@ -852,7 +1280,7 @@ const OfficialTemplate = ({ eventData, categorizedImages, allowMessages, message
 };
 
 // 템플릿 3: 신문 스타일 (NewspaperFuneralNotice 기반)
-const NewspaperTemplate = ({ eventData, categorizedImages, allowMessages, messageSettings, onMessageSubmit }) => {
+const NewspaperTemplate = ({ eventData, categorizedImages, allowMessages, messageSettings, onMessageSubmit, isPreviewMode }) => {
   const [currentDate] = useState(new Date());
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -911,7 +1339,7 @@ const NewspaperTemplate = ({ eventData, categorizedImages, allowMessages, messag
           {mainImage && (
             <View style={styles.newspaperPhotoSection}>
               <View style={styles.newspaperPhotoFrame}>
-                <Image source={{ uri: mainImage }} style={styles.newspaperPhoto} />
+                <FuneralComposedPhoto eventData={eventData} uri={mainImage} style={styles.newspaperPhoto} />
               </View>
             </View>
           )}
@@ -1106,6 +1534,8 @@ const NewspaperTemplate = ({ eventData, categorizedImages, allowMessages, messag
           </View>
         </View>
 
+        <FuneralGuidanceSection eventData={eventData} />
+
         {/* 상주의 말 */}
         {(eventData.customMessage || eventData.custom_message) && (
           <View style={styles.newspaperMessageBox}>
@@ -1129,6 +1559,7 @@ const NewspaperTemplate = ({ eventData, categorizedImages, allowMessages, messag
         )}
 
         {/* 하단 액션 */}
+        {!isPreviewMode && (
         <View style={styles.newspaperButtons}>
           <TouchableOpacity style={styles.newspaperButton}>
             <Text style={styles.newspaperButtonText}>부조하기</Text>
@@ -1145,6 +1576,7 @@ const NewspaperTemplate = ({ eventData, categorizedImages, allowMessages, messag
             <Text style={styles.newspaperShareButtonText}>공유하기</Text>
           </TouchableOpacity>
         </View>
+        )}
 
         {/* 신문 푸터 */}
         <View style={styles.newspaperFooter}>
@@ -1152,7 +1584,7 @@ const NewspaperTemplate = ({ eventData, categorizedImages, allowMessages, messag
         </View>
 
         {/* 메시지 입력 모달 */}
-        {allowMessages && (
+        {!isPreviewMode && allowMessages && (
           <MessageModal
             visible={showMessageModal}
             onClose={() => setShowMessageModal(false)}
@@ -1167,8 +1599,659 @@ const NewspaperTemplate = ({ eventData, categorizedImages, allowMessages, messag
   );
 };
 
+const ModernCardTemplate = ({ eventData, categorizedImages, allowMessages, messageSettings, onMessageSubmit, isPreviewMode }) => {
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const mainImage = categorizedImages?.main?.[0]?.uri || eventData.images?.[0]?.uri;
+  const familyMembers = getFamilyMembersForPreview(eventData);
+  const guidanceItems = getFuneralGuidanceItems(eventData);
+  const accounts = getCondolenceAccounts(eventData);
+  const deceasedName = eventData.deceasedName || eventData.deceased_name || '고인명';
+  const deathDate = eventData.deathDate || eventData.death_date;
+  const funeralHome = eventData.funeralHome || eventData.funeral_home || '○○장례식장';
+  const funeralAddress = eventData.location || '주소를 입력해주세요';
+  const detailAddress = eventData.detailedAddress || eventData.detailed_address;
+  const primaryContact = eventData.primaryContact || eventData.primary_contact || '010-0000-0000';
+  const currentScheduleStep = getCurrentFuneralStep(eventData);
+  const funeralInfoRows = [
+    {
+      key: 'hall',
+      icon: 'location-outline',
+      label: '장례식장',
+      value: funeralHome,
+    },
+    {
+      key: 'address',
+      icon: 'map-outline',
+      label: '주소',
+      value: `${detailAddress ? `${detailAddress} ` : ''}${funeralAddress}`,
+    },
+    {
+      key: 'contact',
+      icon: 'call-outline',
+      label: '연락처',
+      value: primaryContact,
+    },
+  ];
+
+  const schedules = [
+    {
+      label: '입관',
+      date: formatDateText(eventData.casketDate || eventData.casket_date),
+      time: formatTimeText(eventData.casketTime || eventData.casket_time),
+      status: currentScheduleStep === '입관' ? '현재 진행' : (eventData.visitationType === 'decline' ? '조문 사양' : '안내'),
+      isActive: currentScheduleStep === '입관',
+    },
+    {
+      label: '발인',
+      date: formatDateText(eventData.burialDate || eventData.burial_date),
+      time: formatTimeText(eventData.burialTime || eventData.burial_time),
+      status: currentScheduleStep === '발인' ? '현재 진행' : '안내',
+      isActive: currentScheduleStep === '발인',
+    },
+    {
+      label: '장지',
+      date: eventData.burialLocation || eventData.burial_location || '미입력',
+      time: '',
+      status: currentScheduleStep === '장지' ? '현재 진행' : '안내',
+      isActive: currentScheduleStep === '장지',
+    },
+  ];
+
+  const renderModernSectionHeader = (icon, title, caption) => (
+    <View style={styles.modernSectionHead}>
+      <View style={styles.modernSectionIcon}>
+        <Ionicons name={icon} size={17} color="#f8f4ec" />
+      </View>
+      <View style={styles.modernSectionCopy}>
+        <Text style={styles.modernSectionTitle}>{title}</Text>
+        <Text style={styles.modernSectionCaption}>{caption}</Text>
+      </View>
+    </View>
+  );
+
+  const renderModernInfoRow = ({ key, label, value }) => (
+    <View key={key || label} style={styles.modernInfoRow}>
+      <View style={styles.modernInfoRowText}>
+        <Text style={styles.modernInfoLabel}>{label}</Text>
+        <Text style={styles.modernInfoValue}>{value}</Text>
+      </View>
+    </View>
+  );
+
+  const renderModernDecorations = () => (
+    <View pointerEvents="none" style={styles.modernDecorLayer}>
+      <Image source={MODERN_FUNERAL_BACKGROUND} style={styles.modernHanjiBackground} resizeMode="cover" />
+      <View style={styles.modernInkWashTopLeft} />
+      <View style={styles.modernInkWashBottomRight} />
+      <Image source={MODERN_FUNERAL_OLIVE_BRANCH} style={styles.modernOliveBranch} resizeMode="contain" />
+      <Image source={MODERN_FUNERAL_SINGLE_LEAF} style={styles.modernSingleLeaf} resizeMode="contain" />
+      <Image source={MODERN_FUNERAL_MAGNOLIA_PETALS} style={styles.modernMagnoliaPetals} resizeMode="contain" />
+      <Image source={MODERN_FUNERAL_DIVIDER} style={styles.modernFloralDivider} resizeMode="contain" />
+      <Image source={MODERN_FUNERAL_COTTON_FLOWER} style={styles.modernCottonFlower} resizeMode="contain" />
+      <Image source={MODERN_FUNERAL_FLOWER_CORNER} style={styles.modernFlowerCornerBottom} resizeMode="contain" />
+      <Image source={MODERN_FUNERAL_FLOWER_CORNER} style={styles.modernFlowerCornerTop} resizeMode="contain" />
+      <View style={styles.modernCandleLeft}>
+        <View style={styles.modernCandleFlame} />
+        <View style={styles.modernCandleBody} />
+        <View style={styles.modernCandleBase} />
+      </View>
+      <View style={styles.modernCandleRight}>
+        <View style={styles.modernCandleFlame} />
+        <View style={styles.modernCandleBody} />
+        <View style={styles.modernCandleBase} />
+      </View>
+    </View>
+  );
+
+  const handleMessageSubmit = async (messageData) => {
+    try {
+      if (onMessageSubmit) {
+        await onMessageSubmit(messageData);
+      }
+      setMessages((prev) => [{ ...messageData, created_at: new Date().toISOString() }, ...prev]);
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  return (
+    <ScrollView style={styles.modernCardContainer}>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.modernCardCanvas}>
+          {renderModernDecorations()}
+          <View style={styles.modernCardProfile}>
+            <View style={styles.modernHeroBadgeRow}>
+              <Text style={styles.modernHeroBadge}>부고</Text>
+              <Text style={styles.modernHeroDate}>
+                {formatDateText(deathDate) || '사망일자 미입력'}
+              </Text>
+            </View>
+            {mainImage ? (
+              <FuneralComposedPhoto eventData={eventData} uri={mainImage} style={styles.modernCardPhotoHero} />
+            ) : (
+              <View style={[styles.modernCardPhotoHero, styles.modernPhotoPlaceholder]}>
+                <Ionicons name="person" size={40} color="#9CA3AF" />
+              </View>
+            )}
+          </View>
+
+          <View style={styles.modernCardHero}>
+            <Image pointerEvents="none" source={MODERN_FUNERAL_OLIVE_BRANCH} style={styles.modernHeroOlive} resizeMode="contain" />
+            <Image pointerEvents="none" source={MODERN_FUNERAL_MAGNOLIA_PETALS} style={styles.modernHeroPetals} resizeMode="contain" />
+            <Image pointerEvents="none" source={MODERN_FUNERAL_COTTON_FLOWER} style={styles.modernHeroCotton} resizeMode="contain" />
+            <Image pointerEvents="none" source={MODERN_FUNERAL_SINGLE_LEAF} style={styles.modernHeroLeafAccent} resizeMode="contain" />
+            <Image pointerEvents="none" source={MODERN_FUNERAL_DIVIDER} style={styles.modernHeroDivider} resizeMode="contain" />
+            <Text style={styles.modernHeroEyebrow}>삼가 고인의 명복을 빕니다</Text>
+            <View style={styles.modernHeroNamePlate}>
+              <Text style={styles.modernHeroHonorific}>故</Text>
+              <Text style={styles.modernHeroTitle}>{deceasedName}</Text>
+            </View>
+            <View style={styles.modernHeroDetailGrid}>
+              <View style={styles.modernHeroDetailCard}>
+                <Text style={styles.modernHeroDetailLabel}>향년</Text>
+                <Text style={styles.modernHeroDetailValue}>{getDeceasedAge(eventData)}</Text>
+              </View>
+              <View style={styles.modernHeroDetailCard}>
+                <Text style={styles.modernHeroDetailLabel}>별세일</Text>
+                <Text style={styles.modernHeroDetailValue}>{formatDateText(deathDate) || '미입력'}</Text>
+              </View>
+            </View>
+          </View>
+
+          {familyMembers.length > 0 && (
+            <View style={styles.modernInfoBlock}>
+              <Image pointerEvents="none" source={MODERN_FUNERAL_OLIVE_BRANCH} style={styles.modernHostOlive} resizeMode="contain" />
+              <Image pointerEvents="none" source={MODERN_FUNERAL_SINGLE_LEAF} style={styles.modernHostLeaf} resizeMode="contain" />
+              {renderModernSectionHeader('people-outline', '상주', '고인을 모시는 가족')}
+              <View style={styles.modernHostGrid}>
+                {familyMembers.map((member) => (
+                  <View key={`${member.relation}-${member.names}`} style={styles.modernHostPill}>
+                    <Text style={styles.modernHostRelation}>{member.relation}</Text>
+                    <Text style={styles.modernHostName}>{member.names}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <View style={styles.modernInfoBlock}>
+            <Image pointerEvents="none" source={MODERN_FUNERAL_COTTON_FLOWER} style={styles.modernScheduleFlower} resizeMode="contain" />
+            <Image pointerEvents="none" source={MODERN_FUNERAL_SINGLE_LEAF} style={styles.modernScheduleLeaf} resizeMode="contain" />
+            <View style={styles.modernSectionHead}>
+              <View style={styles.modernSectionIcon}>
+                <Ionicons name="time-outline" size={17} color="#f8f4ec" />
+              </View>
+              <View style={styles.modernSectionCopy}>
+                <Text style={styles.modernSectionTitle}>조문 일정</Text>
+                <Text style={styles.modernSectionCaption}>입관부터 장지까지</Text>
+              </View>
+            </View>
+            <Image pointerEvents="none" source={MODERN_FUNERAL_DIVIDER} style={styles.modernScheduleDivider} resizeMode="contain" />
+            <View style={styles.modernScheduleGrid}>
+              {schedules.map((item, index) => (
+                <View key={item.label} style={[styles.modernScheduleCard, item.isActive && styles.modernScheduleCardActive]}>
+                  <Image
+                    pointerEvents="none"
+                    source={index === 1 ? MODERN_FUNERAL_MAGNOLIA_PETALS : MODERN_FUNERAL_SINGLE_LEAF}
+                    style={[
+                      styles.modernScheduleCardOrnament,
+                      index === 1 && styles.modernScheduleCardOrnamentCenter,
+                      index === 2 && styles.modernScheduleCardOrnamentRight,
+                    ]}
+                    resizeMode="contain"
+                  />
+                  {item.isActive && (
+                    <>
+                      <View style={styles.modernScheduleCornerMark} />
+                      <View style={styles.modernScheduleActiveGlow} />
+                    </>
+                  )}
+                  <View style={[styles.modernScheduleIconCircle, item.isActive && styles.modernScheduleIconCircleActive]}>
+                    <Text style={[styles.modernScheduleSymbol, item.isActive && styles.modernScheduleSymbolActive]}>
+                      {index === 0 ? '入' : index === 1 ? '發' : '地'}
+                    </Text>
+                  </View>
+                  <View style={styles.modernScheduleTop}>
+                    <Text style={[styles.modernScheduleStep, item.isActive && styles.modernScheduleStepActive]}>
+                      {String(index + 1).padStart(2, '0')}
+                    </Text>
+                    <Text style={[styles.modernScheduleLabel, item.isActive && styles.modernScheduleLabelActive]}>{item.label}</Text>
+                    {item.isActive && (
+                      <View style={styles.modernScheduleActivePill}>
+                        <Text style={styles.modernScheduleActiveText}>진행중</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.modernScheduleValue}>
+                    {[item.date, item.time].filter(Boolean).join('\n') || '미입력'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.modernInfoBlock}>
+            {renderModernSectionHeader('location-outline', '장례 안내', '빈소와 연락처')}
+            <Image pointerEvents="none" source={MODERN_FUNERAL_MAGNOLIA_PETALS} style={styles.modernInfoPetals} resizeMode="contain" />
+            <Image pointerEvents="none" source={MODERN_FUNERAL_COTTON_FLOWER} style={styles.modernInfoCotton} resizeMode="contain" />
+            <Image pointerEvents="none" source={MODERN_FUNERAL_DIVIDER} style={styles.modernInfoDivider} resizeMode="contain" />
+            <View style={styles.modernInfoList}>
+              {funeralInfoRows.map(renderModernInfoRow)}
+            </View>
+          </View>
+
+          {guidanceItems.length > 0 && (
+            <View style={styles.modernInfoBlock}>
+              {renderModernSectionHeader('information-circle-outline', '안내', '조문 전 확인 사항')}
+              <Image pointerEvents="none" source={MODERN_FUNERAL_SINGLE_LEAF} style={styles.modernGuideLeafA} resizeMode="contain" />
+              <Image pointerEvents="none" source={MODERN_FUNERAL_OLIVE_BRANCH} style={styles.modernGuideOlive} resizeMode="contain" />
+              <View style={styles.modernInfoList}>
+                {guidanceItems.map((item, index) => renderModernInfoRow({
+                  key: item.label,
+                  label: item.label,
+                  value: item.value,
+                }))}
+              </View>
+            </View>
+          )}
+
+          {accounts.length > 0 && (
+            <View style={styles.modernInfoBlock}>
+              {renderModernSectionHeader('card-outline', '부의금 계좌', '마음을 전하실 곳')}
+              <Image pointerEvents="none" source={MODERN_FUNERAL_DIVIDER} style={styles.modernAccountDivider} resizeMode="contain" />
+              <Image pointerEvents="none" source={MODERN_FUNERAL_SINGLE_LEAF} style={styles.modernAccountLeaf} resizeMode="contain" />
+              <View style={styles.modernInfoList}>
+                {accounts.map((account) => renderModernInfoRow({
+                  key: `${account.bank_name}-${account.account_number}`,
+                  label: account.bank_name || account.bankName,
+                  value: `${account.account_number || account.accountNumber || ''} ${account.owner_name || account.ownerName || ''}`.trim(),
+                }))}
+              </View>
+            </View>
+          )}
+
+          {(eventData.customMessage || eventData.custom_message) && (
+            <View style={styles.modernInfoBlock}>
+              {renderModernSectionHeader('flower-outline', '상주의 말', '가족이 전하는 말씀')}
+              <Image pointerEvents="none" source={MODERN_FUNERAL_OLIVE_BRANCH} style={styles.modernMessageOlive} resizeMode="contain" />
+              <Image pointerEvents="none" source={MODERN_FUNERAL_MAGNOLIA_PETALS} style={styles.modernMessagePetals} resizeMode="contain" />
+              <View style={styles.modernMessageBox}>
+                <View style={styles.modernMessageOrnament}>
+                  <Ionicons name="flower-outline" size={42} color="#d6cbb8" />
+                </View>
+                <Text style={styles.modernMessageText}>
+                  {eventData.customMessage || eventData.custom_message}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {allowMessages && (
+            <View style={styles.modernInfoBlock}>
+              {renderModernSectionHeader('chatbubble-ellipses-outline', '조문 메시지', '남겨주신 마음')}
+              <Image pointerEvents="none" source={MODERN_FUNERAL_COTTON_FLOWER} style={styles.modernGuestbookFlower} resizeMode="contain" />
+              <Image pointerEvents="none" source={MODERN_FUNERAL_DIVIDER} style={styles.modernGuestbookDivider} resizeMode="contain" />
+              <MessageList messages={messages} eventType="funeral" />
+            </View>
+          )}
+
+          {!isPreviewMode && (
+            <View style={styles.modernActionRow}>
+              {allowMessages && (
+                <TouchableOpacity
+                  style={styles.modernPrimaryButton}
+                  onPress={() => setShowMessageModal(true)}
+                >
+                  <Text style={styles.modernPrimaryButtonText}>조문 메시지 남기기</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.modernGhostButton}>
+                <Text style={styles.modernGhostButtonText}>공유하기</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </SafeAreaView>
+
+      {!isPreviewMode && allowMessages && (
+        <MessageModal
+          visible={showMessageModal}
+          onClose={() => setShowMessageModal(false)}
+          onSubmit={handleMessageSubmit}
+          placeholder={messageSettings?.placeholder || '삼가 고인의 명복을 빕니다.'}
+          eventType="funeral"
+        />
+      )}
+    </ScrollView>
+  );
+};
+
+const EditorialTimelineTemplate = ({ eventData, categorizedImages, allowMessages, messageSettings, onMessageSubmit, isPreviewMode }) => {
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const mainImage = categorizedImages?.main?.[0]?.uri || eventData.images?.[0]?.uri;
+  const familyMembers = getFamilyMembersForPreview(eventData);
+  const deceasedName = eventData.deceasedName || eventData.deceased_name || '고인명';
+  const deceasedAge = getDeceasedAge(eventData);
+  const deathDate = formatDateText(eventData.deathDate || eventData.death_date);
+  const funeralHome = eventData.funeralHome || eventData.funeral_home || '○○장례식장';
+  const funeralAddress = eventData.location || '주소를 입력해주세요';
+  const detailAddress = eventData.detailedAddress || eventData.detailed_address;
+  const primaryContact = eventData.primaryContact || eventData.primary_contact || '010-0000-0000';
+  const currentScheduleStep = getCurrentFuneralStep(eventData);
+
+  const timeline = [
+    {
+      day: '입관',
+      label: '입관식',
+      value: [formatDateText(eventData.casketDate || eventData.casket_date), formatTimeText(eventData.casketTime || eventData.casket_time)]
+        .filter(Boolean)
+        .join(' '),
+      detail: eventData.visitation_note || '별도 안내를 확인해주세요.',
+      isActive: currentScheduleStep === '입관',
+    },
+    {
+      day: '발인',
+      label: '발인식',
+      value: [formatDateText(eventData.burialDate || eventData.burial_date), formatTimeText(eventData.burialTime || eventData.burial_time)]
+        .filter(Boolean)
+        .join(' '),
+      detail: '장례 절차 진행',
+      isActive: currentScheduleStep === '발인',
+    },
+    {
+      day: '장지',
+      label: '안치',
+      value: eventData.burialLocation || eventData.burial_location || '미입력',
+      detail: '화장장 또는 봉안 장소 안내',
+      isActive: currentScheduleStep === '장지',
+    },
+  ];
+
+  const handleMessageSubmit = async (messageData) => {
+    try {
+      if (onMessageSubmit) {
+        await onMessageSubmit(messageData);
+      }
+      setMessages((prev) => [{ ...messageData, created_at: new Date().toISOString() }, ...prev]);
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  return (
+    <ScrollView style={styles.timelineContainer}>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.timelineCanvas}>
+          <View style={styles.timelineHeader}>
+            <View style={styles.timelineHeaderTop}>
+              <Text style={styles.timelineHeaderTitle}>FUNERAL TIMELINE</Text>
+              <Text style={styles.timelineHeaderIndex}>기본형</Text>
+            </View>
+            <Text style={styles.timelineHeaderName}>故 {deceasedName}</Text>
+            <View style={styles.timelineHeaderMetaRow}>
+              <Text style={styles.timelineHeaderMeta}>향년 {deceasedAge}</Text>
+              <View style={styles.timelineMetaDivider} />
+              <Text style={styles.timelineHeaderMeta}>
+                {deathDate ? `${deathDate} 별세` : '사망일 미입력'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.timelineVisual}>
+            {mainImage ? (
+              <FuneralComposedPhoto eventData={eventData} uri={mainImage} style={styles.timelinePhotoHero} />
+            ) : (
+              <View style={[styles.timelinePhotoHero, styles.modernPhotoPlaceholder]}>
+                <Ionicons name="person" size={30} color="#94A3B8" />
+              </View>
+            )}
+            <View style={styles.timelineVisualCaption}>
+              <Text style={styles.timelineVisualCaptionTitle}>고인의 길을 시간순으로 안내합니다</Text>
+              <Text style={styles.timelineVisualCaptionText}>입관부터 장지까지, 조문객이 필요한 절차를 차분하게 확인할 수 있습니다.</Text>
+            </View>
+            <View style={styles.timelineFamilyPillWrap}>
+              {familyMembers.slice(0, 4).map((member) => (
+                <Text key={`${member.names}-${member.relation}`} style={styles.timelineFamilyPill}>
+                  {member.relation} {member.names}
+                </Text>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.timelineBox}>
+            <View style={styles.timelineSectionHead}>
+              <Text style={styles.timelineSectionKicker}>SCHEDULE</Text>
+              <Text style={styles.timelineTitle}>조문 일정</Text>
+            </View>
+            <View style={styles.timelineSimpleList}>
+              {timeline.map((item, index) => (
+                <View key={item.day} style={[styles.timelineSimpleItem, item.isActive && styles.timelineSimpleItemActive]}>
+                  <View style={styles.timelineSimpleMarkerWrap}>
+                    <View style={[styles.timelineSimpleMarker, item.isActive && styles.timelineSimpleMarkerActive]}>
+                      <Text style={[styles.timelineSimpleMarkerText, item.isActive && styles.timelineSimpleMarkerTextActive]}>
+                        {index + 1}
+                      </Text>
+                    </View>
+                    {index < timeline.length - 1 && <View style={styles.timelineSimpleLine} />}
+                  </View>
+                  <View style={styles.timelineSimpleBody}>
+                    <View style={styles.timelineSimpleTitleRow}>
+                      <View>
+                        <Text style={styles.timelineSimpleDay}>{item.day}</Text>
+                        <Text style={styles.timelineSimpleLabel}>{item.label}</Text>
+                      </View>
+                      {item.isActive && <Text style={styles.timelineCurrentBadge}>현재 진행</Text>}
+                    </View>
+                    <Text style={styles.timelineSimpleValue}>{item.value || '미입력'}</Text>
+                    <Text style={styles.timelineSimpleDetail}>{item.detail}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.timelineBox}>
+            <View style={styles.timelineSectionHead}>
+              <Text style={styles.timelineSectionKicker}>LOCATION</Text>
+              <Text style={styles.timelineTitle}>장례 안내</Text>
+            </View>
+            {[
+              ['business-outline', '빈소', funeralHome],
+              ['map-outline', '주소', `${detailAddress ? `${detailAddress} ` : ''}${funeralAddress}`],
+              ['call-outline', '연락처', primaryContact],
+            ].map(([icon, label, value]) => (
+              <View key={label} style={styles.timelineInfoRow}>
+                <View style={styles.timelineInfoIcon}>
+                  <Ionicons name={icon} size={16} color="#E5E7EB" />
+                </View>
+                <View style={styles.timelineInfoCopy}>
+                  <Text style={styles.timelineInfoLabel}>{label}</Text>
+                  <Text style={styles.timelineInfoText}>{value}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          <FuneralGuidanceSection eventData={eventData} variant="light" />
+
+          {(eventData.customMessage || eventData.custom_message) && (
+            <View style={styles.timelineBox}>
+              <View style={styles.timelineSectionHead}>
+                <Text style={styles.timelineSectionKicker}>MESSAGE</Text>
+                <Text style={styles.timelineTitle}>상주의 말</Text>
+              </View>
+              <Text style={styles.timelineMessageText}>
+                {eventData.customMessage || eventData.custom_message}
+              </Text>
+            </View>
+          )}
+
+          {allowMessages && (
+            <View style={styles.timelineBox}>
+              <Text style={styles.timelineTitle}>조문 메시지</Text>
+              <MessageList messages={messages} eventType="funeral" />
+            </View>
+          )}
+
+          {!isPreviewMode && allowMessages && (
+            <View style={styles.modernActionRow}>
+              <TouchableOpacity
+                style={styles.modernPrimaryButton}
+                onPress={() => setShowMessageModal(true)}
+              >
+                <Text style={styles.modernPrimaryButtonText}>조문 메시지 남기기</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modernGhostButton}>
+                <Text style={styles.modernGhostButtonText}>공유하기</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </SafeAreaView>
+
+      {!isPreviewMode && allowMessages && (
+        <MessageModal
+          visible={showMessageModal}
+          onClose={() => setShowMessageModal(false)}
+          onSubmit={handleMessageSubmit}
+          placeholder={messageSettings?.placeholder || '삼가 고인의 명복을 빕니다.'}
+          eventType="funeral"
+        />
+      )}
+    </ScrollView>
+  );
+};
+
+const PaperLetterTemplate = ({ eventData, categorizedImages, allowMessages, messageSettings, onMessageSubmit, isPreviewMode }) => {
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const mainImage = categorizedImages?.main?.[0]?.uri || eventData.images?.[0]?.uri;
+  const familyMembers = getFamilyMembersForPreview(eventData);
+  const deceasedName = eventData.deceasedName || eventData.deceased_name || '고인명';
+  const deathDate = formatDateText(eventData.deathDate || eventData.death_date);
+  const deathTime = formatTimeText(eventData.deathTime || eventData.death_time);
+  const customMessage = eventData.customMessage || eventData.custom_message;
+  const primaryContact = eventData.primaryContact || eventData.primary_contact || '010-0000-0000';
+  const currentScheduleStep = getCurrentFuneralStep(eventData);
+  const funeralSchedule = [
+    {
+      label: '입관',
+      value: [formatDateText(eventData.casketDate || eventData.casket_date), formatTimeText(eventData.casketTime || eventData.casket_time)].filter(Boolean).join(' '),
+      isActive: currentScheduleStep === '입관',
+    },
+    {
+      label: '발인',
+      value: [formatDateText(eventData.burialDate || eventData.burial_date), formatTimeText(eventData.burialTime || eventData.burial_time)].filter(Boolean).join(' '),
+      isActive: currentScheduleStep === '발인',
+    },
+    {
+      label: '장지',
+      value: eventData.burialLocation || eventData.burial_location || '미입력',
+      isActive: currentScheduleStep === '장지',
+    },
+  ];
+
+  const handleMessageSubmit = async (messageData) => {
+    try {
+      if (onMessageSubmit) {
+        await onMessageSubmit(messageData);
+      }
+      setMessages((prev) => [{ ...messageData, created_at: new Date().toISOString() }, ...prev]);
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  return (
+    <ScrollView style={styles.paperLetterContainer}>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.paperLetterCanvas}>
+          <Text style={styles.paperLetterRibbon}>故人을 추모합니다</Text>
+          <View style={styles.paperLetterCard}>
+            <Text style={styles.paperLetterTitle}>부 고</Text>
+            <Text style={styles.paperLetterDateText}>
+              {deathDate || '사망일 미입력'} {deathTime}
+            </Text>
+            <View style={styles.paperLetterBody}>
+              {mainImage ? (
+                <FuneralComposedPhoto eventData={eventData} uri={mainImage} style={styles.paperLetterPhotoHero} />
+              ) : (
+                <View style={[styles.paperLetterPhotoHero, styles.paperLetterPhotoPlaceholder]}>
+                  <Ionicons name="person" size={46} color="#9CA3AF" />
+                </View>
+              )}
+              <Text style={styles.paperLetterName}>故 {deceasedName}</Text>
+              <Text style={styles.paperLetterSub}>
+                향년 {getDeceasedAge(eventData)}로 별세
+              </Text>
+              <View style={styles.paperLetterScheduleCard}>
+                <Text style={styles.paperLetterBodyTitle}>조문 일정</Text>
+                {funeralSchedule.map((item) => (
+                  <View key={item.label} style={[styles.paperLetterScheduleRow, item.isActive && styles.paperLetterScheduleRowActive]}>
+                    <View style={styles.paperLetterScheduleLabelWrap}>
+                      <Text style={styles.paperLetterScheduleLabel}>{item.label}</Text>
+                      <Text style={styles.paperLetterScheduleStatus}>{item.isActive ? '현재 진행' : '안내'}</Text>
+                    </View>
+                    <Text style={styles.paperLetterScheduleValue}>{item.value}</Text>
+                  </View>
+                ))}
+              </View>
+              <View style={styles.paperLetterSeparator} />
+              <Text style={styles.paperLetterBodyTitle}>상주</Text>
+              <View style={styles.paperLetterListWrap}>
+                {familyMembers.map((member) => (
+                  <Text key={`${member.relation}-${member.names}`} style={styles.paperLetterListItem}>
+                    {member.relation} · {member.names}
+                  </Text>
+                ))}
+              </View>
+              <Text style={styles.paperLetterBodyTitle}>안내</Text>
+              <Text style={styles.paperLetterBodyText}>
+                {eventData.funeralHome || eventData.funeral_home || '○○장례식장'} · {primaryContact}
+              </Text>
+              <Text style={styles.paperLetterBodyText}>{eventData.location || '주소를 입력해주세요'}</Text>
+            </View>
+          </View>
+
+          {customMessage && (
+            <View style={styles.paperLetterMessage}>
+              <Text style={styles.paperLetterMessageTitle}>상주의 말</Text>
+              <Text style={styles.paperLetterMessageText}>{customMessage}</Text>
+            </View>
+          )}
+
+          {allowMessages && (
+            <View style={styles.paperLetterMessage}>
+              <Text style={styles.paperLetterMessageTitle}>조문 메시지</Text>
+              <MessageList messages={messages} eventType="funeral" />
+            </View>
+          )}
+
+          {!isPreviewMode && allowMessages && (
+            <TouchableOpacity style={styles.paperLetterButton} onPress={() => setShowMessageModal(true)}>
+              <Text style={styles.paperLetterButtonText}>조문 메시지 남기기</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </SafeAreaView>
+
+      {!isPreviewMode && allowMessages && (
+        <MessageModal
+          visible={showMessageModal}
+          onClose={() => setShowMessageModal(false)}
+          onSubmit={handleMessageSubmit}
+          placeholder={messageSettings?.placeholder || '삼가 고인의 명복을 빕니다.'}
+          eventType="funeral"
+        />
+      )}
+    </ScrollView>
+  );
+};
+
 // 메인 컴포넌트
-const FuneralTemplatePreview = ({ template, eventData, userImages, categorizedImages, allowMessages, messageSettings, onMessageSubmit }) => {
+const FuneralTemplatePreview = ({ template, eventData, userImages, categorizedImages, allowMessages, messageSettings, onMessageSubmit, isPreviewMode = false }) => {
   const renderTemplate = () => {
     const templateProps = {
       eventData,
@@ -1176,17 +2259,26 @@ const FuneralTemplatePreview = ({ template, eventData, userImages, categorizedIm
       allowMessages,
       messageSettings,
       onMessageSubmit,
+      isPreviewMode,
     };
 
     switch (template?.style) {
       case 'traditional-dark':
+        return <ModernCardTemplate {...templateProps} />;
+      case 'certificate':
         return <CertificateTemplate {...templateProps} />;
       case 'modern-beige':
-        return <OfficialTemplate {...templateProps} />;
+        return <EditorialTimelineTemplate {...templateProps} />;
       case 'simple-white':
-        return <NewspaperTemplate {...templateProps} />;
+        return <PaperLetterTemplate {...templateProps} />;
+      case 'modern-card':
+        return <ModernCardTemplate {...templateProps} />;
+      case 'editorial-timeline':
+        return <EditorialTimelineTemplate {...templateProps} />;
+      case 'paper-letter':
+        return <PaperLetterTemplate {...templateProps} />;
       default:
-        return <CertificateTemplate {...templateProps} />;
+        return <ModernCardTemplate {...templateProps} />;
     }
   };
 
@@ -1194,6 +2286,1720 @@ const FuneralTemplatePreview = ({ template, eventData, userImages, categorizedIm
 };
 
 const styles = StyleSheet.create({
+  funeralComposedPhoto: {
+    position: 'relative',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f8fafc',
+  },
+  funeralComposedFrameCanvas: {
+    width: '100%',
+    maxHeight: '100%',
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#f8fafc',
+  },
+  funeralComposedBaseImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  funeralComposedFrameImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+    zIndex: 2,
+  },
+  funeralComposedNameOverlay: {
+    position: 'absolute',
+    top: '72%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    zIndex: 3,
+  },
+  funeralComposedDateOverlay: {
+    position: 'absolute',
+    top: '78%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    zIndex: 3,
+  },
+  funeralComposedNameText: {
+    textAlign: 'center',
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: '800',
+    includeFontPadding: false,
+  },
+  funeralComposedDateText: {
+    marginTop: 6,
+    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    includeFontPadding: false,
+  },
+  modernCardContainer: {
+    flex: 1,
+    backgroundColor: '#ece7dc',
+  },
+  modernCardCanvas: {
+    padding: 16,
+    gap: 12,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  modernDecorLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modernHanjiBackground: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+    opacity: 0.18,
+  },
+  modernInkWashTopLeft: {
+    position: 'absolute',
+    top: 4,
+    left: -48,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(41,37,32,0.10)',
+    transform: [{ scaleX: 1.4 }],
+  },
+  modernInkWashBottomRight: {
+    position: 'absolute',
+    right: -72,
+    bottom: 110,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(122,95,54,0.08)',
+    transform: [{ scaleX: 1.25 }],
+  },
+  modernOliveBranch: {
+    position: 'absolute',
+    right: -76,
+    top: 300,
+    width: 260,
+    height: 260,
+    opacity: 0.22,
+    transform: [{ rotate: '16deg' }],
+  },
+  modernSingleLeaf: {
+    position: 'absolute',
+    left: 22,
+    top: 760,
+    width: 86,
+    height: 86,
+    opacity: 0.18,
+    transform: [{ rotate: '-18deg' }],
+  },
+  modernMagnoliaPetals: {
+    position: 'absolute',
+    right: -18,
+    bottom: 410,
+    width: 150,
+    height: 150,
+    opacity: 0.22,
+    transform: [{ rotate: '14deg' }],
+  },
+  modernFloralDivider: {
+    position: 'absolute',
+    left: '12%',
+    top: 720,
+    width: '76%',
+    height: 50,
+    opacity: 0.12,
+  },
+  modernCottonFlower: {
+    position: 'absolute',
+    left: -70,
+    bottom: 250,
+    width: 210,
+    height: 210,
+    opacity: 0.24,
+    transform: [{ rotate: '-18deg' }],
+  },
+  modernFlowerCornerBottom: {
+    position: 'absolute',
+    left: -54,
+    bottom: -12,
+    width: 240,
+    height: 240,
+    opacity: 0.28,
+  },
+  modernFlowerCornerTop: {
+    position: 'absolute',
+    right: -68,
+    top: 1040,
+    width: 220,
+    height: 220,
+    opacity: 0.18,
+    transform: [{ rotate: '180deg' }],
+  },
+  modernCandleLeft: {
+    position: 'absolute',
+    left: 18,
+    top: 470,
+    alignItems: 'center',
+    opacity: 0.16,
+  },
+  modernCandleRight: {
+    position: 'absolute',
+    right: 22,
+    top: 470,
+    alignItems: 'center',
+    opacity: 0.16,
+  },
+  modernCandleFlame: {
+    width: 12,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#f4c76c',
+    marginBottom: -2,
+  },
+  modernCandleBody: {
+    width: 24,
+    height: 56,
+    borderRadius: 8,
+    backgroundColor: '#fff8ea',
+    borderWidth: 1,
+    borderColor: '#e2d4bd',
+  },
+  modernCandleBase: {
+    width: 40,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#a99067',
+    marginTop: -2,
+  },
+  modernCardHero: {
+    backgroundColor: 'rgba(255,253,247,0.88)',
+    borderRadius: 24,
+    paddingTop: 14,
+    paddingBottom: 20,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: '#d0bea0',
+    position: 'relative',
+    overflow: 'hidden',
+    shadowColor: '#4a3b2a',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.10,
+    shadowRadius: 18,
+    elevation: 3,
+  },
+  modernHeroBadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 10,
+    zIndex: 2,
+  },
+  modernHeroBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#0f172a',
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modernHeroDate: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  modernHeroTitle: {
+    fontSize: 34,
+    color: '#0f172a',
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textAlign: 'center',
+    zIndex: 1,
+  },
+  modernHeroOlive: {
+    position: 'absolute',
+    right: -74,
+    top: 0,
+    width: 230,
+    height: 190,
+    opacity: 0.48,
+    transform: [{ rotate: '18deg' }],
+  },
+  modernHeroPetals: {
+    position: 'absolute',
+    left: -42,
+    bottom: -12,
+    width: 170,
+    height: 170,
+    opacity: 0.40,
+    transform: [{ rotate: '-12deg' }],
+  },
+  modernHeroCotton: {
+    position: 'absolute',
+    right: 28,
+    bottom: -46,
+    width: 150,
+    height: 150,
+    opacity: 0.24,
+    transform: [{ rotate: '10deg' }],
+  },
+  modernHeroLeafAccent: {
+    position: 'absolute',
+    left: 18,
+    top: 28,
+    width: 72,
+    height: 72,
+    opacity: 0.22,
+    transform: [{ rotate: '-24deg' }],
+  },
+  modernHeroDivider: {
+    position: 'absolute',
+    top: 8,
+    left: '14%',
+    width: '72%',
+    height: 28,
+    opacity: 0.42,
+  },
+  modernHeroEyebrow: {
+    marginBottom: 8,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#8a6a2f',
+    fontWeight: '700',
+    textAlign: 'center',
+    zIndex: 1,
+  },
+  modernHeroNamePlate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    zIndex: 1,
+  },
+  modernHeroHonorific: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    overflow: 'hidden',
+    backgroundColor: '#2b2b2a',
+    color: '#f7efe2',
+    fontSize: 20,
+    lineHeight: 34,
+    fontWeight: '800',
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
+  },
+  modernHeroDetailGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+    zIndex: 1,
+  },
+  modernHeroDetailCard: {
+    flex: 1,
+    minHeight: 64,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderWidth: 1,
+    borderColor: '#e3d6c3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+  },
+  modernHeroDetailLabel: {
+    fontSize: 11,
+    color: '#9a7a43',
+    fontWeight: '800',
+    marginBottom: 5,
+  },
+  modernHeroDetailValue: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: '#1f2937',
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  modernCardProfile: {
+    borderRadius: 26,
+    backgroundColor: '#f8f4ec',
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#d8cdbb',
+    gap: 14,
+    alignItems: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  modernProfileOlive: {
+    position: 'absolute',
+    right: -74,
+    top: 54,
+    width: 230,
+    height: 170,
+    opacity: 0.28,
+    transform: [{ rotate: '18deg' }],
+  },
+  modernProfilePetals: {
+    position: 'absolute',
+    left: -34,
+    bottom: 42,
+    width: 150,
+    height: 150,
+    opacity: 0.22,
+    transform: [{ rotate: '-12deg' }],
+  },
+  modernCardPhoto: {
+    width: 84,
+    height: 100,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+  },
+  modernCardPhotoHero: {
+    width: '100%',
+    height: FUNERAL_PREVIEW_FULL_HERO_HEIGHT,
+    borderRadius: 18,
+    backgroundColor: '#f1f5f9',
+    overflow: 'hidden',
+    zIndex: 1,
+  },
+  modernPhotoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modernCardNameBlock: {
+    width: '100%',
+    gap: 6,
+    marginTop: 8,
+  },
+  modernNameChip: {
+    fontSize: 13,
+    color: '#0f172a',
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  modernHostGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    zIndex: 1,
+  },
+  modernHostPill: {
+    minWidth: '30%',
+    flexGrow: 1,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.62)',
+    borderWidth: 1,
+    borderColor: '#ebe4d8',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  modernHostRelation: {
+    fontSize: 11,
+    color: '#8a6a2f',
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  modernHostName: {
+    fontSize: 14,
+    color: '#1f2937',
+    fontWeight: '700',
+    lineHeight: 19,
+  },
+  modernSectionTitle: {
+    fontSize: 16,
+    color: '#0f172a',
+    fontWeight: '800',
+  },
+  modernSectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+    zIndex: 1,
+  },
+  modernSectionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#2b2b2a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#45413b',
+  },
+  modernSectionCopy: {
+    flex: 1,
+  },
+  modernSectionCaption: {
+    marginTop: 3,
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '600',
+  },
+  modernInfoBlock: {
+    backgroundColor: 'rgba(255,253,248,0.82)',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#ded5c6',
+    padding: 16,
+    gap: 10,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  modernHostOlive: {
+    position: 'absolute',
+    right: -62,
+    top: -24,
+    width: 190,
+    height: 170,
+    opacity: 0.34,
+    transform: [{ rotate: '22deg' }],
+  },
+  modernHostLeaf: {
+    position: 'absolute',
+    left: 12,
+    bottom: 4,
+    width: 74,
+    height: 74,
+    opacity: 0.22,
+    transform: [{ rotate: '-16deg' }],
+  },
+  modernScheduleDivider: {
+    alignSelf: 'center',
+    width: '82%',
+    height: 22,
+    opacity: 0.58,
+    marginTop: -16,
+    marginBottom: -10,
+    zIndex: 1,
+  },
+  modernScheduleFlower: {
+    position: 'absolute',
+    right: -58,
+    top: -20,
+    width: 210,
+    height: 210,
+    opacity: 0.40,
+    transform: [{ rotate: '12deg' }],
+  },
+  modernScheduleLeaf: {
+    position: 'absolute',
+    left: -8,
+    bottom: 2,
+    width: 110,
+    height: 110,
+    opacity: 0.32,
+    transform: [{ rotate: '-14deg' }],
+  },
+  modernScheduleGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    zIndex: 1,
+  },
+  modernScheduleCard: {
+    flex: 1,
+    minHeight: 136,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderWidth: 1,
+    borderColor: '#d9dde3',
+    padding: 11,
+    shadowColor: '#4a3b2a',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  modernScheduleCardOrnament: {
+    position: 'absolute',
+    left: -28,
+    bottom: -26,
+    width: 86,
+    height: 86,
+    opacity: 0.22,
+    transform: [{ rotate: '-16deg' }],
+  },
+  modernScheduleCardOrnamentCenter: {
+    left: 'auto',
+    right: -34,
+    bottom: -22,
+    width: 96,
+    height: 96,
+    opacity: 0.20,
+    transform: [{ rotate: '10deg' }],
+  },
+  modernScheduleCardOrnamentRight: {
+    left: -20,
+    bottom: -22,
+    width: 92,
+    height: 92,
+    opacity: 0.23,
+    transform: [{ rotate: '-24deg' }],
+  },
+  modernScheduleCardActive: {
+    backgroundColor: '#fff4dc',
+    borderColor: '#c9a96a',
+  },
+  modernScheduleActiveGlow: {
+    position: 'absolute',
+    top: -26,
+    right: -28,
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    backgroundColor: 'rgba(201,169,106,0.28)',
+  },
+  modernScheduleCornerMark: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#c9a96a',
+    borderWidth: 4,
+    borderColor: '#fff7e8',
+  },
+  modernScheduleIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginTop: 6,
+    marginBottom: 9,
+  },
+  modernScheduleIconCircleActive: {
+    backgroundColor: 'rgba(201,169,106,0.16)',
+  },
+  modernScheduleSymbol: {
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '800',
+    color: '#7b8492',
+    fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
+  },
+  modernScheduleSymbolActive: {
+    color: '#6f5424',
+  },
+  modernScheduleTop: {
+    minHeight: 44,
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  modernScheduleStep: {
+    marginBottom: 5,
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '800',
+    color: '#a1a1aa',
+  },
+  modernScheduleStepActive: {
+    color: '#8a6a2f',
+  },
+  modernScheduleLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1f2937',
+  },
+  modernScheduleLabelActive: {
+    color: '#6f5424',
+  },
+  modernScheduleActivePill: {
+    alignSelf: 'flex-start',
+    marginTop: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: '#6f5424',
+    overflow: 'hidden',
+  },
+  modernScheduleActiveText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  modernScheduleValue: {
+    fontSize: 12,
+    color: '#374151',
+    lineHeight: 17,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  modernInfoList: {
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.70)',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#ebe4d8',
+    zIndex: 1,
+  },
+  modernInfoPetals: {
+    position: 'absolute',
+    right: -28,
+    top: 30,
+    width: 150,
+    height: 150,
+    opacity: 0.26,
+    transform: [{ rotate: '11deg' }],
+  },
+  modernInfoCotton: {
+    position: 'absolute',
+    left: -54,
+    bottom: -54,
+    width: 170,
+    height: 170,
+    opacity: 0.24,
+    transform: [{ rotate: '-18deg' }],
+  },
+  modernInfoDivider: {
+    position: 'absolute',
+    left: '12%',
+    top: 54,
+    width: '76%',
+    height: 34,
+    opacity: 0.46,
+  },
+  modernGuideLeafA: {
+    position: 'absolute',
+    right: 26,
+    top: 74,
+    width: 90,
+    height: 90,
+    opacity: 0.26,
+    transform: [{ rotate: '18deg' }],
+  },
+  modernGuideOlive: {
+    position: 'absolute',
+    left: -66,
+    bottom: -30,
+    width: 190,
+    height: 170,
+    opacity: 0.24,
+    transform: [{ rotate: '-22deg' }],
+  },
+  modernAccountDivider: {
+    position: 'absolute',
+    left: '14%',
+    top: 46,
+    width: '72%',
+    height: 34,
+    opacity: 0.58,
+  },
+  modernAccountLeaf: {
+    position: 'absolute',
+    right: -10,
+    bottom: -14,
+    width: 110,
+    height: 110,
+    opacity: 0.25,
+    transform: [{ rotate: '22deg' }],
+  },
+  modernInfoRow: {
+    minHeight: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ebe4d8',
+  },
+  modernInfoRowText: {
+    flex: 1,
+    gap: 4,
+  },
+  modernInfoLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '700',
+  },
+  modernInfoValue: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '600',
+    lineHeight: 21,
+  },
+  modernMessageBox: {
+    backgroundColor: 'rgba(255,255,255,0.58)',
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#ebe4d8',
+    overflow: 'hidden',
+    minHeight: 88,
+    zIndex: 1,
+  },
+  modernMessageOlive: {
+    position: 'absolute',
+    right: -68,
+    top: 8,
+    width: 200,
+    height: 170,
+    opacity: 0.32,
+    transform: [{ rotate: '16deg' }],
+  },
+  modernMessagePetals: {
+    position: 'absolute',
+    left: -34,
+    bottom: -18,
+    width: 150,
+    height: 150,
+    opacity: 0.28,
+    transform: [{ rotate: '-12deg' }],
+  },
+  modernGuestbookFlower: {
+    position: 'absolute',
+    right: -42,
+    top: -28,
+    width: 170,
+    height: 170,
+    opacity: 0.26,
+    transform: [{ rotate: '12deg' }],
+  },
+  modernGuestbookDivider: {
+    position: 'absolute',
+    left: '10%',
+    top: 58,
+    width: '80%',
+    height: 42,
+    opacity: 0.52,
+  },
+  modernMessageOrnament: {
+    position: 'absolute',
+    right: 16,
+    bottom: 10,
+    opacity: 0.75,
+  },
+  modernMessageText: {
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 20,
+  },
+  modernActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 24,
+  },
+  modernPrimaryButton: {
+    flex: 1,
+    backgroundColor: '#1d4ed8',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modernPrimaryButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  modernGhostButton: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#ffffff',
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modernGhostButtonText: {
+    color: '#334155',
+    fontWeight: '700',
+  },
+
+  timelineContainer: {
+    flex: 1,
+    backgroundColor: '#F2EFE8',
+  },
+  timelineCanvas: {
+    padding: 16,
+    gap: 14,
+  },
+  timelineHeader: {
+    backgroundColor: '#FFFDF8',
+    borderWidth: 1,
+    borderColor: '#D7C7AA',
+    borderRadius: 0,
+    padding: 20,
+    gap: 8,
+    overflow: 'hidden',
+    borderTopWidth: 6,
+    borderTopColor: '#2B2B2A',
+  },
+  timelineHeaderTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timelineHeaderTitle: {
+    color: '#8A6A2F',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  timelineHeaderIndex: {
+    color: '#FFFDF8',
+    fontSize: 13,
+    fontWeight: '900',
+    backgroundColor: '#2B2B2A',
+    borderRadius: 999,
+    overflow: 'hidden',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  timelineHeaderName: {
+    fontSize: 34,
+    color: '#111827',
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
+  timelineHeaderMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  timelineHeaderMeta: {
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  timelineMetaDivider: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D7C7AA',
+  },
+  timelineVisual: {
+    position: 'relative',
+    borderRadius: 0,
+    borderWidth: 0,
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    alignItems: 'center',
+    gap: 12,
+    overflow: 'hidden',
+  },
+  timelinePhoto: {
+    width: 86,
+    height: 108,
+    borderRadius: 14,
+    backgroundColor: '#f1f5f9',
+  },
+  timelinePhotoHero: {
+    width: '100%',
+    height: FUNERAL_PREVIEW_FULL_HERO_HEIGHT,
+    borderRadius: 0,
+    backgroundColor: '#f1f5f9',
+    overflow: 'hidden',
+  },
+  timelineVisualCaption: {
+    width: '100%',
+    borderRadius: 0,
+    backgroundColor: '#F8F4EC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+  },
+  timelineVisualCaptionTitle: {
+    color: '#111827',
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  timelineVisualCaptionText: {
+    color: '#64748B',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  timelineLine: {
+    height: 8,
+    borderRadius: 999,
+    width: 72,
+    backgroundColor: '#ffedd5',
+  },
+  timelineFamilyPillWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    rowGap: 8,
+    columnGap: 8,
+  },
+  timelineFamilyPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 0,
+    backgroundColor: '#2B2B2A',
+    color: '#F8F4EC',
+    fontSize: 12,
+    fontWeight: '800',
+    overflow: 'hidden',
+  },
+  timelineBox: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D7C7AA',
+    borderRadius: 0,
+    padding: 16,
+    gap: 12,
+  },
+  timelineSectionHead: {
+    gap: 3,
+    marginBottom: 2,
+  },
+  timelineSectionKicker: {
+    color: '#8A6A2F',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+  },
+  timelineTitle: {
+    fontSize: 18,
+    color: '#111827',
+    fontWeight: '900',
+  },
+  timelineSimpleList: {
+    gap: 0,
+  },
+  timelineSimpleItem: {
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 96,
+  },
+  timelineSimpleItemActive: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingTop: 10,
+    paddingRight: 10,
+    marginLeft: -4,
+    marginBottom: 4,
+  },
+  timelineSimpleMarkerWrap: {
+    width: 34,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  timelineSimpleMarker: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  timelineSimpleMarkerActive: {
+    backgroundColor: '#344256',
+    borderColor: '#344256',
+  },
+  timelineSimpleMarkerText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  timelineSimpleMarkerTextActive: {
+    color: '#FFFFFF',
+  },
+  timelineSimpleLine: {
+    position: 'absolute',
+    top: 30,
+    bottom: -2,
+    width: 1,
+    backgroundColor: '#CBD5E1',
+  },
+  timelineSimpleBody: {
+    flex: 1,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingBottom: 14,
+  },
+  timelineSimpleTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 7,
+  },
+  timelineSimpleDay: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    marginBottom: 3,
+  },
+  timelineSimpleLabel: {
+    color: '#111827',
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  timelineSimpleValue: {
+    color: '#334155',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '800',
+    marginBottom: 3,
+  },
+  timelineSimpleDetail: {
+    color: '#64748B',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  timelinePosterSection: {
+    backgroundColor: '#EDE7DB',
+    padding: 14,
+    gap: 12,
+  },
+  timelinePosterHead: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#2B2B2A',
+    paddingBottom: 10,
+  },
+  timelinePosterKicker: {
+    color: '#8A6A2F',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.8,
+    marginBottom: 4,
+  },
+  timelinePosterTitle: {
+    color: '#111827',
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '900',
+  },
+  timelinePosterGrid: {
+    gap: 10,
+  },
+  timelinePosterPanel: {
+    minHeight: 172,
+    backgroundColor: '#F8F4EC',
+    padding: 16,
+    position: 'relative',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#D7C7AA',
+  },
+  timelinePosterPanelActive: {
+    backgroundColor: '#2B2B2A',
+    borderColor: '#2B2B2A',
+  },
+  timelinePosterIndex: {
+    position: 'absolute',
+    right: 12,
+    top: 8,
+    color: 'rgba(43,43,42,0.12)',
+    fontSize: 72,
+    lineHeight: 78,
+    fontWeight: '900',
+  },
+  timelinePosterIndexActive: {
+    color: 'rgba(248,244,236,0.14)',
+  },
+  timelinePosterWord: {
+    color: '#2B2B2A',
+    fontSize: 46,
+    lineHeight: 52,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  timelinePosterWordActive: {
+    color: '#F8F4EC',
+  },
+  timelinePosterLine: {
+    width: 68,
+    height: 4,
+    backgroundColor: '#8A6A2F',
+    marginTop: 6,
+    marginBottom: 16,
+  },
+  timelinePosterCopy: {
+    maxWidth: '82%',
+    gap: 4,
+  },
+  timelinePosterLabel: {
+    color: '#111827',
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  timelinePosterLabelActive: {
+    color: '#FFFFFF',
+  },
+  timelinePosterValue: {
+    color: '#334155',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '800',
+  },
+  timelinePosterValueActive: {
+    color: '#E5E7EB',
+  },
+  timelinePosterDetail: {
+    color: '#64748B',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  timelinePosterDetailActive: {
+    color: '#CBD5E1',
+  },
+  timelinePosterNow: {
+    position: 'absolute',
+    right: 14,
+    bottom: 14,
+    backgroundColor: '#F8F4EC',
+    color: '#2B2B2A',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    fontSize: 11,
+    fontWeight: '900',
+    overflow: 'hidden',
+  },
+  timelineRecordSection: {
+    backgroundColor: '#FFFDF8',
+    borderTopWidth: 3,
+    borderBottomWidth: 3,
+    borderColor: '#2B2B2A',
+    paddingVertical: 18,
+    paddingHorizontal: 2,
+  },
+  timelineRecordHead: {
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2B2B2A',
+  },
+  timelineRecordKicker: {
+    color: '#8A6A2F',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.8,
+    marginBottom: 3,
+  },
+  timelineRecordTitle: {
+    color: '#111827',
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: '900',
+  },
+  timelineRecordList: {
+    paddingHorizontal: 14,
+  },
+  timelineRecordItem: {
+    position: 'relative',
+    minHeight: 132,
+    borderBottomWidth: 1,
+    borderBottomColor: '#D7C7AA',
+    paddingVertical: 18,
+    overflow: 'hidden',
+  },
+  timelineRecordItemActive: {
+    backgroundColor: '#F8F4EC',
+    marginHorizontal: -14,
+    paddingHorizontal: 14,
+  },
+  timelineRecordNumber: {
+    position: 'absolute',
+    right: 2,
+    top: -2,
+    color: 'rgba(43,43,42,0.08)',
+    fontSize: 84,
+    lineHeight: 92,
+    fontWeight: '900',
+  },
+  timelineRecordContent: {
+    maxWidth: '82%',
+  },
+  timelineRecordTopLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginBottom: 7,
+  },
+  timelineRecordDay: {
+    color: '#8A6A2F',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+  timelineRecordDayActive: {
+    color: '#2B2B2A',
+  },
+  timelineRecordLabel: {
+    color: '#111827',
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '900',
+    marginBottom: 6,
+  },
+  timelineRouteMap: {
+    height: 118,
+    borderRadius: 6,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 18,
+    paddingTop: 26,
+    position: 'relative',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+  },
+  timelineRouteLine: {
+    position: 'absolute',
+    left: 46,
+    right: 46,
+    top: 47,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: '#CBD5E1',
+  },
+  timelineRouteStation: {
+    width: 72,
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  timelineRouteDot: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  timelineRouteDotActive: {
+    backgroundColor: '#344256',
+    borderColor: '#344256',
+  },
+  timelineRouteDotText: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  timelineRouteDotTextActive: {
+    color: '#FFFFFF',
+  },
+  timelineRouteLabel: {
+    color: '#334155',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  timelineRouteLabelActive: {
+    color: '#111827',
+  },
+  timelineRouteNow: {
+    marginTop: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: '#344256',
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  timelineStationDetailList: {
+    gap: 8,
+  },
+  timelineStationDetailCard: {
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    padding: 13,
+  },
+  timelineStationDetailCardActive: {
+    borderColor: '#344256',
+    backgroundColor: '#F8FAFC',
+  },
+  timelineStationNumber: {
+    width: 28,
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    gap: 14,
+    position: 'relative',
+    minHeight: 98,
+  },
+  timelineRowActive: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 4,
+    paddingVertical: 10,
+    paddingRight: 10,
+    marginLeft: -4,
+  },
+  timelineRail: {
+    width: 38,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  timelineNode: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  timelineNodeActive: {
+    backgroundColor: '#344256',
+    borderColor: '#344256',
+  },
+  timelineNodeText: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  timelineNodeTextActive: {
+    color: '#FFFFFF',
+  },
+  timelineRailLine: {
+    position: 'absolute',
+    top: 34,
+    bottom: -64,
+    width: 2,
+    backgroundColor: '#CBD5E1',
+  },
+  timelineDay: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    marginBottom: 3,
+  },
+  timelineContent: {
+    flex: 1,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingBottom: 14,
+  },
+  timelineLabel: {
+    fontSize: 18,
+    color: '#111827',
+    fontWeight: '900',
+  },
+  timelineLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  timelineLabelActive: {
+    color: '#111827',
+  },
+  timelineCurrentBadge: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    backgroundColor: '#2B2B2A',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
+  timelineValue: {
+    fontSize: 14,
+    color: '#334155',
+    marginBottom: 4,
+    fontWeight: '800',
+  },
+  timelineDetail: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 18,
+  },
+  timelineInfoRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  timelineInfoIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 0,
+    backgroundColor: '#2B2B2A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timelineInfoCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  timelineInfoLabel: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  timelineInfoText: {
+    color: '#334155',
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  timelineMessageText: {
+    color: '#334155',
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 4,
+  },
+
+  paperLetterContainer: {
+    flex: 1,
+    backgroundColor: '#f5efe6',
+  },
+  paperLetterCanvas: {
+    padding: 16,
+    gap: 12,
+  },
+  paperLetterRibbon: {
+    textAlign: 'center',
+    color: '#5f4e39',
+    fontWeight: '700',
+    marginBottom: -6,
+  },
+  paperLetterCard: {
+    borderRadius: 6,
+    backgroundColor: '#fffdf8',
+    borderWidth: 1,
+    borderColor: '#d6cec0',
+    padding: 22,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  paperLetterTitle: {
+    textAlign: 'center',
+    fontSize: 34,
+    color: '#5f4e39',
+    letterSpacing: 4,
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
+  },
+  paperLetterDateText: {
+    textAlign: 'center',
+    color: '#6b7280',
+    fontSize: 12,
+  },
+  paperLetterBody: {
+    marginTop: 12,
+    gap: 10,
+  },
+  paperLetterName: {
+    fontSize: 28,
+    color: '#111827',
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
+  },
+  paperLetterSub: {
+    color: '#4b5563',
+    marginBottom: 2,
+  },
+  paperLetterPhoto: {
+    width: 90,
+    height: 110,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    alignSelf: 'center',
+    marginVertical: 6,
+  },
+  paperLetterPhotoHero: {
+    width: '100%',
+    height: FUNERAL_PREVIEW_PAPER_HERO_HEIGHT,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    marginBottom: 6,
+    overflow: 'hidden',
+  },
+  paperLetterPhotoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paperLetterSeparator: {
+    height: 1,
+    backgroundColor: '#ddd0b8',
+    marginTop: 4,
+  },
+  paperLetterBodyTitle: {
+    color: '#7c6b52',
+    fontWeight: '700',
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  paperLetterScheduleCard: {
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#e7dfd0',
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: '#fffdf8',
+    gap: 8,
+  },
+  paperLetterScheduleRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#eadfc7',
+    paddingTop: 8,
+    gap: 4,
+  },
+  paperLetterScheduleRowActive: {
+    backgroundColor: '#f9ede0',
+    borderColor: '#d6a57f',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 8,
+    marginHorizontal: -6,
+    marginBottom: 4,
+  },
+  paperLetterScheduleLabelWrap: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  paperLetterScheduleLabel: {
+    fontSize: 13,
+    color: '#3f372b',
+    fontWeight: '700',
+  },
+  paperLetterScheduleStatus: {
+    fontSize: 11,
+    color: '#7c4a1d',
+    backgroundColor: '#fde68a',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    overflow: 'hidden',
+    fontWeight: '700',
+  },
+  paperLetterScheduleValue: {
+    marginTop: 2,
+    fontSize: 13,
+    color: '#4b5563',
+    lineHeight: 20,
+  },
+  paperLetterBodyText: {
+    color: '#4b5563',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  paperLetterListWrap: {
+    gap: 4,
+    paddingBottom: 2,
+  },
+  paperLetterListItem: {
+    color: '#111827',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  paperLetterMessage: {
+    backgroundColor: '#fffef9',
+    borderRadius: 12,
+    borderColor: '#e7dfd0',
+    borderWidth: 1,
+    padding: 14,
+    gap: 8,
+  },
+  paperLetterMessageTitle: {
+    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  paperLetterMessageText: {
+    color: '#4b5563',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  paperLetterButton: {
+    borderRadius: 999,
+    backgroundColor: '#5f4e39',
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 24,
+  },
+  paperLetterButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  funeralGuideSection: {
+    marginVertical: 20,
+    padding: 18,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  funeralGuideSectionDark: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  funeralGuideTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  funeralGuideTitleDark: {
+    color: '#FFFFFF',
+  },
+  funeralGuideItem: {
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  funeralGuideLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  funeralGuideLabelDark: {
+    color: 'rgba(255,255,255,0.72)',
+  },
+  funeralGuideValue: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#1F2937',
+  },
+  funeralGuideValueDark: {
+    color: '#FFFFFF',
+  },
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
@@ -1402,13 +4208,13 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   certificatePhotoWrapper: {
-    width: 80,
-    height: 104,
+    width: FUNERAL_PREVIEW_FRAME_WIDTH,
+    height: FUNERAL_PREVIEW_FRAME_HEIGHT,
     backgroundColor: '#f0f0f0',
-    borderWidth: 2,
-    borderColor: '#ddd',
-    marginBottom: 16,
-    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 24,
+    borderRadius: 18,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1744,12 +4550,13 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   officialPhotoWrapper: {
-    width: 80,
-    height: 104,
+    width: FUNERAL_PREVIEW_FRAME_WIDTH,
+    height: FUNERAL_PREVIEW_FRAME_HEIGHT,
     backgroundColor: '#f0f0f0',
     borderWidth: 1,
-    borderColor: '#ddd',
-    marginBottom: 16,
+    borderColor: '#e5e7eb',
+    borderRadius: 18,
+    marginBottom: 24,
     alignSelf: 'center',
     overflow: 'hidden',
   },
@@ -2048,11 +4855,12 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   newspaperPhotoFrame: {
-    width: 80,
-    height: 104,
+    width: FUNERAL_PREVIEW_FRAME_WIDTH,
+    height: FUNERAL_PREVIEW_FRAME_HEIGHT,
     backgroundColor: '#f0f0f0',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#e5e7eb',
+    borderRadius: 18,
     overflow: 'hidden',
   },
   newspaperPhoto: {

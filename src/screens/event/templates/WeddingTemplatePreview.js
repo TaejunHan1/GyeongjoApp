@@ -14,6 +14,8 @@ import RomanticArchTemplate from './wedding/RomanticArchTemplate';
 import EditorialMagazineTemplate from './wedding/EditorialMagazineTemplate';
 import TicketFlightTemplate from './wedding/TicketFlightTemplate';
 import CinemaTemplate from './wedding/CinemaTemplate';
+import RunicRiftTemplate from './wedding/RunicRiftTemplate';
+import PhotoBookTemplate from './wedding/PhotoBookTemplate';
 
 // 메인 렌더링 컴포넌트
 export default function WeddingTemplatePreview({
@@ -66,6 +68,10 @@ export default function WeddingTemplatePreview({
       return <TicketFlightTemplate {...commonProps} />;
     case 'cinema-romance':
       return <CinemaTemplate {...commonProps} />;
+    case 'runic-rift':
+      return <RunicRiftTemplate {...commonProps} />;
+    case 'photo-book':
+      return <PhotoBookTemplate {...commonProps} />;
     case 'romantic-arch':
       return <RomanticArchTemplate {...commonProps} />;
     case 'editorial-magazine':

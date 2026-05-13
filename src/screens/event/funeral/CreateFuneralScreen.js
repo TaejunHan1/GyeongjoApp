@@ -1,5 +1,5 @@
 // src/screens/event/funeral/CreateFuneralScreen.js
-import React, { useState, useRef }from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
   Modal,
   Animated,
   Easing,
+  PanResponder,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,7 +27,8 @@ import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUs
 import DaumPostcode from '../../../components/DaumPostcode';
 import FuneralTemplatePreview from '../templates/FuneralTemplatePreview';
 
-const { height } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
+const calendarDaySize = Math.floor((width - 40) / 7);
 
 // 토스 컬러 시스템
 const TossColors = {
@@ -45,6 +47,252 @@ const TossColors = {
   overlay: 'rgba(0, 0, 0, 0.4)',
 };
 
+const MAIN_IMAGE_LAYOUT_DEFAULT = {
+  scale: 1,
+  translateX: 0,
+  translateY: 0,
+};
+const MEMORIAL_TEXT_LAYOUT_DEFAULT = {
+  scale: 1,
+  translateX: 0,
+  translateY: 0,
+};
+const MEMORIAL_NAME_LAYOUT_DEFAULT = {
+  scale: 1,
+  translateX: 0,
+  translateY: 0,
+};
+const MEMORIAL_DATE_LAYOUT_DEFAULT = {
+  scale: 1,
+  translateX: 0,
+  translateY: 0,
+};
+const MAIN_IMAGE_MIN_SCALE = 0.25;
+const MAIN_IMAGE_MAX_SCALE = 3;
+const MAIN_IMAGE_TRANSLATE_LIMIT = 5000;
+const MEMORIAL_TEXT_MIN_SCALE = 0.35;
+const MEMORIAL_TEXT_MAX_SCALE = 1.8;
+const MEMORIAL_TEXT_TRANSLATE_LIMIT = 500;
+
+const FUNERAL_STEP_COUNT = 3;
+
+const MEMORIAL_TEXT_FONT_OPTIONS = [
+  // 종이 청첩장 디자이너와 동일한 폰트 옵션
+  {
+    id: 'serif',
+    label: '명조',
+    name: '명조',
+    sample: '가나',
+    description: '정갈하고 차분한 기본 명조체',
+    fontFamily: 'NanumMyeongjo',
+    script: 'ko',
+  },
+  {
+    id: 'sans',
+    label: '고딕',
+    name: '고딕',
+    sample: '가나',
+    description: '모바일에서 또렷하게 읽히는 고딕체',
+    fontFamily: 'GowunDodum',
+    script: 'ko',
+  },
+  {
+    id: 'nanum-myeongjo',
+    label: '나눔명조',
+    name: '나눔명조',
+    sample: '가나',
+    description: '부고장에 잘 맞는 단정한 명조체',
+    fontFamily: 'NanumMyeongjo',
+    script: 'ko',
+  },
+  {
+    id: 'hahmlet',
+    label: '함렛',
+    name: '함렛',
+    sample: '가나',
+    description: '획이 안정적인 문예적인 글꼴',
+    fontFamily: 'Hahmlet',
+    script: 'ko',
+  },
+  {
+    id: 'gowun-batang',
+    label: '고운바탕',
+    name: '고운바탕',
+    sample: '가나',
+    description: '한글 본문과 이름에 모두 어울리는 바탕체',
+    fontFamily: 'GowunBatang',
+    script: 'ko',
+  },
+  {
+    id: 'gowun-dodum',
+    label: '고운돋움',
+    name: '고운돋움',
+    sample: '가나',
+    description: '부드럽고 깨끗한 돋움체',
+    fontFamily: 'GowunDodum',
+    script: 'ko',
+  },
+  {
+    id: 'sunflower',
+    label: '선플라워',
+    name: '선플라워',
+    sample: '가나',
+    description: '얇고 담백한 분위기의 한글 글꼴',
+    fontFamily: 'Sunflower',
+    script: 'ko',
+  },
+  {
+    id: 'black-han',
+    label: '블랙한산스',
+    name: '블랙한산스',
+    sample: '가나',
+    description: '강한 제목용 글꼴',
+    fontFamily: 'BlackHanSans',
+    script: 'ko',
+  },
+  {
+    id: 'yeon-sung',
+    label: '연성',
+    name: '연성',
+    sample: '가나',
+    description: '손글씨 느낌이 있는 한글 글꼴',
+    fontFamily: 'YeonSung',
+    script: 'ko',
+  },
+  {
+    id: 'single-day',
+    label: '싱글데이',
+    name: '싱글데이',
+    sample: '가나',
+    description: '둥글고 가벼운 손글씨 글꼴',
+    fontFamily: 'SingleDay',
+    script: 'ko',
+  },
+  {
+    id: 'playfair',
+    label: 'Playfair',
+    name: 'Playfair',
+    sample: 'Aa',
+    description: '숫자 날짜에 어울리는 영문 세리프',
+    fontFamily: 'PlayfairDisplay',
+    script: 'latin',
+  },
+  {
+    id: 'garamond',
+    label: 'Garamond',
+    name: 'Garamond',
+    sample: 'Aa',
+    description: '숫자 날짜에 어울리는 고전적인 영문 세리프',
+    fontFamily: 'EBGaramond',
+    script: 'latin',
+  },
+  {
+    id: 'cinzel',
+    label: 'Cinzel',
+    name: 'Cinzel',
+    sample: 'Aa',
+    description: '숫자 날짜에 어울리는 격식 있는 영문 글꼴',
+    fontFamily: 'Cinzel',
+    script: 'latin',
+  },
+  {
+    id: 'great-vibes',
+    label: 'Vibes',
+    name: 'Vibes',
+    sample: 'Aa',
+    description: '숫자 날짜에 어울리는 우아한 영문 스크립트',
+    fontFamily: 'Great Vibes',
+    script: 'latin',
+  },
+  {
+    id: 'italianno',
+    label: 'Italianno',
+    name: 'Italianno',
+    sample: 'Aa',
+    description: '숫자 날짜에 어울리는 섬세한 영문 필기체',
+    fontFamily: 'Italianno',
+    script: 'latin',
+  },
+  {
+    id: 'dancing',
+    label: 'Dancing',
+    name: 'Dancing',
+    sample: 'Aa',
+    description: '숫자 날짜에 어울리는 자연스러운 영문 손글씨',
+    fontFamily: 'DancingScript',
+    script: 'latin',
+  },
+  {
+    id: 'tangerine',
+    label: 'Tangerine',
+    name: 'Tangerine',
+    sample: 'Aa',
+    description: '숫자 날짜에 어울리는 가늘고 장식적인 영문 필기체',
+    fontFamily: 'Tangerine',
+    script: 'latin',
+  },
+];
+
+const MEMORIAL_TEXT_COLOR_OPTIONS = [
+  { id: 'ink', label: '먹', value: '#222222' },
+  { id: 'charcoal', label: '차콜', value: '#444444' },
+  { id: 'gray', label: '회색', value: '#666666' },
+  { id: 'lightgray', label: '연회색', value: '#9AA1AA' },
+  { id: 'white', label: '흰색', value: '#FFFFFF' },
+  { id: 'black', label: '검정', value: '#000000' },
+  { id: 'brown', label: '브라운', value: '#4A3428' },
+  { id: 'mocha', label: '모카', value: '#6B4A3A' },
+  { id: 'gold', label: '골드', value: '#A8895A' },
+  { id: 'wine', label: '와인', value: '#722F37' },
+  { id: 'navy', label: '네이비', value: '#26364D' },
+  { id: 'forest', label: '포레스트', value: '#3C5A4E' },
+];
+
+const MEMORIAL_NAME_DEFAULT_COLOR = '#222222';
+const MEMORIAL_DATE_DEFAULT_COLOR = '#555555';
+
+const FUNERAL_PHOTO_FRAMES = [
+  {
+    id: 'photo-frame-modern-card',
+    key: 'funeral-template-modern-card',
+    name: '모던카드 액자',
+    source: require('../../../../assets/funeral/templates/funeral-template-modern-card.png'),
+  },
+  {
+    id: 'photo-frame-editorial-timeline',
+    key: 'funeral-template-editorial-timeline',
+    name: '타임라인 액자',
+    source: require('../../../../assets/funeral/templates/funeral-template-editorial-timeline.png'),
+  },
+  {
+    id: 'photo-frame-paper-letter',
+    key: 'funeral-template-paper-letter',
+    name: '레터지 액자',
+    source: require('../../../../assets/funeral/templates/funeral-template-paper-letter.png'),
+  },
+  {
+    id: 'photo-frame-certificate',
+    key: 'funeral-template-certificate',
+    name: '증명서형 액자',
+    source: require('../../../../assets/funeral/templates/funeral-template-certificate.png'),
+  },
+  {
+    id: 'photo-frame-classic-flower',
+    key: 'funeral-template-classic-flower',
+    name: '클래식 플라워 액자',
+    source: require('../../../../assets/funeral/templates/funeral-template-classic-flower.png'),
+  },
+];
+
+const MODERN_TEMPLATE_PREVIEW_ASSETS = {
+  flowerCorner: require('../../../../assets/studio/elements/2-white-flowers-bottom-left.png'),
+  cottonFlower: require('../../../../assets/studio/elements/14-cotton-flower.png'),
+  divider: require('../../../../assets/studio/elements/18-divider-flower-horizontal.png'),
+  oliveBranch: require('../../../../assets/studio/elements/7-olive-branch.png'),
+  singleLeaf: require('../../../../assets/studio/elements/10-single-leaf-small.png'),
+  petals: require('../../../../assets/studio/elements/12-magnolia-petals.png'),
+};
+
 // 사진 카테고리 설정 - 부고용 (고인 사진만)
 const FUNERAL_PHOTO_CATEGORIES = {
   main: {
@@ -52,10 +300,168 @@ const FUNERAL_PHOTO_CATEGORIES = {
     label: '고인 사진',
     icon: '🖼️',
     description: '부고에 표시될 고인의 사진',
-    maxCount: 3,
+    maxCount: 1,
     required: true,
   },
 };
+
+const UPLOAD_TIMEOUT_MS = 45000;
+const IMAGE_PREP_TIMEOUT_MS = 25000;
+const PHOTO_JOYSTICK_LIMIT = 32;
+const PHOTO_JOYSTICK_VELOCITY = 1.35;
+const PHOTO_JOYSTICK_DEAD_ZONE = 5;
+
+const BANK_LOGOS = {
+  NH: require('../../../../assets/BankLogosAscii/nhbank.png'),
+  KB: require('../../../../assets/BankLogosAscii/kbbank.png'),
+  KAKAO: require('../../../../assets/BankLogosAscii/kakaobank.png'),
+  SHINHAN: require('../../../../assets/BankLogosAscii/shinhanjejubank.png'),
+  WOORI: require('../../../../assets/BankLogosAscii/wooribank.png'),
+  IBK: require('../../../../assets/BankLogosAscii/ibkbank.png'),
+  HANA: require('../../../../assets/BankLogosAscii/hanabank.png'),
+  SAEMAEUL: require('../../../../assets/BankLogosAscii/mono.png'),
+  DGB: require('../../../../assets/BankLogosAscii/imbank.png'),
+  BNK: require('../../../../assets/BankLogosAscii/kyongnambusanbank.png'),
+  KBANK: require('../../../../assets/BankLogosAscii/kbank.png'),
+  POST: require('../../../../assets/BankLogosAscii/postofficebank.png'),
+  SH: require('../../../../assets/BankLogosAscii/shbank.png'),
+  GWANGJU: require('../../../../assets/BankLogosAscii/gwangjujeonbukbank.png'),
+  JEONBUK: require('../../../../assets/BankLogosAscii/gwangjujeonbukbank.png'),
+  TOSS: require('../../../../assets/BankLogosAscii/tossbank.png'),
+  SAVINGS: require('../../../../assets/BankLogosAscii/sbibank.png'),
+  SC: require('../../../../assets/BankLogosAscii/scbank.png'),
+  CITI: require('../../../../assets/BankLogosAscii/citibank.png'),
+  KDB: require('../../../../assets/BankLogosAscii/kdbbank.png'),
+  CREDIT: require('../../../../assets/BankLogosAscii/creditunion.png'),
+  KYONGNAM: require('../../../../assets/BankLogosAscii/kyongnambusanbank.png'),
+  JEJU: require('../../../../assets/BankLogosAscii/shinhanjejubank.png'),
+};
+
+const BANKS = [
+  { code: 'GWANGJU', name: '광주은행', color: '#0066B3' },
+  { code: 'KYONGNAM', name: '경남은행', color: '#D4001E' },
+  { code: 'KB', name: 'KB국민은행', color: '#FFB300' },
+  { code: 'KDB', name: 'KDB산업은행', color: '#00529B' },
+  { code: 'DGB', name: '대구은행', color: '#007BC0' },
+  { code: 'BNK', name: '부산은행', color: '#D4001E' },
+  { code: 'SAEMAEUL', name: '새마을금고', color: '#0072CE' },
+  { code: 'SH', name: '수협은행', color: '#005BAC' },
+  { code: 'SHINHAN', name: '신한은행', color: '#0046FF' },
+  { code: 'CREDIT', name: '신협', color: '#007CC2' },
+  { code: 'CITI', name: '씨티은행', color: '#003DA5' },
+  { code: 'WOORI', name: '우리은행', color: '#0066B3' },
+  { code: 'POST', name: '우체국', color: '#EF4444' },
+  { code: 'IBK', name: 'IBK기업은행', color: '#005BAC' },
+  { code: 'JEONBUK', name: '전북은행', color: '#0066B3' },
+  { code: 'JEJU', name: '제주은행', color: '#FF6600' },
+  { code: 'SAVINGS', name: '저축은행', color: '#FF6B00' },
+  { code: 'KAKAO', name: '카카오뱅크', color: '#FFE600' },
+  { code: 'KBANK', name: '케이뱅크', color: '#4B0082' },
+  { code: 'TOSS', name: '토스뱅크', color: '#0064FF' },
+  { code: 'HANA', name: '하나은행', color: '#009688' },
+  { code: 'NH', name: 'NH농협은행', color: '#00A651' },
+  { code: 'SC', name: 'SC제일은행', color: '#0072CE' },
+];
+
+const findBank = (name) => BANKS.find(bank => bank.name === name);
+
+const ACCOUNT_FORMATS = {
+  KB: [6, 2, 6],
+  WOORI: [4, 3, 6],
+  SHINHAN: [3, 3, 6],
+  HANA: [3, 6, 5],
+  NH: [3, 4, 4, 2],
+  IBK: [3, 6, 2, 3],
+  KAKAO: [4, 2, 7],
+  TOSS: [4, 4, 4],
+  KBANK: [3, 3, 6],
+  SC: [3, 2, 6],
+  CITI: [3, 6, 3],
+  DGB: [3, 2, 6, 1],
+  BNK: [3, 4, 4, 2],
+  GWANGJU: [3, 3, 6],
+  JEONBUK: [3, 2, 6],
+  KYONGNAM: [3, 2, 7],
+  JEJU: [2, 2, 6],
+  POST: [6, 2, 6],
+  SH: [4, 4, 4],
+  SAEMAEUL: [4, 4, 4, 1],
+  CREDIT: [3, 3, 6],
+  KDB: [3, 7, 2],
+  SAVINGS: [3, 4, 6],
+};
+
+const formatAccountNumber = (value, bankCode) => {
+  const numbers = value.replace(/[^\d]/g, '');
+  const pattern = bankCode ? ACCOUNT_FORMATS[bankCode] : null;
+  if (!pattern) return numbers;
+  let result = '';
+  let cursor = 0;
+  pattern.forEach((size, index) => {
+    const chunk = numbers.slice(cursor, cursor + size);
+    if (!chunk) return;
+    if (index > 0) result += '-';
+    result += chunk;
+    cursor += size;
+  });
+  if (cursor < numbers.length) result += numbers.slice(cursor);
+  return result;
+};
+
+const FUNERAL_RELATION_OPTIONS = [
+  { label: '배우자', description: '고인과 혼인 관계에 있는 남편 또는 아내를 상주로 표시할 때 선택합니다.', group: '가족' },
+  { label: '장남', description: '고인의 아들 중 첫째를 뜻하며, 일반적으로 대표 상주로 가장 많이 사용됩니다.', group: '자녀' },
+  { label: '차남', description: '고인의 아들 중 둘째를 뜻하며, 장남 다음 순서의 아들을 표시할 때 사용합니다.', group: '자녀' },
+  { label: '삼남', description: '고인의 아들 중 셋째를 뜻하며, 형제 순서를 분명히 표시하고 싶을 때 사용합니다.', group: '자녀' },
+  { label: '막내아들', description: '고인의 아들 중 가장 어린 자녀를 뜻하며, 출생 순서보다 막내 표현이 자연스러울 때 사용합니다.', group: '자녀' },
+  { label: '장녀', description: '고인의 딸 중 첫째를 뜻하며, 딸을 대표 상주로 표시할 때 사용합니다.', group: '자녀' },
+  { label: '차녀', description: '고인의 딸 중 둘째를 뜻하며, 자녀 순서를 구분해 안내할 때 사용합니다.', group: '자녀' },
+  { label: '삼녀', description: '고인의 딸 중 셋째를 뜻하며, 여러 딸의 관계를 차례대로 표시할 때 사용합니다.', group: '자녀' },
+  { label: '막내딸', description: '고인의 딸 중 가장 어린 자녀를 뜻하며, 가족에게 익숙한 호칭 그대로 표시할 때 사용합니다.', group: '자녀' },
+  { label: '며느리', description: '고인의 아들과 혼인한 가족을 뜻하며, 상주 명단에 배우자 가족을 함께 올릴 때 사용합니다.', group: '사위/며느리' },
+  { label: '사위', description: '고인의 딸과 혼인한 가족을 뜻하며, 상주 명단에 배우자 가족을 함께 올릴 때 사용합니다.', group: '사위/며느리' },
+  { label: '손자', description: '고인의 자녀가 낳은 남자 손주를 뜻하며, 손주 세대를 함께 표시할 때 사용합니다.', group: '손주' },
+  { label: '손녀', description: '고인의 자녀가 낳은 여자 손주를 뜻하며, 손주 세대를 함께 표시할 때 사용합니다.', group: '손주' },
+  { label: '형제', description: '고인과 같은 부모를 둔 남자 가족을 뜻하며, 형이나 남동생을 표시할 때 사용합니다.', group: '형제자매' },
+  { label: '자매', description: '고인과 같은 부모를 둔 여자 가족을 뜻하며, 누나나 여동생을 표시할 때 사용합니다.', group: '형제자매' },
+  { label: '부친', description: '아버지를 높여 부르는 표현으로, 고인의 아버지를 상주로 표시할 때 사용합니다.', group: '부모' },
+  { label: '모친', description: '어머니를 높여 부르는 표현으로, 고인의 어머니를 상주로 표시할 때 사용합니다.', group: '부모' },
+  { label: '친지', description: '가까운 친척이나 인척을 함께 부르는 표현으로, 정확한 관계를 넓게 안내할 때 사용합니다.', group: '기타' },
+  { label: '기타', description: '목록에 없는 관계를 직접 입력해야 할 때 선택합니다. 선택 후 입력칸에서 원하는 호칭으로 수정할 수 있습니다.', group: '기타' },
+];
+
+const RELIGIOUS_RITE_OPTIONS = ['무교/일반', '기독교식', '천주교식', '불교식', '유교식', '기타'];
+const FUNERAL_METHOD_OPTIONS = ['일반 장례', '가족장', '무빈소장', '화장 후 봉안', '매장', '기타'];
+const VISITATION_OPTIONS = [
+  { value: 'available', label: '조문 가능' },
+  { value: 'after_time', label: '시간 안내' },
+  { value: 'family_only', label: '가족장' },
+  { value: 'decline', label: '조문 사양' },
+];
+
+const VISITATION_NOTE_TEMPLATES = [
+  '조문은 빈소 마련 후부터 가능합니다. 늦은 시간 방문은 유가족에게 먼저 연락 부탁드립니다.',
+  '조문은 오늘 오후 2시 이후부터 가능합니다. 빈소 위치를 확인하신 뒤 방문해 주세요.',
+  '입관 전까지는 가족 중심으로 시간을 갖고자 합니다. 조문은 입관 이후부터 정중히 부탁드립니다.',
+  '가족장으로 조용히 모시고자 합니다. 마음으로 함께해 주시면 깊이 감사하겠습니다.',
+  '고인의 뜻에 따라 조문과 부의금은 정중히 사양합니다. 따뜻한 마음만 감사히 받겠습니다.',
+  '빈소가 협소하여 조문객이 많을 경우 대기 시간이 있을 수 있습니다. 너른 양해 부탁드립니다.',
+  '발인 전날 저녁 시간대 조문객이 많을 수 있어 가능한 낮 시간 방문을 부탁드립니다.',
+  '멀리서 마음을 전해주시는 분들께도 깊이 감사드립니다. 조문 가능 시간은 상황에 따라 변경될 수 있습니다.',
+];
+
+const FUNERAL_MESSAGE_TEMPLATES = [
+  '바쁘신 가운데에도 고인의 마지막 길을 함께해 주시고 따뜻한 위로를 보내주셔서 깊이 감사드립니다.\n보내주신 마음을 가족 모두 오래도록 잊지 않고 간직하겠습니다.',
+  '황망한 소식에 먼 길 마다하지 않고 찾아와 주신 모든 분들께 진심으로 감사드립니다.\n고인을 기억해 주시고 명복을 빌어주시는 마음이 저희 가족에게 큰 힘이 되고 있습니다.',
+  '갑작스러운 이별로 경황이 없는 중에도 많은 분들께서 보내주신 위로와 격려 덕분에 큰 위안을 얻고 있습니다.\n고인의 생전 인연을 소중히 기억하며 깊은 감사의 말씀을 드립니다.',
+  '고인의 마지막 가시는 길에 함께해 주시고 마음을 나누어 주신 모든 분들께 감사드립니다.\n슬픔을 함께해 주신 따뜻한 마음을 잊지 않고, 고인의 뜻을 기리며 살아가겠습니다.',
+  '직접 찾아와 조문해 주신 분들, 멀리서 마음으로 위로를 전해주신 분들께 진심으로 감사드립니다.\n보내주신 따뜻한 정성과 위로가 저희 가족에게 큰 힘이 되었습니다.',
+  '깊은 슬픔 속에서도 여러분의 위로와 배려로 고인을 편안히 모실 수 있었습니다.\n고인을 기억해 주신 모든 분들께 머리 숙여 감사의 인사를 올립니다.',
+  '고인의 삶을 함께 기억해 주시고 마지막 인사를 나누어 주셔서 감사드립니다.\n소중한 시간을 내어 보내주신 위로와 조문을 가족 모두 마음 깊이 새기겠습니다.',
+  '예기치 못한 이별에 마음을 추스르기 어려운 가운데, 많은 분들의 따뜻한 말씀과 조문이 큰 위로가 되었습니다.\n고인의 명복을 빌어주신 모든 분들께 깊이 감사드립니다.',
+  '고인께서 생전에 맺으신 귀한 인연들이 마지막 길까지 함께해 주셔서 가족 모두 감사한 마음입니다.\n보내주신 사랑과 위로를 오래 기억하겠습니다.',
+  '삼가 고인의 명복을 빌어주시고 유가족에게 따뜻한 마음을 전해주신 모든 분들께 감사드립니다.\n찾아주신 정성과 위로에 보답하는 마음으로 고인을 잘 모시겠습니다.',
+];
 
 // 토스 스타일 모달 컴포넌트
 const TossModal = ({ visible, title, message, onConfirm, onCancel, confirmText = "확인", cancelText = "취소" }) => {
@@ -115,7 +521,7 @@ const TossDatePicker = ({ visible, selectedDate, onSelect, onClose, allowPastDat
       days.push({ date, isCurrentMonth: true });
     }
     
-    // 다음 달의 날짜들
+    // 6주를 항상 채워 달력 높이가 월/년도 변경 때 흔들리지 않게 고정한다.
     const remainingDays = 42 - days.length;
     for (let i = 1; i <= remainingDays; i++) {
       const nextDate = new Date(year, month + 1, i);
@@ -131,8 +537,15 @@ const TossDatePicker = ({ visible, selectedDate, onSelect, onClose, allowPastDat
     setCurrentMonth(newMonth);
   };
 
+  const navigateYear = (direction) => {
+    const newMonth = new Date(currentMonth);
+    newMonth.setFullYear(currentMonth.getFullYear() + direction);
+    setCurrentMonth(newMonth);
+  };
+
   const handleDateSelect = (date) => {
-    onSelect(date);
+    const selected = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
+    onSelect(selected);
     onClose();
   };
 
@@ -164,6 +577,24 @@ const TossDatePicker = ({ visible, selectedDate, onSelect, onClose, allowPastDat
             <TouchableOpacity onPress={() => navigateMonth(1)} style={styles.monthNavButton}>
               <Ionicons name="chevron-forward" size={20} color={TossColors.text} />
             </TouchableOpacity>
+          </View>
+
+          <View style={styles.yearJumpSection}>
+            <Text style={styles.yearJumpLabel}>년도 이동</Text>
+            <View style={styles.yearJumpRow}>
+              <TouchableOpacity style={styles.yearJumpButton} onPress={() => navigateYear(-10)}>
+                <Text style={styles.yearJumpButtonText}>10년 전</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.yearJumpButton} onPress={() => navigateYear(-1)}>
+                <Text style={styles.yearJumpButtonText}>1년 전</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.yearJumpButton} onPress={() => navigateYear(1)}>
+                <Text style={styles.yearJumpButtonText}>1년 후</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.yearJumpButton} onPress={() => navigateYear(10)}>
+                <Text style={styles.yearJumpButtonText}>10년 후</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           
           <View style={styles.weekDaysContainer}>
@@ -302,6 +733,372 @@ const TossTimePicker = ({ visible, selectedTime, onSelect, onClose }) => {
   );
 };
 
+function RelationPickerSheet({ visible, onSelect, onClose }) {
+  const [search, setSearch] = useState('');
+  const filtered = search.trim()
+    ? FUNERAL_RELATION_OPTIONS.filter(option =>
+        option.label.includes(search.trim()) ||
+        option.description.includes(search.trim()) ||
+        option.group.includes(search.trim())
+      )
+    : FUNERAL_RELATION_OPTIONS;
+
+  const handleSelect = (relation) => {
+    setSearch('');
+    onSelect(relation);
+  };
+
+  const handleClose = () => {
+    setSearch('');
+    onClose();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+      <KeyboardAvoidingView style={styles.sheetDim} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <TouchableOpacity style={styles.sheetDimTouch} onPress={handleClose} activeOpacity={1} />
+        <View style={styles.bottomSheet}>
+          <View style={styles.sheetHandle}><View style={styles.sheetHandleBar} /></View>
+          <View style={styles.sheetHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sheetTitle}>상주 관계 선택</Text>
+              <Text style={styles.sheetSubtitle}>관계명을 검색하거나 아래 목록에서 선택하세요</Text>
+            </View>
+            <TouchableOpacity onPress={handleClose} style={styles.sheetCloseBtn}>
+              <Ionicons name="close" size={20} color={TossColors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.bankSearchWrap}>
+            <Ionicons name="search" size={18} color={TossColors.textSecondary} style={{ marginRight: 8 }} />
+            <TextInput
+              style={styles.bankSearchInput}
+              placeholder="관계명 검색"
+              placeholderTextColor={TossColors.textTertiary}
+              value={search}
+              onChangeText={setSearch}
+              autoCorrect={false}
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch('')}>
+                <Ionicons name="close-circle" size={18} color={TossColors.textTertiary} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <View style={styles.relationGrid}>
+              {filtered.map(option => (
+                <TouchableOpacity
+                  key={option.label}
+                  style={styles.relationGridItem}
+                  onPress={() => handleSelect(option.label)}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.relationCardHeader}>
+                    <Text style={styles.relationCardTitle} numberOfLines={1}>{option.label}</Text>
+                    <View style={styles.relationGroupBadge}>
+                      <Text style={styles.relationGroupText}>{option.group}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.relationGridDescription} numberOfLines={3}>{option.description}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+function BankPickerSheet({ visible, onSelect, onClose }) {
+  const [search, setSearch] = useState('');
+  const filtered = search.trim()
+    ? BANKS.filter(bank => bank.name.includes(search.trim()))
+    : BANKS;
+
+  const handleClose = () => {
+    setSearch('');
+    onClose();
+  };
+
+  const handleSelect = (bankName) => {
+    setSearch('');
+    onSelect(bankName);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+      <KeyboardAvoidingView style={styles.sheetDim} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <TouchableOpacity style={styles.sheetDimTouch} onPress={handleClose} activeOpacity={1} />
+        <View style={styles.bottomSheet}>
+          <View style={styles.sheetHandle}><View style={styles.sheetHandleBar} /></View>
+          <View style={styles.sheetHeaderRow}>
+            <Text style={styles.sheetTitle}>은행 선택</Text>
+            <TouchableOpacity onPress={handleClose} style={styles.sheetCloseBtn}>
+              <Ionicons name="close" size={20} color={TossColors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.bankSearchWrap}>
+            <Ionicons name="search" size={18} color={TossColors.textSecondary} style={{ marginRight: 8 }} />
+            <TextInput
+              style={styles.bankSearchInput}
+              placeholder="은행명 검색"
+              placeholderTextColor={TossColors.textTertiary}
+              value={search}
+              onChangeText={setSearch}
+              autoCorrect={false}
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch('')}>
+                <Ionicons name="close-circle" size={18} color={TossColors.textTertiary} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <View style={styles.bankGrid}>
+              {filtered.map(bank => (
+                <TouchableOpacity
+                  key={bank.code}
+                  style={styles.bankItem}
+                  onPress={() => handleSelect(bank.name)}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.bankIcon}>
+                    {BANK_LOGOS[bank.code] ? (
+                      <Image source={BANK_LOGOS[bank.code]} style={styles.bankLogoImg} resizeMode="contain" />
+                    ) : (
+                      <Text style={[styles.bankIconText, { color: bank.color }]}>{bank.name.slice(0, 2)}</Text>
+                    )}
+                  </View>
+                  <Text style={styles.bankName} numberOfLines={1}>{bank.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+function PhotoFramePickerSheet({ visible, frames, selectedFrameId, onSelect, onClose }) {
+  const handleClose = () => {
+    onClose();
+  };
+
+  const handleSelect = (frameId) => {
+    onSelect(frameId);
+    onClose();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+      <KeyboardAvoidingView style={styles.sheetDim} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <TouchableOpacity style={styles.sheetDimTouch} onPress={handleClose} activeOpacity={1} />
+        <View style={styles.bottomSheet}>
+          <View style={styles.sheetHandle}><View style={styles.sheetHandleBar} /></View>
+          <View style={styles.sheetHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sheetTitle}>고인 사진 액자 선택</Text>
+              <Text style={styles.sheetSubtitle}>작은 미리보기에서 원하는 액자를 고르세요.</Text>
+            </View>
+            <TouchableOpacity onPress={handleClose} style={styles.sheetCloseBtn}>
+              <Ionicons name="close" size={20} color={TossColors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            horizontal={false}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 8 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.photoFrameSheetGrid}>
+              {frames.map((frame) => {
+                const isSelected = frame.id === selectedFrameId;
+                return (
+                  <TouchableOpacity
+                    key={frame.id}
+                    style={[styles.photoFrameSheetItem, isSelected && styles.photoFrameSheetItemSelected]}
+                    onPress={() => handleSelect(frame.id)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={[styles.photoFrameSheetThumbWrap, isSelected && styles.photoFrameSheetThumbSelected]}>
+                      <Image source={frame.source} style={styles.photoFrameSheetThumb} resizeMode="contain" />
+                    </View>
+                    <Text style={[styles.photoFrameSheetName, isSelected && styles.photoFrameSheetNameSelected]}>
+                      {frame.name}
+                    </Text>
+                    {isSelected && (
+                      <View style={styles.photoFrameSheetSelectedBadge}>
+                        <Ionicons name="checkmark-circle" size={16} color={TossColors.primary} />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+function MemorialFontPickerSheet({
+  visible,
+  target,
+  nameFontId,
+  dateFontId,
+  nameColor,
+  dateColor,
+  nameVisible,
+  dateVisible,
+  onTargetChange,
+  onSelect,
+  onColorSelect,
+  onVisibleChange,
+  onClose,
+}) {
+  const handleClose = () => {
+    onClose();
+  };
+
+  const activeFontId = target === 'date' ? dateFontId : nameFontId;
+  const activeColor = target === 'date' ? dateColor : nameColor;
+  const activeVisible = target === 'date' ? dateVisible : nameVisible;
+  const isWhiteColor = String(activeColor || '').toUpperCase() === '#FFFFFF';
+  const visibleFontOptions = target === 'name'
+    ? MEMORIAL_TEXT_FONT_OPTIONS.filter(option => option.script !== 'latin')
+    : MEMORIAL_TEXT_FONT_OPTIONS;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+      <KeyboardAvoidingView style={styles.sheetDim} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <TouchableOpacity style={styles.sheetDimTouch} onPress={handleClose} activeOpacity={1} />
+        <View style={styles.bottomSheet}>
+          <View style={styles.sheetHandle}><View style={styles.sheetHandleBar} /></View>
+          <View style={styles.sheetHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sheetTitle}>글꼴 선택</Text>
+              <Text style={styles.sheetSubtitle}>이름과 날짜 글꼴을 따로 선택할 수 있어요.</Text>
+            </View>
+            <TouchableOpacity onPress={handleClose} style={styles.sheetCloseBtn}>
+              <Ionicons name="close" size={20} color={TossColors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.fontTargetSwitch}>
+            {[
+              { key: 'name', label: '이름' },
+              { key: 'date', label: '날짜' },
+            ].map(item => {
+              const selected = target === item.key;
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[styles.fontTargetButton, selected && styles.fontTargetButtonSelected]}
+                  onPress={() => onTargetChange(item.key)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.fontTargetText, selected && styles.fontTargetTextSelected]}>{item.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.fontOptionList}>
+            <View style={styles.textVisibilityCard}>
+              <View style={styles.textVisibilityInfo}>
+                <Text style={styles.textVisibilityTitle}>
+                  {target === 'date' ? '날짜 표시' : '이름 표시'}
+                </Text>
+                <Text style={styles.textVisibilityDescription}>
+                  {target === 'date'
+                    ? '생년월일과 별세일 텍스트를 액자에 표시합니다.'
+                    : '고인 성함 텍스트를 액자에 표시합니다.'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.textVisibilitySwitch, activeVisible && styles.textVisibilitySwitchActive]}
+                onPress={() => onVisibleChange(target, !activeVisible)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.textVisibilityKnob, activeVisible && styles.textVisibilityKnobActive]} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.fontColorSection}>
+              <View style={styles.fontSectionHeaderRow}>
+                <Text style={styles.fontSectionTitle}>텍스트 색상</Text>
+                {isWhiteColor && (
+                  <Text style={styles.fontContrastBadge}>어두운 미리보기 배경 적용</Text>
+                )}
+              </View>
+              <View style={styles.fontColorGrid}>
+                {MEMORIAL_TEXT_COLOR_OPTIONS.map(color => {
+                  const selected = activeColor === color.value;
+                  return (
+                    <TouchableOpacity
+                      key={color.id}
+                      style={[styles.fontColorChip, selected && styles.fontColorChipSelected]}
+                      onPress={() => onColorSelect(target, color.value)}
+                      activeOpacity={0.85}
+                    >
+                      <View style={[
+                        styles.fontColorSwatch,
+                        { backgroundColor: color.value },
+                        color.value === '#FFFFFF' && styles.fontColorSwatchWhite,
+                      ]} />
+                      <Text style={[styles.fontColorLabel, selected && styles.fontColorLabelSelected]}>
+                        {color.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            <Text style={styles.fontSectionTitle}>글씨체</Text>
+            {visibleFontOptions.map(option => {
+              const selected = activeFontId === option.id;
+              const previewStyle = [
+                styles.fontOptionPreview,
+                option.fontFamily ? { fontFamily: option.fontFamily } : null,
+                { fontWeight: '400' },
+                { color: activeColor },
+              ];
+              return (
+                <TouchableOpacity
+                  key={option.id}
+                  style={[styles.fontOptionCard, selected && styles.fontOptionCardSelected]}
+                  onPress={() => onSelect(target, option.id)}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.fontOptionContent}>
+                    <View style={[styles.fontPreviewBox, isWhiteColor && styles.fontPreviewBoxDark]}>
+                      <Text style={previewStyle}>
+                        {target === 'date' ? '1948. 03. 12' : '故 김정담'}
+                      </Text>
+                    </View>
+                    <Text style={styles.fontOptionName}>{option.name}</Text>
+                    <Text style={styles.fontOptionDescription}>{option.description}</Text>
+                  </View>
+                  {selected && <Ionicons name="checkmark-circle" size={22} color={TossColors.primary} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 // 이미지 업로드 진행 상황 모달
 const ImageUploadModal = ({ visible, currentIndex, totalCount, onCancel }) => (
   <Modal visible={visible} transparent animationType="fade">
@@ -347,9 +1144,14 @@ export default function CreateFuneralScreen({ navigation, route }) {
     
     // 부고 관련 필드
     deceasedName: '',
+    birthDate: null,
     deceasedAge: '',
+    ageCalculationMethod: 'korean_year',
     deathDate: null,
+    deathTime: null,
     deceasedGender: '남',
+    religiousRite: '무교/일반',
+    funeralMethod: '일반 장례',
     funeralStartDate: null,
     funeralEndDate: null,
     burialDate: null,
@@ -358,21 +1160,20 @@ export default function CreateFuneralScreen({ navigation, route }) {
     secondaryBurialLocation: '',
     casketDate: null,
     casketTime: null,
-    familyMembers: [
-      { relation: '장남', names: '' },
-      { relation: '차남', names: '' },
-      { relation: '장녀', names: '' },
-      { relation: '차녀', names: '' },
-    ],
+    familyMembers: [],
     primaryContact: '',
     secondaryContact: '',
     funeralDirector: '',
     funeralHome: '',
     funeralAddress: '', // 장례식장 주소
+    visitationType: 'available',
+    visitationNote: '',
+    parkingTransportInfo: '',
+    condolenceAccounts: [],
     customMessage: '',
     
     // 조문메시지 설정
-    allowMessages: false,
+    allowMessages: true,
     messageSettings: {
       placeholder: '삼가 고인의 명복을 빕니다.',
       requireLogin: true,
@@ -382,8 +1183,22 @@ export default function CreateFuneralScreen({ navigation, route }) {
     familyRelations: ['신랑측', '신부측'],
     presetAmounts: [50000, 100000, 200000],
     selectedTemplate: null,
+    selectedPhotoFrameId: FUNERAL_PHOTO_FRAMES[0]?.id || 'photo-frame-rectangle',
+    mainPhotoLayout: { ...MAIN_IMAGE_LAYOUT_DEFAULT },
+    memorialTextLayout: { ...MEMORIAL_TEXT_LAYOUT_DEFAULT },
+    memorialNameLayout: { ...MEMORIAL_NAME_LAYOUT_DEFAULT },
+    memorialDateLayout: { ...MEMORIAL_DATE_LAYOUT_DEFAULT },
+    memorialNameFontId: MEMORIAL_TEXT_FONT_OPTIONS[0].id,
+    memorialDateFontId: MEMORIAL_TEXT_FONT_OPTIONS[0].id,
+    memorialNameColor: MEMORIAL_NAME_DEFAULT_COLOR,
+    memorialDateColor: MEMORIAL_DATE_DEFAULT_COLOR,
+    memorialNameVisible: true,
+    memorialDateVisible: true,
     images: [],
   });
+  const [mainPhotoLayoutView, setMainPhotoLayoutView] = useState({ ...MAIN_IMAGE_LAYOUT_DEFAULT });
+  const [memorialNameLayoutView, setMemorialNameLayoutView] = useState({ ...MEMORIAL_NAME_LAYOUT_DEFAULT });
+  const [memorialDateLayoutView, setMemorialDateLayoutView] = useState({ ...MEMORIAL_DATE_LAYOUT_DEFAULT });
   
   // 이미지 업로드 관련 상태
   const [imageUploadState, setImageUploadState] = useState({
@@ -395,12 +1210,24 @@ export default function CreateFuneralScreen({ navigation, route }) {
   
   // 스크롤 및 입력 필드 참조
   const scrollViewRef = useRef(null);
+  const eventDataRef = useRef(eventData);
+  const joystickStartLayoutRef = useRef({ ...MAIN_IMAGE_LAYOUT_DEFAULT });
+  const latestMainImageLayoutRef = useRef({ ...MAIN_IMAGE_LAYOUT_DEFAULT });
+  const textJoystickStartLayoutRef = useRef({ ...MEMORIAL_TEXT_LAYOUT_DEFAULT });
+  const textAdjustTargetRef = useRef('name');
+  const latestMemorialTextLayoutRef = useRef({ ...MEMORIAL_TEXT_LAYOUT_DEFAULT });
+  const latestMemorialNameLayoutRef = useRef({ ...MEMORIAL_NAME_LAYOUT_DEFAULT });
+  const latestMemorialDateLayoutRef = useRef({ ...MEMORIAL_DATE_LAYOUT_DEFAULT });
+  const joystickVelocityRef = useRef({ x: 0, y: 0 });
+  const joystickTimerRef = useRef(null);
   const sectionPositions = useRef({
     deceasedInfo: 0,
     familyMembers: 0,
     funeralSchedule: 0,
     funeralLocation: 0,
     funeralContact: 0,
+    funeralGuide: 0,
+    condolenceAccounts: 0,
     photos: 0,
     messageSettings: 0,
     message: 0,
@@ -417,7 +1244,20 @@ export default function CreateFuneralScreen({ navigation, route }) {
   const [showCasketTimePicker, setShowCasketTimePicker] = useState(false);
   const [showBurialDatePicker, setShowBurialDatePicker] = useState(false);
   const [showBurialTimePicker, setShowBurialTimePicker] = useState(false);
+  const [showBirthDatePicker, setShowBirthDatePicker] = useState(false);
   const [showDeathDatePicker, setShowDeathDatePicker] = useState(false);
+  const [showDeathTimePicker, setShowDeathTimePicker] = useState(false);
+  const [relationPicker, setRelationPicker] = useState({ visible: false, index: null });
+  const [photoFramePicker, setPhotoFramePicker] = useState(false);
+  const [photoAdjustMode, setPhotoAdjustMode] = useState(false);
+  const [textAdjustMode, setTextAdjustMode] = useState(false);
+  const [textAdjustTarget, setTextAdjustTarget] = useState('name');
+  const [adjustMenuOpen, setAdjustMenuOpen] = useState(false);
+  const [fontPickerVisible, setFontPickerVisible] = useState(false);
+  const [fontPickerTarget, setFontPickerTarget] = useState('name');
+  const [photoJoystickKnob, setPhotoJoystickKnob] = useState({ x: 0, y: 0 });
+  const [textJoystickKnob, setTextJoystickKnob] = useState({ x: 0, y: 0 });
+  const [bankPicker, setBankPicker] = useState({ visible: false, index: null });
   
   // 토스 모달 상태
   const [modalState, setModalState] = useState({
@@ -431,6 +1271,11 @@ export default function CreateFuneralScreen({ navigation, route }) {
   // 애니메이션
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const slideAnim = React.useRef(new Animated.Value(20)).current;
+  const testButtonAnim = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    eventDataRef.current = eventData;
+  }, [eventData]);
 
   React.useEffect(() => {
     Animated.parallel([
@@ -449,31 +1294,60 @@ export default function CreateFuneralScreen({ navigation, route }) {
     ]).start();
   }, [currentStep]);
 
+  React.useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(testButtonAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(testButtonAnim, {
+          toValue: 0,
+          duration: 900,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [testButtonAnim]);
+
   const templates = {
     funeral: [
       {
-        id: 'traditional-dark',
-        name: '전통 엄숙',
-        description: '정중하고 엄숙한 전통 부고',
-        preview: require('../../../../assets/images/bb1.png'),
-        style: 'traditional-dark',
-        features: ['정중함', '엄숙함', '전통적'],
+        id: 'modern-card',
+        name: '한지 모던',
+        description: '한지 질감과 꽃 장식, 실시간 조문 일정이 어우러진 대표형 부고장',
+        previewType: 'card-modern-soft',
+        style: 'modern-card',
+        features: ['한지 배경', '꽃 장식', '진행 일정'],
       },
       {
-        id: 'modern-beige', 
-        name: '모던 따뜻',
-        description: '현대적이고 따뜻한 느낌의 부고',
-        preview: require('../../../../assets/images/bb2.png'),
-        style: 'modern-beige',
-        features: ['현대적', '따뜻함', '상세정보'],
+        id: 'editorial-timeline',
+        name: '타임라인',
+        description: '조문 동선과 안내를 한눈에 보여주는 스타일',
+        previewType: 'card-editorial-timeline',
+        style: 'editorial-timeline',
+        features: ['타임라인', '가독성', '모바일 최적화'],
       },
       {
-        id: 'simple-white',
-        name: '심플 깔끔',
-        description: '깔끔하고 단정한 부고',
-        preview: require('../../../../assets/images/bb1.png'),
-        style: 'simple-white',
-        features: ['심플함', '깔끔함', '가독성'],
+        id: 'paper-letter',
+        name: '레터지',
+        description: '감성 있는 위로 문구 중심의 레터지형 구성',
+        previewType: 'card-paper-letter',
+        style: 'paper-letter',
+        features: ['감성', '메시지 강조', '문구형'],
+      },
+      {
+        id: 'certificate',
+        name: '증명서형',
+        description: '고인을 정갈하게 소개하는 전통적인 공문형 부고 스타일',
+        previewType: 'card-certificate',
+        style: 'certificate',
+        features: ['엄숙함', '정보 밀도', '간결한 구성'],
       },
     ],
   };
@@ -581,6 +1455,16 @@ export default function CreateFuneralScreen({ navigation, route }) {
     }
   };
 
+  const formatMemorialDate = (date) => {
+    if (!date) return '';
+    const dateObj = date instanceof Date ? date : new Date(date);
+    if (isNaN(dateObj.getTime())) return '';
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}. ${month}. ${day}`;
+  };
+
   const formatTime = (time) => {
     if (!time) return null;
     
@@ -595,6 +1479,631 @@ export default function CreateFuneralScreen({ navigation, route }) {
       return null;
     } catch (error) {
       return null;
+    }
+  };
+
+  const dateToISODate = (date) => (
+    date && date instanceof Date && !isNaN(date.getTime())
+      ? date.toISOString().split('T')[0]
+      : null
+  );
+
+  const timeToISOTime = (time) => (
+    time && time instanceof Date && !isNaN(time.getTime())
+      ? time.toTimeString().split(' ')[0]
+      : null
+  );
+
+  const calculateAge = (birthDate, deathDate, method) => {
+    if (!birthDate || !deathDate) return '';
+    const birth = birthDate instanceof Date ? birthDate : new Date(birthDate);
+    const death = deathDate instanceof Date ? deathDate : new Date(deathDate);
+    if (isNaN(birth.getTime()) || isNaN(death.getTime())) return '';
+
+    const birthYear = birth.getFullYear();
+    const birthMonth = birth.getMonth() + 1;
+    const birthDay = birth.getDate();
+    const deathYear = death.getFullYear();
+    const deathMonth = death.getMonth() + 1;
+    const deathDay = death.getDate();
+
+    if (
+      deathYear < birthYear ||
+      (deathYear === birthYear && deathMonth < birthMonth) ||
+      (deathYear === birthYear && deathMonth === birthMonth && deathDay < birthDay)
+    ) {
+      return '';
+    }
+
+    if (method === 'full_age') {
+      let age = deathYear - birthYear;
+      const birthdayPassed =
+        deathMonth > birthMonth ||
+        (deathMonth === birthMonth && deathDay >= birthDay);
+      if (!birthdayPassed) age -= 1;
+      return age >= 0 ? String(age) : '';
+    }
+
+    const age = deathYear - birthYear + 1;
+    return age >= 0 ? String(age) : '';
+  };
+
+  const syncCalculatedAge = (nextData) => {
+    const calculatedAge = calculateAge(nextData.birthDate, nextData.deathDate, nextData.ageCalculationMethod);
+    return calculatedAge ? { ...nextData, deceasedAge: calculatedAge } : nextData;
+  };
+
+  const getVisibleAge = () => {
+    const baseDate = eventData.deathDate || new Date();
+    return calculateAge(eventData.birthDate, baseDate, eventData.ageCalculationMethod);
+  };
+
+  const getAgeBaseDateLabel = () => {
+    const baseDate = eventData.deathDate || new Date();
+    return formatDate(baseDate);
+  };
+
+  const updateEventData = (patch) => {
+    setEventData(prevData => syncCalculatedAge({ ...prevData, ...patch }));
+  };
+
+  const normalizeMainImageLayout = (layout) => {
+    const raw = layout && typeof layout === 'object' ? layout : {};
+    const scale = Number(raw.scale);
+    const translateX = Number(raw.translateX);
+    const translateY = Number(raw.translateY);
+    return {
+      scale: Number.isFinite(scale) ? Math.min(MAIN_IMAGE_MAX_SCALE, Math.max(MAIN_IMAGE_MIN_SCALE, scale)) : MAIN_IMAGE_LAYOUT_DEFAULT.scale,
+      translateX: Number.isFinite(translateX) ? Math.min(MAIN_IMAGE_TRANSLATE_LIMIT, Math.max(-MAIN_IMAGE_TRANSLATE_LIMIT, translateX)) : MAIN_IMAGE_LAYOUT_DEFAULT.translateX,
+      translateY: Number.isFinite(translateY) ? Math.min(MAIN_IMAGE_TRANSLATE_LIMIT, Math.max(-MAIN_IMAGE_TRANSLATE_LIMIT, translateY)) : MAIN_IMAGE_LAYOUT_DEFAULT.translateY,
+    };
+  };
+
+  const updateMainImageLayout = (patch) => {
+    const currentLayout = normalizeMainImageLayout(
+      latestMainImageLayoutRef.current ||
+      eventDataRef.current?.mainPhotoLayout ||
+      MAIN_IMAGE_LAYOUT_DEFAULT
+    );
+    const nextLayout = normalizeMainImageLayout({
+      ...currentLayout,
+      ...(patch || {}),
+    });
+    latestMainImageLayoutRef.current = nextLayout;
+    setMainPhotoLayoutView(nextLayout);
+    eventDataRef.current = {
+      ...(eventDataRef.current || {}),
+      mainPhotoLayout: nextLayout,
+    };
+
+    setEventData(prevData => {
+      return {
+        ...prevData,
+        mainPhotoLayout: nextLayout,
+      };
+    });
+  };
+
+  const getMainImageLayout = () => {
+    const layout = normalizeMainImageLayout(
+      latestMainImageLayoutRef.current ||
+      eventDataRef.current?.mainPhotoLayout ||
+      eventData.mainPhotoLayout ||
+      MAIN_IMAGE_LAYOUT_DEFAULT
+    );
+    latestMainImageLayoutRef.current = layout;
+    return layout;
+  };
+
+  const commitMainImageLayout = () => {
+    const layout = normalizeMainImageLayout(
+      latestMainImageLayoutRef.current ||
+      eventDataRef.current?.mainPhotoLayout ||
+      MAIN_IMAGE_LAYOUT_DEFAULT
+    );
+    latestMainImageLayoutRef.current = layout;
+    setMainPhotoLayoutView(layout);
+    eventDataRef.current = {
+      ...(eventDataRef.current || {}),
+      mainPhotoLayout: layout,
+    };
+    setEventData(prevData => ({
+      ...prevData,
+      mainPhotoLayout: layout,
+    }));
+    return layout;
+  };
+
+  const normalizeMemorialTextLayout = (layout) => {
+    const raw = layout && typeof layout === 'object' ? layout : {};
+    const scale = Number(raw.scale);
+    const translateX = Number(raw.translateX);
+    const translateY = Number(raw.translateY);
+    return {
+      scale: Number.isFinite(scale) ? Math.min(MEMORIAL_TEXT_MAX_SCALE, Math.max(MEMORIAL_TEXT_MIN_SCALE, scale)) : MEMORIAL_TEXT_LAYOUT_DEFAULT.scale,
+      translateX: Number.isFinite(translateX) ? Math.min(MEMORIAL_TEXT_TRANSLATE_LIMIT, Math.max(-MEMORIAL_TEXT_TRANSLATE_LIMIT, translateX)) : MEMORIAL_TEXT_LAYOUT_DEFAULT.translateX,
+      translateY: Number.isFinite(translateY) ? Math.min(MEMORIAL_TEXT_TRANSLATE_LIMIT, Math.max(-MEMORIAL_TEXT_TRANSLATE_LIMIT, translateY)) : MEMORIAL_TEXT_LAYOUT_DEFAULT.translateY,
+    };
+  };
+
+  const updateMemorialTextLayout = (patch) => {
+    setEventData(prevData => {
+      const nextLayout = normalizeMemorialTextLayout({
+        ...(prevData.memorialTextLayout || MEMORIAL_TEXT_LAYOUT_DEFAULT),
+        ...(patch || {}),
+      });
+      latestMemorialTextLayoutRef.current = nextLayout;
+      return {
+        ...prevData,
+        memorialTextLayout: nextLayout,
+      };
+    });
+  };
+
+  const getMemorialTextLayout = () => {
+    const layout = normalizeMemorialTextLayout(eventData.memorialTextLayout || latestMemorialTextLayoutRef.current || MEMORIAL_TEXT_LAYOUT_DEFAULT);
+    latestMemorialTextLayoutRef.current = layout;
+    return layout;
+  };
+
+  const applyMemorialTextAdjust = (axis, delta) => {
+    const layout = getActiveMemorialTextLayout();
+    if (axis === 'scale') {
+      updateActiveMemorialTextLayout({ scale: layout.scale + delta });
+      return;
+    }
+    if (axis === 'x') {
+      updateActiveMemorialTextLayout({ translateX: layout.translateX + delta });
+      return;
+    }
+    updateActiveMemorialTextLayout({ translateY: layout.translateY + delta });
+  };
+
+  const resetMemorialTextLayout = () => {
+    latestMemorialTextLayoutRef.current = { ...MEMORIAL_TEXT_LAYOUT_DEFAULT };
+    setEventData(prevData => ({
+      ...prevData,
+      memorialTextLayout: { ...MEMORIAL_TEXT_LAYOUT_DEFAULT },
+    }));
+  };
+
+  const getMemorialNameLayout = () => {
+    const layout = normalizeMemorialTextLayout(latestMemorialNameLayoutRef.current || eventDataRef.current?.memorialNameLayout || eventData.memorialNameLayout || MEMORIAL_NAME_LAYOUT_DEFAULT);
+    latestMemorialNameLayoutRef.current = layout;
+    return layout;
+  };
+
+  const getMemorialDateLayout = () => {
+    const layout = normalizeMemorialTextLayout(latestMemorialDateLayoutRef.current || eventDataRef.current?.memorialDateLayout || eventData.memorialDateLayout || MEMORIAL_DATE_LAYOUT_DEFAULT);
+    latestMemorialDateLayoutRef.current = layout;
+    return layout;
+  };
+
+  const getActiveMemorialTextLayout = () => (
+    textAdjustTargetRef.current === 'date' ? getMemorialDateLayout() : getMemorialNameLayout()
+  );
+
+  const getMemorialFontOption = (fontId) => (
+    MEMORIAL_TEXT_FONT_OPTIONS.find(option => option.id === fontId) || MEMORIAL_TEXT_FONT_OPTIONS[0]
+  );
+
+  const getMemorialFontStyle = (target) => {
+    const fontId = target === 'date' ? eventData.memorialDateFontId : eventData.memorialNameFontId;
+    const color = target === 'date'
+      ? (eventData.memorialDateColor || MEMORIAL_DATE_DEFAULT_COLOR)
+      : (eventData.memorialNameColor || MEMORIAL_NAME_DEFAULT_COLOR);
+    const option = getMemorialFontOption(fontId);
+    return [
+      option.fontFamily ? { fontFamily: option.fontFamily } : null,
+      option.fontFamily ? { fontWeight: '400' } : null,
+      { color },
+    ];
+  };
+
+  const updateMemorialFont = (target, fontId) => {
+    setEventData(prevData => (
+      target === 'date'
+        ? { ...prevData, memorialDateFontId: fontId }
+        : { ...prevData, memorialNameFontId: fontId }
+    ));
+  };
+
+  const updateMemorialTextColor = (target, color) => {
+    setEventData(prevData => (
+      target === 'date'
+        ? { ...prevData, memorialDateColor: color }
+        : { ...prevData, memorialNameColor: color }
+    ));
+  };
+
+  const updateMemorialTextVisible = (target, visible) => {
+    setEventData(prevData => (
+      target === 'date'
+        ? { ...prevData, memorialDateVisible: visible }
+        : { ...prevData, memorialNameVisible: visible }
+    ));
+  };
+
+  const setActiveTextAdjustTarget = (target) => {
+    const nextTarget = target === 'date' ? 'date' : 'name';
+    textAdjustTargetRef.current = nextTarget;
+    setTextAdjustTarget(nextTarget);
+  };
+
+  const updateActiveMemorialTextLayout = (patch) => {
+    const target = textAdjustTargetRef.current === 'date' ? 'date' : 'name';
+    const currentLayout = normalizeMemorialTextLayout(
+      target === 'date'
+        ? (latestMemorialDateLayoutRef.current || eventDataRef.current?.memorialDateLayout || MEMORIAL_DATE_LAYOUT_DEFAULT)
+        : (latestMemorialNameLayoutRef.current || eventDataRef.current?.memorialNameLayout || MEMORIAL_NAME_LAYOUT_DEFAULT)
+    );
+    const safePatch = { ...(patch || {}) };
+    if (!Object.prototype.hasOwnProperty.call(safePatch, 'scale')) {
+      safePatch.scale = currentLayout.scale;
+    }
+    const nextLayout = normalizeMemorialTextLayout({
+      ...currentLayout,
+      ...safePatch,
+    });
+
+    if (target === 'date') {
+      latestMemorialDateLayoutRef.current = nextLayout;
+      setMemorialDateLayoutView(nextLayout);
+      eventDataRef.current = {
+        ...(eventDataRef.current || {}),
+        memorialDateLayout: nextLayout,
+      };
+      setEventData(prevData => ({ ...prevData, memorialDateLayout: nextLayout }));
+      return;
+    }
+
+    latestMemorialNameLayoutRef.current = nextLayout;
+    setMemorialNameLayoutView(nextLayout);
+    eventDataRef.current = {
+      ...(eventDataRef.current || {}),
+      memorialNameLayout: nextLayout,
+    };
+    setEventData(prevData => ({ ...prevData, memorialNameLayout: nextLayout }));
+  };
+
+  const commitActiveMemorialTextLayout = () => {
+    const target = textAdjustTargetRef.current === 'date' ? 'date' : 'name';
+    const layout = normalizeMemorialTextLayout(
+      target === 'date'
+        ? (latestMemorialDateLayoutRef.current || eventDataRef.current?.memorialDateLayout || MEMORIAL_DATE_LAYOUT_DEFAULT)
+        : (latestMemorialNameLayoutRef.current || eventDataRef.current?.memorialNameLayout || MEMORIAL_NAME_LAYOUT_DEFAULT)
+    );
+
+    if (target === 'date') {
+      latestMemorialDateLayoutRef.current = layout;
+      setMemorialDateLayoutView(layout);
+      eventDataRef.current = { ...(eventDataRef.current || {}), memorialDateLayout: layout };
+      setEventData(prevData => ({ ...prevData, memorialDateLayout: layout }));
+      return layout;
+    }
+
+    latestMemorialNameLayoutRef.current = layout;
+    setMemorialNameLayoutView(layout);
+    eventDataRef.current = { ...(eventDataRef.current || {}), memorialNameLayout: layout };
+    setEventData(prevData => ({ ...prevData, memorialNameLayout: layout }));
+    return layout;
+  };
+
+  const getSelectedPhotoFrame = () => {
+    const selectedFrameId = eventData.selectedPhotoFrameId || FUNERAL_PHOTO_FRAMES[0]?.id;
+    return FUNERAL_PHOTO_FRAMES.find((frame) => frame.id === selectedFrameId) || FUNERAL_PHOTO_FRAMES[0] || null;
+  };
+
+  const getPhotoFrameAspectRatio = (frame) => {
+    if (!frame?.source) return 3 / 4;
+    const source = Image.resolveAssetSource(frame.source);
+    return source?.width && source?.height ? source.width / source.height : 3 / 4;
+  };
+
+  const handlePhotoFrameSelect = (frameId) => {
+    setEventData(prevData => ({
+      ...prevData,
+      selectedPhotoFrameId: frameId,
+    }));
+  };
+
+  const applyMainImageAdjust = (axis, delta) => {
+    const layout = latestMainImageLayoutRef.current || getMainImageLayout();
+
+    if (axis === 'scale') {
+      updateMainImageLayout({
+        scale: layout.scale + delta,
+      });
+      return;
+    }
+
+    if (axis === 'x') {
+      updateMainImageLayout({
+        translateX: layout.translateX + delta,
+      });
+      return;
+    }
+
+    updateMainImageLayout({
+      translateY: layout.translateY + delta,
+    });
+  };
+
+  const resetMainImageLayout = () => {
+    latestMainImageLayoutRef.current = { ...MAIN_IMAGE_LAYOUT_DEFAULT };
+    setMainPhotoLayoutView({ ...MAIN_IMAGE_LAYOUT_DEFAULT });
+    eventDataRef.current = {
+      ...(eventDataRef.current || {}),
+      mainPhotoLayout: { ...MAIN_IMAGE_LAYOUT_DEFAULT },
+    };
+    setEventData(prevData => ({
+      ...prevData,
+      mainPhotoLayout: {
+        ...MAIN_IMAGE_LAYOUT_DEFAULT,
+      },
+    }));
+  };
+
+  const clampJoystickOffset = (value) => Math.min(PHOTO_JOYSTICK_LIMIT, Math.max(-PHOTO_JOYSTICK_LIMIT, value));
+
+  const stopJoystickMotion = () => {
+    if (joystickTimerRef.current) {
+      clearInterval(joystickTimerRef.current);
+      joystickTimerRef.current = null;
+    }
+    joystickVelocityRef.current = { x: 0, y: 0 };
+  };
+
+  const startJoystickMotion = () => {
+    if (joystickTimerRef.current) return;
+
+    joystickTimerRef.current = setInterval(() => {
+      const velocity = joystickVelocityRef.current;
+      const stepX = Math.abs(velocity.x) < PHOTO_JOYSTICK_DEAD_ZONE ? 0 : Math.sign(velocity.x) * PHOTO_JOYSTICK_VELOCITY;
+      const stepY = Math.abs(velocity.y) < PHOTO_JOYSTICK_DEAD_ZONE ? 0 : Math.sign(velocity.y) * PHOTO_JOYSTICK_VELOCITY;
+      if (stepX === 0 && stepY === 0) {
+        return;
+      }
+
+      const currentLayout = latestMainImageLayoutRef.current || MAIN_IMAGE_LAYOUT_DEFAULT;
+      updateMainImageLayout({
+        translateX: currentLayout.translateX + stepX,
+        translateY: currentLayout.translateY + stepY,
+      });
+    }, 16);
+  };
+
+  React.useEffect(() => () => stopJoystickMotion(), []);
+
+  const photoJoystickPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onShouldBlockNativeResponder: () => true,
+      onPanResponderGrant: () => {
+        joystickStartLayoutRef.current = commitMainImageLayout();
+        joystickVelocityRef.current = { x: 0, y: 0 };
+        setPhotoJoystickKnob({ x: 0, y: 0 });
+        startJoystickMotion();
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const knobX = clampJoystickOffset(gestureState.dx);
+        const knobY = clampJoystickOffset(gestureState.dy);
+        setPhotoJoystickKnob({ x: knobX, y: knobY });
+        joystickVelocityRef.current = { x: knobX, y: knobY };
+      },
+      onPanResponderRelease: () => {
+        stopJoystickMotion();
+        commitMainImageLayout();
+        setPhotoJoystickKnob({ x: 0, y: 0 });
+      },
+      onPanResponderTerminate: () => {
+        stopJoystickMotion();
+        commitMainImageLayout();
+        setPhotoJoystickKnob({ x: 0, y: 0 });
+      },
+    })
+  ).current;
+
+  const textJoystickPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onShouldBlockNativeResponder: () => true,
+      onPanResponderGrant: () => {
+        textJoystickStartLayoutRef.current = commitActiveMemorialTextLayout();
+        setTextJoystickKnob({ x: 0, y: 0 });
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const knobX = clampJoystickOffset(gestureState.dx);
+        const knobY = clampJoystickOffset(gestureState.dy);
+        setTextJoystickKnob({ x: knobX, y: knobY });
+        const startLayout = textJoystickStartLayoutRef.current || MEMORIAL_TEXT_LAYOUT_DEFAULT;
+        const currentLayout = getActiveMemorialTextLayout();
+        updateActiveMemorialTextLayout({
+          scale: currentLayout.scale,
+          translateX: startLayout.translateX + gestureState.dx,
+          translateY: startLayout.translateY + gestureState.dy,
+        });
+      },
+      onPanResponderRelease: () => {
+        commitActiveMemorialTextLayout();
+        setTextJoystickKnob({ x: 0, y: 0 });
+      },
+      onPanResponderTerminate: () => {
+        commitActiveMemorialTextLayout();
+        setTextJoystickKnob({ x: 0, y: 0 });
+      },
+    })
+  ).current;
+
+  const withUploadTimeout = (promise, message = '업로드 시간이 초과되었습니다.') => (
+    Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(message)), UPLOAD_TIMEOUT_MS);
+      }),
+    ])
+  );
+
+  const prepareImageForUpload = async (asset) => {
+    const converted = await Promise.race([
+      ImageManipulator.manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 900 } }],
+        { compress: 0.78, format: ImageManipulator.SaveFormat.JPEG }
+      ),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('이미지 변환 시간이 초과되었습니다.')), IMAGE_PREP_TIMEOUT_MS);
+      }),
+    ]);
+
+    return converted?.uri || asset.uri;
+  };
+
+  const fillTestFuneralData = () => {
+    const sampleImageUri = Image.resolveAssetSource(require('../../../../assets/funeral/templates/oldface.png')).uri;
+    latestMainImageLayoutRef.current = { ...MAIN_IMAGE_LAYOUT_DEFAULT };
+    latestMemorialTextLayoutRef.current = { ...MEMORIAL_TEXT_LAYOUT_DEFAULT };
+    latestMemorialNameLayoutRef.current = { ...MEMORIAL_NAME_LAYOUT_DEFAULT };
+    latestMemorialDateLayoutRef.current = { ...MEMORIAL_DATE_LAYOUT_DEFAULT };
+    setMainPhotoLayoutView({ ...MAIN_IMAGE_LAYOUT_DEFAULT });
+    setMemorialNameLayoutView({ ...MEMORIAL_NAME_LAYOUT_DEFAULT });
+    setMemorialDateLayoutView({ ...MEMORIAL_DATE_LAYOUT_DEFAULT });
+    const sampleData = syncCalculatedAge({
+      ...eventData,
+      title: '故 김정담 부고',
+      date: new Date(2026, 4, 13, 12),
+      time: new Date(2026, 4, 13, 9, 0),
+      location: '서울특별시 송파구 올림픽로43길 88',
+      detailedAddress: '지하 1층 3호실',
+      deceasedName: '김정담',
+      birthDate: new Date(1972, 2, 7, 12),
+      ageCalculationMethod: 'korean_year',
+      deathDate: new Date(2026, 4, 11, 12),
+      deathTime: new Date(2026, 4, 11, 6, 30),
+      deceasedGender: '남',
+      religiousRite: '무교/일반',
+      funeralMethod: '일반 장례',
+      casketDate: new Date(2026, 4, 12, 12),
+      casketTime: new Date(2026, 4, 12, 14, 0),
+      burialDate: new Date(2026, 4, 13, 12),
+      burialTime: new Date(2026, 4, 13, 9, 0),
+      burialLocation: '서울추모공원',
+      secondaryBurialLocation: '분당메모리얼파크 봉안당',
+      familyMembers: [
+        { relation: '배우자', names: '이영희' },
+        { relation: '장남', names: '김민준' },
+        { relation: '장녀', names: '김서연' },
+      ],
+      primaryContact: '010-1234-5678',
+      secondaryContact: '010-2345-6789',
+      funeralDirector: '박지도',
+      funeralHome: '서울아산병원 장례식장',
+      funeralAddress: '서울특별시 송파구 올림픽로43길 88',
+      visitationType: 'available',
+      visitationNote: '조문은 5월 11일 오후 2시 이후부터 가능합니다.',
+      parkingTransportInfo: '장례식장 지하 주차장 이용 가능하며, 2호선 잠실나루역에서 도보 이동 가능합니다.',
+      condolenceAccounts: [
+        { ownerName: '김민준', bankName: 'KB국민은행', accountNumber: formatAccountNumber('12345612345678', 'KB') },
+      ],
+      customMessage: FUNERAL_MESSAGE_TEMPLATES[0],
+      allowMessages: true,
+      messageSettings: {
+        placeholder: '삼가 고인의 명복을 빕니다.',
+        requireLogin: true,
+      },
+      selectedTemplate: null,
+      selectedPhotoFrameId: FUNERAL_PHOTO_FRAMES[0]?.id || 'photo-frame-rectangle',
+      mainPhotoLayout: { ...MAIN_IMAGE_LAYOUT_DEFAULT },
+      memorialTextLayout: { ...MEMORIAL_TEXT_LAYOUT_DEFAULT },
+      memorialNameLayout: { ...MEMORIAL_NAME_LAYOUT_DEFAULT },
+      memorialDateLayout: { ...MEMORIAL_DATE_LAYOUT_DEFAULT },
+      memorialNameFontId: MEMORIAL_TEXT_FONT_OPTIONS[0].id,
+      memorialDateFontId: MEMORIAL_TEXT_FONT_OPTIONS[0].id,
+      memorialNameColor: MEMORIAL_NAME_DEFAULT_COLOR,
+      memorialDateColor: MEMORIAL_DATE_DEFAULT_COLOR,
+      memorialNameVisible: true,
+      memorialDateVisible: true,
+      images: [{
+        id: `test-funeral-main-${Date.now()}`,
+        uri: sampleImageUri,
+        publicUrl: sampleImageUri,
+        category: 'main',
+        categoryLabel: '고인 사진',
+        storagePath: null,
+      }],
+    });
+
+    eventDataRef.current = sampleData;
+    setEventData(sampleData);
+    setTimeout(() => scrollViewRef.current?.scrollTo({ y: 0, animated: true }), 50);
+  };
+
+  const updateFamilyMember = (index, patch) => {
+    setEventData(prevData => {
+      const familyMembers = [...prevData.familyMembers];
+      familyMembers[index] = { ...familyMembers[index], ...patch };
+      return { ...prevData, familyMembers };
+    });
+  };
+
+  const addFamilyMember = (relation) => {
+    setEventData(prevData => ({
+      ...prevData,
+      familyMembers: [...prevData.familyMembers, { relation, names: '' }],
+    }));
+  };
+
+  const openRelationPicker = (index = null) => {
+    setRelationPicker({ visible: true, index });
+  };
+
+  const handleRelationSelect = (relation) => {
+    if (relationPicker.index === null) {
+      addFamilyMember(relation);
+    } else {
+      updateFamilyMember(relationPicker.index, { relation });
+    }
+    setRelationPicker({ visible: false, index: null });
+  };
+
+  const updateCondolenceAccount = (index, patch) => {
+    setEventData(prevData => {
+      const condolenceAccounts = [...prevData.condolenceAccounts];
+      condolenceAccounts[index] = { ...condolenceAccounts[index], ...patch };
+      return { ...prevData, condolenceAccounts };
+    });
+  };
+
+  const handleAccountNumberChange = (index, value) => {
+    const account = eventData.condolenceAccounts[index];
+    const bank = findBank(account?.bankName);
+    updateCondolenceAccount(index, {
+      accountNumber: formatAccountNumber(value, bank?.code),
+    });
+  };
+
+  const handleBankSelect = (bankName) => {
+    const selectedIndex = bankPicker.index;
+    setBankPicker({ visible: false, index: null });
+
+    if (selectedIndex !== null) {
+      const bank = findBank(bankName);
+      setEventData(prevData => {
+        const condolenceAccounts = [...prevData.condolenceAccounts];
+        const account = condolenceAccounts[selectedIndex] || {};
+        condolenceAccounts[selectedIndex] = {
+          ...account,
+          bankName,
+          accountNumber: formatAccountNumber(account.accountNumber || '', bank?.code),
+        };
+        return { ...prevData, condolenceAccounts };
+      });
     }
   };
 
@@ -680,15 +2189,65 @@ export default function CreateFuneralScreen({ navigation, route }) {
   
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: !allowsMultiple,
-        aspect: [4, 3],
+        allowsEditing: false,
         quality: 0.8,
         allowsMultipleSelection: allowsMultiple,
       });
   
       if (!result.canceled && result.assets && result.assets.length > 0) {
         console.log('🔍 [DEBUG] 선택된 이미지 개수:', result.assets.length);
-        
+
+        const selectedImages = result.assets.slice(0, remainingCount);
+        const tempEventId = eventData.tempEventId || `temp_${Date.now()}`;
+
+        if (Platform.OS === 'ios') {
+          latestMainImageLayoutRef.current = { ...MAIN_IMAGE_LAYOUT_DEFAULT };
+          latestMemorialTextLayoutRef.current = { ...MEMORIAL_TEXT_LAYOUT_DEFAULT };
+          latestMemorialNameLayoutRef.current = { ...MEMORIAL_NAME_LAYOUT_DEFAULT };
+          latestMemorialDateLayoutRef.current = { ...MEMORIAL_DATE_LAYOUT_DEFAULT };
+          setMainPhotoLayoutView({ ...MAIN_IMAGE_LAYOUT_DEFAULT });
+          setMemorialNameLayoutView({ ...MEMORIAL_NAME_LAYOUT_DEFAULT });
+          setMemorialDateLayoutView({ ...MEMORIAL_DATE_LAYOUT_DEFAULT });
+          const localImages = selectedImages.map((asset, index) => {
+            const timestamp = Date.now() + index;
+            return {
+              ...asset,
+              uri: asset.uri,
+              originalUri: asset.uri,
+              category: category.key,
+              categoryLabel: category.label,
+              id: `${category.key}_local_${timestamp}_${index}`,
+              publicUrl: null,
+              storagePath: null,
+              eventId: tempEventId,
+              uploadSuccess: false,
+              localOnly: true,
+            };
+          });
+
+          setEventData(prevData => {
+            const nextData = {
+              ...prevData,
+              images: [
+                ...prevData.images.filter(img => img.category !== category.key),
+                ...localImages,
+              ],
+              tempEventId,
+              mainPhotoLayout: { ...MAIN_IMAGE_LAYOUT_DEFAULT },
+              memorialTextLayout: { ...MEMORIAL_TEXT_LAYOUT_DEFAULT },
+              memorialNameLayout: { ...MEMORIAL_NAME_LAYOUT_DEFAULT },
+              memorialDateLayout: { ...MEMORIAL_DATE_LAYOUT_DEFAULT },
+            };
+            eventDataRef.current = nextData;
+            return nextData;
+          });
+
+          setTimeout(() => {
+            showTossModal('사진 선택 완료', '사진이 추가되었어요. 액자에 맞춰 위치와 크기를 조절해주세요.', () => {});
+          }, 120);
+          return;
+        }
+
         const userResult = await getCurrentUserInfo();
         if (!userResult.success) {
           showTossModal('오류', '사용자 정보를 확인할 수 없어요. 다시 로그인해주세요.', () => {});
@@ -696,8 +2255,6 @@ export default function CreateFuneralScreen({ navigation, route }) {
         }
   
         const currentUser = userResult.user;
-        const selectedImages = result.assets.slice(0, remainingCount);
-        const tempEventId = `temp_${Date.now()}`;
         
         setImageUploadState({
           isUploading: true,
@@ -707,33 +2264,33 @@ export default function CreateFuneralScreen({ navigation, route }) {
         });
   
         console.log('🔍 [DEBUG] 이미지 업로드 시작:', selectedImages.length, '개');
-  
-        const uploadPromises = selectedImages.map(async (asset, index) => {
+
+        const results = [];
+        for (let index = 0; index < selectedImages.length; index += 1) {
+          const asset = selectedImages[index];
           try {
             const timestamp = new Date().getTime();
             const fileName = `${category.key}_${timestamp}_${index}.jpg`;
             
             console.log('🔍 [DEBUG] 개별 이미지 업로드 시작:', fileName);
-  
-            let uploadUri = asset.uri;
-            try {
-              const converted = await ImageManipulator.manipulateAsync(
-                asset.uri, [{ resize: { width: 1200 } }], { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
-              );
-              uploadUri = converted.uri;
-            } catch (e) { console.warn('⚠️ 변환 실패:', e.message); }
 
-            const uploadResult = await uploadImageToStorage(uploadUri, fileName, currentUser.id, tempEventId);
+            const uploadUri = await prepareImageForUpload(asset);
+  
+            const uploadResult = await withUploadTimeout(
+              uploadImageToStorage(uploadUri, fileName, currentUser.id, tempEventId)
+            );
             
             setImageUploadState(prev => ({
               ...prev,
-              currentIndex: prev.currentIndex + 1,
+              currentIndex: index + 1,
             }));
             
             if (uploadResult.success) {
               console.log('✅ 개별 이미지 업로드 성공:', uploadResult.data.publicUrl);
-              return {
+              results.push({
                 ...asset,
+                uri: uploadUri,
+                originalUri: asset.uri,
                 category: category.key,
                 categoryLabel: category.label,
                 id: `${category.key}_${timestamp}_${index}`,
@@ -741,34 +2298,38 @@ export default function CreateFuneralScreen({ navigation, route }) {
                 storagePath: uploadResult.data.path,
                 eventId: tempEventId,
                 uploadSuccess: true,
-              };
+              });
             } else {
               console.error('❌ 개별 이미지 업로드 실패:', uploadResult.error);
-              return {
+              results.push({
                 ...asset,
+                originalUri: asset.uri,
                 category: category.key,
                 categoryLabel: category.label,
                 id: `${category.key}_${timestamp}_${index}`,
                 eventId: tempEventId,
                 uploadSuccess: false,
                 error: uploadResult.error,
-              };
+              });
             }
           } catch (error) {
             console.error('❌ 개별 이미지 처리 오류:', error);
-            return {
+            setImageUploadState(prev => ({
+              ...prev,
+              currentIndex: index + 1,
+            }));
+            results.push({
               ...asset,
+              originalUri: asset.uri,
               category: category.key,
               categoryLabel: category.label,
               id: `${category.key}_${Date.now()}_${index}`,
               eventId: tempEventId,
               uploadSuccess: false,
               error: error.message,
-            };
+            });
           }
-        });
-  
-        const results = await Promise.all(uploadPromises);
+        }
         
         setImageUploadState({
           isUploading: false,
@@ -787,6 +2348,15 @@ export default function CreateFuneralScreen({ navigation, route }) {
         });
   
         if (successfulUploads.length > 0) {
+          if (category.maxCount === 1) {
+            latestMainImageLayoutRef.current = { ...MAIN_IMAGE_LAYOUT_DEFAULT };
+            latestMemorialTextLayoutRef.current = { ...MEMORIAL_TEXT_LAYOUT_DEFAULT };
+            latestMemorialNameLayoutRef.current = { ...MEMORIAL_NAME_LAYOUT_DEFAULT };
+            latestMemorialDateLayoutRef.current = { ...MEMORIAL_DATE_LAYOUT_DEFAULT };
+            setMainPhotoLayoutView({ ...MAIN_IMAGE_LAYOUT_DEFAULT });
+            setMemorialNameLayoutView({ ...MEMORIAL_NAME_LAYOUT_DEFAULT });
+            setMemorialDateLayoutView({ ...MEMORIAL_DATE_LAYOUT_DEFAULT });
+          }
           setEventData(prevData => {
             let updatedImages;
             
@@ -799,28 +2369,40 @@ export default function CreateFuneralScreen({ navigation, route }) {
   
             console.log('🔍 [DEBUG] 최종 이미지 배열 업데이트:', updatedImages.length, '개');
             
-            return {
+            const nextData = {
               ...prevData,
               images: updatedImages,
               tempEventId: tempEventId,
+              ...(category.maxCount === 1 ? {
+                mainPhotoLayout: { ...MAIN_IMAGE_LAYOUT_DEFAULT },
+                memorialTextLayout: { ...MEMORIAL_TEXT_LAYOUT_DEFAULT },
+                memorialNameLayout: { ...MEMORIAL_NAME_LAYOUT_DEFAULT },
+                memorialDateLayout: { ...MEMORIAL_DATE_LAYOUT_DEFAULT },
+              } : {}),
             };
+            eventDataRef.current = nextData;
+            return nextData;
           });
   
-          if (failedUploads.length > 0) {
-            showTossModal(
-              '일부 업로드 실패', 
-              `${successfulUploads.length}장은 성공했지만 ${failedUploads.length}장 업로드에 실패했어요. 다시 시도해주세요.`, 
-              () => {}
-            );
-          } else {
-            showTossModal(
-              '업로드 완료', 
-              `${successfulUploads.length}장의 이미지가 성공적으로 업로드되었어요!`, 
-              () => {}
-            );
-          }
+          setTimeout(() => {
+            if (failedUploads.length > 0) {
+              showTossModal(
+                '일부 업로드 실패',
+                `${successfulUploads.length}장은 성공했지만 ${failedUploads.length}장 업로드에 실패했어요. 다시 시도해주세요.`,
+                () => {}
+              );
+            } else {
+              showTossModal(
+                '업로드 완료',
+                `${successfulUploads.length}장의 이미지가 성공적으로 업로드되었어요!`,
+                () => {}
+              );
+            }
+          }, 120);
         } else {
-          showTossModal('업로드 실패', '이미지 업로드에 실패했어요. 네트워크 상태를 확인하고 다시 시도해주세요.', () => {});
+          setTimeout(() => {
+            showTossModal('업로드 실패', '이미지 업로드에 실패했어요. 네트워크 상태를 확인하고 다시 시도해주세요.', () => {});
+          }, 120);
         }
       }
     } catch (error) {
@@ -843,7 +2425,10 @@ export default function CreateFuneralScreen({ navigation, route }) {
 
   const handleTemplateSelect = (template) => {
     console.log('🔍 [DEBUG] 템플릿 선택:', template.name);
-    setEventData({ ...eventData, selectedTemplate: template });
+    setEventData(prevData => ({
+      ...prevData,
+      selectedTemplate: template,
+    }));
     setShowTemplatePreview(false);
   };
 
@@ -852,12 +2437,16 @@ export default function CreateFuneralScreen({ navigation, route }) {
       showTossModal('필수 입력', '고인명을 입력해주세요', () => {}, null, 'deceasedInfo');
       return false;
     }
-    if (!eventData.deceasedAge.trim()) {
-      showTossModal('필수 입력', '향년을 입력해주세요', () => {}, null, 'deceasedInfo');
+    if (!eventData.birthDate) {
+      showTossModal('필수 입력', '생년월일을 선택해주세요', () => {}, null, 'deceasedInfo');
       return false;
     }
     if (!eventData.deathDate) {
       showTossModal('필수 입력', '별세일을 선택해주세요', () => {}, null, 'deceasedInfo');
+      return false;
+    }
+    if (!eventData.deceasedAge.trim()) {
+      showTossModal('필수 입력', '생년월일과 별세일을 기준으로 향년을 계산할 수 없어요', () => {}, null, 'deceasedInfo');
       return false;
     }
     if (!eventData.burialDate) {
@@ -888,29 +2477,400 @@ export default function CreateFuneralScreen({ navigation, route }) {
       showTossModal('필수 입력', '빈소 위치를 입력해주세요', () => {}, null, 'funeralLocation');
       return false;
     }
-    
-    // 메인 사진 필수 체크
+    return true;
+  };
+
+  const validateStep2 = () => {
     const mainImageCount = getCategoryImageCount('main');
     if (mainImageCount === 0) {
       showTossModal('필수 입력', '고인 사진을 최소 1장 이상 업로드해주세요', () => {}, null, 'photos');
       return false;
     }
-    
+    if (!getSelectedPhotoFrame()) {
+      showTossModal('필수 입력', '고인 사진 액자를 선택해 주세요', () => {}, null, 'photos');
+      return false;
+    }
     return true;
   };
 
   const handleNext = () => {
     if (currentStep === 1) {
       if (validateStep1()) {
+        setPhotoAdjustMode(false);
+        setTextAdjustMode(false);
         setCurrentStep(2);
       }
-    } else if (currentStep === 2) {
-      if (!eventData.selectedTemplate) {
-        showTossModal('템플릿 선택', '원하는 템플릿을 선택해주세요', () => {});
+      return;
+    }
+
+    if (currentStep === 2) {
+      if (!validateStep2()) {
         return;
       }
-      handleSave();
+      setPhotoAdjustMode(false);
+      setTextAdjustMode(false);
+      setCurrentStep(3);
+      return;
     }
+
+    if (currentStep === 3) {
+      handleSave();
+      return;
+    }
+  };
+
+  const handlePreviousStep = () => {
+    setPhotoAdjustMode(false);
+    setTextAdjustMode(false);
+    stopJoystickMotion();
+    setPhotoJoystickKnob({ x: 0, y: 0 });
+    setTextJoystickKnob({ x: 0, y: 0 });
+    setCurrentStep(prevStep => Math.max(1, prevStep - 1));
+  };
+
+  const getStepButtonText = () => {
+    if (isLoading) {
+      return '생성 중...';
+    }
+    if (imageUploadState.isUploading) {
+      return '이미지 업로드 중...';
+    }
+
+    if (currentStep === 1 || currentStep === 2) {
+      return '다음';
+    }
+
+    return '부고 만들기';
+  };
+
+  const getStepButtonDisabled = () =>
+    isLoading ||
+    imageUploadState.isUploading ||
+    (currentStep === 2 && (getCategoryImageCount('main') === 0 || !getSelectedPhotoFrame())) ||
+    (currentStep === 3 && (!eventData.selectedTemplate || getCategoryImageCount('main') === 0));
+
+  const renderPhotoAdjustmentOverlay = () => {
+    const layout = mainPhotoLayoutView;
+    const previewImage = getCategoryImages('main')[0];
+
+    if (!previewImage || !photoAdjustMode) {
+      return null;
+    }
+
+    const scalePct = Math.round(layout.scale * 100);
+
+    return (
+      <View style={styles.photoAdjustOverlay} pointerEvents="box-none">
+        <View style={styles.photoScaleFloating}>
+          <Text style={styles.photoScaleValue}>{scalePct}%</Text>
+          <TouchableOpacity style={styles.photoScaleButton} onPress={() => applyMainImageAdjust('scale', 0.05)} activeOpacity={0.85}>
+            <Ionicons name="add" size={21} color={TossColors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.photoScaleButton} onPress={() => applyMainImageAdjust('scale', -0.05)} activeOpacity={0.85}>
+            <Ionicons name="remove" size={21} color={TossColors.text} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.photoJoystick}>
+          <View style={styles.photoJoystickAxisHorizontal} />
+          <View style={styles.photoJoystickAxisVertical} />
+          <View
+            style={[
+              styles.photoJoystickKnob,
+              {
+                transform: [
+                  { translateX: photoJoystickKnob.x },
+                  { translateY: photoJoystickKnob.y },
+                ],
+              },
+            ]}
+            {...photoJoystickPanResponder.panHandlers}
+          >
+            <View style={styles.photoJoystickKnobDot} />
+          </View>
+        </View>
+
+        <View style={styles.textAdjustDoneWrap}>
+          <TouchableOpacity style={styles.textAdjustDoneButton} onPress={() => setPhotoAdjustMode(false)} activeOpacity={0.85}>
+            <Text style={styles.photoAdjustDoneText}>완료</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  const renderPhotoAdjustOpenButton = () => {
+    const previewImage = getCategoryImages('main')[0];
+
+    if (!previewImage || photoAdjustMode || textAdjustMode) {
+      return null;
+    }
+
+    return (
+      <View style={styles.photoAdjustOpenFloating} pointerEvents="box-none">
+        <TouchableOpacity style={styles.photoAdjustOpenButton} onPress={() => setPhotoAdjustMode(true)} activeOpacity={0.86}>
+          <Ionicons name="move-outline" size={18} color={TossColors.primary} />
+          <Text style={styles.photoAdjustOpenText}>위치 조정</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderMemorialTextOverlay = ({ compact = false } = {}) => {
+    const nameLayout = memorialNameLayoutView;
+    const dateLayout = memorialDateLayoutView;
+    const name = eventData.deceasedName?.trim() || '고인명';
+    const birth = formatMemorialDate(eventData.birthDate) || '1948. 03. 12';
+    const death = formatMemorialDate(eventData.deathDate) || '2026. 05. 12';
+    const translateRatio = compact ? 0.55 : 1;
+
+    return (
+      <>
+        {eventData.memorialNameVisible !== false && (
+          <View
+            pointerEvents="none"
+            style={[
+              compact ? styles.memorialNameOverlayCompact : styles.memorialNameOverlay,
+              {
+                transform: [
+                  { translateX: nameLayout.translateX * translateRatio },
+                  { translateY: nameLayout.translateY * translateRatio },
+                  { scale: nameLayout.scale },
+                ],
+              },
+            ]}
+          >
+            <Text style={[compact ? styles.memorialNameTextCompact : styles.memorialNameText, getMemorialFontStyle('name')]}>故 {name}</Text>
+          </View>
+        )}
+        {eventData.memorialDateVisible !== false && (
+          <View
+            pointerEvents="none"
+            style={[
+              compact ? styles.memorialDateOverlayCompact : styles.memorialDateOverlay,
+              {
+                transform: [
+                  { translateX: dateLayout.translateX * translateRatio },
+                  { translateY: dateLayout.translateY * translateRatio },
+                  { scale: dateLayout.scale },
+                ],
+              },
+            ]}
+          >
+            <Text style={[compact ? styles.memorialDateTextCompact : styles.memorialDateText, getMemorialFontStyle('date')]}>{birth} ~ {death}</Text>
+          </View>
+        )}
+      </>
+    );
+  };
+
+  const renderComposedPhotoFrame = ({ compact = false, insideExistingFrame = false } = {}) => {
+    const selectedPhoto = getCategoryImages('main')[0];
+    const selectedPhotoUri = selectedPhoto?.publicUrl || selectedPhoto?.uri;
+    const selectedFrame = getSelectedPhotoFrame();
+    const layout = compact ? mainPhotoLayoutView : getMainImageLayout();
+    const frameAspectRatio = getPhotoFrameAspectRatio(selectedFrame);
+
+    if (!selectedPhotoUri) {
+      return (
+        <View style={compact ? styles.templateComposerPhotoPlaceholderCompact : styles.templateComposerPhotoPlaceholder}>
+          <Ionicons name="person-circle-outline" size={compact ? 26 : 36} color={TossColors.textTertiary} />
+          <Text style={styles.templateComposerPhotoPlaceholderText}>고인 사진 업로드</Text>
+        </View>
+      );
+    }
+
+    const content = (
+      <>
+        <Image
+          source={{ uri: selectedPhotoUri }}
+          resizeMode="cover"
+          style={[
+            styles.templateComposerPhoto,
+            {
+              transform: [
+                { translateX: layout.translateX * (compact ? 0.55 : 1) },
+                { translateY: layout.translateY * (compact ? 0.55 : 1) },
+                { scale: layout.scale },
+              ],
+            },
+          ]}
+        />
+        {selectedFrame?.source ? (
+          <Image
+            source={selectedFrame.source}
+            style={styles.templateComposerOverlay}
+            resizeMode="cover"
+          />
+        ) : null}
+        {renderMemorialTextOverlay({ compact })}
+      </>
+    );
+
+    if (insideExistingFrame) {
+      return content;
+    }
+
+    return (
+      <View style={[
+        compact ? styles.templateComposerPhotoFrameCompact : styles.templateComposerPhotoFrame,
+        { aspectRatio: frameAspectRatio },
+      ]}>
+        {content}
+      </View>
+    );
+  };
+
+  const renderTextAdjustmentOverlay = () => {
+    const layout = textAdjustTarget === 'date' ? memorialDateLayoutView : memorialNameLayoutView;
+    if (!textAdjustMode) return null;
+    const scalePct = Math.round(layout.scale * 100);
+
+    return (
+      <View style={styles.photoAdjustOverlay} pointerEvents="box-none">
+        <View style={styles.photoScaleFloating}>
+          <Text style={styles.photoScaleValue}>{scalePct}%</Text>
+          <TouchableOpacity style={styles.photoScaleButton} onPress={() => applyMemorialTextAdjust('scale', 0.05)} activeOpacity={0.85}>
+            <Ionicons name="add" size={21} color={TossColors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.photoScaleButton} onPress={() => applyMemorialTextAdjust('scale', -0.05)} activeOpacity={0.85}>
+            <Ionicons name="remove" size={21} color={TossColors.text} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.photoJoystick}>
+          <View style={styles.photoJoystickAxisHorizontal} />
+          <View style={styles.photoJoystickAxisVertical} />
+          <View
+            style={[
+              styles.photoJoystickKnob,
+              {
+                transform: [
+                  { translateX: textJoystickKnob.x },
+                  { translateY: textJoystickKnob.y },
+                ],
+              },
+            ]}
+            {...textJoystickPanResponder.panHandlers}
+          >
+            <View style={styles.photoJoystickKnobDot} />
+          </View>
+        </View>
+
+        <View style={styles.textAdjustDoneWrap}>
+          <TouchableOpacity style={styles.textAdjustDoneButton} onPress={() => setTextAdjustMode(false)} activeOpacity={0.85}>
+            <Text style={styles.photoAdjustDoneText}>완료</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  const renderTextAdjustOpenButton = () => {
+    if (photoAdjustMode || textAdjustMode) return null;
+    return (
+      <View style={styles.textAdjustOpenFloating} pointerEvents="box-none">
+        <TouchableOpacity
+          style={styles.photoAdjustOpenButton}
+          onPress={() => {
+            setActiveTextAdjustTarget('name');
+            setTextAdjustMode(true);
+          }}
+          activeOpacity={0.86}
+        >
+          <Ionicons name="text-outline" size={18} color={TossColors.primary} />
+          <Text style={styles.photoAdjustOpenText}>이름 조정</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.photoAdjustOpenButton}
+          onPress={() => {
+            setActiveTextAdjustTarget('date');
+            setTextAdjustMode(true);
+          }}
+          activeOpacity={0.86}
+        >
+          <Ionicons name="calendar-outline" size={18} color={TossColors.primary} />
+          <Text style={styles.photoAdjustOpenText}>날짜 조정</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const openTextAdjustment = (target) => {
+    setAdjustMenuOpen(false);
+    setActiveTextAdjustTarget(target);
+    setTextAdjustMode(true);
+  };
+
+  const renderComposerActionFab = () => {
+    const previewImage = getCategoryImages('main')[0];
+
+    if (!previewImage || photoAdjustMode || textAdjustMode) {
+      return null;
+    }
+
+    const actions = [
+      {
+        key: 'photo',
+        label: '사진 조정',
+        icon: 'move-outline',
+        onPress: () => {
+          setAdjustMenuOpen(false);
+          setPhotoAdjustMode(true);
+        },
+      },
+      {
+        key: 'name',
+        label: '이름 조정',
+        icon: 'text-outline',
+        onPress: () => openTextAdjustment('name'),
+      },
+      {
+        key: 'date',
+        label: '날짜 조정',
+        icon: 'calendar-outline',
+        onPress: () => openTextAdjustment('date'),
+      },
+      {
+        key: 'font',
+        label: '글꼴',
+        icon: 'color-palette-outline',
+        onPress: () => {
+          setAdjustMenuOpen(false);
+          setFontPickerTarget('name');
+          setFontPickerVisible(true);
+        },
+      },
+    ];
+
+    return (
+      <View style={styles.composerFabWrap} pointerEvents="box-none">
+        {adjustMenuOpen && (
+          <View style={styles.composerFabMenu}>
+            {actions.map(action => (
+              <TouchableOpacity
+                key={action.key}
+                style={styles.composerFabAction}
+                onPress={action.onPress}
+                activeOpacity={0.86}
+              >
+                <Text style={styles.composerFabActionText}>{action.label}</Text>
+                <View style={styles.composerFabActionIcon}>
+                  <Ionicons name={action.icon} size={18} color={TossColors.primary} />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+        <TouchableOpacity
+          style={[styles.composerFabButton, adjustMenuOpen && styles.composerFabButtonActive]}
+          onPress={() => setAdjustMenuOpen(prev => !prev)}
+          activeOpacity={0.9}
+        >
+          <Ionicons name={adjustMenuOpen ? 'close' : 'options-outline'} size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   const handleSave = async () => {
@@ -928,6 +2888,13 @@ export default function CreateFuneralScreen({ navigation, route }) {
           relation: member.relation,
           names: member.names.trim()
         }));
+      const validCondolenceAccounts = eventData.condolenceAccounts
+        .filter(account => account.bankName && account.accountNumber && account.ownerName)
+        .map(account => ({
+          owner_name: account.ownerName.trim(),
+          bank_name: account.bankName,
+          account_number: account.accountNumber.trim(),
+        }));
       
       console.log('🔍 저장할 부고 데이터:', {
         deceasedName: eventData.deceasedName,
@@ -942,7 +2909,7 @@ export default function CreateFuneralScreen({ navigation, route }) {
       let formattedEventData = {
         event_type: 'funeral', // 🔥 고정
         event_name: eventTitle,
-        template_style: eventData.selectedTemplate?.style || 'traditional-dark',
+        template_style: eventData.selectedTemplate?.style || 'modern-card',
         family_relations: eventData.familyRelations,
         preset_amounts: eventData.presetAmounts,
         status: 'active',
@@ -964,29 +2931,56 @@ export default function CreateFuneralScreen({ navigation, route }) {
         main_person_name: eventData.deceasedName.trim(),
         location: eventData.funeralAddress?.trim() || null,
         detailed_address: eventData.detailedAddress?.trim() || null,
-        deceased_age: parseInt(eventData.deceasedAge) || null,
-        death_date: eventData.deathDate && eventData.deathDate instanceof Date && !isNaN(eventData.deathDate.getTime()) ? 
-          eventData.deathDate.toISOString().split('T')[0] : null,
+        birth_date: dateToISODate(eventData.birthDate),
+        deceased_age: parseInt(eventData.deceasedAge, 10) || null,
+        age_calculation_method: eventData.ageCalculationMethod,
+        death_date: dateToISODate(eventData.deathDate),
+        death_time: timeToISOTime(eventData.deathTime),
         deceased_gender: eventData.deceasedGender || '남',
-        casket_date: eventData.casketDate && eventData.casketDate instanceof Date && !isNaN(eventData.casketDate.getTime()) ? 
-          eventData.casketDate.toISOString().split('T')[0] : null,
-        casket_time: eventData.casketTime && eventData.casketTime instanceof Date && !isNaN(eventData.casketTime.getTime()) ? 
-          eventData.casketTime.toTimeString().split(' ')[0] : null,
-        burial_date: eventData.burialDate && eventData.burialDate instanceof Date && !isNaN(eventData.burialDate.getTime()) ? 
-          eventData.burialDate.toISOString().split('T')[0] : null,
-        burial_time: eventData.burialTime && eventData.burialTime instanceof Date && !isNaN(eventData.burialTime.getTime()) ? 
-          eventData.burialTime.toTimeString().split(' ')[0] : null,
+        religious_rite: eventData.religiousRite,
+        funeral_method: eventData.funeralMethod,
+        casket_date: dateToISODate(eventData.casketDate),
+        casket_time: timeToISOTime(eventData.casketTime),
+        burial_date: dateToISODate(eventData.burialDate),
+        burial_time: timeToISOTime(eventData.burialTime),
         burial_location: eventData.burialLocation?.trim() || null,
         secondary_burial_location: eventData.secondaryBurialLocation?.trim() || null,
         primary_contact: eventData.primaryContact || null,
         secondary_contact: eventData.secondaryContact || null,
         funeral_director: eventData.funeralDirector?.trim() || null,
         funeral_home: eventData.funeralHome?.trim() || null,
+        visitation_type: eventData.visitationType,
+        visitation_note: eventData.visitationNote?.trim() || null,
+        parking_transport_info: eventData.parkingTransportInfo?.trim() || null,
+        condolence_accounts: validCondolenceAccounts,
         custom_message: eventData.customMessage?.trim() || null,
         deceasedName: eventData.deceasedName.trim(),
         familyMembers: validFamilyMembers,
         additional_info: {
           family_members: validFamilyMembers,
+          birth_date: dateToISODate(eventData.birthDate),
+          photo_frame: {
+            id: eventData.selectedPhotoFrameId,
+            key: FUNERAL_PHOTO_FRAMES.find((frame) => frame.id === eventData.selectedPhotoFrameId)?.key || null,
+          },
+          age_calculation_method: eventData.ageCalculationMethod,
+          main_photo_layout: normalizeMainImageLayout(eventData.mainPhotoLayout || MAIN_IMAGE_LAYOUT_DEFAULT),
+          memorial_text_layout: normalizeMemorialTextLayout(eventData.memorialTextLayout || MEMORIAL_TEXT_LAYOUT_DEFAULT),
+          memorial_name_layout: normalizeMemorialTextLayout(eventData.memorialNameLayout || MEMORIAL_NAME_LAYOUT_DEFAULT),
+          memorial_date_layout: normalizeMemorialTextLayout(eventData.memorialDateLayout || MEMORIAL_DATE_LAYOUT_DEFAULT),
+          memorial_name_font_id: eventData.memorialNameFontId || MEMORIAL_TEXT_FONT_OPTIONS[0].id,
+          memorial_date_font_id: eventData.memorialDateFontId || MEMORIAL_TEXT_FONT_OPTIONS[0].id,
+          memorial_name_color: eventData.memorialNameColor || MEMORIAL_NAME_DEFAULT_COLOR,
+          memorial_date_color: eventData.memorialDateColor || MEMORIAL_DATE_DEFAULT_COLOR,
+          memorial_name_visible: eventData.memorialNameVisible !== false,
+          memorial_date_visible: eventData.memorialDateVisible !== false,
+          death_time: timeToISOTime(eventData.deathTime),
+          religious_rite: eventData.religiousRite,
+          funeral_method: eventData.funeralMethod,
+          visitation_type: eventData.visitationType,
+          visitation_note: eventData.visitationNote?.trim() || null,
+          parking_transport_info: eventData.parkingTransportInfo?.trim() || null,
+          condolence_accounts: validCondolenceAccounts,
           categorized_images: categorizedImages,
           message_settings: eventData.messageSettings,
           created_via: 'app_v2.3',
@@ -1004,12 +2998,10 @@ export default function CreateFuneralScreen({ navigation, route }) {
 
       if (result.success) {
         console.log('✅ 부고 이벤트 생성 및 이미지 저장 완료, ID:', result.data.id);
-        
-        setCurrentStep(3);
         setTimeout(() => {
           navigation.navigate('EventDisplay', { 
             eventId: result.data.id,
-            templateStyle: eventData.selectedTemplate?.style || 'traditional-dark',
+            templateStyle: eventData.selectedTemplate?.style || 'modern-card',
             categorizedImages: categorizedImages,
             allowMessages: eventData.allowMessages,
             messageSettings: eventData.messageSettings,
@@ -1063,29 +3055,15 @@ export default function CreateFuneralScreen({ navigation, route }) {
         <Text style={styles.sectionSubtitle}>고인의 기본 정보를 입력해주세요</Text>
       </View>
       
-      <View style={styles.formRow}>
-        <View style={styles.inputWrapper}>
-          <Text style={styles.inputLabel}>고인명 *</Text>
-          <TextInput
-            style={[styles.textInput, !eventData.deceasedName && styles.textInputEmpty]}
-            placeholder="홍길동"
-            value={eventData.deceasedName}
-            onChangeText={(text) => setEventData({ ...eventData, deceasedName: text })}
-            placeholderTextColor={TossColors.textTertiary}
-          />
-        </View>
-        
-        <View style={styles.inputWrapper}>
-          <Text style={styles.inputLabel}>향년 *</Text>
-          <TextInput
-            style={[styles.textInput, !eventData.deceasedAge && styles.textInputEmpty]}
-            placeholder="83"
-            value={eventData.deceasedAge}
-            onChangeText={(text) => setEventData({ ...eventData, deceasedAge: text })}
-            keyboardType="number-pad"
-            placeholderTextColor={TossColors.textTertiary}
-          />
-        </View>
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>고인명 *</Text>
+        <TextInput
+          style={[styles.textInput, !eventData.deceasedName && styles.textInputEmpty]}
+          placeholder="홍길동"
+          value={eventData.deceasedName}
+          onChangeText={(text) => setEventData({ ...eventData, deceasedName: text })}
+          placeholderTextColor={TossColors.textTertiary}
+        />
       </View>
 
       <View style={styles.formRow}>
@@ -1118,7 +3096,55 @@ export default function CreateFuneralScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
         </View>
+      </View>
 
+      <View style={styles.formRow}>
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>생년월일 *</Text>
+          <TouchableOpacity
+            style={styles.selectButton}
+            onPress={() => setShowBirthDatePicker(true)}
+          >
+            <Text style={[
+              styles.selectButtonText,
+              !eventData.birthDate && styles.selectButtonTextEmpty
+            ]}>
+              {formatDate(eventData.birthDate) || '생년월일 선택'}
+            </Text>
+            <Ionicons name="calendar-outline" size={20} color={TossColors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.segmentRow}>
+        <TouchableOpacity
+          style={[
+            styles.segmentButton,
+            eventData.ageCalculationMethod === 'korean_year' && styles.segmentButtonSelected,
+          ]}
+          onPress={() => updateEventData({ ageCalculationMethod: 'korean_year' })}
+        >
+          <Text style={[
+            styles.segmentButtonText,
+            eventData.ageCalculationMethod === 'korean_year' && styles.segmentButtonTextSelected,
+          ]}>세는 나이</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.segmentButton,
+            eventData.ageCalculationMethod === 'full_age' && styles.segmentButtonSelected,
+          ]}
+          onPress={() => updateEventData({ ageCalculationMethod: 'full_age' })}
+        >
+          <Text style={[
+            styles.segmentButtonText,
+            eventData.ageCalculationMethod === 'full_age' && styles.segmentButtonTextSelected,
+          ]}>만 나이</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={styles.inputHintSpaced}>생년월일과 별세일을 선택하면 선택한 나이 기준으로 향년이 자동 계산돼요.</Text>
+
+      <View style={styles.formRow}>
         <View style={styles.inputWrapper}>
           <Text style={styles.inputLabel}>별세일 *</Text>
           <TouchableOpacity
@@ -1134,6 +3160,39 @@ export default function CreateFuneralScreen({ navigation, route }) {
             <Ionicons name="calendar-outline" size={20} color={TossColors.textSecondary} />
           </TouchableOpacity>
         </View>
+
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>별세 시간</Text>
+          <TouchableOpacity
+            style={styles.selectButton}
+            onPress={() => setShowDeathTimePicker(true)}
+          >
+            <Text style={[
+              styles.selectButtonText,
+              !eventData.deathTime && styles.selectButtonTextEmpty
+            ]}>
+              {formatTime(eventData.deathTime) || '시간 선택'}
+            </Text>
+            <Ionicons name="time-outline" size={20} color={TossColors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.ageResultBox}>
+        <Text style={styles.ageResultLabel}>
+          {eventData.deathDate ? '향년' : '나이 미리보기'} · {eventData.ageCalculationMethod === 'full_age' ? '만 나이 기준' : '세는 나이 기준'}
+        </Text>
+        <Text style={[
+          styles.ageResultValue,
+          !getVisibleAge() && styles.ageResultValueEmpty,
+        ]}>
+          {getVisibleAge() ? `${getVisibleAge()}세` : '생년월일 선택 후 자동 계산'}
+        </Text>
+        {eventData.birthDate && (
+          <Text style={styles.ageResultHint}>
+            기준일: {getAgeBaseDateLabel()}{eventData.deathDate ? '' : ' (오늘 기준)'}
+          </Text>
+        )}
       </View>
     </Animated.View>
   );
@@ -1147,67 +3206,53 @@ export default function CreateFuneralScreen({ navigation, route }) {
     >
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>상주 정보</Text>
-        <Text style={styles.sectionSubtitle}>가족 관계별로 상주 성함을 입력해주세요</Text>
+        <Text style={styles.sectionSubtitle}>관계를 먼저 선택한 뒤 상주 성함을 입력해주세요</Text>
       </View>
       
-      {eventData.familyMembers.map((member, index) => (
-        <View key={index} style={styles.familyMemberRow}>
-          <View style={styles.familyRelationInput}>
-            <Text style={styles.inputLabel}>관계</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder="장남"
-              value={member.relation}
-              onChangeText={(text) => {
-                const updatedMembers = [...eventData.familyMembers];
-                updatedMembers[index].relation = text;
-                setEventData({ ...eventData, familyMembers: updatedMembers });
-              }}
-              placeholderTextColor={TossColors.textTertiary}
-            />
-          </View>
+      {eventData.familyMembers.length === 0 && (
+        <View style={styles.emptyFamilyBox}>
+          <Ionicons name="people-outline" size={24} color={TossColors.textSecondary} />
+          <Text style={styles.emptyFamilyTitle}>아직 상주 정보가 없어요</Text>
+          <Text style={styles.emptyFamilyDescription}>관계 추가 버튼으로 장남, 장녀, 배우자 등 필요한 관계만 추가하세요.</Text>
+        </View>
+      )}
 
+      {eventData.familyMembers.map((member, index) => (
+        <View key={`${member.relation}-${index}`} style={styles.familyMemberCard}>
+          <View style={styles.familyMemberHeader}>
+            <TouchableOpacity
+              style={styles.relationSelectButton}
+              onPress={() => openRelationPicker(index)}
+            >
+              <Text style={styles.relationSelectText}>{member.relation || '관계 선택'}</Text>
+              <Ionicons name="chevron-down" size={16} color={TossColors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.removeFamilyButton}
+              onPress={() => removeFamilyMember(index)}
+            >
+              <Ionicons name="close-circle" size={22} color={TossColors.textTertiary} />
+            </TouchableOpacity>
+          </View>
           <View style={styles.familyNamesInput}>
             <Text style={styles.inputLabel}>상주명</Text>
             <TextInput
               style={styles.textInput}
               placeholder="홍길동, 홍길순"
               value={member.names}
-              onChangeText={(text) => {
-                const updatedMembers = [...eventData.familyMembers];
-                updatedMembers[index].names = text;
-                setEventData({ ...eventData, familyMembers: updatedMembers });
-              }}
+              onChangeText={(text) => updateFamilyMember(index, { names: text })}
               placeholderTextColor={TossColors.textTertiary}
             />
           </View>
-          
-          {/* 삭제 버튼 - 기본 가족 관계 외에만 표시 */}
-          {index >= 4 && (
-            <TouchableOpacity
-              style={styles.removeFamilyButton}
-              onPress={() => removeFamilyMember(index)}
-            >
-              <Ionicons name="remove-circle" size={24} color={TossColors.error} />
-            </TouchableOpacity>
-          )}
         </View>
       ))}
 
       <TouchableOpacity
         style={styles.addFamilyButton}
-        onPress={() => {
-          setEventData({
-            ...eventData,
-            familyMembers: [
-              ...eventData.familyMembers,
-              { relation: '기타', names: '' }
-            ]
-          });
-        }}
+        onPress={() => openRelationPicker(null)}
       >
         <Ionicons name="add-circle-outline" size={20} color={TossColors.primary} />
-        <Text style={styles.addFamilyButtonText}>가족 관계 추가</Text>
+        <Text style={styles.addFamilyButtonText}>상주 관계 추가</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -1293,25 +3338,70 @@ export default function CreateFuneralScreen({ navigation, route }) {
       </View>
 
       <View style={styles.inputWrapper}>
-        <Text style={styles.inputLabel}>장지 *</Text>
+        <Text style={styles.inputLabel}>장지/화장장 *</Text>
         <TextInput
           style={[styles.textInput, !eventData.burialLocation && styles.textInputEmpty]}
-          placeholder="예: 서울추모공원, 양평 추모원"
+          placeholder="예: 서울추모공원, ○○화장장"
           value={eventData.burialLocation}
           onChangeText={(text) => setEventData({ ...eventData, burialLocation: text })}
           placeholderTextColor={TossColors.textTertiary}
         />
+        <Text style={styles.inputHint}>화장장, 공원묘지, 선산 등 발인 후 처음 이동하는 장소를 적어주세요.</Text>
       </View>
 
       <View style={styles.inputWrapper}>
-        <Text style={styles.inputLabel}>2차 장지 (선택)</Text>
+        <Text style={styles.inputLabel}>봉안당/2차 장지 (선택)</Text>
         <TextInput
           style={styles.textInput}
-          placeholder="예: 화장 후 납골당, 산골"
+          placeholder="예: ○○추모공원 봉안당, 선산"
           value={eventData.secondaryBurialLocation}
           onChangeText={(text) => setEventData({ ...eventData, secondaryBurialLocation: text })}
           placeholderTextColor={TossColors.textTertiary}
         />
+        <Text style={styles.inputHint}>화장 후 봉안당, 수목장, 선산처럼 마지막 안치 장소가 따로 있으면 입력하세요.</Text>
+      </View>
+    </Animated.View>
+  );
+
+  const renderFuneralRiteForm = () => (
+    <Animated.View style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>종교/장례 방식</Text>
+        <Text style={styles.sectionSubtitle}>부고장에 표시할 장례 예식 방식을 선택해주세요</Text>
+      </View>
+
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>종교 예식</Text>
+        <View style={styles.chipGrid}>
+          {RELIGIOUS_RITE_OPTIONS.map(option => (
+            <TouchableOpacity
+              key={option}
+              style={[styles.choiceChip, eventData.religiousRite === option && styles.choiceChipSelected]}
+              onPress={() => setEventData({ ...eventData, religiousRite: option })}
+            >
+              <Text style={[styles.choiceChipText, eventData.religiousRite === option && styles.choiceChipTextSelected]}>
+                {option}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>장례 방식</Text>
+        <View style={styles.chipGrid}>
+          {FUNERAL_METHOD_OPTIONS.map(option => (
+            <TouchableOpacity
+              key={option}
+              style={[styles.choiceChip, eventData.funeralMethod === option && styles.choiceChipSelected]}
+              onPress={() => setEventData({ ...eventData, funeralMethod: option })}
+            >
+              <Text style={[styles.choiceChipText, eventData.funeralMethod === option && styles.choiceChipTextSelected]}>
+                {option}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
     </Animated.View>
   );
@@ -1429,6 +3519,178 @@ export default function CreateFuneralScreen({ navigation, route }) {
     </Animated.View>
   );
 
+  const renderFuneralGuideForm = () => (
+    <Animated.View
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.funeralGuide = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>조문 안내</Text>
+        <Text style={styles.sectionSubtitle}>조문 가능 여부와 주차/교통 안내를 선택 입력하세요</Text>
+      </View>
+
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>조문 가능 안내</Text>
+        <View style={styles.chipGrid}>
+          {VISITATION_OPTIONS.map(option => (
+            <TouchableOpacity
+              key={option.value}
+              style={[styles.choiceChip, eventData.visitationType === option.value && styles.choiceChipSelected]}
+              onPress={() => setEventData({ ...eventData, visitationType: option.value })}
+            >
+              <Text style={[styles.choiceChipText, eventData.visitationType === option.value && styles.choiceChipTextSelected]}>
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>조문 안내 문구</Text>
+        <View style={styles.messageTemplateGrid}>
+          {VISITATION_NOTE_TEMPLATES.map((template, index) => (
+            <TouchableOpacity
+              key={template}
+              style={[
+                styles.messageTemplateButton,
+                eventData.visitationNote === template && styles.messageTemplateButtonSelected,
+              ]}
+              onPress={() => setEventData({ ...eventData, visitationNote: template })}
+            >
+              <Text style={[
+                styles.messageTemplateButtonText,
+                eventData.visitationNote === template && styles.messageTemplateButtonTextSelected,
+              ]}>
+                안내 {index + 1}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TextInput
+          style={[styles.textInput, styles.messageInput]}
+          placeholder="예: 조문은 5월 12일 오후 2시 이후 가능합니다."
+          value={eventData.visitationNote}
+          onChangeText={(text) => setEventData({ ...eventData, visitationNote: text })}
+          multiline
+          placeholderTextColor={TossColors.textTertiary}
+        />
+      </View>
+
+      <View style={styles.inputWrapper}>
+        <Text style={styles.inputLabel}>주차/교통 안내</Text>
+        <TextInput
+          style={[styles.textInput, styles.messageInput]}
+          placeholder="예: 장례식장 지하 주차장 이용 가능, 2호선 ○○역 3번 출구 도보 5분"
+          value={eventData.parkingTransportInfo}
+          onChangeText={(text) => setEventData({ ...eventData, parkingTransportInfo: text })}
+          multiline
+          placeholderTextColor={TossColors.textTertiary}
+        />
+      </View>
+    </Animated.View>
+  );
+
+  const renderCondolenceAccountForm = () => (
+    <Animated.View
+      style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      onLayout={(event) => {
+        sectionPositions.current.condolenceAccounts = event.nativeEvent.layout.y;
+      }}
+    >
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>부의금 계좌</Text>
+        <Text style={styles.sectionSubtitle}>필요한 경우에만 상주 계좌를 추가해주세요</Text>
+      </View>
+
+      {eventData.condolenceAccounts.map((account, index) => {
+        const bank = findBank(account.bankName);
+        return (
+          <View key={`condolence-account-${index}`} style={styles.accountCard}>
+            <View style={styles.familyMemberHeader}>
+              <Text style={styles.accountCardTitle}>계좌 {index + 1}</Text>
+              <TouchableOpacity
+                style={styles.removeFamilyButton}
+                onPress={() => setEventData({
+                  ...eventData,
+                  condolenceAccounts: eventData.condolenceAccounts.filter((_, i) => i !== index),
+                })}
+              >
+                <Ionicons name="close-circle" size={22} color={TossColors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>예금주</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="홍길동"
+                value={account.ownerName}
+                onChangeText={(text) => updateCondolenceAccount(index, { ownerName: text })}
+                placeholderTextColor={TossColors.textTertiary}
+              />
+            </View>
+
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>은행</Text>
+              <TouchableOpacity
+                style={styles.bankSelectButton}
+                onPress={() => {
+                  if (!bankPicker.visible) {
+                    setBankPicker({ visible: true, index });
+                  }
+                }}
+              >
+                <View style={styles.bankSelectContent}>
+                  {bank && BANK_LOGOS[bank.code] ? (
+                    <Image source={BANK_LOGOS[bank.code]} style={styles.bankBadgeLogo} resizeMode="contain" />
+                  ) : (
+                    <Ionicons name="business-outline" size={18} color={TossColors.textSecondary} />
+                  )}
+                  <Text style={[
+                    styles.selectButtonText,
+                    !account.bankName && styles.selectButtonTextEmpty
+                  ]}>
+                    {account.bankName || '은행 선택'}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={TossColors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>계좌번호</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="계좌번호 입력"
+                value={account.accountNumber}
+                onChangeText={(text) => handleAccountNumberChange(index, text)}
+                keyboardType="number-pad"
+                placeholderTextColor={TossColors.textTertiary}
+              />
+            </View>
+          </View>
+        );
+      })}
+
+      <TouchableOpacity
+        style={styles.addFamilyButton}
+        onPress={() => setEventData({
+          ...eventData,
+          condolenceAccounts: [
+            ...eventData.condolenceAccounts,
+            { ownerName: '', bankName: '', accountNumber: '' },
+          ],
+        })}
+      >
+        <Ionicons name="add-circle-outline" size={20} color={TossColors.primary} />
+        <Text style={styles.addFamilyButtonText}>부의금 계좌 추가</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+
   // 부고용 조문메시지 설정 폼
   const renderMessageSettingsForm = () => (
     <Animated.View 
@@ -1483,7 +3745,7 @@ export default function CreateFuneralScreen({ navigation, route }) {
         </TouchableOpacity>
       </View>
 
-      {/* 방명록이 활성화된 경우 추가 설정 */}
+      {/* 방명록이 활성화된 경우 안내 */}
       {eventData.allowMessages && (
         <View style={styles.messageSettingsDetails}>
           <View style={styles.messageSettingCard}>
@@ -1495,45 +3757,6 @@ export default function CreateFuneralScreen({ navigation, route }) {
               조문 메시지 작성 시 회원가입이 필요합니다.{'\n'}
               정중한 메시지 환경을 위해 본인 인증을 진행해요.
             </Text>
-          </View>
-
-          <View style={styles.inputWrapper}>
-            <Text style={styles.inputLabel}>메시지 안내문</Text>
-            <TextInput
-              style={[styles.textInput, styles.messageInput]}
-              placeholder="조문 메시지를 남겨주세요"
-              value={eventData.messageSettings.placeholder}
-              onChangeText={(text) => setEventData({ 
-                ...eventData, 
-                messageSettings: { 
-                  ...eventData.messageSettings, 
-                  placeholder: text 
-                }
-              })}
-              multiline
-              numberOfLines={2}
-              textAlignVertical="top"
-              placeholderTextColor={TossColors.textTertiary}
-            />
-            <Text style={styles.inputHint}>
-              조문객들에게 표시될 메시지 입력 안내문이에요
-            </Text>
-          </View>
-
-          <View style={styles.messagePreviewContainer}>
-            <Text style={styles.messagePreviewTitle}>미리보기</Text>
-            <View style={styles.messagePreviewBox}>
-              <View style={styles.messagePreviewHeader}>
-                <Ionicons name="chatbubble" size={16} color={TossColors.primary} />
-                <Text style={styles.messagePreviewHeaderText}>조문 메시지 작성</Text>
-              </View>
-              <Text style={styles.messagePreviewPlaceholder}>
-                {eventData.messageSettings.placeholder || "조문 메시지를 남겨주세요"}
-              </Text>
-              <View style={styles.messagePreviewButton}>
-                <Text style={styles.messagePreviewButtonText}>메시지 남기기</Text>
-              </View>
-            </View>
           </View>
         </View>
       )}
@@ -1562,7 +3785,27 @@ export default function CreateFuneralScreen({ navigation, route }) {
     >
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>상주의 말</Text>
-        <Text style={styles.sectionSubtitle}>상주의 말씀을 적어보세요</Text>
+        <Text style={styles.sectionSubtitle}>문구를 선택하거나 직접 수정해보세요</Text>
+      </View>
+
+      <View style={styles.messageTemplateGrid}>
+        {FUNERAL_MESSAGE_TEMPLATES.map((template, index) => (
+          <TouchableOpacity
+            key={template}
+            style={[
+              styles.messageTemplateButton,
+              eventData.customMessage === template && styles.messageTemplateButtonSelected,
+            ]}
+            onPress={() => setEventData({ ...eventData, customMessage: template })}
+          >
+            <Text style={[
+              styles.messageTemplateButtonText,
+              eventData.customMessage === template && styles.messageTemplateButtonTextSelected,
+            ]}>
+              문구 {index + 1}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
       
       <View style={styles.inputWrapper}>
@@ -1605,23 +3848,33 @@ export default function CreateFuneralScreen({ navigation, route }) {
               <View key={category.key} style={styles.photoCategorySection}>
                 <View style={styles.photoCategoryHeader}>
                   <View style={styles.photoCategoryInfo}>
-                    <Text style={styles.photoCategoryIcon}>{category.icon}</Text>
+                    <View style={[
+                      styles.photoCategoryIcon,
+                      isComplete && styles.photoCategoryIconComplete,
+                    ]}>
+                      <Ionicons
+                        name={isComplete ? 'person-circle' : 'person-circle-outline'}
+                        size={24}
+                        color={isComplete ? TossColors.textSecondary : TossColors.primary}
+                      />
+                    </View>
                     <View style={styles.photoCategoryTextContainer}>
-                      <Text style={[
-                        styles.photoCategoryTitle,
-                        isRequired && styles.photoCategoryTitleRequired
-                      ]}>
+                      <Text style={styles.photoCategoryTitle}>
                         {category.label}
                         {category.required && <Text style={styles.requiredAsterisk}> *</Text>}
                       </Text>
                       <Text style={styles.photoCategoryDescription}>{category.description}</Text>
                     </View>
                   </View>
-                  <View style={styles.photoCategoryCount}>
+                  <View style={[
+                    styles.photoCategoryCount,
+                    isComplete && styles.photoCategoryCountComplete,
+                    isRequired && styles.photoCategoryCountRequired,
+                  ]}>
                     <Text style={[
                       styles.photoCategoryCountText,
-                      isComplete && styles.photoCategoryCountComplete,
-                      isRequired && styles.photoCategoryCountRequired
+                      isComplete && styles.photoCategoryCountTextComplete,
+                      isRequired && styles.photoCategoryCountTextRequired,
                     ]}>
                       {currentCount}/{category.maxCount}
                     </Text>
@@ -1646,9 +3899,9 @@ export default function CreateFuneralScreen({ navigation, route }) {
                     name={isComplete ? "checkmark-circle" : 
                          imageUploadState.isUploading ? "cloud-upload" : "camera"} 
                     size={20} 
-                    color={isComplete ? TossColors.success : 
-                           imageUploadState.isUploading ? TossColors.warning :
-                           isRequired ? TossColors.error : TossColors.primary} 
+                    color={isComplete ? TossColors.textSecondary : 
+                           imageUploadState.isUploading ? TossColors.primary :
+                           TossColors.primary} 
                   />
                   <Text style={[
                     styles.categoryUploadButtonText,
@@ -1677,9 +3930,9 @@ export default function CreateFuneralScreen({ navigation, route }) {
                         {/* 업로드 상태 표시 */}
                         <View style={styles.categoryImageStatus}>
                           <Ionicons 
-                            name={image.publicUrl ? "cloud-done" : "cloud-upload-outline"} 
+                            name={image.publicUrl || image.localOnly ? "checkmark-circle" : "cloud-upload-outline"} 
                             size={12} 
-                            color={image.publicUrl ? TossColors.success : TossColors.warning} 
+                            color={image.publicUrl || image.localOnly ? TossColors.textSecondary : TossColors.warning} 
                           />
                         </View>
                         
@@ -1714,12 +3967,204 @@ export default function CreateFuneralScreen({ navigation, route }) {
               대기 중: {eventData.images.filter(img => !img.publicUrl).length}장
             </Text>
             <Text style={styles.photoSummaryDetail}>
-              고인 사진 {getCategoryImageCount('main')}/3
+              고인 사진 {getCategoryImageCount('main')}/1
             </Text>
           </View>
         </View>
       </Animated.View>
     );
+  };
+
+  const renderPhotoFrameSelector = () => {
+    const hasMainPhoto = getCategoryImageCount('main') > 0;
+    const selectedFrame = getSelectedPhotoFrame();
+
+    if (!hasMainPhoto) {
+      return null;
+    }
+
+    return (
+      <Animated.View
+        style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      >
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>고인 사진 액자 선택</Text>
+          <Text style={styles.sectionSubtitle}>액자 스타일에 맞춰 고인 사진을 정렬해 주세요.</Text>
+        </View>
+
+        <TouchableOpacity
+          style={styles.photoFrameSelectButton}
+          onPress={() => setPhotoFramePicker(true)}
+          activeOpacity={0.86}
+        >
+          <View style={styles.photoFrameSelectButtonInner}>
+            {selectedFrame?.source ? (
+              <Image source={selectedFrame.source} style={styles.photoFrameSelectThumb} resizeMode="contain" />
+            ) : null}
+            <Text style={styles.photoFrameSelectButtonText}>
+              {selectedFrame?.name || '액자 선택'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-down" size={20} color={TossColors.textSecondary} />
+        </TouchableOpacity>
+        <View style={{ marginTop: 6 }}>
+          <Text style={styles.photoFrameSelectedInfo}>
+            현재 선택: {selectedFrame?.name || '없음'}
+          </Text>
+        </View>
+      </Animated.View>
+    );
+  };
+
+  const renderTemplatePreviewVisualCard = (previewType) => {
+    switch (previewType) {
+      case 'card-editorial-timeline':
+        return (
+          <View style={styles.previewCardVisualTimeline}>
+            <View style={styles.previewTimelineHeader}>
+              <Text style={styles.previewTimelineHeaderTitle}>부고문</Text>
+              <Text style={styles.previewTimelineHeaderDate}>2026.05.10 · 안치</Text>
+            </View>
+            <View style={styles.previewTimelinePhotoRow}>
+              <View style={styles.previewTimelinePhoto} />
+              <View style={styles.previewTimelineTextBlock}>
+                <Text style={styles.previewTimelineLine}>故 홍길동</Text>
+                <Text style={styles.previewTimelineLineSub}>향년 70 · 별세 2026.05.10</Text>
+              </View>
+            </View>
+            <View style={styles.previewTimelineTimeline}>
+              <View style={styles.previewTimelineItem}>
+                <Text style={styles.previewTimelineDay}>입관</Text>
+                <Text style={styles.previewTimelineValue}>2026.05.10 14:00</Text>
+              </View>
+              <View style={styles.previewTimelineItem}>
+                <Text style={styles.previewTimelineDay}>발인</Text>
+                <Text style={styles.previewTimelineValue}>2026.05.11 09:00</Text>
+              </View>
+              <View style={styles.previewTimelineItem}>
+                <Text style={styles.previewTimelineDay}>장지</Text>
+                <Text style={styles.previewTimelineValue}>서울영안원 봉안실</Text>
+              </View>
+            </View>
+          </View>
+        );
+      case 'card-paper-letter':
+        return (
+          <View style={styles.previewCardVisualPaper}>
+            <Text style={styles.previewPaperRibbon}>故人을 추모합니다</Text>
+            <View style={styles.previewPaperCard}>
+              <Text style={styles.previewPaperTitle}>부고</Text>
+              <Text style={styles.previewPaperName}>故 홍길동</Text>
+              <Text style={styles.previewPaperSub}>향년 70세</Text>
+              <View style={styles.previewPaperLine} />
+              <Text style={styles.previewPaperLineText}>상주: 배우자 ○○○</Text>
+              <Text style={styles.previewPaperLineText}>빈소: ○○장례식장</Text>
+              <Text style={styles.previewPaperLineText}>연락처: 010-0000-0000</Text>
+            </View>
+          </View>
+        );
+      case 'card-modern-soft':
+      default:
+        return (
+          <View style={styles.previewCardVisualModern}>
+            <Image pointerEvents="none" source={MODERN_TEMPLATE_PREVIEW_ASSETS.flowerCorner} style={styles.previewModernFlowerCorner} resizeMode="contain" />
+            <Image pointerEvents="none" source={MODERN_TEMPLATE_PREVIEW_ASSETS.oliveBranch} style={styles.previewModernOlive} resizeMode="contain" />
+            <Image pointerEvents="none" source={MODERN_TEMPLATE_PREVIEW_ASSETS.petals} style={styles.previewModernPetals} resizeMode="contain" />
+            <View style={styles.previewModernCoverContent}>
+              <View style={styles.previewModernCoverKickerRow}>
+                <Text style={styles.previewModernBadge}>대표 템플릿</Text>
+                <Text style={styles.previewModernDate}>HANJI MODERN</Text>
+              </View>
+              <Text style={styles.previewModernCoverTitle}>한지 모던</Text>
+              <Text style={styles.previewModernCoverSubtitle}>
+                고인의 사진과 조문 일정을 한 화면에 격식 있게 담는 모바일 부고장
+              </Text>
+              <View style={styles.previewModernCoverFeatureGrid}>
+                {[
+                  ['time-outline', '진행 일정'],
+                  ['flower-outline', '꽃 장식'],
+                  ['card-outline', '부의금 안내'],
+                ].map(([icon, label]) => (
+                  <View key={label} style={styles.previewModernCoverFeature}>
+                    <Ionicons name={icon} size={13} color="#2B2B2A" />
+                    <Text style={styles.previewModernCoverFeatureText}>{label}</Text>
+                  </View>
+                ))}
+              </View>
+              <Image pointerEvents="none" source={MODERN_TEMPLATE_PREVIEW_ASSETS.divider} style={styles.previewModernCoverDivider} resizeMode="contain" />
+            </View>
+          </View>
+        );
+    }
+  };
+
+  const renderTemplatePreviewThumbnail = (template) => {
+    if (!template.preview) {
+      return (
+        <View style={[styles.templateImage, getTemplatePreviewStyle(template.previewType)]}>
+          {renderTemplatePreviewVisualCard(template.previewType)}
+        </View>
+      );
+    }
+
+    return (
+      <Image
+        source={template.preview}
+        style={styles.templateImage}
+        resizeMode="cover"
+      />
+    );
+  };
+
+  const buildFuneralPreviewEventData = () => {
+    const selectedFrame = FUNERAL_PHOTO_FRAMES.find((frame) => frame.id === eventData.selectedPhotoFrameId);
+    const mainPhotoLayout = normalizeMainImageLayout(
+      latestMainImageLayoutRef.current ||
+      mainPhotoLayoutView ||
+      eventData.mainPhotoLayout ||
+      MAIN_IMAGE_LAYOUT_DEFAULT
+    );
+    const memorialNameLayout = normalizeMemorialTextLayout(
+      latestMemorialNameLayoutRef.current ||
+      memorialNameLayoutView ||
+      eventData.memorialNameLayout ||
+      MEMORIAL_NAME_LAYOUT_DEFAULT
+    );
+    const memorialDateLayout = normalizeMemorialTextLayout(
+      latestMemorialDateLayoutRef.current ||
+      memorialDateLayoutView ||
+      eventData.memorialDateLayout ||
+      MEMORIAL_DATE_LAYOUT_DEFAULT
+    );
+
+    return {
+      ...eventData,
+      mainPhotoLayout,
+      main_photo_layout: mainPhotoLayout,
+      memorialNameFontId: eventData.memorialNameFontId || MEMORIAL_TEXT_FONT_OPTIONS[0].id,
+      memorialDateFontId: eventData.memorialDateFontId || MEMORIAL_TEXT_FONT_OPTIONS[0].id,
+      memorialNameColor: eventData.memorialNameColor || MEMORIAL_NAME_DEFAULT_COLOR,
+      memorialDateColor: eventData.memorialDateColor || MEMORIAL_DATE_DEFAULT_COLOR,
+      memorialNameLayout,
+      memorialDateLayout,
+      additional_info: {
+        ...(eventData.additional_info || {}),
+        ...(eventData.additionalInfo || {}),
+        photo_frame: {
+          id: eventData.selectedPhotoFrameId,
+          key: selectedFrame?.key || null,
+        },
+        main_photo_layout: mainPhotoLayout,
+        memorial_name_layout: memorialNameLayout,
+        memorial_date_layout: memorialDateLayout,
+        memorial_name_font_id: eventData.memorialNameFontId || MEMORIAL_TEXT_FONT_OPTIONS[0].id,
+        memorial_date_font_id: eventData.memorialDateFontId || MEMORIAL_TEXT_FONT_OPTIONS[0].id,
+        memorial_name_color: eventData.memorialNameColor || MEMORIAL_NAME_DEFAULT_COLOR,
+        memorial_date_color: eventData.memorialDateColor || MEMORIAL_DATE_DEFAULT_COLOR,
+        memorial_name_visible: eventData.memorialNameVisible !== false,
+        memorial_date_visible: eventData.memorialDateVisible !== false,
+      },
+    };
   };
 
   const renderTemplateSelection = () => (
@@ -1737,10 +4182,10 @@ export default function CreateFuneralScreen({ navigation, route }) {
               styles.templateCard,
               eventData.selectedTemplate?.id === template.id && styles.templateCardSelected,
             ]}
-            onPress={() => setEventData({ ...eventData, selectedTemplate: template })}
+            onPress={() => handleTemplateSelect(template)}
           >
-            <View style={styles.templateImageContainer}>
-              <Image source={template.preview} style={styles.templateImage} />
+                <View style={styles.templateImageContainer}>
+                  {renderTemplatePreviewThumbnail(template)}
               {eventData.selectedTemplate?.id === template.id && (
                 <View style={styles.templateSelectedOverlay}>
                   <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
@@ -1775,16 +4220,76 @@ export default function CreateFuneralScreen({ navigation, route }) {
     </Animated.View>
   );
 
-  const renderCompletionScreen = () => (
-    <View style={styles.completionContainer}>
-      <Animated.View style={[styles.completionContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-        <View style={styles.completionIconContainer}>
-          <Text style={styles.completionEmoji}>🕊️</Text>
+  const renderPhotoFrameComposer = () => {
+    const selectedPhoto = getCategoryImages('main')[0];
+    const selectedPhotoUri = selectedPhoto?.publicUrl || selectedPhoto?.uri;
+    const selectedFrame = getSelectedPhotoFrame();
+    const layout = getMainImageLayout();
+    const frameAspectRatio = getPhotoFrameAspectRatio(selectedFrame);
+
+    if (!selectedPhotoUri) {
+      return (
+        <View style={[styles.section, { marginTop: 12 }]}>
+          <Text style={styles.sectionTitle}>고인 사진을 업로드해 주세요</Text>
+          <Text style={styles.sectionSubtitle}>사진을 업로드하면 바로 액자에 맞춰 위치를 조절할 수 있어요.</Text>
         </View>
-        <Text style={styles.completionTitle}>부고가 완성되었어요!</Text>
-        <Text style={styles.completionSubtitle}>잠시 후 부고 화면으로 이동할게요</Text>
+      );
+    }
+
+    return (
+      <Animated.View style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>고인 사진 정렬</Text>
+          <Text style={styles.sectionSubtitle}>선택한 액자에 맞춰 사진 위치와 크기를 조절해 주세요.</Text>
+        </View>
+
+        <View style={styles.templateComposerCanvas}>
+          <View style={[styles.templateComposerPhotoFrame, { aspectRatio: frameAspectRatio }]}>
+            {renderComposedPhotoFrame({ insideExistingFrame: true })}
+            {renderComposerActionFab()}
+            {renderPhotoAdjustmentOverlay()}
+            {renderTextAdjustmentOverlay()}
+          </View>
+        </View>
       </Animated.View>
-    </View>
+    );
+  };
+
+  const getTemplatePreviewStyle = (previewType) => {
+    switch (previewType) {
+      case 'card-editorial-timeline':
+        return {
+          backgroundColor: '#F4F7FF',
+          borderColor: '#D9E3FF',
+          borderWidth: 1,
+        };
+      case 'card-paper-letter':
+        return {
+          backgroundColor: '#FAF7F1',
+          borderColor: '#E7DFD1',
+          borderWidth: 1,
+        };
+      case 'card-modern-soft':
+      default:
+        return {
+          backgroundColor: '#F8FAFF',
+          borderColor: '#E4EEFF',
+          borderWidth: 1,
+        };
+    }
+  };
+
+  
+
+  const renderTemplateComposer = () => (
+    <ScrollView
+      style={styles.scrollView}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      {renderTemplateSelection()}
+    </ScrollView>
   );
 
   const renderStep1 = () => (
@@ -1797,10 +4302,12 @@ export default function CreateFuneralScreen({ navigation, route }) {
     >
       {renderDeceasedInfoForm()}
       {renderFamilyMembersForm()}
-      {renderFuneralScheduleForm()}
       {renderFuneralLocationForm()}
       {renderFuneralContactForm()}
-      {renderPhotoUploadForm()}
+      {renderFuneralGuideForm()}
+      {renderFuneralScheduleForm()}
+      {renderFuneralRiteForm()}
+      {renderCondolenceAccountForm()}
       {renderMessageSettingsForm()}
       {renderMessageForm()}
     </ScrollView>
@@ -1811,12 +4318,23 @@ export default function CreateFuneralScreen({ navigation, route }) {
       style={styles.scrollView}
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
+      scrollEnabled={!photoAdjustMode && !textAdjustMode}
     >
-      {renderTemplateSelection()}
+      {renderPhotoUploadForm()}
+      {getCategoryImageCount('main') > 0 && (
+        <>
+          <View style={{ marginVertical: 12 }}>
+            {renderPhotoFrameSelector()}
+          </View>
+          <View style={{ marginTop: 8 }}>
+            {renderPhotoFrameComposer()}
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 
-  const renderStep3 = () => renderCompletionScreen();
+  const renderStep3 = () => renderTemplateComposer();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1825,10 +4343,10 @@ export default function CreateFuneralScreen({ navigation, route }) {
       {/* 프로그레스 바 */}
       <View style={styles.progressContainer}>
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${(currentStep / 3) * 100}%` }]} />
+          <View style={[styles.progressFill, { width: `${(currentStep / FUNERAL_STEP_COUNT) * 100}%` }]} />
         </View>
         <Text style={styles.progressText}>
-          {currentStep}/3
+          {currentStep}/{FUNERAL_STEP_COUNT}
         </Text>
       </View>
 
@@ -1841,12 +4359,37 @@ export default function CreateFuneralScreen({ navigation, route }) {
         {currentStep === 3 && renderStep3()}
 
         {/* 하단 버튼 */}
-        {currentStep < 3 && (
-          <View style={styles.bottomButtonContainer}>
+        {currentStep <= 3 && (
+          <>
+          {currentStep === 1 && (
+            <Animated.View
+              style={[
+                styles.testFillWrap,
+                {
+                  transform: [{
+                    translateY: testButtonAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -5],
+                    }),
+                  }],
+                },
+              ]}
+            >
+              <TouchableOpacity
+                style={styles.testFillButton}
+                onPress={fillTestFuneralData}
+                activeOpacity={0.86}
+              >
+                <Ionicons name="flash" size={14} color={TossColors.primary} />
+                <Text style={styles.testFillText}>테스트 입력</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+            <View style={styles.bottomButtonContainer}>
             {currentStep > 1 && (
               <TouchableOpacity
                 style={styles.backButton}
-                onPress={() => setCurrentStep(currentStep - 1)}
+                onPress={handlePreviousStep}
               >
                 <Text style={styles.backButtonText}>이전</Text>
               </TouchableOpacity>
@@ -1855,19 +4398,18 @@ export default function CreateFuneralScreen({ navigation, route }) {
             <TouchableOpacity
               style={[
                 styles.nextButton,
-                (isLoading || imageUploadState.isUploading) && styles.nextButtonDisabled,
+                getStepButtonDisabled() && styles.nextButtonDisabled,
                 currentStep === 1 && { flex: 1 }
               ]}
               onPress={handleNext}
-              disabled={isLoading || imageUploadState.isUploading}
+              disabled={getStepButtonDisabled()}
             >
               <Text style={styles.nextButtonText}>
-                {isLoading ? '생성 중...' : 
-                 imageUploadState.isUploading ? '이미지 업로드 중...' :
-                 currentStep === 1 ? '다음' : '부고 만들기'}
+                {getStepButtonText()}
               </Text>
             </TouchableOpacity>
           </View>
+          </>
         )}
 
         {/* 이미지 업로드 진행 모달 */}
@@ -1888,11 +4430,26 @@ export default function CreateFuneralScreen({ navigation, route }) {
         />
 
         <TossDatePicker
+          visible={showBirthDatePicker}
+          selectedDate={eventData.birthDate}
+          onSelect={(date) => updateEventData({ birthDate: date })}
+          onClose={() => setShowBirthDatePicker(false)}
+          allowPastDates={true}
+        />
+
+        <TossDatePicker
           visible={showDeathDatePicker}
           selectedDate={eventData.deathDate}
-          onSelect={(date) => setEventData({ ...eventData, deathDate: date })}
+          onSelect={(date) => updateEventData({ deathDate: date })}
           onClose={() => setShowDeathDatePicker(false)}
           allowPastDates={true}
+        />
+
+        <TossTimePicker
+          visible={showDeathTimePicker}
+          selectedTime={eventData.deathTime}
+          onSelect={(time) => setEventData({ ...eventData, deathTime: time })}
+          onClose={() => setShowDeathTimePicker(false)}
         />
 
         <TossDatePicker
@@ -1925,6 +4482,42 @@ export default function CreateFuneralScreen({ navigation, route }) {
           onClose={() => setShowBurialTimePicker(false)}
         />
 
+        <RelationPickerSheet
+          visible={relationPicker.visible}
+          onSelect={handleRelationSelect}
+          onClose={() => setRelationPicker({ visible: false, index: null })}
+        />
+
+        <PhotoFramePickerSheet
+          visible={photoFramePicker}
+          frames={FUNERAL_PHOTO_FRAMES}
+          selectedFrameId={getSelectedPhotoFrame()?.id}
+          onSelect={handlePhotoFrameSelect}
+          onClose={() => setPhotoFramePicker(false)}
+        />
+
+        <BankPickerSheet
+          visible={bankPicker.visible}
+          onSelect={handleBankSelect}
+          onClose={() => setBankPicker({ visible: false, index: null })}
+        />
+
+        <MemorialFontPickerSheet
+          visible={fontPickerVisible}
+          target={fontPickerTarget}
+          nameFontId={eventData.memorialNameFontId}
+          dateFontId={eventData.memorialDateFontId}
+          nameColor={eventData.memorialNameColor || MEMORIAL_NAME_DEFAULT_COLOR}
+          dateColor={eventData.memorialDateColor || MEMORIAL_DATE_DEFAULT_COLOR}
+          nameVisible={eventData.memorialNameVisible !== false}
+          dateVisible={eventData.memorialDateVisible !== false}
+          onTargetChange={setFontPickerTarget}
+          onSelect={updateMemorialFont}
+          onColorSelect={updateMemorialTextColor}
+          onVisibleChange={updateMemorialTextVisible}
+          onClose={() => setFontPickerVisible(false)}
+        />
+
         <DaumPostcode
           visible={showFuneralAddressSearch}
           onComplete={handleFuneralAddressComplete}
@@ -1955,11 +4548,12 @@ export default function CreateFuneralScreen({ navigation, route }) {
             {previewTemplate && (
               <FuneralTemplatePreview
                 template={previewTemplate}
-                eventData={eventData}
+                eventData={buildFuneralPreviewEventData()}
                 userImages={eventData.images}
                 categorizedImages={getCategorizedImages()}
                 allowMessages={eventData.allowMessages}
                 messageSettings={eventData.messageSettings}
+                isPreviewMode={true}
               />
             )}
           </View>
@@ -2065,6 +4659,70 @@ const styles = StyleSheet.create({
     marginTop: 6,
     lineHeight: 16,
   },
+  segmentRow: {
+    flexDirection: 'row',
+    backgroundColor: TossColors.border,
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 8,
+  },
+  segmentButton: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentButtonSelected: {
+    backgroundColor: TossColors.background,
+  },
+  segmentButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TossColors.textSecondary,
+  },
+  segmentButtonTextSelected: {
+    color: TossColors.primary,
+  },
+  ageResultBox: {
+    minHeight: 54,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.secondary,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 12,
+  },
+  ageResultLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TossColors.textSecondary,
+    marginBottom: 4,
+  },
+  ageResultValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: TossColors.primary,
+  },
+  ageResultValueEmpty: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TossColors.textTertiary,
+  },
+  ageResultHint: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 16,
+    color: TossColors.textSecondary,
+  },
+  inputHintSpaced: {
+    fontSize: 12,
+    color: TossColors.textTertiary,
+    marginTop: 8,
+    marginBottom: 22,
+    lineHeight: 16,
+  },
   textInput: {
     backgroundColor: TossColors.surface,
     borderRadius: 12,
@@ -2114,23 +4772,61 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   
-  // 가족 구성원 행 - 삭제 버튼 포함
-  familyMemberRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 10,
-    marginBottom: 20,
+  emptyFamilyBox: {
+    alignItems: 'center',
+    padding: 20,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.secondary,
+    marginBottom: 16,
   },
-  familyRelationInput: {
-    width: 96,
-    marginBottom: 0,
+  emptyFamilyTitle: {
+    marginTop: 8,
+    fontSize: 15,
+    fontWeight: '700',
+    color: TossColors.text,
+  },
+  emptyFamilyDescription: {
+    marginTop: 4,
+    fontSize: 13,
+    color: TossColors.textSecondary,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  familyMemberCard: {
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    marginBottom: 12,
+  },
+  familyMemberHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  relationSelectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TossColors.secondary,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  relationSelectText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: TossColors.primary,
+    marginRight: 4,
   },
   familyNamesInput: {
     flex: 1,
     marginBottom: 0,
   },
   removeFamilyButton: {
-    paddingBottom: 8,
+    padding: 4,
   },
   
   // 가족 추가 버튼
@@ -2150,6 +4846,441 @@ const styles = StyleSheet.create({
     color: TossColors.primary,
     fontWeight: '500',
     marginLeft: 8,
+  },
+  chipGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  messageTemplateGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  messageTemplateButton: {
+    minWidth: '30%',
+    flexGrow: 1,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  messageTemplateButtonSelected: {
+    borderColor: TossColors.primary,
+    backgroundColor: TossColors.secondary,
+  },
+  messageTemplateButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TossColors.textSecondary,
+  },
+  messageTemplateButtonTextSelected: {
+    color: TossColors.primary,
+  },
+  choiceChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.surface,
+  },
+  choiceChipSelected: {
+    borderColor: TossColors.primary,
+    backgroundColor: TossColors.secondary,
+  },
+  choiceChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TossColors.textSecondary,
+  },
+  choiceChipTextSelected: {
+    color: TossColors.primary,
+  },
+  accountCard: {
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    marginBottom: 12,
+  },
+  accountCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: TossColors.text,
+  },
+  bankSelectButton: {
+    minHeight: 54,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.surface,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  bankSelectContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  bankBadgeLogo: {
+    width: 24,
+    height: 24,
+    marginRight: 8,
+  },
+  sheetDim: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: TossColors.overlay,
+  },
+  sheetDimTouch: {
+    flex: 1,
+  },
+  bottomSheet: {
+    maxHeight: '78%',
+    backgroundColor: TossColors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 28,
+  },
+  sheetHandle: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  sheetHandleBar: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: TossColors.border,
+  },
+  sheetHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: TossColors.text,
+  },
+  sheetSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    color: TossColors.textSecondary,
+  },
+  sheetCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: TossColors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+  relationGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingBottom: 12,
+  },
+  relationGridItem: {
+    width: '48.5%',
+    minHeight: 112,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.surface,
+    padding: 14,
+    marginBottom: 10,
+  },
+  relationCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 9,
+  },
+  relationCardTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '800',
+    color: TossColors.text,
+    marginRight: 8,
+  },
+  relationGroupBadge: {
+    minWidth: 34,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: TossColors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  relationGroupText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: TossColors.primary,
+  },
+  relationGridDescription: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: TossColors.textSecondary,
+    textAlign: 'left',
+  },
+  bankSearchWrap: {
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: TossColors.secondary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  bankSearchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: TossColors.text,
+  },
+  bankGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingBottom: 12,
+  },
+  bankItem: {
+    width: '33.333%',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  bankIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: TossColors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  bankLogoImg: {
+    width: 28,
+    height: 28,
+  },
+  bankIconText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  bankName: {
+    fontSize: 12,
+    color: TossColors.text,
+    textAlign: 'center',
+  },
+  fontTargetSwitch: {
+    flexDirection: 'row',
+    padding: 4,
+    borderRadius: 14,
+    backgroundColor: TossColors.secondary,
+    marginBottom: 14,
+  },
+  fontTargetButton: {
+    flex: 1,
+    height: 42,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fontTargetButtonSelected: {
+    backgroundColor: TossColors.surface,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  fontTargetText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: TossColors.textSecondary,
+  },
+  fontTargetTextSelected: {
+    color: TossColors.text,
+  },
+  fontOptionList: {
+    gap: 10,
+    paddingBottom: 8,
+  },
+  fontSectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: TossColors.text,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  fontSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  fontContrastBadge: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    backgroundColor: '#191F28',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    overflow: 'hidden',
+  },
+  textVisibilityCard: {
+    minHeight: 72,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  textVisibilityInfo: {
+    flex: 1,
+  },
+  textVisibilityTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: TossColors.text,
+    marginBottom: 4,
+  },
+  textVisibilityDescription: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: TossColors.textSecondary,
+  },
+  textVisibilitySwitch: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    padding: 2,
+    justifyContent: 'center',
+    backgroundColor: TossColors.border,
+  },
+  textVisibilitySwitchActive: {
+    backgroundColor: TossColors.primary,
+  },
+  textVisibilityKnob: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: TossColors.background,
+  },
+  textVisibilityKnobActive: {
+    marginLeft: 20,
+  },
+  fontColorSection: {
+    gap: 10,
+    marginBottom: 4,
+  },
+  fontColorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  fontColorChip: {
+    minWidth: '30%',
+    height: 42,
+    borderRadius: 21,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.surface,
+  },
+  fontColorChipSelected: {
+    borderColor: TossColors.primary,
+    backgroundColor: '#F7FAFF',
+  },
+  fontColorSwatch: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(25,31,40,0.12)',
+  },
+  fontColorSwatchWhite: {
+    borderWidth: 1.5,
+    borderColor: '#8B95A1',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  fontColorLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TossColors.textSecondary,
+  },
+  fontColorLabelSelected: {
+    color: TossColors.primary,
+  },
+  fontOptionCard: {
+    minHeight: 86,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  fontOptionCardSelected: {
+    borderColor: TossColors.primary,
+    backgroundColor: '#F7FAFF',
+  },
+  fontOptionContent: {
+    flex: 1,
+  },
+  fontPreviewBox: {
+    alignSelf: 'flex-start',
+    minWidth: 126,
+    minHeight: 38,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    justifyContent: 'center',
+    marginBottom: 8,
+    backgroundColor: '#F8FAFC',
+  },
+  fontPreviewBoxDark: {
+    backgroundColor: '#191F28',
+  },
+  fontOptionPreview: {
+    fontSize: 20,
+    lineHeight: 26,
+    color: TossColors.text,
+  },
+  fontOptionName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: TossColors.text,
+    marginBottom: 3,
+  },
+  fontOptionDescription: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: TossColors.textSecondary,
   },
   
   // 방명록 설정 스타일 (공통)
@@ -2373,44 +5504,53 @@ const styles = StyleSheet.create({
   
   // 카테고리별 사진 업로드 스타일
   photoCategoriesContainer: {
-    gap: 20,
+    gap: 14,
   },
   photoCategorySection: {
     backgroundColor: TossColors.surface,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: TossColors.border,
+    borderColor: '#E9EEF5',
   },
   photoCategoryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 16,
   },
   photoCategoryInfo: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flex: 1,
+    paddingRight: 12,
   },
   photoCategoryIcon: {
-    fontSize: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     marginRight: 12,
+    backgroundColor: '#F3F7FF',
+    borderWidth: 1,
+    borderColor: '#DDE8FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoCategoryIconComplete: {
+    backgroundColor: '#F6F7F9',
+    borderColor: '#E5E8EC',
   },
   photoCategoryTextContainer: {
     flex: 1,
   },
   photoCategoryTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
     color: TossColors.text,
-    marginBottom: 2,
-  },
-  photoCategoryTitleRequired: {
-    color: TossColors.error,
+    marginBottom: 4,
   },
   requiredAsterisk: {
-    color: TossColors.error,
+    color: TossColors.primary,
   },
   photoCategoryDescription: {
     fontSize: 13,
@@ -2418,61 +5558,72 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   photoCategoryCount: {
-    backgroundColor: TossColors.border,
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    minWidth: 48,
+    height: 30,
+    borderRadius: 15,
+    paddingHorizontal: 12,
+    backgroundColor: '#F4F7FB',
+    borderWidth: 1,
+    borderColor: '#E6ECF3',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   photoCategoryCountText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '800',
     color: TossColors.textSecondary,
   },
   photoCategoryCountComplete: {
-    backgroundColor: TossColors.success + '20',
-    color: TossColors.success,
+    backgroundColor: '#F1F4F7',
+    borderColor: '#E1E6EC',
   },
   photoCategoryCountRequired: {
-    backgroundColor: TossColors.error + '20',
-    color: TossColors.error,
+    backgroundColor: '#F3F7FF',
+    borderColor: '#DDE8FF',
+  },
+  photoCategoryCountTextComplete: {
+    color: TossColors.textSecondary,
+  },
+  photoCategoryCountTextRequired: {
+    color: TossColors.primary,
   },
   categoryUploadButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: TossColors.surface,
-    borderRadius: 8,
-    paddingVertical: 12,
+    backgroundColor: '#F7FAFF',
+    borderRadius: 14,
+    paddingVertical: 14,
     borderWidth: 1,
-    borderColor: TossColors.primary,
+    borderColor: '#D9E6FF',
     marginBottom: 12,
   },
   categoryUploadButtonRequired: {
-    borderColor: TossColors.error,
-    backgroundColor: TossColors.error + '10',
+    borderColor: '#D9E6FF',
+    backgroundColor: '#F7FAFF',
   },
   categoryUploadButtonDisabled: {
-    borderColor: TossColors.success,
-    backgroundColor: TossColors.success + '10',
+    borderColor: '#E4E8EE',
+    backgroundColor: '#F6F7F9',
   },
   categoryUploadButtonUploading: {
-    borderColor: TossColors.warning,
-    backgroundColor: TossColors.warning + '10',
+    borderColor: '#D9E6FF',
+    backgroundColor: '#F0F6FF',
   },
   categoryUploadButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: TossColors.primary,
     marginLeft: 8,
   },
   categoryUploadButtonTextRequired: {
-    color: TossColors.error,
+    color: TossColors.primary,
   },
   categoryUploadButtonTextDisabled: {
-    color: TossColors.success,
+    color: TossColors.textSecondary,
   },
   categoryUploadButtonTextUploading: {
-    color: TossColors.warning,
+    color: TossColors.primary,
   },
   categoryImagesScroll: {
     marginHorizontal: -4,
@@ -2502,6 +5653,99 @@ const styles = StyleSheet.create({
     backgroundColor: TossColors.background,
     borderRadius: 10,
   },
+  photoFrameSelectButton: {
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    borderRadius: 12,
+    backgroundColor: TossColors.surface,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  photoFrameSelectButtonInner: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  photoFrameSelectThumb: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    backgroundColor: TossColors.secondary,
+  },
+  photoFrameSelectButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TossColors.text,
+  },
+  photoFrameSelectedInfo: {
+    fontSize: 12,
+    color: TossColors.textSecondary,
+  },
+  photoFrameSheetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+    gap: 10,
+  },
+  photoFrameSheetItem: {
+    width: '48%',
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    borderRadius: 10,
+    backgroundColor: TossColors.surface,
+    padding: 8,
+    marginBottom: 10,
+    position: 'relative',
+  },
+  photoFrameSheetItemSelected: {
+    borderColor: TossColors.primary,
+    backgroundColor: TossColors.secondary,
+  },
+  photoFrameSheetThumbWrap: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.background,
+    aspectRatio: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  photoFrameSheetThumbSelected: {
+    borderColor: TossColors.primary,
+  },
+  photoFrameSheetThumb: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: TossColors.surface,
+  },
+  photoFrameSheetName: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '600',
+    color: TossColors.textSecondary,
+    textAlign: 'center',
+  },
+  photoFrameSheetNameSelected: {
+    color: TossColors.primary,
+  },
+  photoFrameSheetSelectedBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: TossColors.secondary,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   
   // 사진 업로드 요약
   photoSummaryContainer: {
@@ -2515,6 +5759,475 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: TossColors.text,
     marginBottom: 8,
+  },
+  photoAdjustSection: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    borderRadius: 12,
+    padding: 14,
+    backgroundColor: TossColors.surface,
+    gap: 12,
+  },
+  photoAdjustTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: TossColors.text,
+  },
+  photoAdjustControls: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    borderRadius: 12,
+    padding: 14,
+    backgroundColor: TossColors.surface,
+    gap: 12,
+  },
+  photoAdjustOpenFloating: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    alignItems: 'flex-end',
+  },
+  textAdjustOpenFloating: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  composerFabWrap: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    alignItems: 'flex-end',
+  },
+  composerFabMenu: {
+    alignItems: 'flex-end',
+    gap: 9,
+    marginBottom: 10,
+  },
+  composerFabAction: {
+    minHeight: 42,
+    borderRadius: 21,
+    paddingLeft: 14,
+    paddingRight: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(25,31,40,0.10)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  composerFabActionText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: TossColors.text,
+  },
+  composerFabActionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F7FF',
+  },
+  composerFabButton: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: TossColors.primary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  composerFabButtonActive: {
+    backgroundColor: TossColors.text,
+  },
+  photoAdjustOpenButton: {
+    minHeight: 44,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,136,255,0.24)',
+  },
+  photoAdjustOpenText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: TossColors.primary,
+  },
+  photoAdjustOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
+  photoScaleFloating: {
+    position: 'absolute',
+    right: 12,
+    bottom: 78,
+    width: 54,
+    borderRadius: 25,
+    alignItems: 'center',
+    paddingVertical: 7,
+    gap: 7,
+    backgroundColor: 'rgba(17, 24, 39, 0.54)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  photoScaleValue: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  photoScaleButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.78)',
+  },
+  photoJoystick: {
+    position: 'absolute',
+    left: 12,
+    bottom: 78,
+    width: 136,
+    height: 136,
+    borderRadius: 68,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(17, 24, 39, 0.54)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  photoJoystickAxisHorizontal: {
+    position: 'absolute',
+    width: 86,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255,255,255,0.32)',
+  },
+  photoJoystickAxisVertical: {
+    position: 'absolute',
+    width: 2,
+    height: 86,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255,255,255,0.32)',
+  },
+  photoJoystickKnob: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.84)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
+  },
+  photoJoystickKnobDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: TossColors.primary,
+  },
+  photoAdjustActionBar: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 12,
+    minHeight: 48,
+    borderRadius: 24,
+    padding: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(25,31,40,0.08)',
+  },
+  photoAdjustResetButton: {
+    height: 36,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: '#F2F4F6',
+  },
+  photoAdjustResetButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: TossColors.textSecondary,
+  },
+  photoAdjustDoneButton: {
+    flex: 1,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: TossColors.primary,
+  },
+  photoAdjustDoneText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  textAdjustDoneWrap: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    alignItems: 'flex-start',
+  },
+  textAdjustDoneButton: {
+    minWidth: 76,
+    height: 34,
+    borderRadius: 17,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: TossColors.primary,
+  },
+  photoAdjustPreviewWrapper: {
+    height: 180,
+    borderRadius: 12,
+    backgroundColor: '#000',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoAdjustPreviewImage: {
+    width: '140%',
+    height: '140%',
+  },
+  photoAdjustGrid: {
+    gap: 10,
+  },
+  photoAdjustRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  photoAdjustRowLabel: {
+    width: 70,
+    fontSize: 13,
+    color: TossColors.textSecondary,
+    fontWeight: '600',
+  },
+  photoAdjustButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: TossColors.secondary,
+  },
+  photoAdjustValue: {
+    width: 88,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '700',
+    color: TossColors.text,
+  },
+  photoAdjustReset: {
+    marginTop: 4,
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.secondary,
+  },
+  photoAdjustResetText: {
+    color: TossColors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  templateComposerCanvas: {
+    borderRadius: 12,
+    overflow: 'visible',
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    marginBottom: 12,
+    backgroundColor: TossColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+  },
+  templateComposerPhotoFrame: {
+    width: '88%',
+    aspectRatio: 3 / 4,
+    borderRadius: 12,
+    backgroundColor: TossColors.surface,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  templateComposerPhotoFrameCompact: {
+    height: '100%',
+    maxWidth: '100%',
+    borderRadius: 10,
+    backgroundColor: TossColors.surface,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  templateComposerPhoto: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    resizeMode: 'cover',
+  },
+  templateComposerOverlay: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  memorialNameOverlay: {
+    position: 'absolute',
+    top: '68%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  memorialNameOverlayCompact: {
+    position: 'absolute',
+    top: '68%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  memorialDateOverlay: {
+    position: 'absolute',
+    top: '75%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  memorialDateOverlayCompact: {
+    position: 'absolute',
+    top: '75%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  memorialNameText: {
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '800',
+    color: '#222222',
+    textAlign: 'center',
+    letterSpacing: 0,
+  },
+  memorialNameTextCompact: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '800',
+    color: '#222222',
+    textAlign: 'center',
+    letterSpacing: 0,
+  },
+  memorialDateText: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: '#555555',
+    textAlign: 'center',
+    letterSpacing: 0,
+  },
+  memorialDateTextCompact: {
+    marginTop: 2,
+    fontSize: 7,
+    lineHeight: 10,
+    fontWeight: '700',
+    color: '#555555',
+    textAlign: 'center',
+    letterSpacing: 0,
+  },
+  photoAdjustPhotoFrameOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
+  },
+  templateComposerPhotoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: TossColors.secondary,
+    borderRadius: 12,
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  templateComposerPhotoPlaceholderCompact: {
+    width: 96,
+    height: 128,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: TossColors.secondary,
+    borderRadius: 10,
+    gap: 6,
+    paddingHorizontal: 8,
+  },
+  templateComposerPhotoPlaceholderText: {
+    color: TossColors.textTertiary,
+    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  templateComposerHint: {
+    marginBottom: 10,
+  },
+  templateComposerHintText: {
+    fontSize: 12,
+    color: TossColors.textSecondary,
+    lineHeight: 18,
+  },
+  templateComposerAdjustPreviewWrapper: {
+    backgroundColor: TossColors.background,
+    width: '100%',
+    height: 200,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    borderRadius: 12,
   },
   photoSummaryStats: {
     gap: 4,
@@ -2548,8 +6261,396 @@ const styles = StyleSheet.create({
   },
   templateImage: {
     width: '100%',
-    height: 200,
+    height: 172,
     backgroundColor: TossColors.border,
+    overflow: 'hidden',
+    borderRadius: 12,
+    padding: 16,
+    justifyContent: 'flex-end',
+  },
+  templateImageComposedPreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    overflow: 'hidden',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  templateImageComposedFrameWrap: {
+    width: 96,
+    height: 156,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  templateImageComposedMeta: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 6,
+  },
+  templateImageComposedType: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: TossColors.text,
+  },
+  templateImageComposedHint: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TossColors.textSecondary,
+  },
+  templateImageMaskContainer: {
+    width: '100%',
+    height: 200,
+    backgroundColor: TossColors.background,
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  templateImageMaskPhotoLayer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  templateImageMaskPhoto: {
+    width: '140%',
+    height: '140%',
+  },
+  templateImageMaskPhotoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#EEF1F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  templateImageMaskPhotoPlaceholderText: {
+    color: TossColors.textTertiary,
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  templateImageMask: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  // 템플릿 미리보기 시각 블록
+  previewCardVisualModern: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 0,
+    backgroundColor: '#EEE4D4',
+    borderWidth: 1,
+    borderColor: '#D5C5AA',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewModernFlowerCorner: {
+    position: 'absolute',
+    left: -22,
+    bottom: -40,
+    width: 188,
+    height: 188,
+    opacity: 0.58,
+  },
+  previewModernOlive: {
+    position: 'absolute',
+    right: -32,
+    top: -34,
+    width: 202,
+    height: 174,
+    opacity: 0.52,
+    transform: [{ rotate: '18deg' }],
+  },
+  previewModernPetals: {
+    position: 'absolute',
+    right: 18,
+    bottom: 8,
+    width: 118,
+    height: 118,
+    opacity: 0.28,
+    transform: [{ rotate: '-12deg' }],
+  },
+  previewModernCoverContent: {
+    position: 'absolute',
+    left: 22,
+    right: 22,
+    top: 29,
+    bottom: 4,
+    zIndex: 2,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  previewModernCoverKickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 8,
+  },
+  previewModernBadge: {
+    backgroundColor: '#1F2937',
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    overflow: 'hidden',
+  },
+  previewModernDate: {
+    color: '#8A6A2F',
+    fontSize: 8,
+    fontWeight: '800',
+  },
+  previewModernCoverTitle: {
+    fontSize: 31,
+    lineHeight: 36,
+    fontWeight: '800',
+    color: '#191F28',
+    letterSpacing: 0.2,
+  },
+  previewModernCoverSubtitle: {
+    marginTop: 5,
+    maxWidth: '82%',
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#51473C',
+    fontWeight: '700',
+  },
+  previewModernCoverDivider: {
+    width: '78%',
+    height: 20,
+    marginTop: 6,
+    opacity: 0.48,
+  },
+  previewModernCoverFeatureGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginTop: 7,
+  },
+  previewModernCoverFeature: {
+    minHeight: 25,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,253,248,0.78)',
+    borderWidth: 1,
+    borderColor: '#D8C9B2',
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  previewModernCoverFeatureText: {
+    fontSize: 9,
+    color: '#2B2B2A',
+    fontWeight: '800',
+  },
+
+  previewCardVisualTimeline: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: '#F7FAFF',
+    borderWidth: 1,
+    borderColor: '#DDE8FF',
+    overflow: 'hidden',
+  },
+  previewTimelineHeader: {
+    marginBottom: 14,
+  },
+  previewTimelineHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: TossColors.primary,
+    marginBottom: 2,
+  },
+  previewTimelineHeaderDate: {
+    fontSize: 11,
+    color: TossColors.textSecondary,
+    letterSpacing: 0.2,
+  },
+  previewTimelinePhotoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  previewTimelinePhoto: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+    backgroundColor: 'rgba(64, 93, 230, 0.20)',
+  },
+  previewTimelineTextBlock: {
+    flex: 1,
+  },
+  previewTimelineLine: {
+    fontSize: 17,
+    lineHeight: 20,
+    color: TossColors.text,
+    fontWeight: '800',
+  },
+  previewTimelineLineSub: {
+    marginTop: 3,
+    fontSize: 11,
+    color: TossColors.textSecondary,
+  },
+  previewTimelineTimeline: {
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E4ECFF',
+    padding: 10,
+    gap: 10,
+  },
+  previewTimelineItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderLeftWidth: 3,
+    borderLeftColor: '#4A88FF',
+    paddingLeft: 10,
+    paddingVertical: 6,
+    gap: 8,
+  },
+  previewTimelineDay: {
+    fontSize: 11,
+    color: '#4A88FF',
+    fontWeight: '700',
+    width: 52,
+  },
+  previewTimelineValue: {
+    flex: 1,
+    fontSize: 11,
+    color: TossColors.text,
+    textAlign: 'right',
+  },
+
+  previewCardVisualPaper: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 14,
+    backgroundColor: '#FBF8F0',
+    borderWidth: 1,
+    borderColor: '#E6DDCC',
+    overflow: 'hidden',
+  },
+  previewPaperRibbon: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#7B5A3B',
+    color: '#FFFFFF',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  previewPaperCard: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E4DBC8',
+    padding: 12,
+    justifyContent: 'center',
+  },
+  previewPaperTitle: {
+    fontSize: 16,
+    color: '#7B5A3B',
+    fontWeight: '800',
+    marginBottom: 10,
+  },
+  previewPaperName: {
+    fontSize: 22,
+    color: TossColors.text,
+    fontWeight: '900',
+    marginBottom: 2,
+  },
+  previewPaperSub: {
+    fontSize: 12,
+    color: TossColors.textSecondary,
+    marginBottom: 12,
+  },
+  previewPaperLine: {
+    width: 130,
+    height: 1,
+    backgroundColor: '#E7DDC9',
+    marginBottom: 12,
+  },
+  previewPaperLineText: {
+    fontSize: 11,
+    color: '#6B5B49',
+    marginBottom: 8,
+    letterSpacing: 0.2,
+  },
+  previewCardTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: TossColors.text,
+    marginBottom: 4,
+  },
+  previewCardDate: {
+    fontSize: 12,
+    color: TossColors.textTertiary,
+    marginBottom: 10,
+  },
+  previewCardDotRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  previewChip: {
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  previewChipText: {
+    fontSize: 11,
+    color: TossColors.textSecondary,
+    fontWeight: '600',
+  },
+  previewProfileMock: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(74, 136, 255, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 136, 255, 0.35)',
+    marginBottom: 10,
+  },
+  previewProfileMockEditorial: {
+    backgroundColor: 'rgba(64, 93, 230, 0.2)',
+    borderColor: 'rgba(64, 93, 230, 0.35)',
+  },
+  previewProfileMockPaper: {
+    backgroundColor: 'rgba(168, 132, 82, 0.24)',
+    borderColor: 'rgba(168, 132, 82, 0.38)',
+  },
+  previewPhotoPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewNameText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: TossColors.text,
   },
   templateSelectedOverlay: {
     position: 'absolute',
@@ -2672,6 +6773,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: TossColors.background,
+  },
+  testFillWrap: {
+    position: 'absolute',
+    right: 20,
+    bottom: 92,
+    zIndex: 20,
+  },
+  testFillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: TossColors.background,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  testFillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: TossColors.primary,
   },
   
   // 이미지 업로드 모달
@@ -2813,7 +6941,7 @@ const styles = StyleSheet.create({
     backgroundColor: TossColors.background,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: height * 0.7,
+    maxHeight: height * 0.62,
   },
   tossPickerHeader: {
     flexDirection: 'row',
@@ -2835,7 +6963,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: 16,
+    paddingBottom: 10,
   },
   monthNavButton: {
     width: 44,
@@ -2850,10 +6979,39 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: TossColors.text,
   },
+  yearJumpSection: {
+    marginHorizontal: 20,
+    marginBottom: 14,
+  },
+  yearJumpLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TossColors.textSecondary,
+    marginBottom: 8,
+  },
+  yearJumpRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  yearJumpButton: {
+    flex: 1,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  yearJumpButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TossColors.text,
+  },
   weekDaysContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 10,
   },
   weekDay: {
     flex: 1,
@@ -2869,15 +7027,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 14,
+    minHeight: 302,
   },
   calendarDay: {
-    width: '14.28%',
-    aspectRatio: 1,
+    width: calendarDaySize,
+    height: 42,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 20,
-    marginVertical: 2,
+    borderRadius: 21,
+    marginVertical: 3,
   },
   selectedDay: {
     backgroundColor: TossColors.primary,
@@ -2980,15 +7139,16 @@ const styles = StyleSheet.create({
   },
   previewModalSelect: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 50 : 30,
-    left: 20,
+    top: Platform.OS === 'ios' ? 60 : 40,
     right: 20,
     backgroundColor: TossColors.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
+    minHeight: 44,
   },
   previewModalSelectText: {
     fontSize: 16,

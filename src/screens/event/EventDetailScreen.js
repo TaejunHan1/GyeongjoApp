@@ -26,7 +26,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../styles/constants';
-import { getCurrentUserInfo, getEventDetail, getEventContributions, getEventStatistics, addGuestBookEntry, updateGuestBookEntry, deleteGuestBookEntry, toggleGuestBookVerification, updateEvent } from '../../lib/supabaseHelper';
+import { getCurrentUserInfo, getEventDetail, getEventContributions, getEventStatistics, getEventMessages, addGuestBookEntry, updateGuestBookEntry, deleteGuestBookEntry, deleteEventMessage, toggleGuestBookVerification, updateEvent } from '../../lib/supabaseHelper';
 import { supabase } from '../../lib/supabase';
 import { sendAlimtalkWithCredit, getAlimtalkBalance } from '../../lib/alimtalkCredit';
 import {
@@ -91,6 +91,7 @@ export default function EventDetailScreen({ navigation, route }) {
   // initialEvent/initialStats가 있으면 즉시 렌더링, 없으면 로딩 후 표시
   const [event, setEvent] = useState(initialEvent || null);
   const [contributions, setContributions] = useState([]);
+  const [eventMessages, setEventMessages] = useState([]);
   const contributionsRef = useRef([]);
   const [loading, setLoading] = useState(!initialEvent); // 초기 데이터 있으면 로딩 스킵
   const [refreshing, setRefreshing] = useState(false);
@@ -619,6 +620,27 @@ export default function EventDetailScreen({ navigation, route }) {
     });
   };
 
+  const handleDeleteEventMessage = (message) => {
+    if (!ensureCanManageEvent()) return;
+    const senderName = message.sender_name || message.author_name || message.name || '익명';
+    showAlert({
+      title: '방명록 메시지 삭제',
+      message: `${senderName}님의 메시지를 삭제하시겠어요?\n\n삭제된 메시지는 모바일 청첩장/부고장에서 더 이상 보이지 않습니다.`,
+      confirmText: '삭제',
+      cancelText: '취소',
+      dangerous: true,
+      onConfirm: async () => {
+        const result = await deleteEventMessage(message.id, currentUserId);
+        if (result.success) {
+          setEventMessages(prev => prev.filter(item => item.id !== message.id));
+          showAlert({ title: '삭제 완료', message: '방명록 메시지를 삭제했습니다.' });
+        } else {
+          showAlert({ title: '삭제 실패', message: result.error || '메시지를 삭제하지 못했습니다.' });
+        }
+      },
+    });
+  };
+
 
   // 부조 확정/미확정 토글 처리 — 낙관적 업데이트(즉시 UI 반영)
   const handleToggleVerification = async (contribution) => {
@@ -1037,6 +1059,7 @@ export default function EventDetailScreen({ navigation, route }) {
     { key: 'unverified', label: '미확정', count: contributions.filter(c => !c.is_verified).length },
     { key: 'verified', label: '확정', count: contributions.filter(c => c.is_verified).length },
   ];
+  const publicMessageLabel = event?.event_type === 'funeral' ? '조문 메시지' : '축하 메시지';
   const trimmedTempSearchQuery = tempSearchQuery.trim();
   const searchPreviewResults = trimmedTempSearchQuery
     ? contributions.filter(c => matchesContributionSearch(c, trimmedTempSearchQuery))
@@ -1232,12 +1255,13 @@ export default function EventDetailScreen({ navigation, route }) {
       if (!initialEvent) setLoading(true);
 
       // 세 API를 동시에 병렬 호출 — 순차 대기 제거
-      const [eventResult, statsResult, contributionsResult] = await Promise.all([
+      const [eventResult, statsResult, contributionsResult, messagesResult] = await Promise.all([
         initialEvent
           ? Promise.resolve({ success: true, data: initialEvent })
           : getEventDetail(eventId),
         getEventStatistics(eventId),
         getEventContributions(eventId),
+        getEventMessages(eventId, 100),
       ]);
 
       if (eventResult.success) {
@@ -1259,6 +1283,12 @@ export default function EventDetailScreen({ navigation, route }) {
         setContributions(eventResult.data.guest_book);
       } else {
         setContributions([]);
+      }
+
+      if (messagesResult.success) {
+        setEventMessages(messagesResult.data || []);
+      } else {
+        setEventMessages([]);
       }
 
       // 통계
@@ -2269,10 +2299,49 @@ export default function EventDetailScreen({ navigation, route }) {
               </Text>
             </View>
           )}
-        </View>
+	        </View>
 
-        <View style={{ height: 40 }} />
-        </ScrollView>
+        {eventMessages.length > 0 && (
+          <View style={styles.publicMessageSection}>
+            <View style={styles.publicMessageHeader}>
+              <View>
+                <Text style={styles.publicMessageTitle}>방명록 메시지 관리</Text>
+                <Text style={styles.publicMessageSubtitle}>
+                  모바일 {event?.event_type === 'funeral' ? '부고장' : '청첩장'}에 남겨진 {publicMessageLabel} {eventMessages.length}개
+                </Text>
+              </View>
+              <Ionicons name="shield-checkmark-outline" size={22} color="#3182F6" />
+            </View>
+
+            {eventMessages.map((message) => {
+              const senderName = message.sender_name || message.author_name || message.name || '익명';
+              return (
+                <View key={message.id} style={styles.publicMessageItem}>
+                  <View style={styles.publicMessageTopRow}>
+                    <Text style={styles.publicMessageName} numberOfLines={1}>
+                      {message.is_anonymous ? '익명' : senderName}
+                    </Text>
+                    <Text style={styles.publicMessageDate}>{formatDate(message.created_at)}</Text>
+                  </View>
+                  <Text style={styles.publicMessageText}>{message.message}</Text>
+                  {canManageEvent && (
+                    <TouchableOpacity
+                      style={styles.publicMessageDeleteButton}
+                      onPress={() => handleDeleteEventMessage(message)}
+                      activeOpacity={0.75}
+                    >
+                      <Ionicons name="trash-outline" size={14} color="#F04452" />
+                      <Text style={styles.publicMessageDeleteText}>삭제</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+	        <View style={{ height: 40 }} />
+	        </ScrollView>
       </KeyboardAvoidingView>
 
 
@@ -7317,5 +7386,75 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  publicMessageSection: {
+    marginHorizontal: 20,
+    marginTop: 18,
+    padding: 18,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#EEF2F7',
+  },
+  publicMessageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  publicMessageTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#191F28',
+    marginBottom: 4,
+  },
+  publicMessageSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#8B95A1',
+  },
+  publicMessageItem: {
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F2F4F6',
+  },
+  publicMessageTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 8,
+  },
+  publicMessageName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#191F28',
+  },
+  publicMessageDate: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#8B95A1',
+  },
+  publicMessageText: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#4E5968',
+  },
+  publicMessageDeleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginTop: 10,
+    borderRadius: 9,
+    backgroundColor: '#FFF0F1',
+  },
+  publicMessageDeleteText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#F04452',
   },
 });
