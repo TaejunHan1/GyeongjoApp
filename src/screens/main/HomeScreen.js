@@ -19,6 +19,7 @@ import {
   Platform,
   Linking,
   Share,
+  DeviceEventEmitter,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,6 +38,7 @@ import {
   getMonthlyStatistics,
   getEventStatistics,
   getEventCreationCreditState,
+  consumeEventCreationCredit,
   markEventCreationWelcomeSeen,
   EVENT_CREATION_CREDIT_COST,
   EVENT_CREATION_FREE_LIMIT
@@ -599,6 +601,23 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   };
 
   useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('event-creation-credit-refunded', () => {
+      refreshEventCreationCreditState();
+    });
+    return () => sub.remove();
+  }, [user?.id]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!user?.id) return undefined;
+      const timer = setTimeout(() => {
+        refreshEventCreationCreditState();
+      }, 250);
+      return () => clearTimeout(timer);
+    }, [user?.id])
+  );
+
+  useEffect(() => {
     if (!user?.id) {
       welcomeCreditCheckedRef.current = null;
       return;
@@ -939,9 +958,60 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   };
 
   // 🔥 서울 시간 기준 날짜 비교 함수 - 완전히 새로 작성
-  const isEventCompleted = (eventDate) => {
+  const getEventCompletionDate = (event) => {
+    if (!event) return null;
+    if (event.event_type === 'funeral') {
+      return event.burial_date ||
+        event.funeral_end_date ||
+        event.casket_date ||
+        event.death_date ||
+        event.event_date ||
+        event.additional_info?.burial_date ||
+        event.additional_info?.funeral_end_date ||
+        event.additional_info?.casket_date ||
+        event.additional_info?.death_date ||
+        null;
+    }
+    return event.event_date || null;
+  };
+
+  const getEventDisplayDate = (event) => getEventCompletionDate(event);
+
+  const getEventDisplayTime = (event) => {
+    if (!event) return null;
+    if (event.event_type === 'funeral') {
+      const completionDate = getEventCompletionDate(event);
+      if (completionDate === event.burial_date || completionDate === event.funeral_end_date || completionDate === event.additional_info?.burial_date || completionDate === event.additional_info?.funeral_end_date) {
+        return event.burial_time || event.additional_info?.burial_time || null;
+      }
+      if (completionDate === event.casket_date || completionDate === event.additional_info?.casket_date) {
+        return event.casket_time || event.additional_info?.casket_time || null;
+      }
+      if (completionDate === event.death_date || completionDate === event.additional_info?.death_date) {
+        return event.death_time || event.additional_info?.death_time || null;
+      }
+      return event.burial_time || event.casket_time || event.death_time || null;
+    }
+    return event.event_time || event.ceremony_time || null;
+  };
+
+  const getEventDisplayLocation = (event) => {
+    if (!event) return '장소 미정';
+    if (event.event_type === 'funeral') {
+      return event.funeral_home ||
+        event.location ||
+        event.burial_location ||
+        event.additional_info?.funeral_home ||
+        event.additional_info?.burial_location ||
+        '장소 미정';
+    }
+    return event.location || '장소 미정';
+  };
+
+  const isEventCompleted = (event) => {
+    const eventDate = typeof event === 'string' ? event : getEventCompletionDate(event);
     if (!eventDate) {
-      return true; // 미정인 경우 완료로 처리
+      return false; // 부고/경조사 날짜가 미정이면 진행중으로 유지
     }
 
     try {
@@ -951,6 +1021,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
       // 이벤트 날짜 구하기
       const eventDay = new Date(eventDate);
+      if (Number.isNaN(eventDay.getTime())) return false;
       const eventDateOnly = new Date(eventDay.getFullYear(), eventDay.getMonth(), eventDay.getDate());
 
       // 오늘보다 이전이면 완료, 오늘 이후(오늘 포함)면 진행중
@@ -1165,17 +1236,45 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   };
 
   const handleEventCreationIntent = async (eventType) => {
-    if (eventType === 'funeral') {
-      handleQuickStart(eventType);
-      return;
-    }
-
     const latestState = await refreshEventCreationCreditState();
     const state = latestState || eventCreationCreditState;
     const notice = getCreationCreditNotice(state);
 
+    const proceedWithCredit = async () => {
+      const creditResult = await consumeEventCreationCredit(eventType, user.id);
+      if (!creditResult.success) {
+        if (creditResult.error === 'insufficient_balance') {
+          showCreditShortageModal(eventType, {
+            ...state,
+            balance: creditResult.balance ?? state?.balance ?? 0,
+            priceCredits: creditResult.priceCredits ?? state?.priceCredits ?? EVENT_CREATION_CREDIT_COST,
+          });
+          return;
+        }
+        Alert.alert('크레딧 사용 실패', creditResult.error || '크레딧을 사용하는 중 문제가 발생했습니다.');
+        return;
+      }
+
+      setEventCreationCreditState(prev => ({
+        ...prev,
+        balance: creditResult.balance,
+        freeUsed: creditResult.freeUsed,
+        freeRemaining: creditResult.freeRemaining,
+        priceCredits: creditResult.priceCredits,
+      }));
+
+      handleQuickStart(eventType, {
+        eventCreationCreditReservation: {
+          ...creditResult,
+          success: true,
+          userId: user.id,
+          eventType,
+        },
+      });
+    };
+
     if (!notice.isPaid) {
-      handleQuickStart(eventType);
+      await proceedWithCredit();
       return;
     }
 
@@ -1189,17 +1288,17 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       `${eventType === 'funeral' ? '부고장' : '청첩장'} 만들기를 완료하면 ${state?.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 사용됩니다.\n계속 진행할까요?`,
       [
         { text: '취소', style: 'cancel' },
-        { text: '진행하기', onPress: () => handleQuickStart(eventType) },
+        { text: '진행하기', onPress: proceedWithCredit },
       ]
     );
   };
 
-  const handleQuickStart = async (eventType) => {
+  const handleQuickStart = async (eventType, params = {}) => {
     if (eventType === 'wedding') {
       // 🆕 결혼식은 전용 스크린으로
-      navigation.navigate('CreateWedding');
+      navigation.navigate('CreateWedding', params);
     } else if (eventType === 'funeral') {
-      navigation.navigate('CreateFuneral');
+      navigation.navigate('CreateFuneral', params);
     } else {
       // 🔄 기타 타입들은 기존 방식 유지
       navigation.navigate('CreateEvent', { eventType });
@@ -1410,7 +1509,10 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           // 고인 정보
           deceasedName: event.deceased_name || event.main_person_name,
           deceasedAge: event.deceased_age,
+          birthDate: event.birth_date,
+          ageCalculationMethod: event.age_calculation_method,
           deathDate: event.death_date,
+          deathTime: event.death_time,
           deceasedGender: event.deceased_gender || '남',
           
           // 장례 일정
@@ -1420,6 +1522,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           burialTime: event.burial_time,
           burialLocation: event.burial_location,
           secondaryBurialLocation: event.secondary_burial_location,
+          religiousRite: event.religious_rite,
+          funeralMethod: event.funeral_method,
+          visitationType: event.visitation_type,
+          visitationNote: event.visitation_note,
+          parkingTransportInfo: event.parking_transport_info,
+          condolenceAccounts: event.condolence_accounts,
           
           // 장례식장 정보
           funeralHome: event.funeral_home,
@@ -1439,6 +1547,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           
           // additional_info에서 추가 정보 병합
           ...additionalInfo,
+          additional_info: additionalInfo,
         };
         
         // 🔍 상주 정보 디버깅 로그
@@ -1561,12 +1670,12 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   
   // 🔥 서울 시간 기준으로 진행중/완료 분류 - 주최한 경조사만
   const activeEventsFiltered = hostedEvents.filter(event => {
-    const isCompleted = isEventCompleted(event.event_date);
+    const isCompleted = isEventCompleted(event);
     return !isCompleted;
   });
 
   const completedEventsFiltered = hostedEvents.filter(event => {
-    const isCompleted = isEventCompleted(event.event_date);
+    const isCompleted = isEventCompleted(event);
     return isCompleted;
   });
 
@@ -2436,7 +2545,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                               {getEventTypeText(event.event_type)}
                             </Text>
                           </View>
-                          {getDDay(event.event_date) && (
+                          {getDDay(getEventDisplayDate(event)) && (
                             <View style={[
                               styles.eventTypeBadgeNew,
                               { backgroundColor: event.event_type === 'funeral' ? '#F1F5F9' : '#FFF1F2' }
@@ -2445,14 +2554,14 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                                 styles.eventTypeBadgeTextNew,
                                 { color: getEventStatusColor(event.event_type) }
                               ]}>
-                                {getDDay(event.event_date)}
+                                {getDDay(getEventDisplayDate(event))}
                               </Text>
                             </View>
                           )}
                         </View>
                         <View style={styles.eventDateBadge}>
                           <Text style={styles.eventDateBadgeText}>
-                            {formatDateWithTime(event.event_date, event.event_time)}
+                            {formatDateWithTime(getEventDisplayDate(event), getEventDisplayTime(event))}
                           </Text>
                         </View>
                       </View>
@@ -2464,7 +2573,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                       <View style={styles.eventCardLocationRow}>
                         <Ionicons name="location-outline" size={15} color={Colors.gray400} />
                         <Text style={styles.eventCardLocation} numberOfLines={1}>
-                          {event.location || '장소 미정'}
+                          {getEventDisplayLocation(event)}
                         </Text>
                       </View>
 
@@ -2626,7 +2735,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         {/* 위젯 1: 품앗이 장부 */}
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <View style={{ height: 8, backgroundColor: '#F2F4F6', marginHorizontal: -20, marginTop: -28, marginBottom: 28 }} />
+        <View style={styles.homeSectionDivider} />
 
         {/* ━━━━━━━━━━━━━━━━ 돌아온 경조사 ━━━━━━━━━━━━━━━━ */}
         <View style={styles.reciprocitySection}>
@@ -4335,6 +4444,13 @@ const styles = StyleSheet.create({
   eventsManagementSection: {
     marginBottom: 0,
   },
+  homeSectionDivider: {
+    height: 8,
+    backgroundColor: '#F2F4F6',
+    marginHorizontal: -20,
+    marginTop: 28,
+    marginBottom: 28,
+  },
 
   // 세그먼트 컨트롤 (Pill)
   tabContainer: {
@@ -4380,11 +4496,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 0,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: '#EEF1F4',
+        overflow: 'hidden',
+      },
+      default: {
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: '#EEF1F4',
+      },
+    }),
   },
 
   // 카드 상단: 배지 + 날짜
@@ -4445,6 +4574,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
+    overflow: 'hidden',
   },
   eventCardStatItem: {
     flexDirection: 'row',

@@ -50,6 +50,28 @@ const MODERN_FUNERAL_DIVIDER = require('../../../../assets/studio/elements/18-di
 const MODERN_FUNERAL_OLIVE_BRANCH = require('../../../../assets/studio/elements/7-olive-branch.png');
 const MODERN_FUNERAL_SINGLE_LEAF = require('../../../../assets/studio/elements/10-single-leaf-small.png');
 const MODERN_FUNERAL_MAGNOLIA_PETALS = require('../../../../assets/studio/elements/12-magnolia-petals.png');
+const FUNERAL_LETTER_BG_HANJI = require('../../../../assets/funeral/elements/funeral-bg-hanji.png');
+const FUNERAL_LETTER_CORNER = require('../../../../assets/funeral/elements/funeral-corner-ornament.png');
+const FUNERAL_LETTER_DIVIDER = require('../../../../assets/funeral/elements/funeral-divider-flower.png');
+const FUNERAL_LETTER_HOST_BRANCH = require('../../../../assets/funeral/elements/funeral-host-branch.png');
+const FUNERAL_LETTER_CANDLE = require('../../../../assets/funeral/elements/funeral-schedule-candle.png');
+const FUNERAL_LETTER_SCHEDULE_LINE = require('../../../../assets/funeral/elements/funeral-schedule-line.png');
+const FUNERAL_LETTER_INFO_FLOWER = require('../../../../assets/funeral/elements/funeral-info-flower.png');
+const FUNERAL_LETTER_ACCOUNT_FLOWER = require('../../../../assets/funeral/elements/funeral-account-flower.png');
+const FUNERAL_LETTER_MESSAGE_PEN = require('../../../../assets/funeral/elements/funeral-message-pen.png');
+const FUNERAL_LETTER_GUESTBOOK_FLOWER = require('../../../../assets/funeral/elements/funeral-guestbook-flower.png');
+const FUNERAL_LETTER_BOTTOM_CLOUD = require('../../../../assets/funeral/elements/funeral-bottom-ink-cloud.png');
+const FUNERAL_ICON_HOST = require('../../../../assets/funeral/icons/icon-host.png');
+const FUNERAL_ICON_SCHEDULE = require('../../../../assets/funeral/icons/icon-schedule.png');
+const FUNERAL_ICON_INFO = require('../../../../assets/funeral/icons/icon-funeral-info.png');
+const FUNERAL_ICON_GUIDANCE = require('../../../../assets/funeral/icons/icon-guidance.png');
+const FUNERAL_ICON_ACCOUNT = require('../../../../assets/funeral/icons/icon-condolence-account.png');
+const FUNERAL_ICON_FAMILY_MESSAGE = require('../../../../assets/funeral/icons/icon-family-message.png');
+const FUNERAL_ICON_GUESTBOOK = require('../../../../assets/funeral/icons/icon-guestbook.png');
+const FUNERAL_ICON_LOCATION = require('../../../../assets/funeral/icons/icon-location.png');
+const FUNERAL_ICON_CASKET = require('../../../../assets/funeral/icons/icon-casket.png');
+const FUNERAL_ICON_PROCESSION = require('../../../../assets/funeral/icons/icon-procession.png');
+const FUNERAL_ICON_BURIAL = require('../../../../assets/funeral/icons/icon-burial.png');
 const FUNERAL_PHOTO_FRAME_ASPECT_RATIOS = {
   'funeral-template-modern-card': 1024 / 1535,
   'funeral-template-editorial-timeline': 941 / 1672,
@@ -373,7 +395,7 @@ const getMemorialPeriodText = (eventData) => {
   return birthText || deathText || '';
 };
 
-const FuneralComposedPhoto = ({ eventData, uri, style }) => {
+const FuneralComposedPhoto = ({ eventData, uri, style, nameOffsetY = 0, dateOffsetY = 0 }) => {
   if (!uri) return null;
 
   const containerStyle = { ...(StyleSheet.flatten(style) || {}) };
@@ -415,7 +437,7 @@ const FuneralComposedPhoto = ({ eventData, uri, style }) => {
         {nameSetting.visible && (
           <View
             pointerEvents="none"
-            style={[styles.funeralComposedNameOverlay, getTextTransform(nameSetting.layout, MOBILE_NAME_TEXT_Y_OFFSET)]}
+            style={[styles.funeralComposedNameOverlay, getTextTransform(nameSetting.layout, MOBILE_NAME_TEXT_Y_OFFSET + nameOffsetY)]}
           >
             <Text
               style={[
@@ -430,7 +452,7 @@ const FuneralComposedPhoto = ({ eventData, uri, style }) => {
         {dateSetting.visible && Boolean(periodText) && (
           <View
             pointerEvents="none"
-            style={[styles.funeralComposedDateOverlay, getTextTransform(dateSetting.layout)]}
+            style={[styles.funeralComposedDateOverlay, getTextTransform(dateSetting.layout, dateOffsetY)]}
           >
             <Text
               style={[
@@ -607,9 +629,53 @@ const getFamilyMembersForPreview = (eventData) => {
   ];
 };
 
+const calculateFuneralAge = (birthDateValue, deathDateValue, method = 'korean_year') => {
+  const birth = toDateObject(birthDateValue);
+  const death = toDateObject(deathDateValue);
+  if (!birth || !death) return '';
+
+  const birthYear = birth.getFullYear();
+  const birthMonth = birth.getMonth() + 1;
+  const birthDay = birth.getDate();
+  const deathYear = death.getFullYear();
+  const deathMonth = death.getMonth() + 1;
+  const deathDay = death.getDate();
+
+  if (
+    deathYear < birthYear ||
+    (deathYear === birthYear && deathMonth < birthMonth) ||
+    (deathYear === birthYear && deathMonth === birthMonth && deathDay < birthDay)
+  ) {
+    return '';
+  }
+
+  if (method === 'full_age') {
+    let age = deathYear - birthYear;
+    const birthdayPassed =
+      deathMonth > birthMonth ||
+      (deathMonth === birthMonth && deathDay >= birthDay);
+    if (!birthdayPassed) age -= 1;
+    return age >= 0 ? String(age) : '';
+  }
+
+  const age = deathYear - birthYear + 1;
+  return age >= 0 ? String(age) : '';
+};
+
 const getDeceasedAge = (eventData) => {
   const age = getFuneralValue(eventData, 'deceasedAge', 'deceased_age') || getFuneralValue(eventData, 'age', 'age');
-  return age ? `${age}세` : '미입력';
+  if (age !== undefined && age !== null && String(age).trim()) {
+    const text = String(age).trim();
+    return text.endsWith('세') ? text : `${text}세`;
+  }
+
+  const calculatedAge = calculateFuneralAge(
+    getFuneralValue(eventData, 'birthDate', 'birth_date'),
+    getFuneralValue(eventData, 'deathDate', 'death_date'),
+    getFuneralValue(eventData, 'ageCalculationMethod', 'age_calculation_method') || 'korean_year'
+  );
+
+  return calculatedAge ? `${calculatedAge}세` : '미입력';
 };
 
 const FuneralGuidanceSection = ({ eventData, variant = 'light' }) => {
@@ -635,11 +701,22 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [messages, setMessages] = useState([]);
   const mainImage = categorizedImages?.main?.[0]?.uri || eventData.images?.[0]?.uri;
+  const familyMembers = getFamilyMembersForPreview(eventData);
+  const deceasedAge = getDeceasedAge(eventData);
+  const deathDateText = formatDateText(eventData.deathDate || eventData.death_date);
+  const casketScheduleText = [formatDateText(eventData.casketDate || eventData.casket_date), formatTimeText(eventData.casketTime || eventData.casket_time)].filter(Boolean).join(' ');
+  const burialScheduleText = [formatDateText(eventData.burialDate || eventData.burial_date), formatTimeText(eventData.burialTime || eventData.burial_time)].filter(Boolean).join(' ');
+  const burialLocation = eventData.burialLocation || eventData.burial_location;
+  const hasFuneralSchedule = Boolean(casketScheduleText || burialScheduleText || burialLocation);
+  const funeralHome = eventData.funeralHome || eventData.funeral_home;
+  const detailAddress = eventData.detailedAddress || eventData.detailed_address;
+  const funeralAddress = eventData.location;
+  const primaryContact = eventData.primaryContact || eventData.primary_contact;
   
   const schedules = {
-    입관: eventData.casketDate ? new Date(eventData.casketDate) : null,
-    발인: eventData.burialDate ? new Date(eventData.burialDate) : null,
-    장지: eventData.burialDate ? new Date(eventData.burialDate) : null,
+    입관: toDateObject(eventData.casketDate || eventData.casket_date),
+    발인: toDateObject(eventData.burialDate || eventData.burial_date),
+    장지: toDateObject(eventData.burialDate || eventData.burial_date),
   };
 
   const getCurrentSchedule = () => {
@@ -674,23 +751,23 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
       <SafeAreaView style={styles.safeArea}>
         {/* 메인 증명서 */}
         <View style={styles.certificateMain}>
-          
-          {/* 헤더 */}
-          <View style={styles.certificateHeader}>
-            <Text style={styles.certificateTitle}>부 고</Text>
-            <Text style={styles.certificateSubtitle}>FUNERAL NOTICE</Text>
-            <Text style={styles.certificateNumber}>No. 2025-{new Date().getMonth().toString().padStart(2, '0')}{new Date().getDate().toString().padStart(2, '0')}</Text>
-          </View>
-
           {/* 메인 내용 */}
           <View style={styles.certificateContent}>
             
             {/* 고인 정보 - 중앙 배치 */}
             <View style={styles.certificateDeceasedSection}>
-              {mainImage && (
-                <View style={styles.certificatePhotoWrapper}>
+              <View style={styles.certificatePhotoWrapper}>
+                {mainImage ? (
                   <FuneralComposedPhoto eventData={eventData} uri={mainImage} style={styles.certificatePhoto} />
-                </View>
+                ) : (
+                  <View style={[styles.certificatePhoto, styles.modernPhotoPlaceholder]}>
+                    <Ionicons name="person" size={42} color="#9CA3AF" />
+                  </View>
+                )}
+              </View>
+
+              {!mainImage && (
+                <Text style={styles.certificatePhotoGuide}>고인 사진을 등록하면 이 영역에 표시됩니다</Text>
               )}
               
               <View style={styles.certificateDeceasedInfo}>
@@ -704,20 +781,12 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
                 <View style={styles.certificateDeceasedDetails}>
                   <View style={styles.certificateDetailItem}>
                     <Text style={styles.certificateDetailLabel}>향년</Text>
-                    <Text style={styles.certificateDetailValue}>{eventData.deceasedAge || eventData.deceased_age || '78'}세</Text>
+                    <Text style={styles.certificateDetailValue}>{deceasedAge}</Text>
                   </View>
                   <View style={styles.certificateDetailItem}>
                     <Text style={styles.certificateDetailLabel}>별세일</Text>
                     <Text style={styles.certificateDetailValue}>
-                      {eventData.deathDate ? new Date(eventData.deathDate).toLocaleDateString('ko-KR', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit'
-                      }) : eventData.death_date ? new Date(eventData.death_date).toLocaleDateString('ko-KR', {
-                        year: 'numeric',
-                        month: '2-digit', 
-                        day: '2-digit'
-                      }) : '2025년 7월 12일'}
+                      {deathDateText || '미입력'}
                     </Text>
                   </View>
                 </View>
@@ -728,46 +797,23 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
             <View style={styles.certificateSection}>
               <Text style={styles.certificateSectionTitle}>상 주</Text>
               <View style={styles.certificateFamilyGrid}>
-                {eventData.familyMembers?.filter(member => member.names && member.names.trim()).slice(0, 4).map((member, index) => (
+                {familyMembers.map((member, index) => (
                   <View key={index} style={styles.certificateFamilyItem}>
                     <Text style={styles.certificateFamilyRelation}>{member.relation}</Text>
                     <Text style={styles.certificateFamilyName}>{member.names}</Text>
                   </View>
-                )) || eventData.family_members?.filter(member => member.names && member.names.trim()).slice(0, 4).map((member, index) => (
-                  <View key={index} style={styles.certificateFamilyItem}>
-                    <Text style={styles.certificateFamilyRelation}>{member.relation}</Text>
-                    <Text style={styles.certificateFamilyName}>{member.names}</Text>
-                  </View>
-                )) || (
-                  <>
-                    <View style={styles.certificateFamilyItem}>
-                      <Text style={styles.certificateFamilyRelation}>장남</Text>
-                      <Text style={styles.certificateFamilyName}>김○○</Text>
-                    </View>
-                    <View style={styles.certificateFamilyItem}>
-                      <Text style={styles.certificateFamilyRelation}>차남</Text>
-                      <Text style={styles.certificateFamilyName}>김○○</Text>
-                    </View>
-                    <View style={styles.certificateFamilyItem}>
-                      <Text style={styles.certificateFamilyRelation}>장녀</Text>
-                      <Text style={styles.certificateFamilyName}>김○○</Text>
-                    </View>
-                    <View style={styles.certificateFamilyItem}>
-                      <Text style={styles.certificateFamilyRelation}>차녀</Text>
-                      <Text style={styles.certificateFamilyName}>김○○</Text>
-                    </View>
-                  </>
-                )}
+                ))}
               </View>
             </View>
 
             {/* 일정 */}
+            {hasFuneralSchedule && (
             <View style={styles.certificateSection}>
               <Text style={styles.certificateSectionTitle}>장례 일정</Text>
               <View style={styles.certificateScheduleList}>
                 
                 {/* 입관 일정 (입력된 경우만 표시) */}
-                {(eventData.casketDate || eventData.casketTime) && (
+                {!!casketScheduleText && (
                   <View style={[
                     styles.certificateScheduleItem,
                     currentSchedule === '입관' && styles.certificateScheduleItemActive
@@ -780,12 +826,13 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
                       <Text style={styles.certificateScheduleLabel}>입관</Text>
                     </View>
                     <Text style={styles.certificateScheduleTime}>
-                      {eventData.casketDate ? new Date(eventData.casketDate).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : ''} {eventData.casketTime ? new Date(`1970-01-01T${eventData.casketTime}`).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}
+                      {casketScheduleText}
                     </Text>
                   </View>
                 )}
 
                 {/* 발인 일정 */}
+                {!!burialScheduleText && (
                 <View style={[
                   styles.certificateScheduleItem,
                   currentSchedule === '발인' && styles.certificateScheduleItemActive
@@ -798,11 +845,13 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
                     <Text style={styles.certificateScheduleLabel}>발인</Text>
                   </View>
                   <Text style={styles.certificateScheduleTime}>
-                    {eventData.burialDate ? new Date(eventData.burialDate).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '7월 15일'} {eventData.burialTime ? new Date(`1970-01-01T${eventData.burialTime}`).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '09:00'}
+                    {burialScheduleText}
                   </Text>
                 </View>
+                )}
 
                 {/* 장지 */}
+                {!!burialLocation && (
                 <View style={[
                   styles.certificateScheduleItem,
                   currentSchedule === '장지' && styles.certificateScheduleItemActive
@@ -815,43 +864,57 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
                     <Text style={styles.certificateScheduleLabel}>장지</Text>
                   </View>
                   <Text style={styles.certificateScheduleTime}>
-                    {eventData.burialLocation || eventData.burial_location || '○○공원묘지'}
+                    {burialLocation}
                   </Text>
                 </View>
+                )}
               </View>
             </View>
+            )}
 
             {/* 빈소 및 연락처 */}
+            {(funeralHome || detailAddress || funeralAddress || primaryContact || eventData.secondaryContact || eventData.secondary_contact || eventData.funeralDirector || eventData.funeral_director) && (
             <View style={styles.certificateInfoSection}>
               
               {/* 빈소 */}
+              {(funeralHome || detailAddress || funeralAddress) && (
               <View style={styles.certificateInfoBox}>
                 <Text style={styles.certificateInfoTitle}>빈소</Text>
                 <View style={styles.certificateInfoContent}>
+                  {!!funeralHome && (
                   <Text style={styles.certificateLocationName}>
-                    {eventData.funeralHome || eventData.funeral_home || '○○병원 장례식장'}
+                    {funeralHome}
                   </Text>
+                  )}
+                  {!!detailAddress && (
                   <Text style={styles.certificateLocationDetail}>
-                    {eventData.detailedAddress || eventData.detailed_address || '3층 특실 302호'}
+                    {detailAddress}
                   </Text>
+                  )}
+                  {!!funeralAddress && (
                   <View style={styles.certificateLocationAddress}>
                     <Text style={styles.certificateLocationAddressText}>
-                      {eventData.location || '서울시 강남구 ○○로 123'}
+                      {funeralAddress}
                     </Text>
                   </View>
+                  )}
                 </View>
               </View>
+              )}
 
               {/* 연락처 */}
+              {(primaryContact || eventData.secondaryContact || eventData.secondary_contact || eventData.funeralDirector || eventData.funeral_director) && (
               <View style={styles.certificateInfoBox}>
                 <Text style={styles.certificateInfoTitle}>연락처</Text>
                 <View style={styles.certificateInfoContent}>
+                  {!!primaryContact && (
                   <View style={styles.certificateContactItem}>
                     <Text style={styles.certificateContactLabel}>상주</Text>
                     <Text style={styles.certificateContactValue}>
-                      {eventData.primaryContact || eventData.primary_contact || '010-1234-5678'}
+                      {primaryContact}
                     </Text>
                   </View>
+                  )}
                   {(eventData.secondaryContact || eventData.secondary_contact) && (
                     <View style={styles.certificateContactItem}>
                       <Text style={styles.certificateContactLabel}>상주</Text>
@@ -870,7 +933,9 @@ const CertificateTemplate = ({ eventData, categorizedImages, allowMessages, mess
                   )}
                 </View>
               </View>
+              )}
             </View>
+            )}
 
             <FuneralGuidanceSection eventData={eventData} />
 
@@ -1010,7 +1075,7 @@ const OfficialTemplate = ({ eventData, categorizedImages, allowMessages, message
                 故 {eventData.deceasedName || eventData.deceased_name || '김○○'}
               </Text>
               <Text style={styles.officialDeceasedAge}>
-                享年 {eventData.deceasedAge || eventData.deceased_age || '78'}세
+                享年 {getDeceasedAge(eventData)}
               </Text>
               <Text style={styles.officialDeceasedDate}>
                 {eventData.deathDate ? new Date(eventData.deathDate).toLocaleDateString('ko-KR', {
@@ -1350,7 +1415,7 @@ const NewspaperTemplate = ({ eventData, categorizedImages, allowMessages, messag
               故 {eventData.deceasedName || eventData.deceased_name || '김○○'} 별세
             </Text>
             <Text style={styles.newspaperHeadlineAge}>
-              享年 {eventData.deceasedAge || eventData.deceased_age || '78'}세
+              享年 {getDeceasedAge(eventData)}
             </Text>
             <Text style={styles.newspaperHeadlineDate}>
               {eventData.deathDate ? new Date(eventData.deathDate).toLocaleDateString('ko-KR', {
@@ -1984,24 +2049,9 @@ const EditorialTimelineTemplate = ({ eventData, categorizedImages, allowMessages
     <ScrollView style={styles.timelineContainer}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.timelineCanvas}>
-          <View style={styles.timelineHeader}>
-            <View style={styles.timelineHeaderTop}>
-              <Text style={styles.timelineHeaderTitle}>FUNERAL TIMELINE</Text>
-              <Text style={styles.timelineHeaderIndex}>기본형</Text>
-            </View>
-            <Text style={styles.timelineHeaderName}>故 {deceasedName}</Text>
-            <View style={styles.timelineHeaderMetaRow}>
-              <Text style={styles.timelineHeaderMeta}>향년 {deceasedAge}</Text>
-              <View style={styles.timelineMetaDivider} />
-              <Text style={styles.timelineHeaderMeta}>
-                {deathDate ? `${deathDate} 별세` : '사망일 미입력'}
-              </Text>
-            </View>
-          </View>
-
           <View style={styles.timelineVisual}>
             {mainImage ? (
-              <FuneralComposedPhoto eventData={eventData} uri={mainImage} style={styles.timelinePhotoHero} />
+              <FuneralComposedPhoto eventData={eventData} uri={mainImage} style={styles.timelinePhotoHero} nameOffsetY={3} />
             ) : (
               <View style={[styles.timelinePhotoHero, styles.modernPhotoPlaceholder]}>
                 <Ionicons name="person" size={30} color="#94A3B8" />
@@ -2017,6 +2067,21 @@ const EditorialTimelineTemplate = ({ eventData, categorizedImages, allowMessages
                   {member.relation} {member.names}
                 </Text>
               ))}
+            </View>
+          </View>
+
+          <View style={styles.timelineHeader}>
+            <View style={styles.timelineHeaderTop}>
+              <Text style={styles.timelineHeaderTitle}>FUNERAL TIMELINE</Text>
+              <Text style={styles.timelineHeaderIndex}>기본형</Text>
+            </View>
+            <Text style={styles.timelineHeaderName}>故 {deceasedName}</Text>
+            <View style={styles.timelineHeaderMetaRow}>
+              <Text style={styles.timelineHeaderMeta}>향년 {deceasedAge}</Text>
+              <View style={styles.timelineMetaDivider} />
+              <Text style={styles.timelineHeaderMeta}>
+                {deathDate ? `${deathDate} 별세` : '사망일 미입력'}
+              </Text>
             </View>
           </View>
 
@@ -2133,17 +2198,29 @@ const PaperLetterTemplate = ({ eventData, categorizedImages, allowMessages, mess
   const deathDate = formatDateText(eventData.deathDate || eventData.death_date);
   const deathTime = formatTimeText(eventData.deathTime || eventData.death_time);
   const customMessage = eventData.customMessage || eventData.custom_message;
+  const letterMessage = customMessage || '고인의 마지막 길에 함께 마음을 모아 주시는 모든 분들께 깊이 감사드립니다. 전해주신 따뜻한 위로와 애도의 마음을 오래도록 간직하겠습니다.';
   const primaryContact = eventData.primaryContact || eventData.primary_contact || '010-0000-0000';
+  const funeralHome = eventData.funeralHome || eventData.funeral_home || '○○장례식장';
+  const funeralAddress = eventData.location || eventData.address || '주소를 입력해주세요';
+  const detailAddress = eventData.detailAddress || eventData.detail_address || eventData.detailedAddress || eventData.detailed_address;
+  const guidanceItems = getFuneralGuidanceItems(eventData).filter((item) => item.label !== '부의금 계좌');
+  const accounts = getCondolenceAccounts(eventData);
+  const funeralAddressText = [detailAddress, funeralAddress].filter(Boolean).join(' ') || '주소를 입력해주세요';
+  const funeralInfoRows = [
+    { icon: FUNERAL_ICON_INFO, label: '빈소', value: funeralHome },
+    { icon: FUNERAL_ICON_LOCATION, label: '주소', value: funeralAddressText },
+    { icon: FUNERAL_ICON_GUIDANCE, label: '연락처', value: primaryContact },
+  ];
   const currentScheduleStep = getCurrentFuneralStep(eventData);
   const funeralSchedule = [
     {
       label: '입관',
-      value: [formatDateText(eventData.casketDate || eventData.casket_date), formatTimeText(eventData.casketTime || eventData.casket_time)].filter(Boolean).join(' '),
+      value: [formatDateText(eventData.casketDate || eventData.casket_date), formatTimeText(eventData.casketTime || eventData.casket_time)].filter(Boolean).join(' ') || '일정 미입력',
       isActive: currentScheduleStep === '입관',
     },
     {
       label: '발인',
-      value: [formatDateText(eventData.burialDate || eventData.burial_date), formatTimeText(eventData.burialTime || eventData.burial_time)].filter(Boolean).join(' '),
+      value: [formatDateText(eventData.burialDate || eventData.burial_date), formatTimeText(eventData.burialTime || eventData.burial_time)].filter(Boolean).join(' ') || '일정 미입력',
       isActive: currentScheduleStep === '발인',
     },
     {
@@ -2152,6 +2229,7 @@ const PaperLetterTemplate = ({ eventData, categorizedImages, allowMessages, mess
       isActive: currentScheduleStep === '장지',
     },
   ];
+  const funeralScheduleIcons = [FUNERAL_ICON_CASKET, FUNERAL_ICON_PROCESSION, FUNERAL_ICON_BURIAL];
 
   const handleMessageSubmit = async (messageData) => {
     try {
@@ -2164,17 +2242,59 @@ const PaperLetterTemplate = ({ eventData, categorizedImages, allowMessages, mess
     }
   };
 
+  const renderPaperSection = (icon, title, subtitle, children, decorSource, decorStyle) => (
+    <View style={styles.paperLetterSection}>
+      <View style={styles.paperLetterSectionHeader}>
+        <Text style={styles.paperLetterSectionTitle}>{title.replace(' ', '\n')}</Text>
+        <View style={styles.paperLetterSectionIcon}>
+          <Image source={icon} style={styles.paperLetterSectionIconImage} resizeMode="contain" />
+        </View>
+      </View>
+      <View style={styles.paperLetterSectionContent}>
+        {!!decorSource && (
+          <Image
+            pointerEvents="none"
+            source={decorSource}
+            style={[styles.paperLetterSectionDecor, decorStyle]}
+            resizeMode="contain"
+          />
+        )}
+        {!!subtitle && <Text style={styles.paperLetterSectionSubtitle}>{subtitle}</Text>}
+        {children}
+      </View>
+    </View>
+  );
+
   return (
     <ScrollView style={styles.paperLetterContainer}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.paperLetterCanvas}>
-          <Text style={styles.paperLetterRibbon}>故人을 추모합니다</Text>
           <View style={styles.paperLetterCard}>
-            <Text style={styles.paperLetterTitle}>부 고</Text>
-            <Text style={styles.paperLetterDateText}>
-              {deathDate || '사망일 미입력'} {deathTime}
-            </Text>
-            <View style={styles.paperLetterBody}>
+            <View pointerEvents="none" style={styles.paperLetterDecorLayer}>
+              <Image source={FUNERAL_LETTER_BG_HANJI} style={styles.paperLetterHanjiTexture} resizeMode="cover" />
+              <Image source={FUNERAL_LETTER_CORNER} style={styles.paperLetterCornerTop} resizeMode="contain" />
+              <Image source={FUNERAL_LETTER_CORNER} style={styles.paperLetterCornerBottom} resizeMode="contain" />
+              <Image source={FUNERAL_LETTER_BOTTOM_CLOUD} style={styles.paperLetterBottomCloud} resizeMode="contain" />
+            </View>
+
+            <View style={styles.paperLetterHeroBlock}>
+              <Image pointerEvents="none" source={FUNERAL_LETTER_HOST_BRANCH} style={styles.paperLetterHeroLeafLeft} resizeMode="contain" />
+              <Image pointerEvents="none" source={FUNERAL_LETTER_ACCOUNT_FLOWER} style={styles.paperLetterHeroFlowerRight} resizeMode="contain" />
+              <Text style={styles.paperLetterEyebrow}>삼가 고인의 명복을 빕니다</Text>
+              <View style={styles.paperLetterNameRow}>
+                <Text style={styles.paperLetterHonorific}>故</Text>
+                <Text style={styles.paperLetterName}>{deceasedName}</Text>
+              </View>
+              <Text style={styles.paperLetterSub}>
+                {eventData.birthDate || eventData.birth_date ? `${formatDateText(eventData.birthDate || eventData.birth_date)}  ~  ` : ''}
+                {deathDate || '사망일 미입력'} · 향년 {getDeceasedAge(eventData)}
+              </Text>
+              <View style={styles.paperLetterHeroDivider}>
+                <Image pointerEvents="none" source={FUNERAL_LETTER_DIVIDER} style={styles.paperLetterHeroDividerImage} resizeMode="contain" />
+              </View>
+            </View>
+
+            <View style={styles.paperLetterPhotoPanel}>
               {mainImage ? (
                 <FuneralComposedPhoto eventData={eventData} uri={mainImage} style={styles.paperLetterPhotoHero} />
               ) : (
@@ -2182,50 +2302,126 @@ const PaperLetterTemplate = ({ eventData, categorizedImages, allowMessages, mess
                   <Ionicons name="person" size={46} color="#9CA3AF" />
                 </View>
               )}
-              <Text style={styles.paperLetterName}>故 {deceasedName}</Text>
-              <Text style={styles.paperLetterSub}>
-                향년 {getDeceasedAge(eventData)}로 별세
-              </Text>
-              <View style={styles.paperLetterScheduleCard}>
-                <Text style={styles.paperLetterBodyTitle}>조문 일정</Text>
-                {funeralSchedule.map((item) => (
-                  <View key={item.label} style={[styles.paperLetterScheduleRow, item.isActive && styles.paperLetterScheduleRowActive]}>
-                    <View style={styles.paperLetterScheduleLabelWrap}>
-                      <Text style={styles.paperLetterScheduleLabel}>{item.label}</Text>
-                      <Text style={styles.paperLetterScheduleStatus}>{item.isActive ? '현재 진행' : '안내'}</Text>
+            </View>
+
+            <View style={styles.paperLetterBody}>
+              {renderPaperSection(FUNERAL_ICON_HOST, '상주', '고인을 모시는 가족', (
+                <View style={styles.paperLetterHostGrid}>
+                  {familyMembers.map((member, index) => (
+                    <View key={`${member.relation}-${member.names}`} style={[styles.paperLetterHostPill, index === 0 && styles.paperLetterHostPillWide]}>
+                      <Text style={styles.paperLetterHostRelation}>{member.relation}</Text>
+                      {index > 0 && <Text style={styles.paperLetterHostDot}>·</Text>}
+                      <Text style={styles.paperLetterHostName}>{member.names}</Text>
                     </View>
-                    <Text style={styles.paperLetterScheduleValue}>{item.value}</Text>
+                  ))}
+                </View>
+              ), FUNERAL_LETTER_HOST_BRANCH, styles.paperLetterDecorHost)}
+
+              {renderPaperSection(FUNERAL_ICON_SCHEDULE, '조문 일정', '입관부터 장지까지', (
+                <View style={styles.paperLetterScheduleOverview}>
+                  <View pointerEvents="none" style={styles.paperLetterScheduleLineArt} />
+                  {funeralSchedule.map((item, index) => (
+                    <View key={item.label} style={[styles.paperLetterScheduleMiniCard, item.isActive && styles.paperLetterScheduleMiniCardActive]}>
+                      <View style={styles.paperLetterMiniIcon}>
+                        <Image source={funeralScheduleIcons[index]} style={styles.paperLetterMiniIconImage} resizeMode="contain" />
+                      </View>
+                      <Text style={styles.paperLetterMiniLabel}>{item.label}</Text>
+                      <Text style={styles.paperLetterMiniValue}>{item.value}</Text>
+                      {item.isActive && (
+                        <View style={styles.paperLetterMiniBadge}>
+                          <Text style={styles.paperLetterMiniBadgeText}>진행중</Text>
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              ), FUNERAL_LETTER_CANDLE, styles.paperLetterDecorSchedule)}
+
+              {renderPaperSection(FUNERAL_ICON_INFO, '장례 안내', '빈소와 연락처', (
+                <View style={styles.paperLetterInfoList}>
+                  {funeralInfoRows.map((item) => (
+                    <View key={item.label} style={styles.paperLetterInfoRow}>
+                      <View style={styles.paperLetterInfoRowIcon}>
+                        <Image source={item.icon} style={styles.paperLetterInfoRowIconImage} resizeMode="contain" />
+                      </View>
+                      <View style={styles.paperLetterInfoTextWrap}>
+                        <Text style={styles.paperLetterInfoLabel}>{item.label}</Text>
+                        <Text style={styles.paperLetterInfoValue}>{item.value}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ), FUNERAL_LETTER_INFO_FLOWER, styles.paperLetterDecorInfo)}
+
+              {guidanceItems.length > 0 && (
+                renderPaperSection(FUNERAL_ICON_GUIDANCE, '안내', '조문 전 확인 사항', (
+                  <View style={styles.paperLetterInfoList}>
+                    {guidanceItems.map((item) => (
+                      <View key={item.label} style={styles.paperLetterInfoRow}>
+                        <View style={styles.paperLetterInfoRowIcon}>
+                          <Image source={FUNERAL_ICON_GUIDANCE} style={styles.paperLetterInfoRowIconImage} resizeMode="contain" />
+                        </View>
+                        <View style={styles.paperLetterInfoTextWrap}>
+                          <Text style={styles.paperLetterInfoLabel}>{item.label}</Text>
+                          <Text style={styles.paperLetterInfoValue}>{item.value}</Text>
+                        </View>
+                      </View>
+                    ))}
                   </View>
-                ))}
-              </View>
-              <View style={styles.paperLetterSeparator} />
-              <Text style={styles.paperLetterBodyTitle}>상주</Text>
-              <View style={styles.paperLetterListWrap}>
-                {familyMembers.map((member) => (
-                  <Text key={`${member.relation}-${member.names}`} style={styles.paperLetterListItem}>
-                    {member.relation} · {member.names}
-                  </Text>
-                ))}
-              </View>
-              <Text style={styles.paperLetterBodyTitle}>안내</Text>
-              <Text style={styles.paperLetterBodyText}>
-                {eventData.funeralHome || eventData.funeral_home || '○○장례식장'} · {primaryContact}
-              </Text>
-              <Text style={styles.paperLetterBodyText}>{eventData.location || '주소를 입력해주세요'}</Text>
+                ), FUNERAL_LETTER_HOST_BRANCH, styles.paperLetterDecorGuide)
+              )}
+
+              {accounts.length > 0 && (
+                renderPaperSection(FUNERAL_ICON_ACCOUNT, '부의금 계좌', '마음을 전하실 곳', (
+                  <View style={styles.paperLetterInfoList}>
+                    {accounts.map((account) => (
+                      <View
+                        key={`${account.bank_name || account.bankName}-${account.account_number || account.accountNumber}`}
+                        style={styles.paperLetterInfoRow}
+                      >
+                        <View style={styles.paperLetterInfoRowIcon}>
+                          <Image source={FUNERAL_ICON_ACCOUNT} style={styles.paperLetterInfoRowIconImage} resizeMode="contain" />
+                        </View>
+                        <View style={styles.paperLetterInfoTextWrap}>
+                          <Text style={styles.paperLetterInfoLabel}>{account.bank_name || account.bankName || '은행'}</Text>
+                          <Text style={styles.paperLetterInfoValue}>
+                            {`${account.account_number || account.accountNumber || ''} ${account.owner_name || account.ownerName || ''}`.trim() || '계좌 미입력'}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ), FUNERAL_LETTER_ACCOUNT_FLOWER, styles.paperLetterDecorAccount)
+              )}
+
+              {renderPaperSection(FUNERAL_ICON_FAMILY_MESSAGE, '상주의 말', '가족이 전하는 말씀', (
+                <View style={styles.paperLetterIntroBox}>
+                  <Text style={styles.paperLetterIntroText}>{letterMessage}</Text>
+                </View>
+              ), FUNERAL_LETTER_MESSAGE_PEN, styles.paperLetterDecorMessage)}
             </View>
           </View>
 
-          {customMessage && (
-            <View style={styles.paperLetterMessage}>
-              <Text style={styles.paperLetterMessageTitle}>상주의 말</Text>
-              <Text style={styles.paperLetterMessageText}>{customMessage}</Text>
-            </View>
-          )}
-
           {allowMessages && (
             <View style={styles.paperLetterMessage}>
-              <Text style={styles.paperLetterMessageTitle}>조문 메시지</Text>
-              <MessageList messages={messages} eventType="funeral" />
+              <View style={styles.paperLetterSectionHeader}>
+                <Text style={styles.paperLetterSectionTitle}>조문{"\n"}메시지</Text>
+                <View style={styles.paperLetterSectionIcon}>
+                  <Image source={FUNERAL_ICON_GUESTBOOK} style={styles.paperLetterSectionIconImage} resizeMode="contain" />
+                </View>
+              </View>
+              <View style={styles.paperLetterSectionContent}>
+                <Image
+                  pointerEvents="none"
+                  source={FUNERAL_LETTER_GUESTBOOK_FLOWER}
+                  style={[styles.paperLetterSectionDecor, styles.paperLetterDecorGuestbook]}
+                  resizeMode="contain"
+                />
+                <View style={styles.paperLetterSectionCopy}>
+                  <Text style={styles.paperLetterSectionSubtitle}>남겨주신 마음</Text>
+                </View>
+                <MessageList messages={messages} eventType="funeral" />
+              </View>
             </View>
           )}
 
@@ -3122,22 +3318,22 @@ const styles = StyleSheet.create({
 
   timelineContainer: {
     flex: 1,
-    backgroundColor: '#F2EFE8',
+    backgroundColor: '#EEF2F6',
   },
   timelineCanvas: {
     padding: 16,
     gap: 14,
   },
   timelineHeader: {
-    backgroundColor: '#FFFDF8',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D7C7AA',
+    borderColor: '#D5DCE5',
     borderRadius: 0,
     padding: 20,
     gap: 8,
     overflow: 'hidden',
     borderTopWidth: 6,
-    borderTopColor: '#2B2B2A',
+    borderTopColor: '#36516C',
   },
   timelineHeaderTop: {
     flexDirection: 'row',
@@ -3145,16 +3341,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   timelineHeaderTitle: {
-    color: '#8A6A2F',
+    color: '#536B84',
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.2,
   },
   timelineHeaderIndex: {
-    color: '#FFFDF8',
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '900',
-    backgroundColor: '#2B2B2A',
+    backgroundColor: '#36516C',
     borderRadius: 999,
     overflow: 'hidden',
     paddingHorizontal: 10,
@@ -3181,7 +3377,7 @@ const styles = StyleSheet.create({
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#D7C7AA',
+    backgroundColor: '#B8C2CF',
   },
   timelineVisual: {
     position: 'relative',
@@ -3209,7 +3405,7 @@ const styles = StyleSheet.create({
   timelineVisualCaption: {
     width: '100%',
     borderRadius: 0,
-    backgroundColor: '#F8F4EC',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     padding: 14,
@@ -3243,8 +3439,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 0,
-    backgroundColor: '#2B2B2A',
-    color: '#F8F4EC',
+    backgroundColor: '#36516C',
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '800',
     overflow: 'hidden',
@@ -3252,7 +3448,7 @@ const styles = StyleSheet.create({
   timelineBox: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D7C7AA',
+    borderColor: '#D5DCE5',
     borderRadius: 0,
     padding: 16,
     gap: 12,
@@ -3262,7 +3458,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   timelineSectionKicker: {
-    color: '#8A6A2F',
+    color: '#536B84',
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1.4,
@@ -3305,8 +3501,8 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   timelineSimpleMarkerActive: {
-    backgroundColor: '#344256',
-    borderColor: '#344256',
+    backgroundColor: '#36516C',
+    borderColor: '#36516C',
   },
   timelineSimpleMarkerText: {
     color: '#64748B',
@@ -3717,7 +3913,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     color: '#FFFFFF',
-    backgroundColor: '#2B2B2A',
+    backgroundColor: '#36516C',
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 0,
@@ -3745,7 +3941,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 0,
-    backgroundColor: '#2B2B2A',
+    backgroundColor: '#36516C',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3773,11 +3969,19 @@ const styles = StyleSheet.create({
 
   paperLetterContainer: {
     flex: 1,
-    backgroundColor: '#f5efe6',
+    backgroundColor: '#E7E2D8',
   },
   paperLetterCanvas: {
-    padding: 16,
-    gap: 12,
+    padding: 14,
+    gap: 14,
+  },
+  paperLetterEyebrow: {
+    textAlign: 'center',
+    color: '#78716C',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 4,
   },
   paperLetterRibbon: {
     textAlign: 'center',
@@ -3786,23 +3990,124 @@ const styles = StyleSheet.create({
     marginBottom: -6,
   },
   paperLetterCard: {
-    borderRadius: 6,
-    backgroundColor: '#fffdf8',
+    borderRadius: 0,
+    backgroundColor: '#FBF8F0',
     borderWidth: 1,
-    borderColor: '#d6cec0',
-    padding: 22,
-    gap: 10,
+    borderColor: '#BEB7AA',
+    padding: 12,
+    gap: 12,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
     elevation: 3,
+  },
+  paperLetterDecorLayer: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.44,
+  },
+  paperLetterHanjiTexture: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.11,
+  },
+  paperLetterCornerTop: {
+    position: 'absolute',
+    width: 86,
+    height: 118,
+    top: 4,
+    right: 4,
+    opacity: 0.22,
+  },
+  paperLetterCornerBottom: {
+    position: 'absolute',
+    width: 86,
+    height: 118,
+    bottom: 4,
+    left: 4,
+    opacity: 0.20,
+    transform: [{ rotate: '180deg' }],
+  },
+  paperLetterBottomCloud: {
+    position: 'absolute',
+    width: '105%',
+    height: 100,
+    left: -10,
+    bottom: -16,
+    opacity: 0.23,
+  },
+  paperLetterHeroBlock: {
+    position: 'relative',
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 18,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  paperLetterHeroLeafLeft: {
+    position: 'absolute',
+    width: 84,
+    height: 84,
+    left: -26,
+    top: -16,
+    opacity: 0.18,
+    transform: [{ rotate: '18deg' }],
+  },
+  paperLetterHeroFlowerRight: {
+    position: 'absolute',
+    width: 96,
+    height: 96,
+    right: -28,
+    top: -18,
+    opacity: 0.18,
+  },
+  paperLetterHeroTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+  },
+  paperLetterBadgeText: {
+    color: '#1C1917',
+    fontSize: 18,
+    fontWeight: '900',
+    fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
+    letterSpacing: 2,
+  },
+  paperLetterHeroDate: {
+    flex: 1,
+    textAlign: 'right',
+    color: '#57534E',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  paperLetterNamePlate: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(250,247,239,0.78)',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#BEB7AA',
+  },
+  paperLetterNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  paperLetterHonorific: {
+    color: '#8B6F43',
+    fontSize: 25,
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
+    marginTop: 5,
   },
   paperLetterTitle: {
     textAlign: 'center',
-    fontSize: 34,
-    color: '#5f4e39',
-    letterSpacing: 4,
+    fontSize: 38,
+    color: '#4D4032',
+    letterSpacing: 6,
     fontWeight: '800',
     fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
   },
@@ -3812,18 +4117,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   paperLetterBody: {
-    marginTop: 12,
-    gap: 10,
+    gap: 12,
   },
   paperLetterName: {
-    fontSize: 28,
-    color: '#111827',
-    fontWeight: '800',
+    fontSize: 42,
+    color: '#1C1917',
+    fontWeight: '900',
     fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
+    textAlign: 'center',
+    letterSpacing: 2,
   },
   paperLetterSub: {
-    color: '#4b5563',
-    marginBottom: 2,
+    color: '#57534E',
+    marginTop: 2,
+    textAlign: 'center',
+    fontWeight: '700',
+    fontSize: 15,
+    fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
+    letterSpacing: 0.4,
+  },
+  paperLetterHeroDivider: {
+    width: '62%',
+    height: 22,
+    marginTop: 8,
+  },
+  paperLetterHeroDividerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  paperLetterIntroBox: {
+    backgroundColor: '#F7F3EA',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#C9C0B2',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+  },
+  paperLetterIntroText: {
+    color: '#292524',
+    fontSize: 14,
+    lineHeight: 23,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   paperLetterPhoto: {
     width: 90,
@@ -3838,81 +4173,347 @@ const styles = StyleSheet.create({
     width: '100%',
     height: FUNERAL_PREVIEW_PAPER_HERO_HEIGHT,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 12,
-    backgroundColor: '#f1f5f9',
-    marginBottom: 6,
+    borderColor: '#BEB7AA',
+    borderRadius: 0,
+    backgroundColor: '#F5F5F4',
     overflow: 'hidden',
   },
   paperLetterPhotoPlaceholder: {
     alignItems: 'center',
     justifyContent: 'center',
   },
+  paperLetterPhotoPanel: {
+    backgroundColor: 'rgba(255,252,245,0.54)',
+    borderWidth: 1,
+    borderColor: '#C9C0B2',
+    padding: 8,
+  },
+  paperLetterScheduleOverview: {
+    position: 'relative',
+    flexDirection: 'row',
+    gap: 0,
+  },
+  paperLetterScheduleLineArt: {
+    position: 'absolute',
+    top: 24,
+    left: '16.5%',
+    right: '16.5%',
+    height: 1,
+    backgroundColor: '#B8AA94',
+    opacity: 0.68,
+  },
+  paperLetterScheduleMiniCard: {
+    flex: 1,
+    minHeight: 118,
+    backgroundColor: 'transparent',
+    borderRightWidth: 1,
+    borderRightColor: '#D6CFC2',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    gap: 5,
+  },
+  paperLetterScheduleMiniCardActive: {
+    backgroundColor: 'rgba(241,237,228,0.72)',
+  },
+  paperLetterMiniIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FBF8F0',
+    borderWidth: 1,
+    borderColor: '#B8AA94',
+  },
+  paperLetterMiniIconText: {
+    color: '#292524',
+    fontSize: 13,
+    fontWeight: '900',
+    fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
+  },
+  paperLetterMiniIconImage: {
+    width: 36,
+    height: 36,
+  },
+  paperLetterMiniLabel: {
+    color: '#1C1917',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  paperLetterMiniValue: {
+    color: '#78716C',
+    fontSize: 10,
+    lineHeight: 16,
+    textAlign: 'center',
+    fontWeight: '700',
+  },
+  paperLetterMiniBadge: {
+    marginTop: 'auto',
+    backgroundColor: '#1C1917',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  paperLetterMiniBadgeText: {
+    color: '#FBF8F0',
+    fontSize: 9,
+    fontWeight: '900',
+  },
   paperLetterSeparator: {
     height: 1,
-    backgroundColor: '#ddd0b8',
+    backgroundColor: '#D8D1C2',
     marginTop: 4,
   },
   paperLetterBodyTitle: {
-    color: '#7c6b52',
-    fontWeight: '700',
+    color: '#292524',
+    fontWeight: '900',
     marginTop: 6,
     marginBottom: 4,
   },
-  paperLetterScheduleCard: {
-    marginTop: 4,
+  paperLetterSection: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,252,245,0.54)',
     borderWidth: 1,
-    borderColor: '#e7dfd0',
-    borderRadius: 10,
-    padding: 10,
-    backgroundColor: '#fffdf8',
+    borderColor: '#C9C0B2',
+    minHeight: 92,
+    overflow: 'hidden',
+  },
+  paperLetterSectionHeader: {
+    width: 84,
+    backgroundColor: 'rgba(239,233,221,0.62)',
+    borderRightWidth: 1,
+    borderRightColor: '#D6CFC2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+  },
+  paperLetterSectionIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paperLetterSectionIconImage: {
+    width: 42,
+    height: 42,
+  },
+  paperLetterSectionCopy: {
+    flex: 1,
+  },
+  paperLetterSectionContent: {
+    flex: 1,
+    position: 'relative',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+  paperLetterSectionDecor: {
+    position: 'absolute',
+    width: 92,
+    height: 92,
+    right: -8,
+    bottom: -14,
+    opacity: 0.18,
+  },
+  paperLetterDecorHost: {
+    width: 118,
+    height: 118,
+    right: -22,
+    bottom: -18,
+    opacity: 0.24,
+    transform: [{ rotate: '-8deg' }],
+  },
+  paperLetterDecorSchedule: {
+    width: 150,
+    height: 44,
+    right: 22,
+    top: 34,
+    bottom: undefined,
+    opacity: 0.20,
+  },
+  paperLetterDecorInfo: {
+    width: 110,
+    height: 110,
+    right: -28,
+    bottom: -26,
+    opacity: 0.22,
+  },
+  paperLetterDecorGuide: {
+    width: 82,
+    height: 82,
+    right: -18,
+    bottom: -18,
+    opacity: 0.18,
+    transform: [{ rotate: '14deg' }],
+  },
+  paperLetterDecorAccount: {
+    width: 120,
+    height: 120,
+    right: -34,
+    bottom: -32,
+    opacity: 0.22,
+  },
+  paperLetterDecorMessage: {
+    width: 96,
+    height: 96,
+    right: -22,
+    bottom: -24,
+    opacity: 0.20,
+  },
+  paperLetterDecorGuestbook: {
+    width: 96,
+    height: 96,
+    right: -18,
+    bottom: -24,
+    opacity: 0.20,
+  },
+  paperLetterSectionTitle: {
+    color: '#1C1917',
+    fontSize: 19,
+    lineHeight: 28,
+    fontWeight: '900',
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
+  },
+  paperLetterSectionSubtitle: {
+    color: '#78716C',
+    fontSize: 11,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
+  paperLetterHostGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  paperLetterHostPill: {
+    minWidth: '47%',
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#DDD5C8',
+    paddingVertical: 7,
+    paddingHorizontal: 0,
+  },
+  paperLetterHostPillWide: {
+    width: '100%',
+    paddingTop: 2,
+  },
+  paperLetterHostRelation: {
+    color: '#78716C',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  paperLetterHostDot: {
+    color: '#A8A29E',
+    fontSize: 13,
+    fontWeight: '900',
+    marginHorizontal: 2,
+  },
+  paperLetterHostName: {
+    color: '#1C1917',
+    fontSize: 14,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  paperLetterScheduleCard: {
     gap: 8,
   },
   paperLetterScheduleRow: {
-    borderTopWidth: 1,
-    borderTopColor: '#eadfc7',
-    paddingTop: 8,
+    position: 'relative',
+    backgroundColor: '#F8F5EE',
+    borderLeftWidth: 2,
+    borderLeftColor: '#D6CFC2',
+    paddingVertical: 10,
+    paddingLeft: 42,
+    paddingRight: 10,
     gap: 4,
   },
   paperLetterScheduleRowActive: {
-    backgroundColor: '#f9ede0',
-    borderColor: '#d6a57f',
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 8,
-    marginHorizontal: -6,
-    marginBottom: 4,
+    backgroundColor: '#F1EDE4',
+    borderLeftColor: '#1C1917',
   },
   paperLetterScheduleLabelWrap: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  paperLetterScheduleIndex: {
+    position: 'absolute',
+    left: 10,
+    top: 10,
+    color: '#A8A29E',
+    fontSize: 12,
+    fontWeight: '900',
+    fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
+  },
   paperLetterScheduleLabel: {
     fontSize: 13,
-    color: '#3f372b',
-    fontWeight: '700',
+    color: '#1C1917',
+    fontWeight: '900',
   },
   paperLetterScheduleStatus: {
     fontSize: 11,
-    color: '#7c4a1d',
-    backgroundColor: '#fde68a',
+    color: '#292524',
+    backgroundColor: '#E7DED1',
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 10,
     overflow: 'hidden',
-    fontWeight: '700',
+    fontWeight: '800',
   },
   paperLetterScheduleValue: {
     marginTop: 2,
     fontSize: 13,
-    color: '#4b5563',
+    color: '#57534E',
     lineHeight: 20,
   },
   paperLetterBodyText: {
-    color: '#4b5563',
+    color: '#292524',
     fontSize: 13,
     lineHeight: 20,
+  },
+  paperLetterInfoList: {
+    gap: 8,
+  },
+  paperLetterInfoRow: {
+    flexDirection: 'row',
+    gap: 10,
+    backgroundColor: 'transparent',
+    borderBottomWidth: 1,
+    borderBottomColor: '#DDD5C8',
+    paddingVertical: 8,
+    paddingHorizontal: 0,
+  },
+  paperLetterInfoRowIcon: {
+    width: 34,
+    height: 34,
+    backgroundColor: 'rgba(239,233,221,0.46)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paperLetterInfoRowIconImage: {
+    width: 32,
+    height: 32,
+  },
+  paperLetterInfoTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  paperLetterInfoLabel: {
+    color: '#78716C',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  paperLetterInfoValue: {
+    color: '#1C1917',
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '700',
   },
   paperLetterListWrap: {
     gap: 4,
@@ -3924,12 +4525,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   paperLetterMessage: {
-    backgroundColor: '#fffef9',
-    borderRadius: 12,
-    borderColor: '#e7dfd0',
+    flexDirection: 'row',
+    backgroundColor: '#FBF8F0',
     borderWidth: 1,
-    padding: 14,
-    gap: 8,
+    borderColor: '#BEB7AA',
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    gap: 0,
   },
   paperLetterMessageTitle: {
     color: '#6b7280',
@@ -3944,8 +4546,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   paperLetterButton: {
-    borderRadius: 999,
-    backgroundColor: '#5f4e39',
+    borderRadius: 0,
+    backgroundColor: '#1C1917',
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 4,
@@ -4200,29 +4802,39 @@ const styles = StyleSheet.create({
     color: '#999',
   },
   certificateContent: {
-    paddingHorizontal: 24,
-    paddingVertical: 32,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 32,
   },
   certificateDeceasedSection: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 28,
+    width: '100%',
   },
   certificatePhotoWrapper: {
-    width: FUNERAL_PREVIEW_FRAME_WIDTH,
-    height: FUNERAL_PREVIEW_FRAME_HEIGHT,
-    backgroundColor: '#f0f0f0',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    marginBottom: 24,
-    borderRadius: 18,
-    overflow: 'hidden',
+    width: '100%',
+    maxWidth: '100%',
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    marginBottom: 20,
+    borderRadius: 0,
+    padding: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'center',
+    overflow: 'hidden',
   },
   certificatePhoto: {
     width: '100%',
-    height: '100%',
     resizeMode: 'cover',
+    alignSelf: 'center',
+  },
+  certificatePhotoGuide: {
+    color: '#8a8174',
+    fontSize: 12,
+    marginTop: -8,
+    marginBottom: 16,
+    textAlign: 'center',
   },
   certificateDeceasedInfo: {
     alignItems: 'center',

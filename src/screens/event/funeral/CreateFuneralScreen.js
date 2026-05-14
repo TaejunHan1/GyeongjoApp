@@ -17,12 +17,13 @@ import {
   Animated,
   Easing,
   PanResponder,
+  DeviceEventEmitter,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUserInfo, moveImagesToEventFolder,
+import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit,
 } from '../../../lib/supabaseHelper';
 import DaumPostcode from '../../../components/DaumPostcode';
 import FuneralTemplatePreview from '../templates/FuneralTemplatePreview';
@@ -1133,6 +1134,8 @@ const ImageUploadModal = ({ visible, currentIndex, totalCount, onCancel }) => (
 );
 
 export default function CreateFuneralScreen({ navigation, route }) {
+  const creationCreditReservationRef = useRef(route?.params?.eventCreationCreditReservation || null);
+  const creationCreditSettledRef = useRef(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [eventData, setEventData] = useState({
     type: 'funeral', // 🔥 고정값
@@ -1199,6 +1202,21 @@ export default function CreateFuneralScreen({ navigation, route }) {
   const [mainPhotoLayoutView, setMainPhotoLayoutView] = useState({ ...MAIN_IMAGE_LAYOUT_DEFAULT });
   const [memorialNameLayoutView, setMemorialNameLayoutView] = useState({ ...MEMORIAL_NAME_LAYOUT_DEFAULT });
   const [memorialDateLayoutView, setMemorialDateLayoutView] = useState({ ...MEMORIAL_DATE_LAYOUT_DEFAULT });
+
+  React.useEffect(() => {
+    return () => {
+      const reservation = creationCreditReservationRef.current;
+      if (!reservation?.success || creationCreditSettledRef.current) return;
+      refundEventCreationCredit({
+        userId: reservation.userId,
+        paymentMethod: reservation.paymentMethod,
+        priceCredits: reservation.priceCredits,
+        reason: 'event_create_abandoned:funeral',
+      })
+        .then(() => DeviceEventEmitter.emit('event-creation-credit-refunded'))
+        .catch(() => {});
+    };
+  }, []);
   
   // 이미지 업로드 관련 상태
   const [imageUploadState, setImageUploadState] = useState({
@@ -1327,19 +1345,19 @@ export default function CreateFuneralScreen({ navigation, route }) {
       },
       {
         id: 'editorial-timeline',
-        name: '타임라인',
-        description: '조문 동선과 안내를 한눈에 보여주는 스타일',
+        name: '클린 타임라인',
+        description: '입관·발인·장지를 차분한 세로 일정표로 정리한 안내형 부고장',
         previewType: 'card-editorial-timeline',
         style: 'editorial-timeline',
-        features: ['타임라인', '가독성', '모바일 최적화'],
+        features: ['세로 일정표', '안내 중심', '쿨그레이'],
       },
       {
         id: 'paper-letter',
         name: '레터지',
-        description: '감성 있는 위로 문구 중심의 레터지형 구성',
+        description: '상주의 말과 고인 정보를 편지지처럼 차분하게 전하는 문장 중심 부고장',
         previewType: 'card-paper-letter',
         style: 'paper-letter',
-        features: ['감성', '메시지 강조', '문구형'],
+        features: ['편지지', '문장 중심', '차분함'],
       },
       {
         id: 'certificate',
@@ -2909,6 +2927,7 @@ export default function CreateFuneralScreen({ navigation, route }) {
       let formattedEventData = {
         event_type: 'funeral', // 🔥 고정
         event_name: eventTitle,
+        event_date: dateToISODate(eventData.burialDate) || dateToISODate(eventData.casketDate) || dateToISODate(eventData.deathDate),
         template_style: eventData.selectedTemplate?.style || 'modern-card',
         family_relations: eventData.familyRelations,
         preset_amounts: eventData.presetAmounts,
@@ -2985,7 +3004,8 @@ export default function CreateFuneralScreen({ navigation, route }) {
           message_settings: eventData.messageSettings,
           created_via: 'app_v2.3',
           version: '2.3',
-        }
+        },
+        event_creation_credit_reservation: creationCreditReservationRef.current,
       };
 
       console.log('🔍 [DEBUG] 최종 저장 데이터 - 이미지 정보:', {
@@ -2994,6 +3014,7 @@ export default function CreateFuneralScreen({ navigation, route }) {
         imagesWithStoragePath: formattedEventData.image_urls.filter(img => img.storagePath).length,
       });
 
+      creationCreditSettledRef.current = !!creationCreditReservationRef.current;
       const result = await createEvent(formattedEventData);
 
       if (result.success) {
@@ -4021,29 +4042,20 @@ export default function CreateFuneralScreen({ navigation, route }) {
       case 'card-editorial-timeline':
         return (
           <View style={styles.previewCardVisualTimeline}>
-            <View style={styles.previewTimelineHeader}>
-              <Text style={styles.previewTimelineHeaderTitle}>부고문</Text>
-              <Text style={styles.previewTimelineHeaderDate}>2026.05.10 · 안치</Text>
-            </View>
-            <View style={styles.previewTimelinePhotoRow}>
-              <View style={styles.previewTimelinePhoto} />
-              <View style={styles.previewTimelineTextBlock}>
-                <Text style={styles.previewTimelineLine}>故 홍길동</Text>
-                <Text style={styles.previewTimelineLineSub}>향년 70 · 별세 2026.05.10</Text>
-              </View>
-            </View>
-            <View style={styles.previewTimelineTimeline}>
-              <View style={styles.previewTimelineItem}>
-                <Text style={styles.previewTimelineDay}>입관</Text>
-                <Text style={styles.previewTimelineValue}>2026.05.10 14:00</Text>
-              </View>
-              <View style={styles.previewTimelineItem}>
-                <Text style={styles.previewTimelineDay}>발인</Text>
-                <Text style={styles.previewTimelineValue}>2026.05.11 09:00</Text>
-              </View>
-              <View style={styles.previewTimelineItem}>
-                <Text style={styles.previewTimelineDay}>장지</Text>
-                <Text style={styles.previewTimelineValue}>서울영안원 봉안실</Text>
+            <View style={styles.previewTimelineSoftBlockA} />
+            <View style={styles.previewTimelineSoftBlockB} />
+            <View style={styles.previewTimelineCoverContent}>
+              <View style={styles.previewTimelineVisualPanel}>
+                <View style={styles.previewTimelineVisualRail} />
+                {[0, 1, 2].map((index) => (
+                  <View key={index} style={styles.previewTimelineVisualRow}>
+                    <View style={[styles.previewTimelineVisualDot, index === 1 && styles.previewTimelineVisualDotActive]} />
+                    <View style={styles.previewTimelineVisualLines}>
+                      <View style={[styles.previewTimelineVisualLine, index === 1 && styles.previewTimelineVisualLineActive]} />
+                      <View style={styles.previewTimelineVisualSubLine} />
+                    </View>
+                  </View>
+                ))}
               </View>
             </View>
           </View>
@@ -4071,25 +4083,11 @@ export default function CreateFuneralScreen({ navigation, route }) {
             <Image pointerEvents="none" source={MODERN_TEMPLATE_PREVIEW_ASSETS.oliveBranch} style={styles.previewModernOlive} resizeMode="contain" />
             <Image pointerEvents="none" source={MODERN_TEMPLATE_PREVIEW_ASSETS.petals} style={styles.previewModernPetals} resizeMode="contain" />
             <View style={styles.previewModernCoverContent}>
-              <View style={styles.previewModernCoverKickerRow}>
-                <Text style={styles.previewModernBadge}>대표 템플릿</Text>
-                <Text style={styles.previewModernDate}>HANJI MODERN</Text>
-              </View>
-              <Text style={styles.previewModernCoverTitle}>한지 모던</Text>
-              <Text style={styles.previewModernCoverSubtitle}>
-                고인의 사진과 조문 일정을 한 화면에 격식 있게 담는 모바일 부고장
-              </Text>
-              <View style={styles.previewModernCoverFeatureGrid}>
-                {[
-                  ['time-outline', '진행 일정'],
-                  ['flower-outline', '꽃 장식'],
-                  ['card-outline', '부의금 안내'],
-                ].map(([icon, label]) => (
-                  <View key={label} style={styles.previewModernCoverFeature}>
-                    <Ionicons name={icon} size={13} color="#2B2B2A" />
-                    <Text style={styles.previewModernCoverFeatureText}>{label}</Text>
-                  </View>
-                ))}
+              <View style={styles.previewModernVisualCard}>
+                <Image pointerEvents="none" source={MODERN_TEMPLATE_PREVIEW_ASSETS.divider} style={styles.previewModernCoverDivider} resizeMode="contain" />
+                <View style={styles.previewModernVisualFrame} />
+                <View style={styles.previewModernVisualLineWide} />
+                <View style={styles.previewModernVisualLineShort} />
               </View>
               <Image pointerEvents="none" source={MODERN_TEMPLATE_PREVIEW_ASSETS.divider} style={styles.previewModernCoverDivider} resizeMode="contain" />
             </View>
@@ -4184,17 +4182,13 @@ export default function CreateFuneralScreen({ navigation, route }) {
             ]}
             onPress={() => handleTemplateSelect(template)}
           >
-                <View style={styles.templateImageContainer}>
-                  {renderTemplatePreviewThumbnail(template)}
-              {eventData.selectedTemplate?.id === template.id && (
-                <View style={styles.templateSelectedOverlay}>
-                  <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
-                </View>
-              )}
-            </View>
-            
             <View style={styles.templateInfo}>
-              <Text style={styles.templateName}>{template.name}</Text>
+              <View style={styles.templateTitleRow}>
+                <Text style={styles.templateName}>{template.name}</Text>
+                {eventData.selectedTemplate?.id === template.id && (
+                  <Ionicons name="checkmark-circle" size={22} color={TossColors.primary} />
+                )}
+              </View>
               <Text style={styles.templateDescription}>{template.description}</Text>
               
               {template.features && (
@@ -6251,6 +6245,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: TossColors.border,
+    padding: 18,
   },
   templateCardSelected: {
     borderColor: TossColors.primary,
@@ -6389,6 +6384,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
+  previewModernVisualCard: {
+    width: '66%',
+    minHeight: 116,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,253,248,0.82)',
+    borderWidth: 1,
+    borderColor: '#D8C9B2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    overflow: 'hidden',
+  },
+  previewModernVisualFrame: {
+    width: 48,
+    height: 58,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#2B2B2A',
+    backgroundColor: '#F7EFE1',
+    marginTop: 7,
+  },
+  previewModernVisualLineWide: {
+    width: 82,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(43,43,42,0.18)',
+    marginTop: 10,
+  },
+  previewModernVisualLineShort: {
+    width: 54,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(43,43,42,0.12)',
+    marginTop: 6,
+  },
   previewModernCoverKickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -6458,81 +6488,159 @@ const styles = StyleSheet.create({
   previewCardVisualTimeline: {
     flex: 1,
     borderRadius: 12,
-    padding: 16,
-    backgroundColor: '#F7FAFF',
+    padding: 0,
+    backgroundColor: '#EEF2F6',
     borderWidth: 1,
-    borderColor: '#DDE8FF',
+    borderColor: '#D5DCE5',
     overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  previewTimelineHeader: {
-    marginBottom: 14,
+  previewTimelineSoftBlockA: {
+    position: 'absolute',
+    right: -36,
+    top: -18,
+    width: 174,
+    height: 122,
+    borderRadius: 24,
+    backgroundColor: 'rgba(54,81,108,0.12)',
+    transform: [{ rotate: '-10deg' }],
   },
-  previewTimelineHeaderTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: TossColors.primary,
-    marginBottom: 2,
+  previewTimelineSoftBlockB: {
+    position: 'absolute',
+    left: -28,
+    bottom: -38,
+    width: 188,
+    height: 134,
+    borderRadius: 28,
+    backgroundColor: 'rgba(148,163,184,0.20)',
+    transform: [{ rotate: '12deg' }],
   },
-  previewTimelineHeaderDate: {
-    fontSize: 11,
-    color: TossColors.textSecondary,
-    letterSpacing: 0.2,
+  previewTimelineCoverContent: {
+    position: 'absolute',
+    left: 22,
+    right: 22,
+    top: 18,
+    bottom: 14,
+    zIndex: 2,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
   },
-  previewTimelinePhotoRow: {
+  previewTimelineVisualPanel: {
+    width: '68%',
+    minHeight: 124,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderWidth: 1,
+    borderColor: '#D5DCE5',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    gap: 12,
+    position: 'relative',
+  },
+  previewTimelineVisualRail: {
+    position: 'absolute',
+    top: 26,
+    bottom: 24,
+    left: 27,
+    width: 1,
+    backgroundColor: '#CBD5E1',
+  },
+  previewTimelineVisualRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 12,
-  },
-  previewTimelinePhoto: {
-    width: 72,
-    height: 72,
-    borderRadius: 10,
-    backgroundColor: 'rgba(64, 93, 230, 0.20)',
-  },
-  previewTimelineTextBlock: {
-    flex: 1,
-  },
-  previewTimelineLine: {
-    fontSize: 17,
-    lineHeight: 20,
-    color: TossColors.text,
-    fontWeight: '800',
-  },
-  previewTimelineLineSub: {
-    marginTop: 3,
-    fontSize: 11,
-    color: TossColors.textSecondary,
-  },
-  previewTimelineTimeline: {
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E4ECFF',
-    padding: 10,
     gap: 10,
   },
-  previewTimelineItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderLeftWidth: 3,
-    borderLeftColor: '#4A88FF',
-    paddingLeft: 10,
-    paddingVertical: 6,
-    gap: 8,
+  previewTimelineVisualDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
   },
-  previewTimelineDay: {
-    fontSize: 11,
-    color: '#4A88FF',
-    fontWeight: '700',
-    width: 52,
+  previewTimelineVisualDotActive: {
+    backgroundColor: '#36516C',
+    borderColor: '#36516C',
   },
-  previewTimelineValue: {
+  previewTimelineVisualLines: {
     flex: 1,
-    fontSize: 11,
-    color: TossColors.text,
-    textAlign: 'right',
+    gap: 5,
+  },
+  previewTimelineVisualLine: {
+    width: '78%',
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#CBD5E1',
+  },
+  previewTimelineVisualLineActive: {
+    width: '92%',
+    backgroundColor: '#36516C',
+  },
+  previewTimelineVisualSubLine: {
+    width: '54%',
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+  },
+  previewTimelineCoverKickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 8,
+  },
+  previewTimelineHeaderDate: {
+    fontSize: 9,
+    color: '#536B84',
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  previewTimelineBadge: {
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: '#36516C',
+    color: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  previewTimelineCoverTitle: {
+    fontSize: 31,
+    lineHeight: 36,
+    color: '#191F28',
+    fontWeight: '900',
+  },
+  previewTimelineCoverSubtitle: {
+    marginTop: 5,
+    maxWidth: '84%',
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#475569',
+    fontWeight: '800',
+  },
+  previewTimelineCoverFeatureGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginTop: 7,
+  },
+  previewTimelineCoverFeature: {
+    minHeight: 25,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.80)',
+    borderWidth: 1,
+    borderColor: '#D5DCE5',
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  previewTimelineCoverFeatureText: {
+    fontSize: 9,
+    color: '#36516C',
+    fontWeight: '900',
   },
 
   previewCardVisualPaper: {
@@ -6661,7 +6769,13 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   templateInfo: {
-    padding: 16,
+    padding: 0,
+  },
+  templateTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
   },
   templateName: {
     fontSize: 18,
@@ -6693,8 +6807,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: TossColors.secondary,
-    marginHorizontal: 16,
-    marginBottom: 16,
+    marginTop: 16,
     paddingVertical: 12,
     borderRadius: 8,
   },

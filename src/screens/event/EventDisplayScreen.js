@@ -45,6 +45,19 @@ const MUSIC_TRACKS = [
   { id: 'track11', name: '로맨틱 배경음악', emoji: '🎵', file: require('../../../assets/music/viacheslavstarostin-romantic-wedding-background-music-357203.mp3') },
 ];
 
+const PHOTO_FRAMES = [
+  { id: 'background2', name: '프레임 01', source: require('../../../assets/studio/elements/background2.png') },
+  { id: 'background3', name: '프레임 02', source: require('../../../assets/studio/elements/background3.png') },
+  { id: 'background4', name: '프레임 03', source: require('../../../assets/studio/elements/background4.png') },
+  { id: 'background5', name: '프레임 04', source: require('../../../assets/studio/elements/background5.png') },
+  { id: 'background6', name: '프레임 05', source: require('../../../assets/studio/elements/background6.png') },
+  { id: 'background7', name: '프레임 06', source: require('../../../assets/studio/elements/background7.png') },
+  { id: 'background8', name: '프레임 07', source: require('../../../assets/studio/elements/background8.png') },
+  { id: 'background9', name: '프레임 08', source: require('../../../assets/studio/elements/background9.png') },
+  { id: 'background10', name: '프레임 09', source: require('../../../assets/studio/elements/background10.png') },
+  { id: 'backround4', name: '프레임 10', source: require('../../../assets/studio/elements/backround4.png') },
+];
+
 const { width, height } = Dimensions.get('window');
 
 export default function EventDisplayScreen({ navigation, route }) {
@@ -397,27 +410,135 @@ export default function EventDisplayScreen({ navigation, route }) {
     return 'wedding';
   };
 
+  const normalizeFuneralEventData = (rawData = {}) => {
+    const additionalInfo = rawData.additional_info || rawData.additionalInfo || {};
+    const pick = (...keys) => {
+      for (const key of keys) {
+        const value = rawData[key] ?? additionalInfo[key];
+        if (value !== undefined && value !== null && value !== '') return value;
+      }
+      return undefined;
+    };
+
+    const familyMembers = pick('familyMembers', 'family_members') || [];
+    const condolenceAccounts = pick('condolenceAccounts', 'condolence_accounts') || [];
+
+    const normalized = {
+      ...additionalInfo,
+      ...rawData,
+      type: 'funeral',
+      deceasedName: pick('deceasedName', 'deceased_name', 'main_person_name'),
+      deceased_name: pick('deceased_name', 'deceasedName', 'main_person_name'),
+      main_person_name: pick('main_person_name', 'deceasedName', 'deceased_name'),
+      deceasedAge: pick('deceasedAge', 'deceased_age', 'age'),
+      deceased_age: pick('deceased_age', 'deceasedAge', 'age'),
+      birthDate: pick('birthDate', 'birth_date'),
+      birth_date: pick('birth_date', 'birthDate'),
+      ageCalculationMethod: pick('ageCalculationMethod', 'age_calculation_method') || 'korean_year',
+      age_calculation_method: pick('age_calculation_method', 'ageCalculationMethod') || 'korean_year',
+      deathDate: pick('deathDate', 'death_date'),
+      death_date: pick('death_date', 'deathDate'),
+      deathTime: pick('deathTime', 'death_time'),
+      death_time: pick('death_time', 'deathTime'),
+      deceasedGender: pick('deceasedGender', 'deceased_gender') || '남',
+      deceased_gender: pick('deceased_gender', 'deceasedGender') || '남',
+      casketDate: pick('casketDate', 'casket_date', 'funeral_start_date'),
+      casket_date: pick('casket_date', 'casketDate', 'funeral_start_date'),
+      casketTime: pick('casketTime', 'casket_time'),
+      casket_time: pick('casket_time', 'casketTime'),
+      burialDate: pick('burialDate', 'burial_date', 'funeral_end_date'),
+      burial_date: pick('burial_date', 'burialDate', 'funeral_end_date'),
+      burialTime: pick('burialTime', 'burial_time'),
+      burial_time: pick('burial_time', 'burialTime'),
+      burialLocation: pick('burialLocation', 'burial_location'),
+      burial_location: pick('burial_location', 'burialLocation'),
+      secondaryBurialLocation: pick('secondaryBurialLocation', 'secondary_burial_location'),
+      secondary_burial_location: pick('secondary_burial_location', 'secondaryBurialLocation'),
+      religiousRite: pick('religiousRite', 'religious_rite'),
+      religious_rite: pick('religious_rite', 'religiousRite'),
+      funeralMethod: pick('funeralMethod', 'funeral_method'),
+      funeral_method: pick('funeral_method', 'funeralMethod'),
+      funeralHome: pick('funeralHome', 'funeral_home'),
+      funeral_home: pick('funeral_home', 'funeralHome'),
+      location: pick('location', 'funeralAddress', 'funeral_address'),
+      detailedAddress: pick('detailedAddress', 'detailed_address'),
+      detailed_address: pick('detailed_address', 'detailedAddress'),
+      familyMembers: Array.isArray(familyMembers) ? familyMembers : [],
+      family_members: Array.isArray(familyMembers) ? familyMembers : [],
+      primaryContact: pick('primaryContact', 'primary_contact'),
+      primary_contact: pick('primary_contact', 'primaryContact'),
+      secondaryContact: pick('secondaryContact', 'secondary_contact'),
+      secondary_contact: pick('secondary_contact', 'secondaryContact'),
+      funeralDirector: pick('funeralDirector', 'funeral_director'),
+      funeral_director: pick('funeral_director', 'funeralDirector'),
+      visitationType: pick('visitationType', 'visitation_type'),
+      visitation_type: pick('visitation_type', 'visitationType'),
+      visitationNote: pick('visitationNote', 'visitation_note'),
+      visitation_note: pick('visitation_note', 'visitationNote'),
+      parkingTransportInfo: pick('parkingTransportInfo', 'parking_transport_info'),
+      parking_transport_info: pick('parking_transport_info', 'parkingTransportInfo'),
+      condolenceAccounts: Array.isArray(condolenceAccounts) ? condolenceAccounts : [],
+      condolence_accounts: Array.isArray(condolenceAccounts) ? condolenceAccounts : [],
+      customMessage: pick('customMessage', 'custom_message'),
+      custom_message: pick('custom_message', 'customMessage'),
+    };
+
+    normalized.additional_info = {
+      ...additionalInfo,
+      family_members: normalized.family_members,
+      deceased_age: normalized.deceased_age,
+      birth_date: normalized.birth_date,
+      age_calculation_method: normalized.age_calculation_method,
+      death_date: normalized.death_date,
+      death_time: normalized.death_time,
+      deceased_gender: normalized.deceased_gender,
+      religious_rite: normalized.religious_rite,
+      funeral_method: normalized.funeral_method,
+      casket_date: normalized.casket_date,
+      casket_time: normalized.casket_time,
+      burial_date: normalized.burial_date,
+      burial_time: normalized.burial_time,
+      burial_location: normalized.burial_location,
+      secondary_burial_location: normalized.secondary_burial_location,
+      funeral_home: normalized.funeral_home,
+      primary_contact: normalized.primary_contact,
+      secondary_contact: normalized.secondary_contact,
+      funeral_director: normalized.funeral_director,
+      visitation_type: normalized.visitation_type,
+      visitation_note: normalized.visitation_note,
+      parking_transport_info: normalized.parking_transport_info,
+      condolence_accounts: normalized.condolence_accounts,
+    };
+
+    return normalized;
+  };
+
   const getFinalEventData = () => {
     if (passedEventData) {
-      return {
+      const passedData = {
         ...passedEventData,
         id: eventId,
         event_id: eventId,
         guestMessages: eventMessages
       };
+      return getEventType() === 'funeral' ? normalizeFuneralEventData(passedData) : passedData;
     }
 
     if (event) {
       const eventType = event.event_type;
       
       if (eventType === 'funeral') {
+        const additionalInfo = event.additional_info || {};
         const funeralData = {
           id: event.id || eventId, // 🔥 이벤트 ID 추가
           event_id: event.id || eventId, // 🔥 이벤트 ID 추가
           type: 'funeral',
           deceasedName: event.deceased_name || event.main_person_name,
           deceasedAge: event.deceased_age,
+          birthDate: event.birth_date,
+          ageCalculationMethod: event.age_calculation_method,
           deathDate: event.death_date,
+          deathTime: event.death_time,
           deceasedGender: event.deceased_gender || '남',
           casketDate: event.casket_date || event.funeral_start_date,
           casketTime: event.casket_time,
@@ -425,6 +546,8 @@ export default function EventDisplayScreen({ navigation, route }) {
           burialTime: event.burial_time,
           burialLocation: event.burial_location,
           secondaryBurialLocation: event.secondary_burial_location,
+          religiousRite: event.religious_rite,
+          funeralMethod: event.funeral_method,
           funeralHome: event.funeral_home,
           location: event.location,
           detailedAddress: event.detailed_address,
@@ -432,15 +555,16 @@ export default function EventDisplayScreen({ navigation, route }) {
           primaryContact: event.primary_contact,
           secondaryContact: event.secondary_contact,
           funeralDirector: event.funeral_director,
+          visitationType: event.visitation_type,
+          visitationNote: event.visitation_note,
+          parkingTransportInfo: event.parking_transport_info,
+          condolenceAccounts: event.condolence_accounts,
           customMessage: event.custom_message,
+          additional_info: additionalInfo,
           guestMessages: eventMessages // 🔥 메시지 추가
         };
 
-        if (event.additional_info) {
-          Object.assign(funeralData, event.additional_info);
-        }
-
-        return funeralData;
+        return normalizeFuneralEventData(funeralData);
       } else {
         const weddingData = {
           id: event.id || eventId,
@@ -669,6 +793,18 @@ export default function EventDisplayScreen({ navigation, route }) {
   const introEffectId = introEffect?.id || null;
   const introTapToOpen = introEffect?.tapToOpen || false;
   const IntroOverlay = introEffectId ? INTRO_OVERLAYS[introEffectId] : null;
+  const photoFrameInfo = event?.additional_info?.photo_frame || finalEventData?.additional_info?.photo_frame || null;
+  const selectedPhotoFrame = photoFrameInfo?.id
+    ? (() => {
+        const frame = PHOTO_FRAMES.find(item => item.id === photoFrameInfo.id);
+        return frame ? {
+          ...frame,
+          scale: photoFrameInfo.scale,
+          offsetX: photoFrameInfo.offsetX,
+          offsetY: photoFrameInfo.offsetY,
+        } : null;
+      })()
+    : null;
 
   return (
     <View style={styles.container}>
@@ -706,6 +842,7 @@ export default function EventDisplayScreen({ navigation, route }) {
             isPlaying={isPlaying}
             onTogglePlay={togglePlayPause}
             playbackProgress={playbackProgress}
+            selectedPhotoFrame={selectedPhotoFrame}
           />
         )}
       </Animated.View>

@@ -24,6 +24,124 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mc2hxdnJsZGNlc3ZqdHJlZHhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwNDI1MTQsImV4cCI6MjA2NDYxODUxNH0.uIfuqMP7SFvQfQXSESS9xKHWlBYeWmZwf1j_4eveZ6Q';
 
+const getPhotoFrameTouchDistance = (touches = []) => {
+  if (touches.length < 2) return 0;
+  const [a, b] = touches;
+  const dx = (a.pageX || 0) - (b.pageX || 0);
+  const dy = (a.pageY || 0) - (b.pageY || 0);
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
+export const PhotoFrameOverlay = ({
+  selectedPhotoFrame,
+  frameAdjusting = false,
+  onPhotoFrameAdjust,
+  activeStyle,
+}) => {
+  const selectedFrameRef = useRef(selectedPhotoFrame);
+  const adjustFrameRef = useRef(onPhotoFrameAdjust);
+  const frameAdjustingRef = useRef(frameAdjusting);
+  const gestureStartRef = useRef({ scale: 0.78, offsetX: 0, offsetY: 0, distance: 0 });
+
+  useEffect(() => {
+    selectedFrameRef.current = selectedPhotoFrame;
+  }, [selectedPhotoFrame]);
+
+  useEffect(() => {
+    adjustFrameRef.current = onPhotoFrameAdjust;
+  }, [onPhotoFrameAdjust]);
+
+  useEffect(() => {
+    frameAdjustingRef.current = frameAdjusting;
+  }, [frameAdjusting]);
+
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => frameAdjustingRef.current && !!selectedFrameRef.current?.source,
+    onMoveShouldSetPanResponder: () => frameAdjustingRef.current && !!selectedFrameRef.current?.source,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: (evt) => {
+      const frame = selectedFrameRef.current || {};
+      const touches = evt.nativeEvent?.touches || [];
+      gestureStartRef.current = {
+        scale: frame.scale || 0.78,
+        offsetX: frame.offsetX || 0,
+        offsetY: frame.offsetY || 0,
+        distance: getPhotoFrameTouchDistance(touches),
+      };
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      const start = gestureStartRef.current;
+      const touches = evt.nativeEvent?.touches || [];
+      if (touches.length >= 2) {
+        const distance = getPhotoFrameTouchDistance(touches);
+        if (distance <= 0) return;
+        if (start.distance <= 0) {
+          const frame = selectedFrameRef.current || {};
+          gestureStartRef.current = {
+            scale: frame.scale || 0.78,
+            offsetX: frame.offsetX || 0,
+            offsetY: frame.offsetY || 0,
+            distance,
+          };
+          return;
+        }
+        adjustFrameRef.current?.({ scale: start.scale * (distance / start.distance) });
+        return;
+      }
+      adjustFrameRef.current?.({
+        offsetX: start.offsetX + gestureState.dx,
+        offsetY: start.offsetY + gestureState.dy,
+      });
+    },
+  })).current;
+
+  if (!selectedPhotoFrame?.source) return null;
+
+  const scale = selectedPhotoFrame.scale || 0.78;
+  return (
+    <View
+      pointerEvents={frameAdjusting ? 'auto' : 'none'}
+      style={[photoFrameStyles.layer, frameAdjusting && photoFrameStyles.layerActive, frameAdjusting && activeStyle]}
+      {...(frameAdjusting ? panResponder.panHandlers : {})}
+    >
+      <Image
+        source={selectedPhotoFrame.source}
+        style={[
+          photoFrameStyles.image,
+          {
+            width: `${scale * 100}%`,
+            height: `${scale * 100}%`,
+            transform: [
+              { translateX: selectedPhotoFrame.offsetX || 0 },
+              { translateY: selectedPhotoFrame.offsetY || 0 },
+            ],
+          },
+        ]}
+        resizeMode="contain"
+      />
+    </View>
+  );
+};
+
+const photoFrameStyles = {
+  layer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 50,
+    elevation: 50,
+  },
+  layerActive: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
+  image: {},
+};
+
 const downloadSupabaseImage = async (url) => {
   if (!url || !url.startsWith('http')) return null;
 

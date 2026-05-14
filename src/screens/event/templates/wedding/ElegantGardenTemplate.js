@@ -16,7 +16,7 @@ import {
   formatKoreanDate,
   formatKoreanTime,
 } from './WeddingUtils';
-import { GuestBookMessages } from './WeddingCommonComponents';
+import { GuestBookMessages, PhotoFrameOverlay } from './WeddingCommonComponents';
 
 const { width, height } = Dimensions.get('window');
 
@@ -83,7 +83,7 @@ const FallingFlowers = () => {
 const WEDDING_ICON = require('../../../../../assets/icons/wedding2.png');
 
 // ======================================================================
-export default function ElegantGardenTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings }) {
+export default function ElegantGardenTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
   const insets = useSafeAreaInsets();
 
   // ── Intro state ──
@@ -357,7 +357,7 @@ export default function ElegantGardenTemplate({ eventData = {}, categorizedImage
 
       {/* ═══ MAIN CONTENT ═══ */}
       <Animated.View style={[{ flex: 1 }, { opacity: mainOpacity, transform: [{ scale: mainScale }] }]}>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false} scrollEnabled={!frameAdjusting}>
 
           {/* ── 1. Hero with crossfade slideshow ── */}
           <View style={ap.hero}>
@@ -369,6 +369,11 @@ export default function ElegantGardenTemplate({ eventData = {}, categorizedImage
                 resizeMode="cover"
               />
             ))}
+            <PhotoFrameOverlay
+              selectedPhotoFrame={selectedPhotoFrame}
+              frameAdjusting={frameAdjusting}
+              onPhotoFrameAdjust={onPhotoFrameAdjust}
+            />
             {/* Top dim */}
             <LinearGradient
               colors={['rgba(0,0,0,0.45)', 'transparent']}

@@ -5,7 +5,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { buildEventSlugBase, buildSlugCandidate } from './slugUtils';
 
 export const EVENT_CREATION_FREE_LIMIT = 2;
-export const EVENT_CREATION_CREDIT_COST = 5;
+export const EVENT_CREATION_CREDIT_COST = 60;
 
 const base64ToBytes = (base64) => {
   const binary = global.atob
@@ -934,6 +934,7 @@ export const getUserEvents = async (passedUserInfo = null) => {
         groom_name,
         bride_name,
         location,
+        detailed_address,
         template_style,
         status,
         created_at,
@@ -944,7 +945,29 @@ export const getUserEvents = async (passedUserInfo = null) => {
         message_placeholder,
         additional_info,
         image_urls,
-        public_slug
+        public_slug,
+        birth_date,
+        deceased_age,
+        age_calculation_method,
+        death_date,
+        death_time,
+        deceased_gender,
+        religious_rite,
+        funeral_method,
+        casket_date,
+        casket_time,
+        burial_date,
+        burial_time,
+        burial_location,
+        secondary_burial_location,
+        primary_contact,
+        secondary_contact,
+        funeral_director,
+        funeral_home,
+        visitation_type,
+        visitation_note,
+        parking_transport_info,
+        condolence_accounts
       `)
       .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false });
@@ -1148,11 +1171,35 @@ export const getAllUserEvents = async (passedUserInfo = null) => {
       is_personal_schedule: false
     }));
     
+    const getEventSortDate = (event) => {
+      if (!event) return null;
+      if (event.event_type === 'funeral') {
+        const additionalInfo = event.additional_info || {};
+        return event.burial_date ||
+          event.funeral_end_date ||
+          event.casket_date ||
+          event.death_date ||
+          event.event_date ||
+          additionalInfo.burial_date ||
+          additionalInfo.funeral_end_date ||
+          additionalInfo.casket_date ||
+          additionalInfo.death_date ||
+          null;
+      }
+      return event.event_date || null;
+    };
+
     // 두 데이터 병합
     const allEvents = [...markedHostedEvents, ...personalSchedules];
     
     // 날짜순 정렬 (최신순)
-    allEvents.sort((a, b) => new Date(b.event_date) - new Date(a.event_date));
+    allEvents.sort((a, b) => {
+      const aDate = getEventSortDate(a);
+      const bDate = getEventSortDate(b);
+      const aTime = aDate ? new Date(aDate).getTime() : 0;
+      const bTime = bDate ? new Date(bDate).getTime() : 0;
+      return bTime - aTime;
+    });
     
     
     return {
@@ -1177,7 +1224,7 @@ export const getAllUserEvents = async (passedUserInfo = null) => {
  * 새 이벤트 생성 (메시지 기능 및 이미지 업로드 포함) - 화이트리스트 방식
  */
 export const createEvent = async (eventData) => {
-  let creationCredit = null;
+  let creationCredit = eventData.event_creation_credit_reservation || null;
   let currentUser = null;
 
   try {
@@ -1435,10 +1482,23 @@ export const createEvent = async (eventData) => {
         ...eventData.additional_info,
         family_members: validFamilyMembers, // 🔥 상주 정보를 family_members로 저장
         birth_date: processedEventData.birth_date,
+        deceased_age: processedEventData.deceased_age,
         age_calculation_method: processedEventData.age_calculation_method,
+        death_date: processedEventData.death_date,
         death_time: processedEventData.death_time,
+        deceased_gender: processedEventData.deceased_gender,
         religious_rite: processedEventData.religious_rite,
         funeral_method: processedEventData.funeral_method,
+        casket_date: processedEventData.casket_date,
+        casket_time: processedEventData.casket_time,
+        burial_date: processedEventData.burial_date,
+        burial_time: processedEventData.burial_time,
+        burial_location: processedEventData.burial_location,
+        secondary_burial_location: processedEventData.secondary_burial_location,
+        primary_contact: processedEventData.primary_contact,
+        secondary_contact: processedEventData.secondary_contact,
+        funeral_director: processedEventData.funeral_director,
+        funeral_home: processedEventData.funeral_home,
         visitation_type: processedEventData.visitation_type,
         visitation_note: processedEventData.visitation_note,
         parking_transport_info: processedEventData.parking_transport_info,
@@ -1486,12 +1546,14 @@ export const createEvent = async (eventData) => {
       });
     }
 
-    creationCredit = await consumeEventCreationCredit(eventData.event_type, currentUser.id);
-    if (!creationCredit.success) {
-      if (creationCredit.error === 'insufficient_balance') {
-        throw new Error(`무료 생성 2회를 모두 사용했습니다. 청첩장 만들기는 ${creationCredit.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 필요합니다.`);
+    if (!creationCredit) {
+      creationCredit = await consumeEventCreationCredit(eventData.event_type, currentUser.id);
+      if (!creationCredit.success) {
+        if (creationCredit.error === 'insufficient_balance') {
+          throw new Error(`무료 생성 2회를 모두 사용했습니다. ${eventData.event_type === 'funeral' ? '부고장' : '청첩장'} 만들기는 ${creationCredit.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 필요합니다.`);
+        }
+        throw new Error(creationCredit.error || '크레딧 사용에 실패했습니다.');
       }
-      throw new Error(creationCredit.error || '크레딧 사용에 실패했습니다.');
     }
 
     const { data, error } = await supabase
@@ -1759,17 +1821,35 @@ export const getEventDetail = async (eventId) => {
       }
     } else if (data.event_type === 'funeral') {
       if (data.additional_info) {
-        data.deceased_age = data.additional_info.deceased_age;
-        data.deceased_gender = data.additional_info.deceased_gender;
-        data.death_date = data.additional_info.death_date;
-        data.burial_date = data.additional_info.burial_date;
-        data.burial_time = data.additional_info.burial_time;
-        data.burial_location = data.additional_info.burial_location;
-        data.family_members = data.additional_info.family_members;
-        data.funeral_home = data.additional_info.funeral_home;
-        data.funeral_director = data.additional_info.funeral_director;
-        data.primary_contact = data.additional_info.primary_contact;
-        data.secondary_contact = data.additional_info.secondary_contact;
+        [
+          'birth_date',
+          'deceased_age',
+          'age_calculation_method',
+          'death_date',
+          'death_time',
+          'deceased_gender',
+          'religious_rite',
+          'funeral_method',
+          'casket_date',
+          'casket_time',
+          'burial_date',
+          'burial_time',
+          'burial_location',
+          'secondary_burial_location',
+          'family_members',
+          'funeral_home',
+          'funeral_director',
+          'primary_contact',
+          'secondary_contact',
+          'visitation_type',
+          'visitation_note',
+          'parking_transport_info',
+          'condolence_accounts',
+        ].forEach(key => {
+          if ((data[key] === undefined || data[key] === null) && data.additional_info[key] !== undefined) {
+            data[key] = data.additional_info[key];
+          }
+        });
       }
     }
     
@@ -2536,16 +2616,42 @@ export const getActiveEvents = async () => {
         }
         [
           'birth_date',
+          'deceased_age',
           'age_calculation_method',
+          'death_date',
           'death_time',
+          'deceased_gender',
           'religious_rite',
           'funeral_method',
+          'casket_date',
+          'casket_time',
+          'burial_date',
+          'burial_time',
+          'burial_location',
+          'secondary_burial_location',
+          'primary_contact',
+          'secondary_contact',
+          'funeral_director',
+          'funeral_home',
           'visitation_type',
           'visitation_note',
           'parking_transport_info',
           'condolence_accounts',
+          'main_photo_layout',
+          'memorial_text_layout',
+          'memorial_name_layout',
+          'memorial_date_layout',
+          'memorial_name_font_id',
+          'memorial_date_font_id',
+          'memorial_name_color',
+          'memorial_date_color',
+          'memorial_name_visible',
+          'memorial_date_visible',
+          'photo_frame',
+          'categorized_images',
+          'message_settings',
         ].forEach(key => {
-          if (processedEvent[key] === undefined && additionalInfo[key] !== undefined) {
+          if ((processedEvent[key] === undefined || processedEvent[key] === null) && additionalInfo[key] !== undefined) {
             processedEvent[key] = additionalInfo[key];
           }
         });

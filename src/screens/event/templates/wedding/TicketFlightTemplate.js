@@ -12,6 +12,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
 import { getCategorizedImagesSafe, formatKoreanDate, formatKoreanTime } from './WeddingUtils';
+import { PhotoFrameOverlay } from './WeddingCommonComponents';
 
 // 이륙 비행기 SVG (assets/images/airplane_takeoff.svg)
 const AIRPLANE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
@@ -500,7 +501,7 @@ const tk = StyleSheet.create({
 // ══════════════════════════════════════════════════════
 // 메인
 // ══════════════════════════════════════════════════════
-export default function TicketFlightTemplate({ eventData = {}, categorizedImages = {}, allowMessages = true }) {
+export default function TicketFlightTemplate({ eventData = {}, categorizedImages = {}, allowMessages = true, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
   const insets = useSafeAreaInsets();
   const confetti = useConfetti();
   const safeImages = getCategorizedImagesSafe(categorizedImages);
@@ -664,6 +665,7 @@ export default function TicketFlightTemplate({ eventData = {}, categorizedImages
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingTop: insets.top, paddingBottom: insets.bottom + 60 }}
           showsVerticalScrollIndicator={false}
+          scrollEnabled={!frameAdjusting}
         >
           {/* ═══ 큰 히어로 사진 + APPROVED 스탬프 + FLIGHT TO LOVE (맨 위) ═══ */}
           <View style={bd.heroPhotoWrap}>
@@ -678,6 +680,11 @@ export default function TicketFlightTemplate({ eventData = {}, categorizedImages
                 <Text style={{ fontSize: 64 }}>💕</Text>
               </View>
             )}
+            <PhotoFrameOverlay
+              selectedPhotoFrame={selectedPhotoFrame}
+              frameAdjusting={frameAdjusting}
+              onPhotoFrameAdjust={onPhotoFrameAdjust}
+            />
             <View style={bd.heroOverlay}>
               <View style={bd.approvedStamp}>
                 <Text style={bd.approvedStampText}>APPROVED</Text>

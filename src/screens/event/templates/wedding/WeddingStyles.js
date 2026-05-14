@@ -446,6 +446,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 14,
     overflow: 'hidden',
+    position: 'relative',
     backgroundColor: '#D8CCC4',
   },
   romantic_playerNames: {

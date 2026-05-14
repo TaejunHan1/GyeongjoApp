@@ -4,7 +4,7 @@
 -- 정책:
 --   - 신규/기존 사용자에게 최초 1회 10크레딧 지급
 --   - 경조사 생성은 처음 2회 무료
---   - 무료 생성 2회 소진 후 청첩장/부고장 생성마다 5크레딧 사용
+--   - 무료 생성 2회 소진 후 청첩장/부고장 생성마다 60크레딧 사용
 --   - 크레딧 지갑은 기존 users.alimtalk_balance를 공통 크레딧으로 사용
 --
 -- 실행 전제:
@@ -67,7 +67,7 @@ DROP FUNCTION IF EXISTS grant_event_creation_welcome_credit();
 CREATE OR REPLACE FUNCTION get_event_creation_credit_state(
   p_user_id uuid,
   p_free_limit integer DEFAULT 2,
-  p_price_credits integer DEFAULT 5
+  p_price_credits integer DEFAULT 60
 ) RETURNS TABLE (
   success boolean,
   balance integer,
@@ -107,7 +107,7 @@ $$;
 CREATE OR REPLACE FUNCTION consume_event_creation_credit(
   p_user_id uuid,
   p_event_type text,
-  p_price_credits integer DEFAULT 5,
+  p_price_credits integer DEFAULT 60,
   p_free_limit integer DEFAULT 2
 ) RETURNS TABLE (
   success boolean,
@@ -203,7 +203,7 @@ $$;
 CREATE OR REPLACE FUNCTION refund_event_creation_credit(
   p_user_id uuid,
   p_payment_method text,
-  p_price_credits integer DEFAULT 5,
+  p_price_credits integer DEFAULT 60,
   p_reason text DEFAULT 'event_create_failed'
 ) RETURNS TABLE (
   success boolean,

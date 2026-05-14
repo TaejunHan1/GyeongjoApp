@@ -14,7 +14,7 @@ import {
   formatKoreanDate,
   formatKoreanTime,
 } from './WeddingUtils';
-import { GuestBookMessages } from './WeddingCommonComponents';
+import { GuestBookMessages, PhotoFrameOverlay } from './WeddingCommonComponents';
 
 const { width } = Dimensions.get('window');
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
@@ -51,7 +51,7 @@ const initialReviews = [
 ];
 
 // ======================================================================
-export default function VintageAppTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings }) {
+export default function VintageAppTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
   const insets = useSafeAreaInsets();
 
   // ── 인트로 ──
@@ -291,7 +291,7 @@ export default function VintageAppTemplate({ eventData = {}, categorizedImages =
   return (
     <View style={[s.root, { paddingBottom: insets.bottom }]}>
       <Animated.View style={[{ flex: 1 }, { opacity: mainOpacity }]}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false} scrollEnabled={!frameAdjusting}>
 
         {/* ═══ 1. 히어로 ═══ */}
         <View style={s.hero}>
@@ -303,6 +303,11 @@ export default function VintageAppTemplate({ eventData = {}, categorizedImages =
               resizeMode="cover"
             />
           ))}
+          <PhotoFrameOverlay
+            selectedPhotoFrame={selectedPhotoFrame}
+            frameAdjusting={frameAdjusting}
+            onPhotoFrameAdjust={onPhotoFrameAdjust}
+          />
           {/* 아래쪽 텍스트 가독성용 연한 그라데이션 (상단 사진은 깔끔하게 유지) */}
           <LinearGradient
             colors={['rgba(255,255,255,0)', 'rgba(245,243,240,0.85)']}

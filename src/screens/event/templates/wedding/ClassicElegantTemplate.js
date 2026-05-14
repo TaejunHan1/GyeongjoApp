@@ -12,6 +12,7 @@ import {
   formatKoreanDate,
   formatKoreanTime,
 } from './WeddingUtils';
+import { PhotoFrameOverlay } from './WeddingCommonComponents';
 
 const { width, height } = Dimensions.get('window');
 
@@ -81,7 +82,7 @@ function FallingFlowers() {
 }
 
 // ======================================================================
-export default function ClassicElegantTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings }) {
+export default function ClassicElegantTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
   const insets = useSafeAreaInsets();
   const safeImages = getCategorizedImagesSafe(categorizedImages);
 
@@ -313,7 +314,7 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
     <Animated.View style={[s.root, { opacity: mainOpacity, paddingBottom: insets.bottom }]}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false} scrollEnabled={!frameAdjusting}>
 
         {/* ── 히어로 ── */}
         <View style={[s.hero, { marginTop: insets.top }]}>
@@ -327,6 +328,11 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
                 resizeMode="cover"
               />
             ))}
+            <PhotoFrameOverlay
+              selectedPhotoFrame={selectedPhotoFrame}
+              frameAdjusting={frameAdjusting}
+              onPhotoFrameAdjust={onPhotoFrameAdjust}
+            />
             {/* 하단 60% 흰색 딤 */}
             {/* 더블 프레임 (사진 안쪽 border) */}
             <View style={s.heroInnerFrame} />

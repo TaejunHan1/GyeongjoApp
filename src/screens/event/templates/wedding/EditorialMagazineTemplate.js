@@ -12,6 +12,7 @@ import {
   formatKoreanDate,
   formatKoreanTime,
 } from './WeddingUtils';
+import { PhotoFrameOverlay } from './WeddingCommonComponents';
 
 const { width } = Dimensions.get('window');
 
@@ -26,7 +27,7 @@ const T = {
 };
 
 // ======================================================================
-export default function EditorialMagazineTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings }) {
+export default function EditorialMagazineTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
   const insets = useSafeAreaInsets();
   const [activeAccount, setActiveAccount] = useState(null);
   const [toast, setToast] = useState({ visible: false, message: '' });
@@ -228,7 +229,7 @@ export default function EditorialMagazineTemplate({ eventData = {}, categorizedI
 
   return (
     <View style={[st.root, { paddingBottom: insets.bottom }]}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false} scrollEnabled={!frameAdjusting}>
 
         {/* ── Hero ── */}
         <View style={st.hero}>
@@ -247,6 +248,11 @@ export default function EditorialMagazineTemplate({ eventData = {}, categorizedI
                 resizeMode="cover"
               />
             ))}
+            <PhotoFrameOverlay
+              selectedPhotoFrame={selectedPhotoFrame}
+              frameAdjusting={frameAdjusting}
+              onPhotoFrameAdjust={onPhotoFrameAdjust}
+            />
           </View>
           <View style={st.heroBottom}>
             <Text style={st.heroNames}>
@@ -527,7 +533,7 @@ const st = StyleSheet.create({
   heroDateTypo: { paddingLeft: 24, marginBottom: 16 },
   heroDateBig: { fontSize: 76, fontWeight: '900', color: T.main, letterSpacing: -3, lineHeight: 80 },
   heroDateSub: { fontSize: 76, fontWeight: '900', color: T.sub, letterSpacing: -3, lineHeight: 80, marginLeft: 20 },
-  heroImageWrap: { width: '85%', aspectRatio: 3 / 4, alignSelf: 'flex-end', overflow: 'hidden', marginBottom: 24 },
+  heroImageWrap: { width: '85%', aspectRatio: 3 / 4, alignSelf: 'flex-end', overflow: 'hidden', marginBottom: 24, position: 'relative' },
   heroImage: { width: '100%', height: '100%', position: 'absolute' },
   heroBottom: { paddingHorizontal: 24 },
   heroNames: { fontSize: 18, fontWeight: '300', color: T.main, letterSpacing: 4, marginBottom: 6 },

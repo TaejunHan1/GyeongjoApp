@@ -38,6 +38,7 @@ import {
   HeartPulse,
   RomanticPinkCalendar,
   GuestBookMessages,
+  PhotoFrameOverlay,
 } from './WeddingCommonComponents';
 import { WebView } from 'react-native-webview';
 import { getInvitationUrl } from '../../../../lib/webLinks';
@@ -282,7 +283,7 @@ const AnimatedSvgText = ({ text, style, fontSize = 48, color = 'white' }) => {
 };
 
 
-const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {}, isPlaying = false, onTogglePlay, playbackProgress = 0 }) => {
+const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {}, isPlaying = false, onTogglePlay, playbackProgress = 0, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) => {
   const insets = useSafeAreaInsets();
   // additional_info가 문자열인지 객체인지 확인 및 파싱
   if (typeof eventData.additional_info === 'string') {
@@ -594,6 +595,7 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
       <ScrollView
         style={styles.romantic_scrollView}
         showsVerticalScrollIndicator={false}
+        scrollEnabled={!frameAdjusting}
         onScroll={handleScroll}
         scrollEventThrottle={16}
       >
@@ -607,6 +609,11 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
                 style={{ width: '100%', height: '100%' }}
                 onImagePress={handleImagePress}
                 template="romantic"
+              />
+              <PhotoFrameOverlay
+                selectedPhotoFrame={selectedPhotoFrame}
+                frameAdjusting={frameAdjusting}
+                onPhotoFrameAdjust={onPhotoFrameAdjust}
               />
             </View>
 

@@ -32,6 +32,7 @@ import {
   ImageViewer,
   MainPhotoSlideshow,
   GuestBookMessages,
+  PhotoFrameOverlay,
 } from './WeddingCommonComponents';
 import { getInvitationUrl } from '../../../../lib/webLinks';
 
@@ -291,7 +292,7 @@ const MinimalCalendar = ({ targetDate, style }) => {
   );
 };
 
-const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {} }) => {
+const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {}, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) => {
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [activeAccountToggle, setActiveAccountToggle] = useState('groom');
@@ -546,6 +547,7 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
         ref={scrollViewRef}
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
+        scrollEnabled={!frameAdjusting}
         contentContainerStyle={styles.scrollContent}
       >
         {/* 메인 히어로 섹션 */}
@@ -556,6 +558,11 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
               style={styles.mainPhoto}
               onImagePress={handleImagePress}
               template="minimal"
+            />
+            <PhotoFrameOverlay
+              selectedPhotoFrame={selectedPhotoFrame}
+              frameAdjusting={frameAdjusting}
+              onPhotoFrameAdjust={onPhotoFrameAdjust}
             />
             {/* 메인 포토 커스텀 인디케이터 오버레이 */}
             <View style={{

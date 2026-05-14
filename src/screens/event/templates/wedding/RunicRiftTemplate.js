@@ -1,8 +1,10 @@
 // src/screens/event/templates/wedding/RunicRiftTemplate.js
 // 웨딩 데이 스크립트 — 포토 커버형 모바일 청첩장
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   Dimensions,
+  Easing,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -24,11 +26,12 @@ import {
   formatKoreanTime,
   getCategorizedImagesSafe,
 } from './WeddingUtils';
+import { PhotoFrameOverlay } from './WeddingCommonComponents';
 
 const { width: W, height: H } = Dimensions.get('window');
 const IS_TABLET = W >= 768;
 const HERO_CARD_HEIGHT = IS_TABLET ? Math.min(H * 0.72, 720) : Math.min(H * 0.7, 620);
-const SECTION_DIVIDER = require('../../../../../assets/images/runic-rift/section-divider.png');
+const SECTION_DIVIDER = require('../../../../../assets/studio/elements/29-wedding divider champagne floral.png');
 
 const C = {
   ink: '#F8F8F5',
@@ -87,7 +90,7 @@ function ClientChrome({ children }) {
   );
 }
 
-export default function RunicRiftTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings }) {
+export default function RunicRiftTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
   const insets = useSafeAreaInsets();
   const safeImages = getCategorizedImagesSafe(categorizedImages);
 
@@ -95,7 +98,15 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
   const [activeAccount, setActiveAccount] = useState(null);
   const [mapCoord, setMapCoord] = useState(null);
   const [guestBookOpen, setGuestBookOpen] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(null);
+  const [introVisible, setIntroVisible] = useState(true);
+  const scriptIntroOpacity = useRef(new Animated.Value(1)).current;
+  const scriptLineAnim = useRef(new Animated.Value(0)).current;
+  const scriptTextAnim = useRef(new Animated.Value(0)).current;
+  const scriptHintOpacity = useRef(new Animated.Value(1)).current;
+  const [selectedImageGroup, setSelectedImageGroup] = useState('gallery');
+  const imageModalScrollRef = useRef(null);
+  const imageViewerClosingRef = useRef(false);
   const [gbName, setGbName] = useState('');
   const [gbMessage, setGbMessage] = useState('');
   const [guestMessages, setGuestMessages] = useState([
@@ -126,9 +137,70 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
   const daysInMonth = new Date(calYear, calMonth, 0).getDate();
   const matchDate = `${calYear} / ${String(calMonth).padStart(2, '0')} / ${String(calDay).padStart(2, '0')}`;
 
+  useEffect(() => {
+    if (!introVisible) return undefined;
+    scriptLineAnim.setValue(0);
+    scriptTextAnim.setValue(0);
+    Animated.sequence([
+      Animated.delay(220),
+      Animated.parallel([
+        Animated.timing(scriptLineAnim, {
+          toValue: 1,
+          duration: 1050,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scriptTextAnim, {
+          toValue: 1,
+          duration: 820,
+          delay: 280,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(scriptHintOpacity, { toValue: 0.35, duration: 760, useNativeDriver: true }),
+      Animated.timing(scriptHintOpacity, { toValue: 1, duration: 760, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [introVisible, scriptHintOpacity, scriptLineAnim, scriptTextAnim]);
+
+  const openScriptIntro = () => {
+    Animated.timing(scriptIntroOpacity, {
+      toValue: 0,
+      duration: 620,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start(() => setIntroVisible(false));
+  };
+
   const mainImages = safeImages.main?.length ? safeImages.main : defaultImages.slice(0, 2);
   const galleryImages = safeImages.gallery?.length ? safeImages.gallery : defaultImages.slice(2, 8);
   const mainImage = mainImages[0];
+  const modalImages = selectedImageGroup === 'main' ? mainImages : galleryImages;
+
+  const openImageViewer = (group, index) => {
+    imageViewerClosingRef.current = false;
+    setSelectedImageGroup(group);
+    setSelectedImageIndex(index);
+  };
+
+  const closeImageViewer = () => {
+    imageViewerClosingRef.current = true;
+    setSelectedImageIndex(null);
+    requestAnimationFrame(() => {
+      imageViewerClosingRef.current = false;
+    });
+  };
+
+  useEffect(() => {
+    if (selectedImageIndex === null) return;
+    requestAnimationFrame(() => {
+      imageModalScrollRef.current?.scrollTo({ x: selectedImageIndex * W, y: 0, animated: false });
+    });
+  }, [selectedImageIndex]);
 
   const accounts = {
     groom: [
@@ -188,17 +260,22 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
   return (
     <View style={s.root}>
       <View style={[s.content, { paddingTop: insets.top }]}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}>
+        <ScrollView showsVerticalScrollIndicator={false} scrollEnabled={!frameAdjusting} contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}>
           <View style={s.hero}>
             <ClientChrome>
               <View style={s.editorialHero}>
                 <View style={s.heroPhotoLayer}>
                   <TouchableOpacity
                     style={s.mainPhotoButton}
-                    activeOpacity={0.92}
-                    onPress={() => setSelectedImage(getImageSource(mainImage))}
+                    activeOpacity={frameAdjusting ? 1 : 0.92}
+                    onPress={frameAdjusting ? undefined : () => openImageViewer('main', 0)}
                   >
                     <Image source={getImageSource(mainImage)} style={s.mainPhoto} resizeMode="cover" />
+                    <PhotoFrameOverlay
+                      selectedPhotoFrame={selectedPhotoFrame}
+                      frameAdjusting={frameAdjusting}
+                      onPhotoFrameAdjust={onPhotoFrameAdjust}
+                    />
                   </TouchableOpacity>
                 </View>
                 <View style={s.heroNameCard}>
@@ -263,7 +340,7 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
                         key={row}
                         style={s.galleryTile}
                         activeOpacity={0.9}
-                        onPress={() => setSelectedImage(getImageSource(img))}
+                        onPress={() => openImageViewer('gallery', col * 3 + row)}
                       >
                         <Image source={getImageSource(img)} style={s.galleryImage} resizeMode="cover" />
                       </TouchableOpacity>
@@ -375,14 +452,35 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
         </View>
       )}
 
-      <Modal visible={!!selectedImage} transparent animationType="fade">
+      <Modal visible={selectedImageIndex !== null} transparent animationType="fade">
         <View style={s.imageModal}>
-          <TouchableOpacity style={[s.imageModalClose, { top: insets.top + 16 }]} onPress={() => setSelectedImage(null)}>
+          <TouchableOpacity style={[s.imageModalClose, { top: insets.top + 16 }]} onPress={closeImageViewer}>
             <Text style={s.imageModalCloseText}>닫기</Text>
           </TouchableOpacity>
-          {selectedImage && (
-            <Image source={selectedImage} style={s.imageModalImg} resizeMode="contain" />
-          )}
+          <View style={[s.imageModalCounter, { bottom: insets.bottom + 34 }]}>
+            <Text style={s.imageModalCounterText}>
+              {Math.min((selectedImageIndex || 0) + 1, modalImages.length)} / {modalImages.length}
+            </Text>
+          </View>
+          <ScrollView
+            ref={imageModalScrollRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            style={s.imageModalScroller}
+            contentOffset={{ x: Math.max(selectedImageIndex || 0, 0) * W, y: 0 }}
+            onMomentumScrollEnd={(event) => {
+              if (imageViewerClosingRef.current || selectedImageIndex === null) return;
+              const nextIndex = Math.round(event.nativeEvent.contentOffset.x / W);
+              setSelectedImageIndex(Math.max(0, Math.min(nextIndex, modalImages.length - 1)));
+            }}
+          >
+            {modalImages.map((img, index) => (
+              <View key={index} style={s.imageModalSlide}>
+                <Image source={getImageSource(img)} style={s.imageModalImg} resizeMode="contain" />
+              </View>
+            ))}
+          </ScrollView>
         </View>
       </Modal>
 
@@ -412,6 +510,56 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {introVisible && (
+        <Animated.View style={[s.scriptIntroLayer, { opacity: scriptIntroOpacity }]}>
+          <TouchableOpacity activeOpacity={0.96} style={s.scriptIntroTouch} onPress={openScriptIntro}>
+            <View style={s.scriptIntroPaper}>
+              <Text style={s.scriptIntroLabel}>WEDDING DAY SCRIPT</Text>
+              <Animated.Text
+                style={[
+                  s.scriptIntroTitle,
+                  {
+                    opacity: scriptTextAnim,
+                    transform: [{
+                      translateY: scriptTextAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [12, 0],
+                      }),
+                    }],
+                  },
+                ]}
+              >
+                Our Wedding Day
+              </Animated.Text>
+              <View style={s.scriptIntroLineTrack}>
+                <Animated.View
+                  style={[
+                    s.scriptIntroInkLine,
+                    {
+                      transform: [{
+                        scaleX: scriptLineAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.02, 1],
+                        }),
+                      }],
+                    },
+                  ]}
+                />
+              </View>
+              <Animated.View style={[s.scriptIntroNames, { opacity: scriptTextAnim }]}>
+                <Text style={s.scriptIntroName}>{groomName}</Text>
+                <Text style={s.scriptIntroAmp}>&</Text>
+                <Text style={s.scriptIntroName}>{brideName}</Text>
+              </Animated.View>
+              <Text style={s.scriptIntroDate}>{matchDate}</Text>
+            </View>
+            <Animated.Text style={[s.scriptIntroHint, { opacity: scriptHintOpacity }]}>
+              초대장 펼치기
+            </Animated.Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -449,7 +597,7 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 3,
   },
-  mainPhotoButton: { width: '100%', height: '100%' },
+  mainPhotoButton: { width: '100%', height: '100%', position: 'relative', overflow: 'hidden' },
   mainPhoto: { width: '100%', height: '100%', borderRadius: 22 },
   heroNameCard: {
     marginTop: 24,
@@ -509,11 +657,11 @@ const s = StyleSheet.create({
   },
   sectionTitle: { marginTop: 12, color: C.text, textAlign: 'center', fontSize: 25, fontWeight: '300', letterSpacing: 0 },
   sectionDividerImage: {
-    width: '72%',
-    height: 34,
+    width: '112%',
+    height: 96,
     alignSelf: 'center',
-    marginTop: 2,
-    marginBottom: 8,
+    marginTop: -30,
+    marginBottom: -16,
   },
   invitationCard: {
     marginHorizontal: 4,
@@ -605,10 +753,10 @@ const s = StyleSheet.create({
   footerNames: { marginTop: 12, color: C.sub, fontSize: 16, letterSpacing: 2 },
   toast: { position: 'absolute', left: 24, right: 24, bottom: 34, padding: 14, backgroundColor: 'rgba(3,10,17,0.92)', borderWidth: 1, borderColor: C.line, zIndex: 50 },
   toastText: { color: C.text, textAlign: 'center', fontWeight: '700' },
-  imageModal: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
+  imageModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
   imageModalClose: {
     position: 'absolute',
-    right: 16,
+    left: 16,
     zIndex: 10,
     paddingHorizontal: 14,
     paddingVertical: 9,
@@ -616,6 +764,18 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
   imageModalCloseText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  imageModalCounter: {
+    position: 'absolute',
+    alignSelf: 'center',
+    zIndex: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  imageModalCounterText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  imageModalScroller: { flex: 1 },
+  imageModalSlide: { width: W, height: '100%', alignItems: 'center', justifyContent: 'center' },
   imageModalImg: { width: '100%', height: '82%' },
   modalWrap: { flex: 1, justifyContent: 'flex-end' },
   modalDim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.72)' },
@@ -625,4 +785,92 @@ const s = StyleSheet.create({
   textarea: { minHeight: 110, textAlignVertical: 'top' },
   submitButton: { backgroundColor: C.gold, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
   submitButtonText: { color: C.ink, fontSize: 15, fontWeight: '900' },
+  scriptIntroLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 200,
+    backgroundColor: C.ink,
+  },
+  scriptIntroTouch: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  scriptIntroPaper: {
+    width: Math.min(W - 58, 420),
+    minHeight: 370,
+    backgroundColor: C.panel,
+    borderWidth: 1,
+    borderColor: 'rgba(37,36,31,0.13)',
+    paddingHorizontal: 30,
+    paddingVertical: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#2B2823',
+    shadowOpacity: 0.14,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 5,
+  },
+  scriptIntroLabel: {
+    color: C.sub,
+    fontSize: 10,
+    letterSpacing: 2.8,
+    fontWeight: '800',
+    marginBottom: 22,
+  },
+  scriptIntroTitle: {
+    color: C.text,
+    fontSize: 36,
+    lineHeight: 45,
+    fontWeight: '300',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  scriptIntroLineTrack: {
+    width: '86%',
+    height: 28,
+    justifyContent: 'center',
+    marginTop: 18,
+    marginBottom: 18,
+  },
+  scriptIntroInkLine: {
+    width: '100%',
+    height: 1,
+    backgroundColor: C.gold,
+  },
+  scriptIntroNames: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  scriptIntroName: {
+    color: C.text,
+    fontSize: 23,
+    lineHeight: 31,
+    fontWeight: '300',
+    letterSpacing: 1.1,
+  },
+  scriptIntroAmp: {
+    color: C.gold,
+    fontSize: 16,
+    lineHeight: 27,
+    fontWeight: '300',
+  },
+  scriptIntroDate: {
+    marginTop: 18,
+    color: C.sub,
+    fontSize: 12,
+    letterSpacing: 1.8,
+    fontWeight: '700',
+  },
+  scriptIntroHint: {
+    marginTop: 28,
+    color: C.sub,
+    fontSize: 13,
+    letterSpacing: 1.7,
+    fontWeight: '800',
+  },
 });

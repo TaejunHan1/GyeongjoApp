@@ -12,7 +12,7 @@ import {
   formatKoreanDate,
   formatKoreanTime,
 } from './WeddingUtils';
-import { GuestBookMessages } from './WeddingCommonComponents';
+import { GuestBookMessages, PhotoFrameOverlay } from './WeddingCommonComponents';
 
 const { width } = Dimensions.get('window');
 
@@ -27,7 +27,7 @@ const T = {
 };
 
 // ======================================================================
-export default function RomanticArchTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings }) {
+export default function RomanticArchTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
   const insets = useSafeAreaInsets();
   const [activeAccount, setActiveAccount] = useState(null);
   const [toast, setToast] = useState({ visible: false, message: '' });
@@ -221,7 +221,7 @@ export default function RomanticArchTemplate({ eventData = {}, categorizedImages
 
   return (
     <View style={[st.root, { paddingBottom: insets.bottom }]}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false} scrollEnabled={!frameAdjusting}>
 
         {/* ── Hero ── */}
         <View style={st.hero}>
@@ -236,6 +236,11 @@ export default function RomanticArchTemplate({ eventData = {}, categorizedImages
                   resizeMode="cover"
                 />
               ))}
+              <PhotoFrameOverlay
+                selectedPhotoFrame={selectedPhotoFrame}
+                frameAdjusting={frameAdjusting}
+                onPhotoFrameAdjust={onPhotoFrameAdjust}
+              />
             </View>
           </View>
           <View style={st.heroNamesRow}>
@@ -510,7 +515,7 @@ const st = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 28,
   },
-  archInner: { flex: 1 },
+  archInner: { flex: 1, position: 'relative' },
   archImage: { width: '100%', height: '100%', position: 'absolute' },
   heroNamesRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   heroName: { fontSize: 22, fontWeight: '300', color: T.main, letterSpacing: 2 },

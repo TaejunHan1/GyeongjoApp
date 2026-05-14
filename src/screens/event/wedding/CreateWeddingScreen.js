@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, KeyboardAvoidingView, Platform, Image,
-  Dimensions, Modal, Animated, Easing, FlatList, DeviceEventEmitter,
+  Dimensions, Modal, Animated, Easing, FlatList, DeviceEventEmitter, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,7 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import {
   createEvent, uploadImageToStorage, deleteImageFromStorage,
-  getCurrentUserInfo, moveImagesToEventFolder,
+  getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit,
 } from '../../../lib/supabaseHelper';
 import DaumPostcode from '../../../components/DaumPostcode';
 import WeddingTemplatePreview from '../templates/WeddingTemplatePreview';
@@ -239,6 +239,28 @@ const PETAL_QTYS = [
   { id: 'many',   label: '많이' },
 ];
 
+const PHOTO_FRAMES = [
+  { id: 'none', name: '없음', source: null },
+  { id: 'background2', name: '프레임 01', source: require('../../../../assets/studio/elements/background2.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background2-thumb.png') },
+  { id: 'background3', name: '프레임 02', source: require('../../../../assets/studio/elements/background3.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background3-thumb.png') },
+  { id: 'background4', name: '프레임 03', source: require('../../../../assets/studio/elements/background4.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background4-thumb.png') },
+  { id: 'background5', name: '프레임 04', source: require('../../../../assets/studio/elements/background5.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background5-thumb.png') },
+  { id: 'background6', name: '프레임 05', source: require('../../../../assets/studio/elements/background6.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background6-thumb.png') },
+  { id: 'background7', name: '프레임 06', source: require('../../../../assets/studio/elements/background7.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background7-thumb.png') },
+  { id: 'background8', name: '프레임 07', source: require('../../../../assets/studio/elements/background8.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background8-thumb.png') },
+  { id: 'background9', name: '프레임 08', source: require('../../../../assets/studio/elements/background9.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background9-thumb.png') },
+  { id: 'background10', name: '프레임 09', source: require('../../../../assets/studio/elements/background10.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background10-thumb.png') },
+  { id: 'backround4', name: '프레임 10', source: require('../../../../assets/studio/elements/backround4.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/backround4-thumb.png') },
+];
+
+const FRAME_DEFAULT_SCALE = 0.78;
+const clampFrameScale = (value) => {
+  if (!Number.isFinite(value)) return FRAME_DEFAULT_SCALE;
+  return Math.max(0.05, value);
+};
+const clampFrameOffset = (value) => (Number.isFinite(value) ? value : 0);
+const FRAME_THUMB_IDS = PHOTO_FRAMES.filter(frame => frame.thumb).map(frame => frame.id);
+
 const EMPTY_WEDDING_EVENT_DATA = {
   type: 'wedding',
   groomName: '',
@@ -367,14 +389,14 @@ const TEMPLATES = [
   {
     id: 'runic-rift', name: '웨딩 데이 스크립트',
     description: '사진과 필기체 무드가 중심이 되는 감성 모바일 청첩장',
-    preview: require('../../../../assets/images/runic-rift-preview.png'),
+    preview: require('../../../../assets/images/aa3.png'),
     style: 'runic-rift',
     features: ['포토 커버', '필기체 무드', '감성 갤러리'],
   },
   {
     id: 'photo-book', name: '포토북 에디션',
     description: '아카이브 카드와 앨범 페이지로 구성한 포토북형 청첩장',
-    preview: require('../../../../assets/images/photo-book-preview.png'),
+    preview: require('../../../../assets/images/aa4.png'),
     style: 'photo-book',
     features: ['아카이브 카드', '앨범 페이지', '블루 그레이 톤'],
   },
@@ -802,6 +824,8 @@ function UploadProgressModal({ visible, currentIndex, totalCount, onCancel }) {
 export default function CreateWeddingScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef(null);
+  const creationCreditReservationRef = useRef(route?.params?.eventCreationCreditReservation || null);
+  const creationCreditSettledRef = useRef(false);
   // 튜토리얼 타겟 ref
   const namesSectionRef = useRef(null);
   const dateTimeSectionRef = useRef(null);
@@ -825,6 +849,21 @@ export default function CreateWeddingScreen({ navigation, route }) {
   // 스크롤 중엔 측정 skip (JS 부하 경감)
   const isScrollingRef = useRef(false);
   const sectionPositions = useRef({});
+
+  useEffect(() => {
+    return () => {
+      const reservation = creationCreditReservationRef.current;
+      if (!reservation?.success || creationCreditSettledRef.current) return;
+      refundEventCreationCredit({
+        userId: reservation.userId,
+        paymentMethod: reservation.paymentMethod,
+        priceCredits: reservation.priceCredits,
+        reason: 'event_create_abandoned:wedding',
+      })
+        .then(() => DeviceEventEmitter.emit('event-creation-credit-refunded'))
+        .catch(() => {});
+    };
+  }, []);
 
   // 튜토리얼 — 타겟 반복 측정
   useEffect(() => {
@@ -958,6 +997,13 @@ export default function CreateWeddingScreen({ navigation, route }) {
   const [currentPreviewTapToOpen, setCurrentPreviewTapToOpen] = useState(false);
   const [showIntroOverlay, setShowIntroOverlay] = useState(false);
   const [showFrameModal, setShowFrameModal] = useState(false);
+  const [templateFrameMap, setTemplateFrameMap] = useState({}); // { templateId: { id, name, source } }
+  const [currentPreviewFrameId, setCurrentPreviewFrameId] = useState('none');
+  const [currentPreviewFrameScale, setCurrentPreviewFrameScale] = useState(FRAME_DEFAULT_SCALE);
+  const [currentPreviewFrameOffsetX, setCurrentPreviewFrameOffsetX] = useState(0);
+  const [currentPreviewFrameOffsetY, setCurrentPreviewFrameOffsetY] = useState(0);
+  const [isFrameAdjusting, setIsFrameAdjusting] = useState(false);
+  const [loadedFrameThumbs, setLoadedFrameThumbs] = useState({});
   const [currentPreviewPetalQty, setCurrentPreviewPetalQty] = useState('normal');
   const [currentPreviewPetalColor, setCurrentPreviewPetalColor] = useState('pink');
   const currentPreviewTemplateRef = useRef(null);
@@ -967,6 +1013,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
   const soundRef = useRef(null);
   const previewSoundRef = useRef(null);
   const progressIntervalRef = useRef(null);
+  const preloadedImageUrisRef = useRef(new Set());
   const [bankPicker, setBankPicker] = useState({ visible: false, field: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [alertInfo, setAlertInfo] = useState({ visible: false, title: '', message: '' });
@@ -1102,6 +1149,58 @@ export default function CreateWeddingScreen({ navigation, route }) {
     };
   };
   const getCategorizedImages = () => buildCategorizedImages(eventData.images);
+
+  const getImagePrefetchUri = (source) => {
+    if (!source) return null;
+    if (typeof source === 'string') return source;
+    if (typeof source === 'number') return Image.resolveAssetSource(source)?.uri || null;
+    if (source.uri) return source.uri;
+    if (source.publicUrl) return source.publicUrl;
+    if (source.url) return source.url;
+    return null;
+  };
+
+  const prefetchImages = (sources = []) => {
+    sources.forEach((source) => {
+      const uri = getImagePrefetchUri(source);
+      if (!uri || preloadedImageUrisRef.current.has(uri)) return;
+      preloadedImageUrisRef.current.add(uri);
+      Image.prefetch(uri).catch(() => {
+        preloadedImageUrisRef.current.delete(uri);
+      });
+    });
+  };
+
+  const prefetchFrameImages = () => {
+    prefetchImages(PHOTO_FRAMES.flatMap(frame => [frame.thumb, frame.source]).filter(Boolean));
+  };
+
+  const markFrameThumbLoaded = (frameId) => {
+    if (!frameId) return;
+    setLoadedFrameThumbs(prev => (prev[frameId] ? prev : { ...prev, [frameId]: true }));
+  };
+
+  const frameThumbsReady = FRAME_THUMB_IDS.length > 0 && FRAME_THUMB_IDS.every(id => loadedFrameThumbs[id]);
+
+  const prefetchPreviewImages = (images = eventData.images) => {
+    const categorized = buildCategorizedImages(images);
+    prefetchImages([
+      ...categorized.main,
+      ...categorized.gallery.slice(0, 8),
+      ...categorized.all.slice(0, 10),
+    ]);
+    prefetchFrameImages();
+  };
+
+  useEffect(() => {
+    prefetchFrameImages();
+  }, []);
+
+  useEffect(() => {
+    if (eventData.images.length > 0) {
+      prefetchPreviewImages(eventData.images);
+    }
+  }, [eventData.images]);
 
   const removeImage = async (imageId) => {
     setEventData(prev => {
@@ -1366,6 +1465,69 @@ export default function CreateWeddingScreen({ navigation, route }) {
     }
   };
 
+  const handleSelectFrame = (frameId) => {
+    const frame = PHOTO_FRAMES.find(item => item.id === frameId) || PHOTO_FRAMES[0];
+    setCurrentPreviewFrameId(frame.id);
+    const nextScale = frame.id === 'none' ? FRAME_DEFAULT_SCALE : currentPreviewFrameScale;
+    const nextOffsetX = frame.id === 'none' ? 0 : currentPreviewFrameOffsetX;
+    const nextOffsetY = frame.id === 'none' ? 0 : currentPreviewFrameOffsetY;
+    if (frame.id === 'none') {
+      setCurrentPreviewFrameScale(FRAME_DEFAULT_SCALE);
+      setCurrentPreviewFrameOffsetX(0);
+      setCurrentPreviewFrameOffsetY(0);
+      setIsFrameAdjusting(false);
+    }
+    const tplId = currentPreviewTemplateRef.current;
+    if (tplId) {
+      setTemplateFrameMap(prev => ({
+        ...prev,
+        [tplId]: frame.id === 'none' ? null : {
+          ...frame,
+          scale: nextScale,
+          offsetX: nextOffsetX,
+          offsetY: nextOffsetY,
+        },
+      }));
+    }
+  };
+
+  const updateFrameAdjustment = (patch) => {
+    const nextScale = patch.scale !== undefined ? clampFrameScale(patch.scale) : currentPreviewFrameScale;
+    const nextOffsetX = patch.offsetX !== undefined ? clampFrameOffset(patch.offsetX) : currentPreviewFrameOffsetX;
+    const nextOffsetY = patch.offsetY !== undefined ? clampFrameOffset(patch.offsetY) : currentPreviewFrameOffsetY;
+    setCurrentPreviewFrameScale(nextScale);
+    setCurrentPreviewFrameOffsetX(nextOffsetX);
+    setCurrentPreviewFrameOffsetY(nextOffsetY);
+
+    const tplId = currentPreviewTemplateRef.current;
+    const frame = PHOTO_FRAMES.find(item => item.id === currentPreviewFrameId);
+    if (tplId && frame && frame.id !== 'none') {
+      setTemplateFrameMap(prev => ({
+        ...prev,
+        [tplId]: {
+          ...frame,
+          scale: nextScale,
+          offsetX: nextOffsetX,
+          offsetY: nextOffsetY,
+        },
+      }));
+    }
+  };
+
+  const resetFrameAdjustment = () => {
+    updateFrameAdjustment({
+      scale: FRAME_DEFAULT_SCALE,
+      offsetX: 0,
+      offsetY: 0,
+    });
+  };
+
+  const startFrameAdjustment = () => {
+    if (currentPreviewFrameId === 'none') return;
+    setShowFrameModal(false);
+    setIsFrameAdjusting(true);
+  };
+
   const onIntroModalClose = () => {
     setShowIntroModal(false);
     setShowIntroOverlay(false);
@@ -1392,6 +1554,11 @@ export default function CreateWeddingScreen({ navigation, route }) {
     setCurrentPreviewPetalQty('normal');
     setCurrentPreviewPetalColor('pink');
     setCurrentPreviewIntroId('none');
+    setCurrentPreviewFrameId('none');
+    setCurrentPreviewFrameScale(FRAME_DEFAULT_SCALE);
+    setCurrentPreviewFrameOffsetX(0);
+    setCurrentPreviewFrameOffsetY(0);
+    setIsFrameAdjusting(false);
     setShowIntroOverlay(false);
     currentPreviewTemplateRef.current = null;
     setShowTemplatePreview(false);
@@ -1407,6 +1574,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
   // ── 템플릿 ──
   const handleTemplatePreview = async (tpl) => {
     await stopAllSounds();
+    prefetchPreviewImages();
     currentPreviewTemplateRef.current = tpl.id;
     const savedMusic = templateMusicMap[tpl.id];
     const musicId = savedMusic?.id || 'none';
@@ -1416,6 +1584,11 @@ export default function CreateWeddingScreen({ navigation, route }) {
     setCurrentPreviewPetalSpeed(savedPetal?.speed || 'normal');
     setCurrentPreviewPetalQty(savedPetal?.qty || 'normal');
     setCurrentPreviewPetalColor(savedPetal?.color || 'pink');
+    const savedFrame = templateFrameMap[tpl.id];
+    setCurrentPreviewFrameId(savedFrame?.id || 'none');
+    setCurrentPreviewFrameScale(savedFrame?.scale || FRAME_DEFAULT_SCALE);
+    setCurrentPreviewFrameOffsetX(savedFrame?.offsetX || 0);
+    setCurrentPreviewFrameOffsetY(savedFrame?.offsetY || 0);
     // 웜 오렌지·시네마 로맨스는 자체 인트로가 있어 외부 인트로 오버레이 강제 비활성화
     const hasOwnIntro = tpl.id === 'vintage-app' || tpl.id === 'cinema-romance';
     const savedIntro = hasOwnIntro ? null : templateIntroMap[tpl.id];
@@ -1530,10 +1703,21 @@ export default function CreateWeddingScreen({ navigation, route }) {
           message_settings: eventData.messageSettings,
           background_music: templateMusicMap[eventData.selectedTemplate?.id] || null,
           background_petal: templatePetalMap[eventData.selectedTemplate?.id] || null,
+          photo_frame: templateFrameMap[eventData.selectedTemplate?.id]
+            ? {
+                id: templateFrameMap[eventData.selectedTemplate?.id].id,
+                name: templateFrameMap[eventData.selectedTemplate?.id].name,
+                scale: templateFrameMap[eventData.selectedTemplate?.id].scale,
+                offsetX: templateFrameMap[eventData.selectedTemplate?.id].offsetX,
+                offsetY: templateFrameMap[eventData.selectedTemplate?.id].offsetY,
+              }
+            : null,
           intro_effect: templateIntroMap[eventData.selectedTemplate?.id] || null, // { id }
         },
+        event_creation_credit_reservation: creationCreditReservationRef.current,
       };
 
+      creationCreditSettledRef.current = !!creationCreditReservationRef.current;
       const result = await createEvent(formattedEventData);
       if (result.success) {
         setStep(3);
@@ -1934,7 +2118,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
                           </View>
                         ))}
                       </View>
-                      {(templateMusicMap[tpl.id] || (templatePetalMap[tpl.id] && templatePetalMap[tpl.id].id !== 'none') || (templateIntroMap[tpl.id] && templateIntroMap[tpl.id].id !== 'none')) && (
+                      {(templateMusicMap[tpl.id] || (templatePetalMap[tpl.id] && templatePetalMap[tpl.id].id !== 'none') || (templateIntroMap[tpl.id] && templateIntroMap[tpl.id].id !== 'none') || templateFrameMap[tpl.id]) && (
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                           {templateMusicMap[tpl.id] && (
                             <View style={s.tplMusicBadge}>
@@ -1958,6 +2142,14 @@ export default function CreateWeddingScreen({ navigation, route }) {
                               <Text style={{ fontSize: 11 }}>🎬</Text>
                               <Text style={[s.tplMusicBadgeText, { color: '#3a5bd9' }]} numberOfLines={1}>
                                 {INTRO_LIST.find(i => i.id === templateIntroMap[tpl.id].id)?.title}
+                              </Text>
+                            </View>
+                          )}
+                          {templateFrameMap[tpl.id] && (
+                            <View style={[s.tplMusicBadge, { backgroundColor: '#f4f1ff' }]}>
+                              <Ionicons name="albums-outline" size={11} color="#6d55c9" />
+                              <Text style={[s.tplMusicBadgeText, { color: '#6d55c9' }]} numberOfLines={1}>
+                                {templateFrameMap[tpl.id].name || '사진 프레임 적용'}
                               </Text>
                             </View>
                           )}
@@ -2163,7 +2355,10 @@ export default function CreateWeddingScreen({ navigation, route }) {
               {(previewTemplate?.id !== 'ticket-flight' || ticketFlightBoarded) && (
                 <TouchableOpacity
                   style={s.previewCtrlBtn}
-                  onPress={() => setShowFrameModal(true)}
+                  onPress={() => {
+                    prefetchFrameImages();
+                    setShowFrameModal(true);
+                  }}
                   activeOpacity={0.8}
                 >
                   <Ionicons name="albums-outline" size={17} color="#fff" />
@@ -2220,6 +2415,17 @@ export default function CreateWeddingScreen({ navigation, route }) {
                   isPlaying={isPlaying}
                   onTogglePlay={togglePlayPause}
                   playbackProgress={playbackProgress}
+                  frameAdjusting={isFrameAdjusting}
+                  onPhotoFrameAdjust={updateFrameAdjustment}
+                  selectedPhotoFrame={(() => {
+                    const frame = PHOTO_FRAMES.find(item => item.id === currentPreviewFrameId);
+                    return frame?.source ? {
+                      ...frame,
+                      scale: currentPreviewFrameScale,
+                      offsetX: currentPreviewFrameOffsetX,
+                      offsetY: currentPreviewFrameOffsetY,
+                    } : null;
+                  })()}
                 />
               )}
             </View>
@@ -2250,6 +2456,36 @@ export default function CreateWeddingScreen({ navigation, route }) {
                 color={currentPreviewPetalColor}
               />
             </View>
+
+            {isFrameAdjusting && currentPreviewFrameId !== 'none' && (
+              <View style={[s.frameAdjustDock, { paddingBottom: insets.bottom + 12 }]}>
+                <View style={s.frameAdjustDockHeader}>
+                  <View>
+                    <Text style={s.frameAdjustDockEyebrow}>Frame Control</Text>
+                    <Text style={s.frameAdjustDockTitle}>프레임 위치 조정</Text>
+                  </View>
+                  <TouchableOpacity style={s.frameDoneBtn} onPress={() => setIsFrameAdjusting(false)} activeOpacity={0.75}>
+                    <Text style={s.frameDoneText}>완료</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={s.frameAdjustDockBody}>
+                  <View style={s.frameGestureGuide}>
+                    <View style={s.frameGestureIcon}>
+                      <Ionicons name="hand-left-outline" size={18} color="#fff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.frameGestureTitle}>프레임을 직접 움직이세요</Text>
+                      <Text style={s.frameGestureText}>드래그로 위치 이동 · 두 손가락으로 크기 조절</Text>
+                    </View>
+                    <Text style={s.frameAdjustValue}>{Math.round(currentPreviewFrameScale * 100)}%</Text>
+                  </View>
+                  <TouchableOpacity style={s.frameResetBtn} onPress={resetFrameAdjustment} activeOpacity={0.75}>
+                    <Text style={s.frameResetText}>초기화</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
 
             {/* 튜토리얼 오버레이 — 미리보기 모달 내부 */}
             <TutorialOverlay scope="previewModal" />
@@ -2311,7 +2547,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
           </Modal>
 
           {/* 꽃잎 선택 모달 */}
-          <Modal visible={showPetalModal} transparent animationType="slide" onRequestClose={() => setShowPetalModal(false)}>
+          <Modal visible={showPetalModal} transparent animationType="fade" onRequestClose={() => setShowPetalModal(false)}>
             <View style={s.mOverlay} onStartShouldSetResponder={() => true}>
               <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowPetalModal(false)} />
               <View style={s.mSheet}>
@@ -2418,28 +2654,81 @@ export default function CreateWeddingScreen({ navigation, route }) {
 
           {/* 프레임 선택 모달 */}
           <Modal visible={showFrameModal} transparent animationType="slide" onRequestClose={() => setShowFrameModal(false)}>
-            <View style={s.mOverlay} onStartShouldSetResponder={() => true}>
+            <View style={s.frameOverlay} onStartShouldSetResponder={() => true}>
               <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowFrameModal(false)} />
-              <View style={s.mSheet}>
-                <View style={s.mHandle} />
-                <View style={s.mHeaderRow}>
-                  <Text style={s.mTitle}>사진 프레임</Text>
-                  <TouchableOpacity style={s.mCloseBtn} onPress={() => setShowFrameModal(false)}>
-                    <Ionicons name="close" size={16} color="rgba(60,60,67,0.6)" />
+              <View style={[s.framePickerBar, { paddingBottom: insets.bottom + 14 }]}>
+                <View style={s.framePickerHeader}>
+                  <View>
+                    <Text style={s.framePickerEyebrow}>Photo Frame</Text>
+                    <Text style={s.framePickerTitle}>사진 프레임</Text>
+                  </View>
+                  <TouchableOpacity style={s.frameCloseBtn} onPress={() => setShowFrameModal(false)}>
+                    <Ionicons name="close" size={17} color="rgba(255,255,255,0.82)" />
                   </TouchableOpacity>
                 </View>
-                <View style={s.frameComingSoon}>
-                  <View style={s.frameComingSoonIcon}>
-                    <Ionicons name="albums-outline" size={26} color="#8a6a3f" />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={s.frameList}
+                >
+                  {PHOTO_FRAMES.map((frame) => {
+                    const isSelected = currentPreviewFrameId === frame.id;
+                    return (
+                      <TouchableOpacity
+                        key={frame.id}
+                        style={s.frameThumb}
+                        onPress={() => handleSelectFrame(frame.id)}
+                        activeOpacity={0.78}
+                      >
+                        <View style={[s.frameThumbImageWrap, isSelected && s.frameThumbImageWrapSelected]}>
+                          {frame.source ? (
+                            <Image
+                              source={frame.thumb || frame.source}
+                              style={s.frameThumbImage}
+                              resizeMode="cover"
+                              onLoad={() => markFrameThumbLoaded(frame.id)}
+                              onError={() => markFrameThumbLoaded(frame.id)}
+                            />
+                          ) : (
+                            <View style={s.frameNoneThumb}>
+                              <Ionicons name="remove-circle-outline" size={24} color="rgba(255,255,255,0.72)" />
+                            </View>
+                          )}
+                        </View>
+                        <Text style={[s.frameThumbText, isSelected && s.frameThumbTextSelected]} numberOfLines={1}>
+                          {frame.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                {currentPreviewFrameId !== 'none' && (
+                  <TouchableOpacity style={s.frameAdjustEntryBtn} onPress={startFrameAdjustment} activeOpacity={0.82}>
+                    <Ionicons name="move-outline" size={17} color="#050505" />
+                    <Text style={s.frameAdjustEntryText}>크기 · 위치 조정</Text>
+                  </TouchableOpacity>
+                )}
+                {!frameThumbsReady && (
+                  <View style={s.frameLoadingOverlay}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={s.frameLoadingText}>프레임을 불러오는 중</Text>
                   </View>
-                  <Text style={s.frameComingSoonTitle}>프레임 기능 준비 중</Text>
-                  <Text style={s.frameComingSoonDesc}>
-                    사진 프레임 종류와 적용 방식은 추후 업데이트에서 설정할 수 있게 준비할 예정입니다.
-                  </Text>
-                </View>
+                )}
               </View>
             </View>
           </Modal>
+
+          <View style={s.framePreloadLayer} pointerEvents="none">
+            {PHOTO_FRAMES.filter(frame => frame.thumb).map(frame => (
+              <Image
+                key={frame.id}
+                source={frame.thumb}
+                style={s.framePreloadImage}
+                onLoad={() => markFrameThumbLoaded(frame.id)}
+                onError={() => markFrameThumbLoaded(frame.id)}
+              />
+            ))}
+          </View>
 
           {/* 인트로 선택 모달 */}
           <WeddingIntroSelectModal
@@ -2656,18 +2945,151 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(210,210,215,0.64)',
     alignItems: 'center', justifyContent: 'center',
   },
-  frameComingSoon: { alignItems: 'center', paddingTop: 26, paddingBottom: 18, paddingHorizontal: 10 },
-  frameComingSoonIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#F8F2E8',
+  frameOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.68)' },
+  framePickerBar: {
+    backgroundColor: '#050505',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingTop: 14,
+    paddingHorizontal: 16,
+    position: 'relative',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    elevation: 12,
+  },
+  framePickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  framePickerEyebrow: { color: 'rgba(255,255,255,0.46)', fontSize: 10, fontWeight: '700', letterSpacing: 1.8, textTransform: 'uppercase' },
+  framePickerTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 2 },
+  frameCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
   },
-  frameComingSoonTitle: { fontSize: 18, fontWeight: '700', color: C.text, marginBottom: 8 },
-  frameComingSoonDesc: { fontSize: 13, lineHeight: 20, color: C.textSub, textAlign: 'center' },
+  frameList: { gap: 12, paddingRight: 8 },
+  frameThumb: { width: 88, alignItems: 'center', gap: 8, paddingBottom: 2 },
+  frameThumbImageWrap: {
+    width: 78,
+    height: 112,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#181818',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  frameThumbImageWrapSelected: { borderColor: '#fff', borderWidth: 2 },
+  frameThumbImage: { width: '100%', height: '100%' },
+  frameNoneThumb: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#151515' },
+  frameThumbText: { color: 'rgba(255,255,255,0.58)', fontSize: 11, fontWeight: '600' },
+  frameThumbTextSelected: { color: '#fff' },
+  frameLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(5,5,5,0.94)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  frameLoadingText: { color: 'rgba(255,255,255,0.72)', fontSize: 13, fontWeight: '700' },
+  framePreloadLayer: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    overflow: 'hidden',
+    left: -10,
+    bottom: -10,
+  },
+  framePreloadImage: { width: 1, height: 1 },
+  frameAdjustEntryBtn: {
+    marginTop: 14,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  frameAdjustEntryText: { color: '#050505', fontSize: 14, fontWeight: '800' },
+  frameAdjustDock: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 0,
+    zIndex: 99998,
+    backgroundColor: 'rgba(5,5,5,0.94)',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingTop: 14,
+    paddingHorizontal: 16,
+  },
+  frameAdjustDockHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  frameAdjustDockEyebrow: { color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' },
+  frameAdjustDockTitle: { color: '#fff', fontSize: 17, fontWeight: '800', marginTop: 2 },
+  frameDoneBtn: {
+    height: 34,
+    paddingHorizontal: 16,
+    borderRadius: 17,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  frameDoneText: { color: '#050505', fontSize: 13, fontWeight: '900' },
+  frameAdjustDockBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  frameGestureGuide: {
+    flex: 1,
+    minHeight: 54,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+  },
+  frameGestureIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  frameGestureTitle: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  frameGestureText: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: '600', marginTop: 2 },
+  frameAdjustValue: { minWidth: 44, textAlign: 'center', color: '#fff', fontSize: 13, fontWeight: '800' },
+  frameResetBtn: {
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  frameResetText: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700' },
 
   // 리스트 행 — 하단 hairline 구분선
   mRow: {

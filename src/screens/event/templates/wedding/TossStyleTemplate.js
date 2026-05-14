@@ -14,6 +14,7 @@ import {
   formatKoreanDate,
   formatKoreanTime,
 } from './WeddingUtils';
+import { PhotoFrameOverlay } from './WeddingCommonComponents';
 
 const { width, height } = Dimensions.get('window');
 
@@ -93,7 +94,7 @@ function ActionBtn({ icon, text, onPress }) {
 }
 
 // ======================================================================
-export default function TossStyleTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings }) {
+export default function TossStyleTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState({ visible: false, message: '' });
   const [selectedImage, setSelectedImage] = useState(null);
@@ -252,7 +253,7 @@ export default function TossStyleTemplate({ eventData = {}, categorizedImages = 
 
   return (
     <View style={[ts.root, { paddingBottom: insets.bottom }]}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false} scrollEnabled={!frameAdjusting}>
 
         {/* ── 메인 사진 ── */}
         <View style={ts.heroPhotoWrap}>
@@ -260,6 +261,11 @@ export default function TossStyleTemplate({ eventData = {}, categorizedImages = 
             source={safeImages.main?.[0] || safeImages.all?.[0]}
             style={ts.heroPhoto}
             resizeMode="cover"
+          />
+          <PhotoFrameOverlay
+            selectedPhotoFrame={selectedPhotoFrame}
+            frameAdjusting={frameAdjusting}
+            onPhotoFrameAdjust={onPhotoFrameAdjust}
           />
         </View>
 
@@ -716,7 +722,7 @@ export default function TossStyleTemplate({ eventData = {}, categorizedImages = 
 const ts = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F2F4F6' },
 
-  heroPhotoWrap: { width: '100%', height: height * 0.72, backgroundColor: '#F8F9FA' },
+  heroPhotoWrap: { width: '100%', height: height * 0.72, backgroundColor: '#F8F9FA', position: 'relative', overflow: 'hidden' },
   heroPhoto: { width: '100%', height: '100%' },
   introSection: { width: '100%', backgroundColor: '#fff', paddingVertical: 36, paddingHorizontal: 24, alignItems: 'center', gap: 16 },
   heroBadge: { backgroundColor: '#EBF2FF', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },

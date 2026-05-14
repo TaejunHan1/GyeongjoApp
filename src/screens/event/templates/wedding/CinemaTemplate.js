@@ -12,6 +12,7 @@ import {
   formatKoreanDate,
   formatKoreanTime,
 } from './WeddingUtils';
+import { PhotoFrameOverlay } from './WeddingCommonComponents';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -184,7 +185,7 @@ const sec = StyleSheet.create({
 // ======================================================================
 // 메인
 // ======================================================================
-export default function CinemaTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings }) {
+export default function CinemaTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
   const insets = useSafeAreaInsets();
   const safeImages = getCategorizedImagesSafe(categorizedImages);
 
@@ -459,6 +460,7 @@ export default function CinemaTemplate({ eventData = {}, categorizedImages = {},
         scrollEnabled={isAction}
         contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom }}
         showsVerticalScrollIndicator={false}
+        scrollEnabled={!frameAdjusting}
       >
         <Animated.View style={{ opacity: contentOp }}>
 
@@ -470,6 +472,11 @@ export default function CinemaTemplate({ eventData = {}, categorizedImages = {},
                   source={typeof mainImage === 'string' ? { uri: mainImage } : mainImage}
                   style={s.posterImg}
                   resizeMode="cover"
+                />
+                <PhotoFrameOverlay
+                  selectedPhotoFrame={selectedPhotoFrame}
+                  frameAdjusting={frameAdjusting}
+                  onPhotoFrameAdjust={onPhotoFrameAdjust}
                 />
               </TouchableOpacity>
             ) : (
