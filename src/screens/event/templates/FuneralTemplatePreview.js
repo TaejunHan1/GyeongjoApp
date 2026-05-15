@@ -23,18 +23,19 @@ const FUNERAL_PREVIEW_FRAME_HEIGHT = Math.round(FUNERAL_PREVIEW_FRAME_WIDTH * 1.
 const FUNERAL_PREVIEW_FULL_HERO_HEIGHT = FUNERAL_PREVIEW_FRAME_HEIGHT;
 const FUNERAL_PREVIEW_PAPER_HERO_HEIGHT = Math.round(Math.min(width - 64, 340) * 1.78);
 const FUNERAL_EDITOR_FRAME_WIDTH = width * 0.88;
-const IS_TABLET_PREVIEW = Math.min(width, height) >= 600;
-const TABLET_MEMORIAL_TEXT_Y_OFFSET = IS_TABLET_PREVIEW ? -10 : 0;
-const MOBILE_NAME_TEXT_Y_OFFSET = IS_TABLET_PREVIEW ? 0 : 1;
+const TABLET_MEMORIAL_TEXT_Y_OFFSET = 0;
+const MOBILE_NAME_TEXT_Y_OFFSET = 0;
 const FUNERAL_MAIN_PHOTO_LAYOUT_DEFAULT = {
   scale: 1,
   translateX: 0,
   translateY: 0,
+  baseWidth: null,
 };
 const FUNERAL_MEMORIAL_TEXT_LAYOUT_DEFAULT = {
   scale: 1,
   translateX: 0,
   translateY: 0,
+  baseWidth: null,
 };
 const FUNERAL_PHOTO_FRAME_SOURCES = {
   'funeral-template-modern-card': require('../../../../assets/funeral/templates/funeral-template-modern-card.png'),
@@ -296,11 +297,13 @@ const normalizeMainPhotoLayout = (layout) => {
   const scale = Number(base.scale);
   const translateX = Number(base.translateX);
   const translateY = Number(base.translateY);
+  const baseWidth = Number(base.baseWidth);
 
   return {
     scale: Number.isFinite(scale) ? Math.min(3, Math.max(0.25, scale)) : FUNERAL_MAIN_PHOTO_LAYOUT_DEFAULT.scale,
     translateX: Number.isFinite(translateX) ? Math.min(5000, Math.max(-5000, translateX)) : FUNERAL_MAIN_PHOTO_LAYOUT_DEFAULT.translateX,
     translateY: Number.isFinite(translateY) ? Math.min(5000, Math.max(-5000, translateY)) : FUNERAL_MAIN_PHOTO_LAYOUT_DEFAULT.translateY,
+    baseWidth: Number.isFinite(baseWidth) && baseWidth > 0 ? baseWidth : null,
   };
 };
 
@@ -310,12 +313,12 @@ const getMainPhotoLayout = (eventData) => {
   return normalizeMainPhotoLayout(mainPhotoLayout);
 };
 
-const getMainPhotoTransformStyle = (eventData) => {
+const getMainPhotoTransformStyle = (eventData, renderScale = 1) => {
   const layout = getMainPhotoLayout(eventData);
   return {
     transform: [
-      { translateX: layout.translateX },
-      { translateY: layout.translateY },
+      { translateX: layout.translateX * renderScale },
+      { translateY: layout.translateY * renderScale },
       { scale: layout.scale },
     ],
   };
@@ -326,11 +329,13 @@ const normalizeMemorialTextLayout = (layout) => {
   const scale = Number(base.scale);
   const translateX = Number(base.translateX);
   const translateY = Number(base.translateY);
+  const baseWidth = Number(base.baseWidth);
 
   return {
     scale: Number.isFinite(scale) ? Math.min(1.8, Math.max(0.35, scale)) : FUNERAL_MEMORIAL_TEXT_LAYOUT_DEFAULT.scale,
     translateX: Number.isFinite(translateX) ? Math.min(500, Math.max(-500, translateX)) : FUNERAL_MEMORIAL_TEXT_LAYOUT_DEFAULT.translateX,
     translateY: Number.isFinite(translateY) ? Math.min(500, Math.max(-500, translateY)) : FUNERAL_MEMORIAL_TEXT_LAYOUT_DEFAULT.translateY,
+    baseWidth: Number.isFinite(baseWidth) && baseWidth > 0 ? baseWidth : null,
   };
 };
 
@@ -396,33 +401,50 @@ const getMemorialPeriodText = (eventData) => {
 };
 
 const FuneralComposedPhoto = ({ eventData, uri, style, nameOffsetY = 0, dateOffsetY = 0 }) => {
+  const [measuredFrameWidth, setMeasuredFrameWidth] = useState(null);
+
   if (!uri) return null;
 
   const containerStyle = { ...(StyleSheet.flatten(style) || {}) };
   delete containerStyle.resizeMode;
   const nameSetting = getMemorialTextSetting(eventData, 'name');
   const dateSetting = getMemorialTextSetting(eventData, 'date');
-  const mainPhotoTransformStyle = getMainPhotoTransformStyle(eventData);
   const frameSource = getPhotoFrameSource(eventData);
   const frameAspectRatio = getPhotoFrameAspectRatio(eventData);
   delete containerStyle.height;
   containerStyle.aspectRatio = frameAspectRatio;
   const numericFrameWidth = typeof containerStyle.width === 'number' ? containerStyle.width : null;
-  const estimatedFrameWidth = numericFrameWidth || (width - 60);
-  const translateScale = estimatedFrameWidth / FUNERAL_EDITOR_FRAME_WIDTH;
+  const estimatedFrameWidth = measuredFrameWidth || numericFrameWidth || (width - 60);
+  const mainPhotoLayout = getMainPhotoLayout(eventData);
+  const translateScale = estimatedFrameWidth / (mainPhotoLayout.baseWidth || FUNERAL_EDITOR_FRAME_WIDTH);
+  const fallbackTextBaseWidth = mainPhotoLayout.baseWidth || FUNERAL_EDITOR_FRAME_WIDTH;
+  const nameSizeScale = Math.min(1.35, Math.max(0.55, estimatedFrameWidth / (nameSetting.layout.baseWidth || fallbackTextBaseWidth)));
+  const dateSizeScale = Math.min(1.35, Math.max(0.55, estimatedFrameWidth / (dateSetting.layout.baseWidth || fallbackTextBaseWidth)));
+  const mainPhotoTransformStyle = getMainPhotoTransformStyle(eventData, translateScale);
   const deceasedName = eventData.deceasedName || eventData.deceased_name || '김○○';
   const periodText = getMemorialPeriodText(eventData);
 
-  const getTextTransform = (layout, extraY = 0) => ({
-    transform: [
-      { translateX: layout.translateX * translateScale },
-      { translateY: (layout.translateY * translateScale) + TABLET_MEMORIAL_TEXT_Y_OFFSET + extraY },
-      { scale: layout.scale },
-    ],
-  });
+  const getTextTransform = (layout, extraY = 0) => {
+    const layoutScale = estimatedFrameWidth / (layout.baseWidth || fallbackTextBaseWidth);
+    return {
+      transform: [
+        { translateX: layout.translateX * layoutScale },
+        { translateY: (layout.translateY * layoutScale) + TABLET_MEMORIAL_TEXT_Y_OFFSET + extraY },
+        { scale: layout.scale },
+      ],
+    };
+  };
 
   return (
-    <View style={[containerStyle, styles.funeralComposedPhoto]}>
+    <View
+      style={[containerStyle, styles.funeralComposedPhoto]}
+      onLayout={(event) => {
+        const nextWidth = event.nativeEvent.layout.width;
+        if (nextWidth > 0 && Math.abs((measuredFrameWidth || 0) - nextWidth) > 1) {
+          setMeasuredFrameWidth(nextWidth);
+        }
+      }}
+    >
       <View style={[styles.funeralComposedFrameCanvas, { aspectRatio: frameAspectRatio }]}>
         <Image
           source={{ uri }}
@@ -442,6 +464,10 @@ const FuneralComposedPhoto = ({ eventData, uri, style, nameOffsetY = 0, dateOffs
             <Text
               style={[
                 styles.funeralComposedNameText,
+                {
+                  fontSize: 28 * nameSizeScale,
+                  lineHeight: 34 * nameSizeScale,
+                },
                 { color: nameSetting.color, fontFamily: nameSetting.fontFamily, fontWeight: nameSetting.fontWeight },
               ]}
             >
@@ -457,6 +483,11 @@ const FuneralComposedPhoto = ({ eventData, uri, style, nameOffsetY = 0, dateOffs
             <Text
               style={[
                 styles.funeralComposedDateText,
+                {
+                  marginTop: 6 * dateSizeScale,
+                  fontSize: 13 * dateSizeScale,
+                  lineHeight: 18 * dateSizeScale,
+                },
                 { color: dateSetting.color, fontFamily: dateSetting.fontFamily, fontWeight: dateSetting.fontWeight },
               ]}
             >
@@ -2509,7 +2540,7 @@ const styles = StyleSheet.create({
   },
   funeralComposedNameOverlay: {
     position: 'absolute',
-    top: '72%',
+    top: '68%',
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -2518,7 +2549,7 @@ const styles = StyleSheet.create({
   },
   funeralComposedDateOverlay: {
     position: 'absolute',
-    top: '78%',
+    top: '75%',
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -2527,8 +2558,8 @@ const styles = StyleSheet.create({
   },
   funeralComposedNameText: {
     textAlign: 'center',
-    fontSize: 30,
-    lineHeight: 36,
+    fontSize: 28,
+    lineHeight: 34,
     fontWeight: '800',
     includeFontPadding: false,
   },

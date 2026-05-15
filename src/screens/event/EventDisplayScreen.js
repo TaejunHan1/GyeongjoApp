@@ -65,7 +65,8 @@ export default function EventDisplayScreen({ navigation, route }) {
     eventId,
     templateStyle,
     categorizedImages,
-    eventData: passedEventData
+    eventData: passedEventData,
+    closeToHome = false,
   } = route.params;
 
   const [event, setEvent] = useState(null);
@@ -90,11 +91,26 @@ export default function EventDisplayScreen({ navigation, route }) {
   const soundRef = useRef(null);
   const previewSoundRef = useRef(null);
   const progressIntervalRef = useRef(null);
+  const autoPlayTimeoutRef = useRef(null);
+  const previewStopTimeoutRef = useRef(null);
+  const isScreenActiveRef = useRef(true);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  const clearAudioTimers = () => {
+    if (autoPlayTimeoutRef.current) {
+      clearTimeout(autoPlayTimeoutRef.current);
+      autoPlayTimeoutRef.current = null;
+    }
+    if (previewStopTimeoutRef.current) {
+      clearTimeout(previewStopTimeoutRef.current);
+      previewStopTimeoutRef.current = null;
+    }
+  };
 
   useEffect(() => {
+    isScreenActiveRef.current = true;
+
     if (eventId === 'preview' && passedEventData) {
       setIsPreviewMode(true);
       setEvent(passedEventData);
@@ -103,7 +119,10 @@ export default function EventDisplayScreen({ navigation, route }) {
       const savedMusic = passedEventData?.additional_info?.background_music;
       if (savedMusic?.id && savedMusic.id !== 'none') {
         setSelectedMusicId(savedMusic.id);
-        setTimeout(() => playMusic(savedMusic.id), 1000);
+        autoPlayTimeoutRef.current = setTimeout(() => {
+          autoPlayTimeoutRef.current = null;
+          if (isScreenActiveRef.current) playMusic(savedMusic.id);
+        }, 1000);
       }
     } else {
       loadEventData();
@@ -113,6 +132,8 @@ export default function EventDisplayScreen({ navigation, route }) {
     startAnimations();
 
     return () => {
+      isScreenActiveRef.current = false;
+      clearAudioTimers();
       stopProgressTracking();
       stopAllSounds();
     };
@@ -124,7 +145,11 @@ export default function EventDisplayScreen({ navigation, route }) {
       const savedMusic = event?.additional_info?.background_music;
       if (savedMusic?.id && savedMusic.id !== 'none') {
         setSelectedMusicId(savedMusic.id);
-        setTimeout(() => playMusic(savedMusic.id), 1500);
+        if (autoPlayTimeoutRef.current) clearTimeout(autoPlayTimeoutRef.current);
+        autoPlayTimeoutRef.current = setTimeout(() => {
+          autoPlayTimeoutRef.current = null;
+          if (isScreenActiveRef.current) playMusic(savedMusic.id);
+        }, 1500);
       }
     }
   }, [event]);
@@ -150,6 +175,7 @@ export default function EventDisplayScreen({ navigation, route }) {
   };
 
   const stopAllSounds = async () => {
+    clearAudioTimers();
     stopProgressTracking();
     if (soundRef.current) {
       try { await soundRef.current.stopAsync(); await soundRef.current.unloadAsync(); } catch {}
@@ -164,15 +190,56 @@ export default function EventDisplayScreen({ navigation, route }) {
     setPreviewingId(null);
   };
 
+  const handleCloseDisplay = () => {
+    isScreenActiveRef.current = false;
+    stopAllSounds();
+
+    if (closeToHome) {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs', params: { screen: 'Home' } }],
+      });
+      return;
+    }
+
+    if (navigation.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('MainTabs', { screen: 'Home' });
+  };
+
+  useEffect(() => {
+    const unsubscribeFocus = navigation.addListener('focus', () => {
+      isScreenActiveRef.current = true;
+    });
+    const unsubscribeBlur = navigation.addListener('blur', () => {
+      isScreenActiveRef.current = false;
+      stopAllSounds();
+    });
+
+    return () => {
+      unsubscribeFocus();
+      unsubscribeBlur();
+    };
+  }, [navigation]);
+
   const playMusic = async (trackId) => {
+    if (!isScreenActiveRef.current) return;
     const track = MUSIC_TRACKS.find(t => t.id === trackId);
     if (!track || !track.file) return;
 
     await stopAllSounds();
+    if (!isScreenActiveRef.current) return;
 
     try {
       await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
       const { sound } = await Audio.Sound.createAsync(track.file, { isLooping: true, volume: 0.6 });
+      if (!isScreenActiveRef.current) {
+        try { await sound.unloadAsync(); } catch {}
+        return;
+      }
       soundRef.current = sound;
       await sound.playAsync();
       setIsPlaying(true);
@@ -227,7 +294,9 @@ export default function EventDisplayScreen({ navigation, route }) {
       await sound.playAsync();
       setPreviewingId(trackId);
       // 10초 후 자동 정지
-      setTimeout(async () => {
+      if (previewStopTimeoutRef.current) clearTimeout(previewStopTimeoutRef.current);
+      previewStopTimeoutRef.current = setTimeout(async () => {
+        previewStopTimeoutRef.current = null;
         if (previewSoundRef.current) {
           try { await previewSoundRef.current.stopAsync(); await previewSoundRef.current.unloadAsync(); } catch {}
           previewSoundRef.current = null;
@@ -386,6 +455,10 @@ export default function EventDisplayScreen({ navigation, route }) {
   };
 
   const getFinalTemplateStyle = () => {
+    if (event?.event_type === 'funeral' && event?.template_style) {
+      return event.template_style;
+    }
+
     if (templateStyle) {
       return templateStyle;
     }
@@ -481,6 +554,28 @@ export default function EventDisplayScreen({ navigation, route }) {
       condolence_accounts: Array.isArray(condolenceAccounts) ? condolenceAccounts : [],
       customMessage: pick('customMessage', 'custom_message'),
       custom_message: pick('custom_message', 'customMessage'),
+      mainPhotoLayout: pick('mainPhotoLayout', 'main_photo_layout'),
+      main_photo_layout: pick('main_photo_layout', 'mainPhotoLayout'),
+      memorialTextLayout: pick('memorialTextLayout', 'memorial_text_layout'),
+      memorial_text_layout: pick('memorial_text_layout', 'memorialTextLayout'),
+      memorialNameLayout: pick('memorialNameLayout', 'memorial_name_layout'),
+      memorial_name_layout: pick('memorial_name_layout', 'memorialNameLayout'),
+      memorialDateLayout: pick('memorialDateLayout', 'memorial_date_layout'),
+      memorial_date_layout: pick('memorial_date_layout', 'memorialDateLayout'),
+      memorialNameFontId: pick('memorialNameFontId', 'memorial_name_font_id'),
+      memorial_name_font_id: pick('memorial_name_font_id', 'memorialNameFontId'),
+      memorialDateFontId: pick('memorialDateFontId', 'memorial_date_font_id'),
+      memorial_date_font_id: pick('memorial_date_font_id', 'memorialDateFontId'),
+      memorialNameColor: pick('memorialNameColor', 'memorial_name_color'),
+      memorial_name_color: pick('memorial_name_color', 'memorialNameColor'),
+      memorialDateColor: pick('memorialDateColor', 'memorial_date_color'),
+      memorial_date_color: pick('memorial_date_color', 'memorialDateColor'),
+      memorialNameVisible: pick('memorialNameVisible', 'memorial_name_visible'),
+      memorial_name_visible: pick('memorial_name_visible', 'memorialNameVisible'),
+      memorialDateVisible: pick('memorialDateVisible', 'memorial_date_visible'),
+      memorial_date_visible: pick('memorial_date_visible', 'memorialDateVisible'),
+      photoFrame: pick('photoFrame', 'photo_frame'),
+      photo_frame: pick('photo_frame', 'photoFrame'),
     };
 
     normalized.additional_info = {
@@ -508,6 +603,17 @@ export default function EventDisplayScreen({ navigation, route }) {
       visitation_note: normalized.visitation_note,
       parking_transport_info: normalized.parking_transport_info,
       condolence_accounts: normalized.condolence_accounts,
+      main_photo_layout: normalized.main_photo_layout,
+      memorial_text_layout: normalized.memorial_text_layout,
+      memorial_name_layout: normalized.memorial_name_layout,
+      memorial_date_layout: normalized.memorial_date_layout,
+      memorial_name_font_id: normalized.memorial_name_font_id,
+      memorial_date_font_id: normalized.memorial_date_font_id,
+      memorial_name_color: normalized.memorial_name_color,
+      memorial_date_color: normalized.memorial_date_color,
+      memorial_name_visible: normalized.memorial_name_visible,
+      memorial_date_visible: normalized.memorial_date_visible,
+      photo_frame: normalized.photo_frame,
     };
 
     return normalized;
@@ -515,13 +621,63 @@ export default function EventDisplayScreen({ navigation, route }) {
 
   const getFinalEventData = () => {
     if (passedEventData) {
+      const eventType = getEventType();
+      const routeAdditionalInfo = passedEventData.additional_info || passedEventData.additionalInfo || {};
+
+      if (eventType === 'funeral') {
+        const dbAdditionalInfo = event?.additional_info || {};
+        const mergedAdditionalInfo = {
+          ...routeAdditionalInfo,
+          ...dbAdditionalInfo,
+        };
+        const layoutOverride = (snakeKey, camelKey) => (
+          mergedAdditionalInfo[snakeKey] ??
+          mergedAdditionalInfo[camelKey] ??
+          passedEventData[snakeKey] ??
+          passedEventData[camelKey]
+        );
+
+        const passedData = {
+          ...passedEventData,
+          additional_info: mergedAdditionalInfo,
+          additionalInfo: mergedAdditionalInfo,
+          mainPhotoLayout: layoutOverride('main_photo_layout', 'mainPhotoLayout'),
+          main_photo_layout: layoutOverride('main_photo_layout', 'mainPhotoLayout'),
+          memorialTextLayout: layoutOverride('memorial_text_layout', 'memorialTextLayout'),
+          memorial_text_layout: layoutOverride('memorial_text_layout', 'memorialTextLayout'),
+          memorialNameLayout: layoutOverride('memorial_name_layout', 'memorialNameLayout'),
+          memorial_name_layout: layoutOverride('memorial_name_layout', 'memorialNameLayout'),
+          memorialDateLayout: layoutOverride('memorial_date_layout', 'memorialDateLayout'),
+          memorial_date_layout: layoutOverride('memorial_date_layout', 'memorialDateLayout'),
+          memorialNameFontId: layoutOverride('memorial_name_font_id', 'memorialNameFontId'),
+          memorial_name_font_id: layoutOverride('memorial_name_font_id', 'memorialNameFontId'),
+          memorialDateFontId: layoutOverride('memorial_date_font_id', 'memorialDateFontId'),
+          memorial_date_font_id: layoutOverride('memorial_date_font_id', 'memorialDateFontId'),
+          memorialNameColor: layoutOverride('memorial_name_color', 'memorialNameColor'),
+          memorial_name_color: layoutOverride('memorial_name_color', 'memorialNameColor'),
+          memorialDateColor: layoutOverride('memorial_date_color', 'memorialDateColor'),
+          memorial_date_color: layoutOverride('memorial_date_color', 'memorialDateColor'),
+          memorialNameVisible: layoutOverride('memorial_name_visible', 'memorialNameVisible'),
+          memorial_name_visible: layoutOverride('memorial_name_visible', 'memorialNameVisible'),
+          memorialDateVisible: layoutOverride('memorial_date_visible', 'memorialDateVisible'),
+          memorial_date_visible: layoutOverride('memorial_date_visible', 'memorialDateVisible'),
+          photoFrame: layoutOverride('photo_frame', 'photoFrame'),
+          photo_frame: layoutOverride('photo_frame', 'photoFrame'),
+          id: eventId,
+          event_id: eventId,
+          guestMessages: eventMessages
+        };
+
+        return normalizeFuneralEventData(passedData);
+      }
+
       const passedData = {
         ...passedEventData,
         id: eventId,
         event_id: eventId,
         guestMessages: eventMessages
       };
-      return getEventType() === 'funeral' ? normalizeFuneralEventData(passedData) : passedData;
+      return passedData;
     }
 
     if (event) {
@@ -607,6 +763,32 @@ export default function EventDisplayScreen({ navigation, route }) {
     // 실제 이미지가 있는지 확인하는 헬퍼
     const hasImages = (ci) => ci && typeof ci === 'object' &&
       ['main','gallery','groom','bride','all'].some(k => Array.isArray(ci[k]) && ci[k].length > 0);
+
+    if (getEventType() === 'funeral' && event) {
+      if (hasImages(event.additional_info?.categorized_images)) {
+        return event.additional_info.categorized_images;
+      }
+
+      if (event.image_urls && event.image_urls.length > 0) {
+        const normalizedImages = event.image_urls.map(img => {
+          if (typeof img === 'string') {
+            return { uri: img, category: 'all' };
+          }
+          return {
+            uri: img.publicUrl || img.uri || img,
+            category: img.category || 'all'
+          };
+        });
+
+        return {
+          main: normalizedImages.filter(img => img.category === 'main'),
+          gallery: normalizedImages.filter(img => img.category === 'gallery'),
+          groom: normalizedImages.filter(img => img.category === 'groom'),
+          bride: normalizedImages.filter(img => img.category === 'bride'),
+          all: normalizedImages
+        };
+      }
+    }
 
     if (hasImages(categorizedImages)) {
       return categorizedImages;
@@ -962,13 +1144,9 @@ export default function EventDisplayScreen({ navigation, route }) {
       {(showExitButton || isPreviewMode) && (
         <TouchableOpacity
           style={styles.exitButton}
-          onPress={() => {
-            if (isPreviewMode) {
-              navigation.goBack();
-            } else {
-              navigation.navigate('MainTabs', { screen: 'Home' });
-            }
-          }}
+          onPress={handleCloseDisplay}
+          activeOpacity={0.75}
+          hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
         >
           <Ionicons name="close" size={20} color="white" />
         </TouchableOpacity>
@@ -1054,7 +1232,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1000,
+    elevation: 30,
+    zIndex: 20000,
   },
   
   // 🎵 음악 플로팅 버튼

@@ -45,6 +45,7 @@ import { useTutorial } from '../../contexts/TutorialContext';
 const GUEST_CARD_ASSETS = {
   groomRail: require('../../../assets/guestbook/card/guest-card-rail-groom-fast.png'),
   brideRail: require('../../../assets/guestbook/card/guest-card-rail-bride-fast.png'),
+  funeralRail: require('../../../assets/guestbook/card/guest-card-rail-funeral-fast.png'),
   pattern: require('../../../assets/guestbook/card/guest-card-pattern-visible-fast.png'),
   confirmedStamp: require('../../../assets/guestbook/card/ChatGPT Image May 5, 2026, 06_09_38 PM.png'),
   cash: require('../../../assets/guestbook/card/icon-cash.png'),
@@ -282,8 +283,16 @@ export default function EventDetailScreen({ navigation, route }) {
       'bride': '신부측',
       'groom_side': '신랑측',
       'bride_side': '신부측',
+      'mourner': '조문객',
+      'mourner_side': '조문객',
+      'host': '조문객',
+      'guest': '조문객',
+      'condolence_guest': '조문객',
       '신랑측': '신랑측',
-      '신부측': '신부측'
+      '신부측': '신부측',
+      '상주측': '조문객',
+      '조문객': '조문객',
+      '일반 조문객': '조문객'
     };
 
     // detail 매핑
@@ -301,6 +310,8 @@ export default function EventDetailScreen({ navigation, route }) {
       '친척': '친척',
       '친구': '친구',
       '직장': '직장',
+      '동료': '동료',
+      '지인': '지인',
       '기타': '기타'
     };
     
@@ -333,6 +344,20 @@ export default function EventDetailScreen({ navigation, route }) {
   const [shareSaving, setShareSaving] = useState(false);
   const [accessRole, setAccessRole] = useState(initialEvent?.shared_role || 'owner');
   const [canManageEvent, setCanManageEvent] = useState(!initialEvent?.shared_access || initialEvent?.shared_role !== 'viewer');
+  const isFuneralEvent = event?.event_type === 'funeral';
+  const sideOptions = isFuneralEvent
+    ? [
+        { key: 'guest', label: '조문객', sub: '조문객 방명록 접수', code: 'GUEST', color: '#4E5968', soft: '#F2F4F6' },
+      ]
+    : [
+        { key: 'groom', label: '신랑측', sub: '신랑 가족 · 친구 · 동료 하객', code: 'GROOM', color: '#3182F6', soft: '#EBF3FF' },
+        { key: 'bride', label: '신부측', sub: '신부 가족 · 친구 · 동료 하객', code: 'BRIDE', color: '#EC4899', soft: '#FFF0F6' },
+      ];
+  const relationDetailOptions = isFuneralEvent
+    ? ['가족', '친척', '친구', '동료', '지인', '기타']
+    : ['친구', '동료', '가족', '친척', '기타'];
+  const defaultRelationCategory = sideOptions[0]?.label || '신랑측';
+  const defaultRelationDetail = relationDetailOptions[0] || '친구';
   // 공통 Alert 훅
   const { showAlert, alertProps } = useSimpleAlert();
   const isEventOwner = !!currentUserId && !!event?.user_id && event.user_id === currentUserId;
@@ -373,9 +398,13 @@ export default function EventDetailScreen({ navigation, route }) {
   useEffect(() => {
     if (activeTutorial !== 'myEvents') return;
     registerHandler('eventDetailGuestReceiveBtn', () => {
+      if (isFuneralEvent) {
+        navigation.navigate('GuestWriting', { event, side: 'guest' });
+        return;
+      }
       openBS(setSideSelectVisible, bsSideFade, bsSideSlide);
     });
-  }, [activeTutorial, registerHandler]);
+  }, [activeTutorial, event, isFuneralEvent, navigation, registerHandler]);
 
   // 인라인 수정
   const [editingItemId, setEditingItemId] = useState(null);
@@ -386,6 +415,19 @@ export default function EventDetailScreen({ navigation, route }) {
     relation_detail: '친구',
     guest_phone: '',
   });
+
+  useEffect(() => {
+    setNewContribution(prev => ({
+      ...prev,
+      relation_category: defaultRelationCategory,
+      relation_detail: defaultRelationDetail,
+    }));
+    setInlineEditData(prev => ({
+      ...prev,
+      relation_category: defaultRelationCategory,
+      relation_detail: defaultRelationDetail,
+    }));
+  }, [defaultRelationCategory, defaultRelationDetail]);
 
   // 인라인 수정 중 키보드 올라오면 해당 아이템이 키보드 위로 오도록 스크롤
   useEffect(() => {
@@ -526,8 +568,8 @@ export default function EventDetailScreen({ navigation, route }) {
     setInlineEditData({
       guest_name: contribution.guest_name || '',
       amount: contribution.amount || 0,
-      relation_category: contribution.relation_category || '신랑측',
-      relation_detail: contribution.relation_detail || '친구',
+      relation_category: contribution.relation_category || defaultRelationCategory,
+      relation_detail: contribution.relation_detail || defaultRelationDetail,
       guest_phone: contribution.guest_phone || '',
     });
 
@@ -735,13 +777,29 @@ export default function EventDetailScreen({ navigation, route }) {
     return info.meal_settlement || {};
   };
 
+  const getFuneralCostSettlement = () => {
+    const info = parseAdditionalInfo(event?.additional_info);
+    return info.funeral_cost_settlement || {};
+  };
+
   const mealSettlement = getMealSettlement();
+  const totalContributionAmount = contributions.reduce((sum, c) => sum + (c.amount || 0), 0);
+  const funeralCostSettlement = getFuneralCostSettlement();
+  const funeralVenueCost = Number(funeralCostSettlement.venue_cost || 0);
+  const funeralFoodCost = Number(funeralCostSettlement.food_cost || 0);
+  const funeralSuppliesCost = Number(funeralCostSettlement.supplies_cost || 0);
+  const funeralTransportBurialCost = Number(funeralCostSettlement.transport_burial_cost || 0);
+  const funeralTotalCost = funeralVenueCost + funeralFoodCost + funeralSuppliesCost + funeralTransportBurialCost;
+  const funeralNetAmount = totalContributionAmount - funeralTotalCost;
+  const hasFuneralCostSettlement = funeralTotalCost > 0;
   const mealTicketPrice = Number(mealSettlement.ticket_price || 0);
   const mealContractedTicketCount = Number(mealSettlement.contracted_ticket_count || mealSettlement.ticket_count || 0);
   const mealGroomTicketCount = Number(mealSettlement.groom_ticket_count || 0);
   const mealBrideTicketCount = Number(mealSettlement.bride_ticket_count || 0);
   const getMealContributionSide = (item) => {
     const raw = item?.side || item?.relation_category || item?.relation_detail || '';
+    if (raw === 'mourner' || raw === 'mourner_side' || raw === 'host' || raw === '상주측') return 'guest';
+    if (raw === 'guest' || raw === 'condolence_guest' || raw === '조문객' || raw === '일반 조문객') return 'guest';
     if (raw === 'bride' || raw === 'bride_side' || raw === '신부측') return 'bride';
     return 'groom';
   };
@@ -762,7 +820,6 @@ export default function EventDetailScreen({ navigation, route }) {
   const mealContractedTotalAmount = mealTicketPrice * mealContractedTicketCount;
   const mealDistributedTotalAmount = mealTicketPrice * mealTicketStats.total;
   const hasMealSettlement = mealTicketPrice > 0 || mealContractedTicketCount > 0 || mealGroomTicketCount > 0 || mealBrideTicketCount > 0;
-  const totalContributionAmount = contributions.reduce((sum, c) => sum + (c.amount || 0), 0);
   const verifiedContributions = contributions.filter(c => c.is_verified);
   const unverifiedContributions = contributions.filter(c => !c.is_verified);
   const verifiedAmount = verifiedContributions.reduce((sum, c) => sum + (c.amount || 0), 0);
@@ -839,21 +896,31 @@ export default function EventDetailScreen({ navigation, route }) {
       return;
     }
     if (action === 'edit') {
-      const settlement = getMealSettlement();
-      setMealForm({
-        price: settlement.ticket_price ? formatAmountInput(String(settlement.ticket_price)) : '',
-        contractedCount: (settlement.contracted_ticket_count || settlement.ticket_count) ? formatAmountInput(String(settlement.contracted_ticket_count || settlement.ticket_count)) : '',
-        groomCount: settlement.groom_ticket_count ? formatAmountInput(String(settlement.groom_ticket_count)) : '',
-        brideCount: settlement.bride_ticket_count ? formatAmountInput(String(settlement.bride_ticket_count)) : '',
-      });
+      if (isFuneralEvent) {
+        const settlement = getFuneralCostSettlement();
+        setMealForm({
+          price: settlement.food_cost ? formatAmountInput(String(settlement.food_cost)) : '',
+          contractedCount: settlement.venue_cost ? formatAmountInput(String(settlement.venue_cost)) : '',
+          groomCount: settlement.supplies_cost ? formatAmountInput(String(settlement.supplies_cost)) : '',
+          brideCount: settlement.transport_burial_cost ? formatAmountInput(String(settlement.transport_burial_cost)) : '',
+        });
+      } else {
+        const settlement = getMealSettlement();
+        setMealForm({
+          price: settlement.ticket_price ? formatAmountInput(String(settlement.ticket_price)) : '',
+          contractedCount: (settlement.contracted_ticket_count || settlement.ticket_count) ? formatAmountInput(String(settlement.contracted_ticket_count || settlement.ticket_count)) : '',
+          groomCount: settlement.groom_ticket_count ? formatAmountInput(String(settlement.groom_ticket_count)) : '',
+          brideCount: settlement.bride_ticket_count ? formatAmountInput(String(settlement.bride_ticket_count)) : '',
+        });
+      }
       setMealFormError('');
       openBS(setMealEditVisible, bsMealFade, bsMealSlide);
       return;
     }
     if (action === 'delete') {
       showAlert({
-        title: '식대 정보 삭제',
-        message: '저장된 식권/식대 정산 정보를 삭제하시겠어요?',
+        title: isFuneralEvent ? '장례 비용 삭제' : '식대 정보 삭제',
+        message: isFuneralEvent ? '저장된 장례 비용 정보를 삭제하시겠어요?' : '저장된 식권/식대 정산 정보를 삭제하시겠어요?',
         confirmText: '삭제',
         cancelText: '취소',
         dangerous: true,
@@ -899,9 +966,12 @@ export default function EventDetailScreen({ navigation, route }) {
 
   const saveMealSettlementInfo = async (nextSettlement) => {
     if (!event) return { success: false, error: '이벤트 정보가 없습니다.' };
+    const previousInfo = parseAdditionalInfo(event.additional_info);
     const nextAdditionalInfo = {
-      ...parseAdditionalInfo(event.additional_info),
-      meal_settlement: nextSettlement,
+      ...previousInfo,
+      ...(isFuneralEvent
+        ? { funeral_cost_settlement: nextSettlement }
+        : { meal_settlement: nextSettlement }),
     };
     const result = await updateEvent(eventId, { additional_info: nextAdditionalInfo });
     if (result.success) {
@@ -919,6 +989,37 @@ export default function EventDetailScreen({ navigation, route }) {
     const contractedCount = parseInt(String(mealForm.contractedCount || '').replace(/[^0-9]/g, ''), 10) || 0;
     const groomCount = parseInt(String(mealForm.groomCount || '').replace(/[^0-9]/g, ''), 10) || 0;
     const brideCount = parseInt(String(mealForm.brideCount || '').replace(/[^0-9]/g, ''), 10) || 0;
+    if (isFuneralEvent) {
+      if (price + contractedCount + groomCount + brideCount <= 0) {
+        setMealFormError('장례 비용 항목을 하나 이상 입력해주세요.');
+        return;
+      }
+      Keyboard.dismiss();
+      setMealFormError('');
+      setSavingMealSettlement(true);
+      try {
+        const result = await saveMealSettlementInfo({
+          food_cost: price,
+          venue_cost: contractedCount,
+          supplies_cost: groomCount,
+          transport_burial_cost: brideCount,
+          updated_at: new Date().toISOString(),
+        });
+        if (result.success) {
+          setMealUnlocked(true);
+          closeMealEditModal(() => {
+            showAlert({ title: '저장 완료', message: '장례 비용 정보가 저장되었습니다.' });
+          });
+        } else {
+          showAlert({ title: '저장 실패', message: result.error || '장례 비용 정보를 저장하지 못했습니다.' });
+        }
+      } catch (error) {
+        showAlert({ title: '저장 실패', message: '장례 비용 저장 중 오류가 발생했습니다.' });
+      } finally {
+        setSavingMealSettlement(false);
+      }
+      return;
+    }
     if (price <= 0) {
       setMealFormError('식권 1장당 식대를 입력해주세요.');
       return;
@@ -966,7 +1067,7 @@ export default function EventDetailScreen({ navigation, route }) {
     const result = await saveMealSettlementInfo(null);
     if (result.success) {
       setMealUnlocked(false);
-      showAlert({ title: '삭제 완료', message: '식대 정산 정보가 삭제되었습니다.' });
+      showAlert({ title: '삭제 완료', message: isFuneralEvent ? '장례 비용 정보가 삭제되었습니다.' : '식대 정산 정보가 삭제되었습니다.' });
     } else {
       showAlert({ title: '삭제 실패', message: result.error || '식대 정보를 삭제하지 못했습니다.' });
     }
@@ -1023,10 +1124,8 @@ export default function EventDetailScreen({ navigation, route }) {
       matchesTab = contribution.is_verified === true;
     } else if (activeTab === 'unverified') {
       matchesTab = contribution.is_verified === false;
-    } else if (activeTab === 'groom') {
-      matchesTab = getMealContributionSide(contribution) === 'groom';
-    } else if (activeTab === 'bride') {
-      matchesTab = getMealContributionSide(contribution) === 'bride';
+    } else if (sideOptions.some(side => side.key === activeTab)) {
+      matchesTab = getMealContributionSide(contribution) === activeTab;
     }
     
     return matchesSearch && matchesTab;
@@ -1054,8 +1153,11 @@ export default function EventDetailScreen({ navigation, route }) {
   const currentPageContributions = filteredContributions.slice(startIndex, startIndex + itemsPerPage);
   const listTabItems = [
     { key: 'all', label: '전체', count: contributions.length },
-    { key: 'groom', label: '신랑측', count: contributions.filter(c => getMealContributionSide(c) === 'groom').length },
-    { key: 'bride', label: '신부측', count: contributions.filter(c => getMealContributionSide(c) === 'bride').length },
+    ...sideOptions.map(side => ({
+      key: side.key,
+      label: side.label,
+      count: contributions.filter(c => getMealContributionSide(c) === side.key).length,
+    })),
     { key: 'unverified', label: '미확정', count: contributions.filter(c => !c.is_verified).length },
     { key: 'verified', label: '확정', count: contributions.filter(c => c.is_verified).length },
   ];
@@ -1592,10 +1694,16 @@ export default function EventDetailScreen({ navigation, route }) {
               <TouchableOpacity
                 ref={guestReceiveBtnRef}
                 style={styles.heroBtnBlue}
-                onPress={() => openBS(setSideSelectVisible, bsSideFade, bsSideSlide)}
+                onPress={() => {
+                  if (isFuneralEvent) {
+                    navigation.navigate('GuestWriting', { event, side: 'guest' });
+                    return;
+                  }
+                  openBS(setSideSelectVisible, bsSideFade, bsSideSlide);
+                }}
                 activeOpacity={0.85}
               >
-                <Text style={styles.heroBtnBlueText}>하객 접수</Text>
+                <Text style={styles.heroBtnBlueText}>{isFuneralEvent ? '조문 접수' : '하객 접수'}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -1818,6 +1926,94 @@ export default function EventDetailScreen({ navigation, route }) {
           </>
         )}
 
+        {event.event_type === 'funeral' && (
+          <>
+            <View style={styles.weddingInfoSection}>
+              <View style={styles.mealSettlementCard}>
+                <View style={styles.mealHeaderRow}>
+                  <View>
+                    <Text style={styles.mealTitle}>장례 비용 정보</Text>
+                    <Text style={styles.mealSub}>빈소, 접객 음식, 장례용품, 운구/장지 비용을 정리해요</Text>
+                  </View>
+                  <View style={styles.mealHeaderActions}>
+                    <View style={styles.mealLockBadge}>
+                      <Ionicons name={mealUnlocked ? 'lock-open-outline' : 'lock-closed-outline'} size={14} color="#8B95A1" />
+                      <Text style={styles.mealLockText}>{mealUnlocked ? '금액 열림' : '금액 잠김'}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {!hasFuneralCostSettlement ? (
+                  <TouchableOpacity
+                    style={styles.mealLockedBox}
+                    activeOpacity={canManageEvent ? 0.8 : 1}
+                    onPress={() => canManageEvent && requestMealPassword('edit')}
+                    disabled={!canManageEvent}
+                  >
+                    <View style={styles.mealLockedIcon}>
+                      <Ionicons name="business-outline" size={22} color="#3182F6" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.mealLockedTitle}>장례 비용을 입력해주세요</Text>
+                      <Text style={styles.mealLockedSub}>입력/수정 시 비밀번호가 필요해요</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#C5CCD5" />
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <View style={styles.mealSummaryGrid}>
+                      <View style={styles.mealSummaryItem}>
+                        <Text style={styles.mealSummaryLabel}>빈소/식장</Text>
+                        <Text style={[styles.mealSummaryValue, !mealUnlocked && styles.mealProtectedValue]}>
+                          {formatProtectedMealAmount(funeralVenueCost)}
+                        </Text>
+                      </View>
+                      <View style={styles.mealSummaryItem}>
+                        <Text style={styles.mealSummaryLabel}>접객 음식</Text>
+                        <Text style={[styles.mealSummaryValue, !mealUnlocked && styles.mealProtectedValue]}>
+                          {formatProtectedMealAmount(funeralFoodCost)}
+                        </Text>
+                      </View>
+                      <View style={styles.mealSummaryItem}>
+                        <Text style={styles.mealSummaryLabel}>용품/제단</Text>
+                        <Text style={[styles.mealSummaryValue, !mealUnlocked && styles.mealProtectedValue]}>
+                          {formatProtectedMealAmount(funeralSuppliesCost)}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.mealTotalBox}>
+                      <Text style={styles.mealTotalLabel}>총 장례 비용</Text>
+                      <Text style={styles.mealTotalValue}>{formatProtectedMealAmount(funeralTotalCost)}</Text>
+                      <Text style={styles.mealTotalSub}>
+                        부조금 대비 {mealUnlocked ? formatAmount(funeralNetAmount) : '금액 잠김'}
+                      </Text>
+                    </View>
+                    <View style={styles.mealActionRow}>
+                      <TouchableOpacity
+                        style={styles.mealActionBtn}
+                        onPress={() => mealUnlocked ? setMealUnlocked(false) : requestMealPassword('view')}
+                      >
+                        <Text style={styles.mealActionText}>{mealUnlocked ? '금액 숨기기' : '금액 보기'}</Text>
+                      </TouchableOpacity>
+                      {canManageEvent && (
+                        <>
+                          <TouchableOpacity style={styles.mealActionBtn} onPress={() => requestMealPassword('edit')}>
+                            <Text style={styles.mealActionText}>수정</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.mealActionBtn} onPress={() => requestMealPassword('delete')}>
+                            <Text style={[styles.mealActionText, { color: '#F04452' }]}>삭제</Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
+                    </View>
+                  </>
+                )}
+              </View>
+            </View>
+            <View style={styles.sectionGap} />
+          </>
+        )}
+
         {/* ── 리스트 섹션 ── */}
         <View
           style={styles.newListSection}
@@ -1879,9 +2075,19 @@ export default function EventDetailScreen({ navigation, route }) {
                 const isFocusedContribution = focusedContributionId === contribution.id;
                 const ticketCount = Number(contribution.ticket_count || 0);
                 const sideKey = getMealContributionSide(contribution);
-                const sideAccent = '#3182F6';
-                const sideSoft = '#EEF5FF';
-                const railImage = sideKey === 'bride' ? GUEST_CARD_ASSETS.brideRail : GUEST_CARD_ASSETS.groomRail;
+                const sideConfig = sideOptions.find(side => side.key === sideKey) || sideOptions[0];
+                const sideAccent = sideConfig?.color || '#3182F6';
+                const sideSoft = sideConfig?.soft || '#EEF5FF';
+                const railImage = isFuneralEvent
+                  ? GUEST_CARD_ASSETS.funeralRail
+                  : sideKey === 'bride'
+                    ? GUEST_CARD_ASSETS.brideRail
+                    : GUEST_CARD_ASSETS.groomRail;
+                const guestCardBackground = isFuneralEvent
+                  ? '#FCFCFB'
+                  : sideKey === 'bride'
+                    ? '#FFFCFD'
+                    : '#FCFDFF';
 
                 return (
                   <View
@@ -1893,7 +2099,7 @@ export default function EventDetailScreen({ navigation, route }) {
                     }}
                     style={[
                       styles.flatItem,
-                      { borderLeftColor: sideAccent, backgroundColor: sideKey === 'bride' ? '#FFFCFD' : '#FCFDFF' },
+                      { borderLeftColor: sideAccent, backgroundColor: guestCardBackground },
                       isFocusedContribution && styles.flatItemFocused,
                       isEditing && styles.flatItemEditing
                     ]}
@@ -1980,7 +2186,7 @@ export default function EventDetailScreen({ navigation, route }) {
 
                         {/* 측 칩 */}
                         <View style={styles.inlineChipRow}>
-                          {['신랑측', '신부측'].map(cat => (
+                          {sideOptions.map(side => side.label).map(cat => (
                             <TouchableOpacity
                               key={cat}
                               style={[styles.inlineChip, inlineEditData.relation_category === cat && styles.inlineChipActive]}
@@ -1990,7 +2196,7 @@ export default function EventDetailScreen({ navigation, route }) {
                             </TouchableOpacity>
                           ))}
                           <View style={{ width: 12 }} />
-                          {['친구', '동료', '가족', '친척', '기타'].map(det => (
+                          {relationDetailOptions.map(det => (
                             <TouchableOpacity
                               key={det}
                               style={[styles.inlineChip, inlineEditData.relation_detail === det && styles.inlineChipActive]}
@@ -2028,6 +2234,13 @@ export default function EventDetailScreen({ navigation, route }) {
                           style={[
                             styles.flatCardRailImage,
                             { width: canManageEvent ? scaleGuestCard(56, 48) : scaleGuestCard(48, 40) },
+                            isFuneralEvent && {
+                              width: canManageEvent ? scaleGuestCard(72, 62) : scaleGuestCard(64, 54),
+                              height: canManageEvent ? scaleGuestCard(252, 206) : scaleGuestCard(198, 166),
+                              marginTop: canManageEvent ? -scaleGuestCard(7, 6) : -scaleGuestCard(6, 5),
+                              marginBottom: canManageEvent ? -scaleGuestCard(7, 6) : -scaleGuestCard(6, 5),
+                              transform: [{ translateX: -scaleGuestCard(7, 5) }],
+                            },
                             !canManageEvent && styles.flatCardRailImageReadOnly,
                           ]}
                           resizeMode="stretch"
@@ -2035,6 +2248,7 @@ export default function EventDetailScreen({ navigation, route }) {
                         />
                         <View style={[
                           styles.flatCardBody,
+                          isFuneralEvent && styles.flatCardBodyFuneral,
                           contribution.is_verified && styles.flatCardBodyConfirmed,
                           !canManageEvent && styles.flatCardBodyReadOnly,
                         ]}>
@@ -2158,29 +2372,32 @@ export default function EventDetailScreen({ navigation, route }) {
                               </View>
                             </View>
 
-                            <View style={styles.flatCardValueDivider} />
-
-                            <View style={[styles.flatCardTicketBox, { backgroundColor: sideSoft }]}>
-                              <Image
-                                source={GUEST_CARD_ASSETS.ticket}
-                                style={[
-                                  styles.flatCardTicketIcon,
-                                  {
-                                    tintColor: sideAccent,
-                                    width: scaleGuestCard(26, 18),
-                                    height: scaleGuestCard(26, 18),
-                                  },
-                                ]}
-                              />
-                              <Text
-                                style={[styles.flatCardTicketInlineText, { color: sideAccent, fontSize: scaleGuestFont(14, 11) }]}
-                                numberOfLines={1}
-                                maxFontSizeMultiplier={1}
-                                adjustsFontSizeToFit
-                              >
-                                식권 {formatAmountCard(ticketCount)}장
-                              </Text>
-                            </View>
+                            {!isFuneralEvent && (
+                              <>
+                                <View style={styles.flatCardValueDivider} />
+                                <View style={[styles.flatCardTicketBox, { backgroundColor: sideSoft }]}>
+                                  <Image
+                                    source={GUEST_CARD_ASSETS.ticket}
+                                    style={[
+                                      styles.flatCardTicketIcon,
+                                      {
+                                        tintColor: sideAccent,
+                                        width: scaleGuestCard(26, 18),
+                                        height: scaleGuestCard(26, 18),
+                                      },
+                                    ]}
+                                  />
+                                  <Text
+                                    style={[styles.flatCardTicketInlineText, { color: sideAccent, fontSize: scaleGuestFont(14, 11) }]}
+                                    numberOfLines={1}
+                                    maxFontSizeMultiplier={1}
+                                    adjustsFontSizeToFit
+                                  >
+                                    식권 {formatAmountCard(ticketCount)}장
+                                  </Text>
+                                </View>
+                              </>
+                            )}
                           </View>
 
                           {contribution.is_verified && (
@@ -2415,9 +2632,9 @@ export default function EventDetailScreen({ navigation, route }) {
               </View>
 
               {/* 측 */}
-              <Text style={styles.bsLabel}>측</Text>
+              <Text style={styles.bsLabel}>{isFuneralEvent ? '구분' : '측'}</Text>
               <View style={styles.bsChipRow}>
-                {['신랑측', '신부측'].map((cat) => (
+                {sideOptions.map(side => side.label).map((cat) => (
                   <TouchableOpacity
                     key={cat}
                     style={[styles.bsChip, newContribution.relation_category === cat && styles.bsChipActive]}
@@ -2431,7 +2648,7 @@ export default function EventDetailScreen({ navigation, route }) {
               {/* 관계 */}
               <Text style={styles.bsLabel}>관계</Text>
               <View style={styles.bsChipRow}>
-                {['친구', '동료', '가족', '친척', '기타'].map((det) => (
+                {relationDetailOptions.map((det) => (
                   <TouchableOpacity
                     key={det}
                     style={[styles.bsChip, newContribution.relation_detail === det && styles.bsChipActive]}
@@ -2499,20 +2716,26 @@ export default function EventDetailScreen({ navigation, route }) {
                       {formatAmount(contributions.length > 0 ? Math.round(totalContributionAmount / contributions.length) : 0)}
                     </Text>
                   </View>
-                  <View style={styles.tossStatInfoItem}>
-                    <Text style={styles.tossStatSmallLabel}>총 식권</Text>
-                    <Text style={styles.tossStatSmallValue}>{formatAmountCard(mealTicketStats.total)}장</Text>
-                  </View>
+                  {!isFuneralEvent && (
+                    <View style={styles.tossStatInfoItem}>
+                      <Text style={styles.tossStatSmallLabel}>총 식권</Text>
+                      <Text style={styles.tossStatSmallValue}>{formatAmountCard(mealTicketStats.total)}장</Text>
+                    </View>
+                  )}
                 </View>
               </View>
 
               {/* 신랑/신부 측별 통계 */}
               <View style={styles.tossStatSideCard}>
-                <Text style={styles.tossStatSectionTitle}>신랑측 · 신부측 비교</Text>
-                {[
-                  { key: 'groom', label: '신랑측', color: '#2F68B7', data: sideStats.groom },
-                  { key: 'bride', label: '신부측', color: '#2F68B7', data: sideStats.bride },
-                ].map((side) => (
+                <Text style={styles.tossStatSectionTitle}>
+                  {isFuneralEvent ? '조문객 현황' : '신랑측 · 신부측 비교'}
+                </Text>
+                {sideOptions.map((side) => ({
+                  key: side.key,
+                  label: side.label,
+                  color: '#2F68B7',
+                  data: createSideStat(side.key),
+                })).map((side) => (
                   <View key={side.key} style={styles.tossStatSideBlock}>
                     <View style={styles.tossStatSideTop}>
                       <View style={styles.tossStatSideTitleRow}>
@@ -2541,10 +2764,12 @@ export default function EventDetailScreen({ navigation, route }) {
                         <Text style={styles.tossStatSideMetricLabel}>확정</Text>
                         <Text style={styles.tossStatSideMetricValue}>{side.data.verifiedCount}건 · {formatAmount(side.data.verifiedAmount)}</Text>
                       </View>
-                      <View style={styles.tossStatSideMetric}>
-                        <Text style={styles.tossStatSideMetricLabel}>식권</Text>
-                        <Text style={styles.tossStatSideMetricValue}>{formatAmountCard(side.data.ticketCount)}장</Text>
-                      </View>
+                      {!isFuneralEvent && (
+                        <View style={styles.tossStatSideMetric}>
+                          <Text style={styles.tossStatSideMetricLabel}>식권</Text>
+                          <Text style={styles.tossStatSideMetricValue}>{formatAmountCard(side.data.ticketCount)}장</Text>
+                        </View>
+                      )}
                     </View>
                   </View>
                 ))}
@@ -2597,28 +2822,29 @@ export default function EventDetailScreen({ navigation, route }) {
                 </View>
               </View>
 
-              {/* 식권 통계 */}
-              <View style={styles.tossStatTicketCard}>
-                <Text style={styles.tossStatSectionTitle}>식권 현황</Text>
-                <View style={styles.tossStatTicketGrid}>
-                  <View style={styles.tossStatTicketItem}>
-                    <Text style={styles.tossStatTicketLabel}>전체 배부</Text>
-                    <Text style={styles.tossStatTicketValue}>{formatAmountCard(mealTicketStats.total)}장</Text>
-                  </View>
-                  <View style={styles.tossStatTicketItem}>
-                    <Text style={styles.tossStatTicketLabel}>신랑측</Text>
-                    <Text style={styles.tossStatTicketValue}>{formatAmountCard(mealTicketStats.groom)}장</Text>
-                  </View>
-                  <View style={styles.tossStatTicketItem}>
-                    <Text style={styles.tossStatTicketLabel}>신부측</Text>
-                    <Text style={styles.tossStatTicketValue}>{formatAmountCard(mealTicketStats.bride)}장</Text>
-                  </View>
-                  <View style={styles.tossStatTicketItem}>
-                    <Text style={styles.tossStatTicketLabel}>식대 환산</Text>
-                    <Text style={styles.tossStatTicketValue}>{formatAmount(mealDistributedTotalAmount)}</Text>
+              {!isFuneralEvent && (
+                <View style={styles.tossStatTicketCard}>
+                  <Text style={styles.tossStatSectionTitle}>식권 현황</Text>
+                  <View style={styles.tossStatTicketGrid}>
+                    <View style={styles.tossStatTicketItem}>
+                      <Text style={styles.tossStatTicketLabel}>전체 배부</Text>
+                      <Text style={styles.tossStatTicketValue}>{formatAmountCard(mealTicketStats.total)}장</Text>
+                    </View>
+                    <View style={styles.tossStatTicketItem}>
+                      <Text style={styles.tossStatTicketLabel}>신랑측</Text>
+                      <Text style={styles.tossStatTicketValue}>{formatAmountCard(mealTicketStats.groom)}장</Text>
+                    </View>
+                    <View style={styles.tossStatTicketItem}>
+                      <Text style={styles.tossStatTicketLabel}>신부측</Text>
+                      <Text style={styles.tossStatTicketValue}>{formatAmountCard(mealTicketStats.bride)}장</Text>
+                    </View>
+                    <View style={styles.tossStatTicketItem}>
+                      <Text style={styles.tossStatTicketLabel}>식대 환산</Text>
+                      <Text style={styles.tossStatTicketValue}>{formatAmount(mealDistributedTotalAmount)}</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
+              )}
 
               {/* 관계별 통계 */}
               <View style={styles.tossStatRelationCard}>
@@ -3063,7 +3289,7 @@ export default function EventDetailScreen({ navigation, route }) {
             </View>
             <Text style={styles.centerModalTitle}>주최자 확인</Text>
             <Text style={styles.centerModalDesc}>
-              민감한 식대 정보라 본인 확인 후 보여드릴게요.
+              {isFuneralEvent ? '민감한 장례 비용 정보라 본인 확인 후 보여드릴게요.' : '민감한 식대 정보라 본인 확인 후 보여드릴게요.'}
             </Text>
             <View style={styles.passwordHintRow}>
               <Ionicons name="phone-portrait-outline" size={15} color="#8B95A1" />
@@ -3138,7 +3364,7 @@ export default function EventDetailScreen({ navigation, route }) {
           <Animated.View style={[styles.bsContainer, { transform: [{ translateY: bsMealSlide }] }]}>
             <View style={styles.bsHandle} />
             <View style={styles.bsHeader}>
-              <Text style={styles.bsTitle}>식대 정산 정보</Text>
+              <Text style={styles.bsTitle}>{isFuneralEvent ? '장례 비용 정보' : '식대 정산 정보'}</Text>
               <TouchableOpacity onPress={closeMealEditModal} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={22} color="#8B95A1" />
               </TouchableOpacity>
@@ -3149,7 +3375,7 @@ export default function EventDetailScreen({ navigation, route }) {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.bsLabel}>식권 1장당 식대</Text>
+              <Text style={styles.bsLabel}>{isFuneralEvent ? '접객 음식 비용' : '식권 1장당 식대'}</Text>
               <View style={styles.bsAmountRow}>
                 <TextInput
                   style={[styles.bsInput, { flex: 1, marginBottom: 0 }]}
@@ -3164,7 +3390,7 @@ export default function EventDetailScreen({ navigation, route }) {
                 />
                 <Text style={styles.bsAmountUnit}>원</Text>
               </View>
-              <Text style={styles.bsLabel}>전체 계약 식권 수</Text>
+              <Text style={styles.bsLabel}>{isFuneralEvent ? '빈소/장례식장 비용' : '전체 계약 식권 수'}</Text>
               <View style={styles.bsAmountRow}>
                 <TextInput
                   style={[styles.bsInput, { flex: 1, marginBottom: 0 }]}
@@ -3177,11 +3403,11 @@ export default function EventDetailScreen({ navigation, route }) {
                   placeholder="0"
                   placeholderTextColor="#C5CCD5"
                 />
-                <Text style={styles.bsAmountUnit}>장</Text>
+                <Text style={styles.bsAmountUnit}>{isFuneralEvent ? '원' : '장'}</Text>
               </View>
               <View style={styles.mealSideInputRow}>
                 <View style={styles.mealSideInputCol}>
-                  <Text style={styles.bsLabel}>신랑측 배정</Text>
+                  <Text style={styles.bsLabel}>{isFuneralEvent ? '제단/용품 비용' : '신랑측 배정'}</Text>
                   <View style={styles.bsAmountRow}>
                     <TextInput
                       style={[styles.bsInput, { flex: 1, marginBottom: 0 }]}
@@ -3194,11 +3420,11 @@ export default function EventDetailScreen({ navigation, route }) {
                       placeholder="0"
                       placeholderTextColor="#C5CCD5"
                     />
-                    <Text style={styles.bsAmountUnit}>장</Text>
+                    <Text style={styles.bsAmountUnit}>{isFuneralEvent ? '원' : '장'}</Text>
                   </View>
                 </View>
                 <View style={styles.mealSideInputCol}>
-                  <Text style={styles.bsLabel}>신부측 배정</Text>
+                  <Text style={styles.bsLabel}>{isFuneralEvent ? '운구/장지 비용' : '신부측 배정'}</Text>
                   <View style={styles.bsAmountRow}>
                     <TextInput
                       style={[styles.bsInput, { flex: 1, marginBottom: 0 }]}
@@ -3211,7 +3437,7 @@ export default function EventDetailScreen({ navigation, route }) {
                       placeholder="0"
                       placeholderTextColor="#C5CCD5"
                     />
-                    <Text style={styles.bsAmountUnit}>장</Text>
+                    <Text style={styles.bsAmountUnit}>{isFuneralEvent ? '원' : '장'}</Text>
                   </View>
                 </View>
               </View>
@@ -3219,20 +3445,27 @@ export default function EventDetailScreen({ navigation, route }) {
                 <Text style={styles.mealFormErrorText}>{mealFormError}</Text>
               )}
               <View style={styles.mealPreviewBox}>
-                <Text style={styles.mealPreviewLabel}>예상 청구 식대</Text>
+                <Text style={styles.mealPreviewLabel}>{isFuneralEvent ? '총 장례 비용' : '예상 청구 식대'}</Text>
                 <Text style={styles.mealPreviewValue}>
                   {formatAmount(
-                    (parseInt(String(mealForm.price || '').replace(/[^0-9]/g, ''), 10) || 0) *
-                    (parseInt(String(mealForm.contractedCount || '').replace(/[^0-9]/g, ''), 10) || 0)
+                    isFuneralEvent
+                      ? ((parseInt(String(mealForm.price || '').replace(/[^0-9]/g, ''), 10) || 0) +
+                         (parseInt(String(mealForm.contractedCount || '').replace(/[^0-9]/g, ''), 10) || 0) +
+                         (parseInt(String(mealForm.groomCount || '').replace(/[^0-9]/g, ''), 10) || 0) +
+                         (parseInt(String(mealForm.brideCount || '').replace(/[^0-9]/g, ''), 10) || 0))
+                      : (parseInt(String(mealForm.price || '').replace(/[^0-9]/g, ''), 10) || 0) *
+                        (parseInt(String(mealForm.contractedCount || '').replace(/[^0-9]/g, ''), 10) || 0)
                   )}
                 </Text>
                 <Text style={styles.mealPreviewSub}>
-                  신랑측/신부측 배정 합계 {
-                    formatAmountCard(
-                      (parseInt(String(mealForm.groomCount || '').replace(/[^0-9]/g, ''), 10) || 0) +
-                      (parseInt(String(mealForm.brideCount || '').replace(/[^0-9]/g, ''), 10) || 0)
-                    )
-                  }장
+                  {isFuneralEvent
+                    ? '빈소, 음식, 용품, 운구/장지 비용 합계'
+                    : `신랑측/신부측 배정 합계 ${
+                        formatAmountCard(
+                          (parseInt(String(mealForm.groomCount || '').replace(/[^0-9]/g, ''), 10) || 0) +
+                          (parseInt(String(mealForm.brideCount || '').replace(/[^0-9]/g, ''), 10) || 0)
+                        )
+                      }장`}
                 </Text>
               </View>
             </ScrollView>
@@ -3275,53 +3508,32 @@ export default function EventDetailScreen({ navigation, route }) {
 
             {/* 접수대 선택 영역 — 튜토리얼 스포트라이트 대상 */}
             <View ref={sideSelectRowsRef} collapsable={false}>
-              {/* 신랑측 행 */}
-              <TouchableOpacity
-                style={styles.sideRow}
-                onPress={() => {
-                  if (tutorialStep?.id === 'me_side_select') tutorialAdvance();
-                  closeBS(setSideSelectVisible, bsSideFade, bsSideSlide, () => {
-                    setTimeout(() => navigation.navigate('GuestWriting', { event, side: 'groom' }), 50);
-                  });
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.sideRowMark, { backgroundColor: '#EBF3FF' }]}>
-                  <Text style={[styles.sideRowMarkText, { color: '#3182F6' }]}>GROOM</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.sideRowTitle}>신랑측 접수대</Text>
-                  <Text style={styles.sideRowSub}>신랑 가족 · 친구 · 동료 하객</Text>
-                </View>
-                <View style={styles.sideRowAction}>
-                  <Text style={styles.sideRowActionText}>선택</Text>
-                </View>
-              </TouchableOpacity>
-
-              <View style={styles.sideRowDivider} />
-
-              {/* 신부측 행 */}
-              <TouchableOpacity
-                style={styles.sideRow}
-                onPress={() => {
-                  if (tutorialStep?.id === 'me_side_select') tutorialAdvance();
-                  closeBS(setSideSelectVisible, bsSideFade, bsSideSlide, () => {
-                    setTimeout(() => navigation.navigate('GuestWriting', { event, side: 'bride' }), 50);
-                  });
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.sideRowMark, { backgroundColor: '#FFF0F6' }]}>
-                  <Text style={[styles.sideRowMarkText, { color: '#EC4899' }]}>BRIDE</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.sideRowTitle, { color: '#EC4899' }]}>신부측 접수대</Text>
-                  <Text style={styles.sideRowSub}>신부 가족 · 친구 · 동료 하객</Text>
-                </View>
-                <View style={styles.sideRowAction}>
-                  <Text style={styles.sideRowActionText}>선택</Text>
-                </View>
-              </TouchableOpacity>
+              {sideOptions.map((side, index) => (
+                <React.Fragment key={side.key}>
+                  {index > 0 && <View style={styles.sideRowDivider} />}
+                  <TouchableOpacity
+                    style={styles.sideRow}
+                    onPress={() => {
+                      if (tutorialStep?.id === 'me_side_select') tutorialAdvance();
+                      closeBS(setSideSelectVisible, bsSideFade, bsSideSlide, () => {
+                        setTimeout(() => navigation.navigate('GuestWriting', { event, side: side.key }), 50);
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.sideRowMark, { backgroundColor: side.soft }]}>
+                      <Text style={[styles.sideRowMarkText, { color: side.color }]}>{side.code}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.sideRowTitle, { color: side.color }]}>{side.label} 접수대</Text>
+                      <Text style={styles.sideRowSub}>{side.sub}</Text>
+                    </View>
+                    <View style={styles.sideRowAction}>
+                      <Text style={styles.sideRowActionText}>선택</Text>
+                    </View>
+                  </TouchableOpacity>
+                </React.Fragment>
+              ))}
             </View>
 
             <View style={{ height: 24 }} />
@@ -4426,6 +4638,9 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 3,
+  },
+  flatCardBodyFuneral: {
+    marginLeft: -24,
   },
   flatCardBodyConfirmed: {
     paddingBottom: 6,

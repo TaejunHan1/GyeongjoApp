@@ -1993,6 +1993,8 @@ export const addGuestBookEntry = async (eventId, guestData) => {
       amount: guestData.amount,
       relation_category: guestData.relation_category,
       relation_detail: guestData.relation_detail,
+      ticket_count: guestData.ticket_count || 0,
+      side: guestData.side || null,
       message: guestData.message,
       message_type: messageType,
       amount_type: 'money',

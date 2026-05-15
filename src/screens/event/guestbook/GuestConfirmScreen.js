@@ -25,9 +25,23 @@ export default function GuestConfirmScreen({ navigation, route }) {
     recognitionDebug = null,
     paperTemplateId,
   } = route.params;
-  const sideColor  = side === 'groom' ? '#3182F6' : '#F04452';
-  const sideBg     = side === 'groom' ? '#E8F3FF' : '#FFF0F1';
-  const sideLabel  = side === 'groom' ? '신랑측 하객' : '신부측 하객';
+  const isFuneralEvent = event?.event_type === 'funeral';
+  const sideMeta = isFuneralEvent
+    ? { label: '조문객', color: '#4E5968', bg: '#F2F4F6', category: '조문객' }
+    : (side === 'groom'
+        ? { label: '신랑측 하객', color: '#3182F6', bg: '#E8F3FF', category: '신랑측' }
+        : { label: '신부측 하객', color: '#F04452', bg: '#FFF0F1', category: '신부측' });
+  const sideColor  = sideMeta.color;
+  const sideBg     = sideMeta.bg;
+  const sideLabel  = sideMeta.label;
+  const amountLabel = isFuneralEvent ? '조의금' : '축의금';
+  const visitorLabel = isFuneralEvent ? '조문' : '하객';
+  const relationOptions = isFuneralEvent
+    ? ['가족', '친척', '친구', '동료', '지인', '기타']
+    : ['친척', '친구', '직장', '기타'];
+  const relationRows = isFuneralEvent
+    ? [['가족', '친척', '친구'], ['동료', '지인', '기타']]
+    : [relationOptions];
 
   const [screenSize, setScreenSize]           = useState(Dimensions.get('window'));
   const [recognizing, setRecognizing]         = useState(true);
@@ -136,7 +150,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
     }
   }, [activeTutorial, tutorialStep?.id, phoneCheckStatus]);
 
-  const relationCategory = side === 'groom' ? '신랑측' : '신부측';
+  const relationCategory = sideMeta.category;
 
   useEffect(() => {
     const sub = Dimensions.addEventListener('change', ({ window }) => setScreenSize(window));
@@ -302,7 +316,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
         amount: finalAmount,
         relation_category: relationCategory,
         relation_detail: relationDetail || '기타',
-        ticket_count: ticketCount,
+        ticket_count: isFuneralEvent ? 0 : ticketCount,
         is_verified: false,
         input_method: 'handwriting',
         handwriting_image_url: handwritingImageUrl,
@@ -599,7 +613,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
 
                 {/* 인사 */}
                 <Text style={[s.greetText, { fontSize: Math.round(17 * sc) }]}>
-                  <Text style={{ color: sideColor, fontWeight: '800' }}>{selectedName}</Text> 님, 축의금을 기록해주세요 👋
+                  <Text style={{ color: sideColor, fontWeight: '800' }}>{selectedName}</Text> 님, {amountLabel}을 기록해주세요 👋
                 </Text>
 
                 <View style={s.confirmGrid}>
@@ -610,11 +624,11 @@ export default function GuestConfirmScreen({ navigation, route }) {
                     style={[s.confirmGridColLeft, { gap: d.gap16, paddingRight: d.gap16 }]}
                   >
                     <View style={s.confirmColumnHeader}>
-                      <Text style={[s.confirmColumnTitle, { fontSize: Math.round(15 * sc) }]}>축의금 정보</Text>
-                      <Text style={[s.confirmColumnSub, { fontSize: Math.round(11 * sc) }]}>금액과 하객 구분을 확인해요</Text>
+                      <Text style={[s.confirmColumnTitle, { fontSize: Math.round(15 * sc) }]}>{amountLabel} 정보</Text>
+                      <Text style={[s.confirmColumnSub, { fontSize: Math.round(11 * sc) }]}>금액과 {visitorLabel} 구분을 확인해요</Text>
                     </View>
 
-                {/* 섹션: 축의금 */}
+                {/* 섹션: 부조금 */}
                 <View style={{ gap: d.gap12 }}>
                   <Text style={[s.secTitle, { fontSize: d.titleFs }]}>금액을 선택해주세요</Text>
 
@@ -694,24 +708,30 @@ export default function GuestConfirmScreen({ navigation, route }) {
                 </View>
 
                 {/* 섹션: 관계 */}
-                <View style={{ gap: d.gap12 }}>
-                  <Text style={[s.secTitle, { fontSize: d.titleFs }]}>어떤 분으로 오셨나요?</Text>
-                  <View style={[s.row, { gap: d.gap8 }]}>
-                    {['친척', '친구', '직장', '기타'].map(rel => (
-                      <TouchableOpacity
-                        key={rel}
-                        style={[s.relBtn, { flex: 1, height: d.relationH, borderRadius: d.r16 },
-                          relationDetail === rel ? s.relSel : s.relDef]}
-                        onPress={() => setRelationDetail(p => p === rel ? null : rel)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[s.relText, { fontSize: d.relationFs }, relationDetail === rel && { color: '#FFFFFF' }]}>
-                          {rel}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                {!isFuneralEvent && (
+                  <View style={{ gap: d.gap12 }}>
+                    <Text style={[s.secTitle, { fontSize: d.titleFs }]}>어떤 분으로 오셨나요?</Text>
+                    <View style={{ gap: d.gap8 }}>
+                      {relationRows.map((row, rowIndex) => (
+                        <View key={rowIndex} style={[s.row, { gap: d.gap8 }]}>
+                          {row.map(rel => (
+                            <TouchableOpacity
+                              key={rel}
+                              style={[s.relBtn, { flex: 1, height: d.relationH, borderRadius: d.r16 },
+                                relationDetail === rel ? s.relSel : s.relDef]}
+                              onPress={() => setRelationDetail(p => p === rel ? null : rel)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[s.relText, { fontSize: d.relationFs }, relationDetail === rel && { color: '#FFFFFF' }]}>
+                                {rel}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ))}
+                    </View>
                   </View>
-                </View>
+                )}
                   </View>
 
                   <View style={s.confirmGridDivider} />
@@ -719,59 +739,63 @@ export default function GuestConfirmScreen({ navigation, route }) {
                   <View style={[s.confirmGridColRight, { gap: d.gap16, paddingLeft: d.gap16 }]}>
                     <View style={s.confirmColumnHeader}>
                       <Text style={[s.confirmColumnTitle, { fontSize: Math.round(15 * sc) }]}>접수 옵션</Text>
-                      <Text style={[s.confirmColumnSub, { fontSize: Math.round(11 * sc) }]}>식권과 영수증 발송을 선택해요</Text>
-                    </View>
-                {/* 섹션: 식권 */}
-                <View style={{ gap: d.gap12 }}>
-                  <Text style={[s.secTitle, { fontSize: d.titleFs }]}>식권은 몇 장 필요하신가요?</Text>
-                  <View style={[s.ticketBox, { borderRadius: d.r16, paddingHorizontal: d.gap16, paddingVertical: d.gap12 }]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[s.ticketBoxTitle, { fontSize: Math.round(13 * sc) }]}>필요 식권</Text>
-                      <Text style={[s.ticketBoxValue, { fontSize: Math.round(22 * sc) }]}>
-                        {ticketCount === 0 ? '없음' : `${ticketCount}장`}
+                      <Text style={[s.confirmColumnSub, { fontSize: Math.round(11 * sc) }]}>
+                        {isFuneralEvent ? '영수증 발송을 선택해요' : '식권과 영수증 발송을 선택해요'}
                       </Text>
                     </View>
-                    <View style={[s.ticketStepper, { height: d.chipH, borderRadius: d.r14 }]}>
-                      <TouchableOpacity
-                        style={s.ticketStepBtn}
-                        onPress={() => setTicketCount(prev => Math.max(0, prev - 1))}
-                        activeOpacity={0.75}
-                      >
-                        <Ionicons name="remove" size={Math.round(22 * sc)} color={ticketCount === 0 ? '#C5CCD5' : '#4E5968'} />
-                      </TouchableOpacity>
-                      <Text style={[s.ticketStepText, { fontSize: Math.round(17 * sc) }]}>{ticketCount}</Text>
-                      <TouchableOpacity
-                        style={s.ticketStepBtn}
-                        onPress={() => setTicketCount(prev => Math.min(10, prev + 1))}
-                        activeOpacity={0.75}
-                      >
-                        <Ionicons name="add" size={Math.round(22 * sc)} color="#4E5968" />
-                      </TouchableOpacity>
+                {/* 섹션: 식권 */}
+                {!isFuneralEvent && (
+                  <View style={{ gap: d.gap12 }}>
+                    <Text style={[s.secTitle, { fontSize: d.titleFs }]}>식권은 몇 장 필요하신가요?</Text>
+                    <View style={[s.ticketBox, { borderRadius: d.r16, paddingHorizontal: d.gap16, paddingVertical: d.gap12 }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.ticketBoxTitle, { fontSize: Math.round(13 * sc) }]}>필요 식권</Text>
+                        <Text style={[s.ticketBoxValue, { fontSize: Math.round(22 * sc) }]}>
+                          {ticketCount === 0 ? '없음' : `${ticketCount}장`}
+                        </Text>
+                      </View>
+                      <View style={[s.ticketStepper, { height: d.chipH, borderRadius: d.r14 }]}>
+                        <TouchableOpacity
+                          style={s.ticketStepBtn}
+                          onPress={() => setTicketCount(prev => Math.max(0, prev - 1))}
+                          activeOpacity={0.75}
+                        >
+                          <Ionicons name="remove" size={Math.round(22 * sc)} color={ticketCount === 0 ? '#C5CCD5' : '#4E5968'} />
+                        </TouchableOpacity>
+                        <Text style={[s.ticketStepText, { fontSize: Math.round(17 * sc) }]}>{ticketCount}</Text>
+                        <TouchableOpacity
+                          style={s.ticketStepBtn}
+                          onPress={() => setTicketCount(prev => Math.min(10, prev + 1))}
+                          activeOpacity={0.75}
+                        >
+                          <Ionicons name="add" size={Math.round(22 * sc)} color="#4E5968" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    <View style={[s.row, { gap: d.gap8 }]}>
+                      {[0, 1, 2, 3, 4].map(count => (
+                        <TouchableOpacity
+                          key={count}
+                          style={[
+                            s.ticketChip,
+                            { flex: 1, height: d.chipH, borderRadius: d.r14 },
+                            ticketCount === count ? s.ticketChipSel : s.ticketChipDef,
+                          ]}
+                          onPress={() => setTicketCount(count)}
+                          activeOpacity={0.75}
+                        >
+                          <Text style={[
+                            s.ticketChipText,
+                            { fontSize: d.chipFs },
+                            ticketCount === count && { color: '#FFFFFF' },
+                          ]}>
+                            {count === 0 ? '없음' : `${count}장`}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
                   </View>
-                  <View style={[s.row, { gap: d.gap8 }]}>
-                    {[0, 1, 2, 3, 4].map(count => (
-                      <TouchableOpacity
-                        key={count}
-                        style={[
-                          s.ticketChip,
-                          { flex: 1, height: d.chipH, borderRadius: d.r14 },
-                          ticketCount === count ? s.ticketChipSel : s.ticketChipDef,
-                        ]}
-                        onPress={() => setTicketCount(count)}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={[
-                          s.ticketChipText,
-                          { fontSize: d.chipFs },
-                          ticketCount === count && { color: '#FFFFFF' },
-                        ]}>
-                          {count === 0 ? '없음' : `${count}장`}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
+                )}
 
                 {/* 섹션: 카카오 영수증 */}
                 <View style={{ gap: d.gap8 }}>
@@ -885,6 +909,31 @@ export default function GuestConfirmScreen({ navigation, route }) {
                     </View>
                   )}
                 </View>
+
+                {isFuneralEvent && (
+                  <View style={{ gap: d.gap12 }}>
+                    <Text style={[s.secTitle, { fontSize: d.titleFs }]}>어떤 분으로 오셨나요?</Text>
+                    <View style={{ gap: d.gap8 }}>
+                      {relationRows.map((row, rowIndex) => (
+                        <View key={rowIndex} style={[s.row, { gap: d.gap8 }]}>
+                          {row.map(rel => (
+                            <TouchableOpacity
+                              key={rel}
+                              style={[s.relBtn, { flex: 1, height: d.relationH, borderRadius: d.r16 },
+                                relationDetail === rel ? s.relSel : s.relDef]}
+                              onPress={() => setRelationDetail(p => p === rel ? null : rel)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[s.relText, { fontSize: d.relationFs }, relationDetail === rel && { color: '#FFFFFF' }]}>
+                                {rel}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
                   </View>
                 </View>
 

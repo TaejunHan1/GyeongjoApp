@@ -1588,12 +1588,17 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       
       // 🔍 이미지 URL 디버깅 정보 추가
 
-      navigation.navigate('EventDisplay', { 
+      const displayParams = {
         eventId: event.id,
         templateStyle: templateStyle,
         categorizedImages: finalCategorizedImages,
-        eventData: eventData
-      });
+      };
+
+      if (event.event_type !== 'funeral') {
+        displayParams.eventData = eventData;
+      }
+
+      navigation.navigate('EventDisplay', displayParams);
     }
   };
 

@@ -86,7 +86,7 @@ const PAPER_TEMPLATES = [
     id: 'jd-arch-garden',
     name: 'Arch Garden',
     subtitle: '아치 가든',
-    price: 4,
+    price: 40,
     bg: '#F7F1E8',
     ink: '#211B16',
     line: '#D5C09B',
@@ -98,7 +98,7 @@ const PAPER_TEMPLATES = [
     id: 'jd-vellum-wave',
     name: 'Vellum Wave',
     subtitle: '벨럼 웨이브',
-    price: 5,
+    price: 50,
     bg: '#F8F0E4',
     ink: '#211B15',
     line: '#D8BE8C',
@@ -110,7 +110,7 @@ const PAPER_TEMPLATES = [
     id: 'jd-sage-botanical',
     name: 'Sage Botanical',
     subtitle: '세이지 보태니컬',
-    price: 5,
+    price: 50,
     bg: '#F7F3EA',
     ink: '#211B15',
     line: '#C9C0A8',
@@ -122,7 +122,7 @@ const PAPER_TEMPLATES = [
     id: 'jd-modern-paper',
     name: 'Modern Paper',
     subtitle: '모던 페이퍼',
-    price: 5,
+    price: 50,
     bg: '#F8F3EA',
     ink: '#211B15',
     line: '#D3BE94',
@@ -146,7 +146,7 @@ const PAPER_TEMPLATES = [
     id: 'hanji-calm',
     name: 'Hanji Sign',
     subtitle: '하객 서명 한지',
-    price: 4,
+    price: 40,
     bg: '#F3EEE4',
     ink: '#241D16',
     line: '#D4C8B7',
@@ -158,7 +158,7 @@ const PAPER_TEMPLATES = [
     id: 'hanji-border',
     name: 'Hanji Border',
     subtitle: '라운드 한지 보더',
-    price: 3,
+    price: 30,
     bg: '#F5EFE4',
     ink: '#241D16',
     line: '#D8CCBA',
@@ -171,7 +171,7 @@ const PAPER_TEMPLATES = [
     id: 'ivory-guestbook',
     name: 'Guestbook Ivory',
     subtitle: '프리미엄 아이보리',
-    price: 4,
+    price: 40,
     bg: '#FBF7EF',
     ink: '#211B15',
     line: '#DDD2C0',
@@ -183,7 +183,7 @@ const PAPER_TEMPLATES = [
     id: 'ink-wash',
     name: 'Ink Wash',
     subtitle: '은은한 수묵 한지',
-    price: 5,
+    price: 50,
     bg: '#F2EDE3',
     ink: '#241D16',
     line: '#D3C6B4',
@@ -314,8 +314,8 @@ const PaperBrandMark = ({ template, preview = false }) => (
   </View>
 );
 
-const PaperLivePreview = ({ template, width }) => {
-  const previewHeight = 154;
+const PaperLivePreview = ({ template, width, height = 154 }) => {
+  const previewHeight = height;
   const content = (
     <>
       {!template.image && renderPaperPattern(template, width - 20, previewHeight, true)}
@@ -366,9 +366,15 @@ const PaperSwatch = ({ template }) => {
 
 export default function GuestWritingScreen({ navigation, route }) {
   const { event, side = 'groom', paperTemplateId } = route.params;
-  const sideLabel = side === 'groom' ? '신랑측' : '신부측';
-  const sideColor = side === 'groom' ? '#3B82F6' : '#EC4899';
-  const sideCode = side === 'groom' ? 'GROOM' : 'BRIDE';
+  const isFuneralEvent = event?.event_type === 'funeral';
+  const sideMeta = isFuneralEvent
+    ? { label: '조문객', color: '#4E5968', code: 'GUEST' }
+    : (side === 'groom'
+        ? { label: '신랑측', color: '#3B82F6', code: 'GROOM' }
+        : { label: '신부측', color: '#EC4899', code: 'BRIDE' });
+  const sideLabel = sideMeta.label;
+  const sideColor = sideMeta.color;
+  const sideCode = sideMeta.code;
   const initialPaperId = PAPER_TEMPLATES.some((template) => template.id === paperTemplateId)
     ? paperTemplateId
     : PAPER_TEMPLATES[0].id;
@@ -388,6 +394,7 @@ export default function GuestWritingScreen({ navigation, route }) {
   const [eventAccessUnlocked, setEventAccessUnlocked] = useState(false);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [storeLoading, setStoreLoading] = useState(true);
+  const [ownedSectionExpanded, setOwnedSectionExpanded] = useState(false);
   const selectedPaper = getPaperTemplate(selectedPaperId);
   const ownedPaperIdSet = useMemo(() => new Set([...DEFAULT_OWNED_PAPER_IDS, ...ownedPaperIds]), [ownedPaperIds]);
   const selectedPaperOwned = Number(selectedPaper.price || 0) <= 0 || ownedPaperIdSet.has(selectedPaper.id);
@@ -705,7 +712,7 @@ export default function GuestWritingScreen({ navigation, route }) {
     if (!eventAccessUnlocked) {
       Alert.alert(
         '방명록 시작',
-        `${GUESTBOOK_EVENT_UNLOCK_COST.toLocaleString('ko-KR')}크레딧이 차감됩니다.\n행사당 최초 1회만 차감되며, 신랑측/신부측 접수대를 모두 사용할 수 있어요.`,
+        `${GUESTBOOK_EVENT_UNLOCK_COST.toLocaleString('ko-KR')}크레딧이 차감됩니다.\n행사당 최초 1회만 차감되며, ${isFuneralEvent ? '조문 접수를 사용할 수 있어요.' : '신랑측/신부측 접수대를 모두 사용할 수 있어요.'}`,
         [
           { text: '취소', style: 'cancel' },
           { text: '시작하기', onPress: handleUnlockAndStart },
@@ -969,8 +976,11 @@ export default function GuestWritingScreen({ navigation, route }) {
       event?.event_type === 'wedding'
         ? `${event.groom_name || ''} ♥ ${event.bride_name || ''}`
         : event?.event_name || '경조사';
-    const carouselCardWidth = Math.min(screenSize.width - 40, 360);
+    const isCompactIntro = screenSize.width < 430 || screenSize.height < 780;
+    const carouselCardWidth = Math.min(screenSize.width - 40, isCompactIntro ? 330 : 360);
     const carouselGap = 12;
+    const previewHeight = isCompactIntro ? 132 : 154;
+    const showOwnedList = !isCompactIntro || ownedSectionExpanded;
     const startButtonLabel = purchaseLoading
       ? '처리 중...'
       : storeLoading
@@ -990,7 +1000,7 @@ export default function GuestWritingScreen({ navigation, route }) {
           <TouchableOpacity style={intro.backBtn} onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Text style={intro.backText}>✕</Text>
           </TouchableOpacity>
-          <Text style={intro.headerTitle}>하객 접수</Text>
+          <Text style={intro.headerTitle}>{isFuneralEvent ? '조문 접수' : '하객 접수'}</Text>
           <View style={{ width: 36 }} />
         </View>
 
@@ -1006,7 +1016,7 @@ export default function GuestWritingScreen({ navigation, route }) {
           <View style={intro.sectionHeader}>
             <View>
               <Text style={intro.sectionTitle}>접수 배경 선택</Text>
-              <Text style={intro.sectionSub}>축의대 화면에 표시될 종이 템플릿</Text>
+              <Text style={intro.sectionSub}>{isFuneralEvent ? '조문 접수 화면에 표시될 종이 템플릿' : '축의대 화면에 표시될 종이 템플릿'}</Text>
             </View>
             <View style={intro.creditPill}>
               <Text style={intro.creditPillText}>
@@ -1017,7 +1027,7 @@ export default function GuestWritingScreen({ navigation, route }) {
 
           <ScrollView
             horizontal
-            style={intro.templateScroller}
+            style={[intro.templateScroller, isCompactIntro && intro.templateScrollerCompact]}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={intro.templateList}
             decelerationRate="fast"
@@ -1049,14 +1059,15 @@ export default function GuestWritingScreen({ navigation, route }) {
                   onPress={() => setSelectedPaperId(template.id)}
                   activeOpacity={0.82}
                 >
-                  <PaperLivePreview template={template} width={carouselCardWidth - 20} />
-                  <View style={intro.templateInfoRow}>
+                  <PaperLivePreview template={template} width={carouselCardWidth - 20} height={previewHeight} />
+                  <View style={[intro.templateInfoRow, isCompactIntro && intro.templateInfoRowCompact]}>
                     <View style={intro.templateMeta}>
-                      <Text style={intro.templateName}>{template.name}</Text>
-                      <Text style={intro.templateSub}>{template.subtitle}</Text>
+                      <Text style={intro.templateName} numberOfLines={1}>{template.name}</Text>
+                      <Text style={intro.templateSub} numberOfLines={1}>{template.subtitle}</Text>
                     </View>
                     <View style={[
                       intro.priceBadge,
+                      isCompactIntro && intro.priceBadgeCompact,
                       owned ? intro.freeBadge : intro.paidBadge,
                     ]}>
                       <Text style={[
@@ -1072,50 +1083,66 @@ export default function GuestWritingScreen({ navigation, route }) {
             })}
           </ScrollView>
 
-          <View style={intro.selectedCard}>
-            <PaperSwatch template={selectedPaper} />
+          <View style={[intro.selectedCard, isCompactIntro && intro.selectedCardCompact]}>
+            {!isCompactIntro && <PaperSwatch template={selectedPaper} />}
             <View style={{ flex: 1 }}>
               <Text style={intro.selectedLabel}>선택한 배경</Text>
               <Text style={intro.selectedName}>{selectedPaper.name}</Text>
             </View>
-            <Text style={intro.selectedPrice}>
+            <Text style={intro.selectedPrice} numberOfLines={1}>
               {selectedPaperOwned
                 ? Number(selectedPaper.price || 0) <= 0 ? '기본' : '보유중'
                 : `${selectedPaper.price} 크레딧 구매 필요`}
             </Text>
           </View>
 
-          <View style={intro.ownedSection}>
-            <View style={intro.ownedHeader}>
-              <Text style={intro.ownedTitle}>보유한 배경</Text>
-              <Text style={intro.ownedCount}>{storeLoading ? '확인 중' : `${ownedPaperTemplates.length}개`}</Text>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={intro.ownedList}
+          <View style={[intro.ownedSection, isCompactIntro && intro.ownedSectionCompact]}>
+            <TouchableOpacity
+              style={intro.ownedHeader}
+              onPress={() => isCompactIntro && setOwnedSectionExpanded(prev => !prev)}
+              activeOpacity={isCompactIntro ? 0.78 : 1}
             >
-              {ownedPaperTemplates.map((template) => {
-                const selected = selectedPaperId === template.id;
-                return (
-                  <TouchableOpacity
-                    key={template.id}
-                    style={[
-                      intro.ownedChip,
-                      selected && { borderColor: sideColor, backgroundColor: sideColor + '0D' },
-                    ]}
-                    onPress={() => setSelectedPaperId(template.id)}
-                    activeOpacity={0.82}
-                  >
-                    <PaperSwatch template={template} />
-                    <View style={intro.ownedChipTextWrap}>
-                      <Text style={intro.ownedChipName} numberOfLines={1}>{template.name}</Text>
-                      <Text style={intro.ownedChipSub}>{Number(template.price || 0) <= 0 ? '기본' : '구매 완료'}</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+              <Text style={intro.ownedTitle}>보유한 배경</Text>
+              <View style={intro.ownedHeaderRight}>
+                <Text style={intro.ownedCount}>{storeLoading ? '확인 중' : `${ownedPaperTemplates.length}개`}</Text>
+                {isCompactIntro && (
+                  <Ionicons
+                    name={ownedSectionExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color="#8B95A1"
+                  />
+                )}
+              </View>
+            </TouchableOpacity>
+            {showOwnedList && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={intro.ownedList}
+              >
+                {ownedPaperTemplates.map((template) => {
+                  const selected = selectedPaperId === template.id;
+                  return (
+                    <TouchableOpacity
+                      key={template.id}
+                      style={[
+                        intro.ownedChip,
+                        isCompactIntro && intro.ownedChipCompact,
+                        selected && { borderColor: sideColor, backgroundColor: sideColor + '0D' },
+                      ]}
+                      onPress={() => setSelectedPaperId(template.id)}
+                      activeOpacity={0.82}
+                    >
+                      <PaperSwatch template={template} />
+                      <View style={intro.ownedChipTextWrap}>
+                        <Text style={intro.ownedChipName} numberOfLines={1}>{template.name}</Text>
+                        <Text style={intro.ownedChipSub}>{Number(template.price || 0) <= 0 ? '기본' : '구매 완료'}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
           </View>
         </View>
 
@@ -1138,7 +1165,7 @@ export default function GuestWritingScreen({ navigation, route }) {
                 </Text>
                 <Text style={intro.accessNoticeSub}>
                   {eventAccessUnlocked
-                    ? '신랑측/신부측 접수대 모두 추가 차감 없이 사용할 수 있어요'
+                    ? `${isFuneralEvent ? '조문 접수를' : '신랑측/신부측 접수대 모두'} 추가 차감 없이 사용할 수 있어요`
                     : selectedPaperOwned
                       ? '행사당 최초 1회만 차감되며, 양쪽 접수대를 모두 사용할 수 있어요'
                       : '배경 구매 후 행사 이용권을 활성화하면 양쪽 접수대를 모두 사용할 수 있어요'}
@@ -1430,6 +1457,9 @@ const intro = StyleSheet.create({
     flexGrow: 0,
     height: 248,
   },
+  templateScrollerCompact: {
+    height: 224,
+  },
   templateCard: {
     width: 132,
     borderRadius: 18,
@@ -1514,6 +1544,9 @@ const intro = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 10,
   },
+  templateInfoRowCompact: {
+    alignItems: 'center',
+  },
   templateName: {
     fontSize: 14,
     fontWeight: '900',
@@ -1533,6 +1566,11 @@ const intro = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 999,
     marginTop: 10,
+  },
+  priceBadgeCompact: {
+    marginTop: 0,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
   },
   freeBadge: {
     backgroundColor: '#E8F3FF',
@@ -1559,6 +1597,12 @@ const intro = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EEF2F7',
     gap: 12,
+  },
+  selectedCardCompact: {
+    marginTop: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 15,
   },
   selectedSwatch: {
     width: 44,
@@ -1592,11 +1636,19 @@ const intro = StyleSheet.create({
     marginTop: 12,
     paddingHorizontal: 20,
   },
+  ownedSectionCompact: {
+    marginTop: 8,
+  },
   ownedHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  ownedHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   ownedTitle: {
     fontSize: 13,
@@ -1624,6 +1676,10 @@ const intro = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#EEF2F7',
     backgroundColor: '#FFFFFF',
+  },
+  ownedChipCompact: {
+    minHeight: 62,
+    padding: 7,
   },
   ownedChipTextWrap: {
     flex: 1,

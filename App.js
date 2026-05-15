@@ -197,6 +197,7 @@ export default function App() {
       'Cinzel': require('./assets/fonts/Cinzel-Regular.ttf'),
       'DancingScript': require('./assets/fonts/DancingScript-Regular.ttf'),
       'Tangerine': require('./assets/fonts/Tangerine-Regular.ttf'),
+      'NanumBrushScript': require('./assets/fonts/NanumBrushScript-Regular.ttf'),
     }).catch(() => {});
   }, []);
   

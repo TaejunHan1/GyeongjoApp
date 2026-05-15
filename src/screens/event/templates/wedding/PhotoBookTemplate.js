@@ -29,7 +29,7 @@ import {
   getCategorizedImagesSafe,
 } from './WeddingUtils';
 
-const { width: W } = Dimensions.get('window');
+const { width: W, height: H } = Dimensions.get('window');
 const IS_TABLET = W >= 600;
 const GALLERY_SPREAD_WIDTH = Math.min(W - 52, 520);
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -57,59 +57,13 @@ const DECOR = {
   watercolorBouquet: require('../../../../../assets/studio/elements/32-wedding watercolor bouquet ornament.png'),
   bridalHeels: require('../../../../../assets/studio/elements/34-wedding bridal heels veil ornament.png'),
 };
+const INTRO_REFERENCE_IMAGE = require('../../../../../assets/studio/references/mobile-wedding-intro-reference-1-fast.jpg');
 const INTRO_CLOUD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="86" viewBox="0 0 180 86" fill="none">
   <path d="M24 64.5C13.2 64.5 4.5 56.6 4.5 46.8C4.5 37.8 12 30.3 21.8 29.3C26 15.3 40 5.5 56.1 5.5C69.6 5.5 81.5 12.4 87.7 22.8C93 18.6 99.9 16.1 107.3 16.1C122.1 16.1 134.5 25.9 137.3 39.1C139 38.7 140.9 38.5 142.8 38.5C154.1 38.5 163.2 46.8 163.2 57C163.2 67.1 154.1 75.5 142.8 75.5H24Z" fill="rgba(255,255,255,0.88)"/>
   <path d="M38 70.5H153" stroke="rgba(198,175,139,0.34)" stroke-width="2" stroke-linecap="round"/>
 </svg>`;
 const INTRO_BOOK_W = Math.min(W - 128, 260);
 const INTRO_BOOK_H = Math.min(INTRO_BOOK_W * 1.42, 370);
-const INTRO_BOOK_COVER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="370" viewBox="0 0 260 370" fill="none">
-  <defs>
-    <linearGradient id="coverPaper" x1="0" y1="0" x2="260" y2="370" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFF6E7"/>
-      <stop offset="0.52" stop-color="#F1E0C5"/>
-      <stop offset="1" stop-color="#D7B981"/>
-    </linearGradient>
-    <pattern id="linen" width="10" height="10" patternUnits="userSpaceOnUse">
-      <path d="M0 2.5H10M0 7.5H10M2.5 0V10M7.5 0V10" stroke="#BFAE91" stroke-opacity="0.18" stroke-width="0.8"/>
-    </pattern>
-    <filter id="softShadow" x="-20%" y="-10%" width="140%" height="130%">
-      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#6D5338" flood-opacity="0.16"/>
-    </filter>
-  </defs>
-  <rect x="15" y="8" width="230" height="354" rx="5" fill="url(#coverPaper)" filter="url(#softShadow)"/>
-  <rect x="20" y="13" width="220" height="344" rx="4" fill="#F4E7CF"/>
-  <rect x="20" y="13" width="220" height="344" rx="4" fill="url(#linen)"/>
-  <path d="M33 17V353" stroke="#CDAF70" stroke-opacity="0.58" stroke-width="3"/>
-  <path d="M39 18V352" stroke="#FFF8EA" stroke-opacity="0.58" stroke-width="1.3"/>
-  <path d="M22 14H238M22 356H238M239 16V354" stroke="#B98F44" stroke-opacity="0.55" stroke-width="2"/>
-  <g transform="translate(112 220)">
-    <path d="M27 61C18 47 22 27 39 17C57 6 78 13 86 29C95 47 84 69 63 75C48 80 35 74 27 61Z" fill="#F9F1DE" stroke="#C3A35E" stroke-opacity="0.42"/>
-    <path d="M43 33C56 18 78 24 81 42C84 60 66 72 51 67C35 61 32 45 43 33Z" fill="#FFF8E9" stroke="#D9BE7C" stroke-opacity="0.55"/>
-    <circle cx="62" cy="47" r="13" fill="#D8B566"/>
-    <path d="M61 18C56 38 57 55 67 75M37 26C48 41 58 48 83 51M44 72C55 60 67 54 90 45" stroke="#D6CDB6" stroke-width="3" stroke-linecap="round"/>
-    <path d="M8 76C29 56 48 50 72 47M58 90C68 71 82 57 101 49M15 48C34 43 48 45 67 54" stroke="#849070" stroke-width="5" stroke-linecap="round"/>
-    <path d="M6 77C14 68 24 67 31 72C22 80 14 83 6 77ZM53 91C58 78 68 73 79 75C72 87 63 93 53 91ZM16 48C27 42 37 44 44 51C33 57 24 57 16 48ZM88 49C96 38 106 35 116 39C111 51 101 56 88 49Z" fill="#98A07E" stroke="#6F755C" stroke-opacity="0.25"/>
-    <circle cx="20" cy="67" r="7" fill="#FFF5DD" stroke="#D8BD80" stroke-opacity="0.45"/>
-    <circle cx="36" cy="78" r="6" fill="#FFF5DD" stroke="#D8BD80" stroke-opacity="0.45"/>
-    <circle cx="104" cy="42" r="5" fill="#FFF5DD" stroke="#D8BD80" stroke-opacity="0.45"/>
-  </g>
-</svg>`;
-const INTRO_BOOK_PAGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="370" viewBox="0 0 260 370" fill="none">
-  <defs>
-    <linearGradient id="pageGrad" x1="0" y1="0" x2="260" y2="370" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFFDF5"/>
-      <stop offset="1" stop-color="#F4E8D4"/>
-    </linearGradient>
-    <pattern id="pageGrain" width="12" height="12" patternUnits="userSpaceOnUse">
-      <path d="M0 3H12M0 9H12" stroke="#C9B999" stroke-opacity="0.12" stroke-width="0.8"/>
-    </pattern>
-  </defs>
-  <rect x="10" y="12" width="240" height="346" rx="7" fill="url(#pageGrad)"/>
-  <rect x="10" y="12" width="240" height="346" rx="7" fill="url(#pageGrain)"/>
-  <path d="M22 30H235M22 50H235M22 70H235" stroke="#C8B48E" stroke-opacity="0.12" stroke-width="1.2"/>
-  <path d="M12 13H248M12 357H248" stroke="#BFA16A" stroke-opacity="0.32" stroke-width="2"/>
-</svg>`;
 const INTRO_INVITE_CARD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="370" viewBox="0 0 260 370" fill="none">
   <defs>
     <linearGradient id="invitePaper" x1="0" y1="0" x2="260" y2="370" gradientUnits="userSpaceOnUse">
@@ -135,45 +89,27 @@ const INTRO_INVITE_CARD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="26
   </g>
   <path d="M78 258H182" stroke="#CBAA62" stroke-opacity="0.36" stroke-width="1.2"/>
 </svg>`;
-const INTRO_ENVELOPE_BACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="330" height="230" viewBox="0 0 330 230" fill="none">
-  <defs>
-    <linearGradient id="envBack" x1="0" y1="0" x2="330" y2="230" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFF9EE"/>
-      <stop offset="1" stop-color="#E8CF9F"/>
-    </linearGradient>
-    <filter id="envShadow" x="-10%" y="-20%" width="120%" height="150%">
-      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#71512B" flood-opacity="0.18"/>
-    </filter>
-  </defs>
-  <rect x="17" y="52" width="296" height="154" rx="14" fill="url(#envBack)" filter="url(#envShadow)"/>
-  <path d="M21 62L164 150L309 62" stroke="#C5A36A" stroke-opacity="0.35" stroke-width="2"/>
-  <path d="M32 195L128 126M298 195L202 126" stroke="#C5A36A" stroke-opacity="0.25" stroke-width="2"/>
-</svg>`;
-const INTRO_ENVELOPE_FRONT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="330" height="230" viewBox="0 0 330 230" fill="none">
-  <defs>
-    <linearGradient id="envFront" x1="0" y1="0" x2="330" y2="230" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F8E8C9"/>
-      <stop offset="1" stop-color="#D7B36F"/>
-    </linearGradient>
-  </defs>
-  <path d="M18 74L162 166L312 74V197C312 205 305 212 297 212H33C25 212 18 205 18 197V74Z" fill="url(#envFront)"/>
-  <path d="M18 74L158 167C162 170 168 170 172 167L312 74" stroke="#A98643" stroke-opacity="0.32" stroke-width="2"/>
-  <path d="M35 198L128 135M295 198L202 135" stroke="#FFF3D6" stroke-opacity="0.35" stroke-width="2"/>
-</svg>`;
-const INTRO_ENVELOPE_FLAP_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="330" height="160" viewBox="0 0 330 160" fill="none">
-  <defs>
-    <linearGradient id="envFlap" x1="0" y1="0" x2="330" y2="160" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFF4DC"/>
-      <stop offset="1" stop-color="#E5C58A"/>
-    </linearGradient>
-  </defs>
-  <path d="M22 142L151 31C159 24 171 24 179 31L308 142H22Z" fill="url(#envFlap)"/>
-  <path d="M42 134L154 42C160 37 170 37 176 42L288 134" stroke="#C29B52" stroke-opacity="0.35" stroke-width="2"/>
-</svg>`;
 const INTRO_RINGS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="94" height="58" viewBox="0 0 94 58" fill="none">
   <circle cx="36" cy="32" r="20" stroke="#C39A45" stroke-width="5"/>
   <circle cx="58" cy="32" r="20" stroke="#D7B86C" stroke-width="5"/>
   <path d="M45 8L51 1L57 8" stroke="#C39A45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+const INTRO_WREATH_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="330" height="330" viewBox="0 0 330 330" fill="none">
+  <defs>
+    <radialGradient id="wreathGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(165 165) rotate(90) scale(142)">
+      <stop stop-color="#FFF8E6" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#FFF8E6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="165" cy="165" r="126" fill="url(#wreathGlow)"/>
+  <circle cx="165" cy="165" r="118" stroke="#C6A05A" stroke-opacity="0.42" stroke-width="2"/>
+  <circle cx="165" cy="165" r="104" stroke="#EFE0BE" stroke-opacity="0.74" stroke-width="1.5"/>
+  <path d="M75 211C93 231 120 244 151 247M255 119C238 95 211 80 180 77" stroke="#8A9272" stroke-width="5" stroke-linecap="round"/>
+  <path d="M83 220C96 210 108 211 119 222C103 229 93 229 83 220ZM116 241C128 229 143 228 155 240C140 249 128 250 116 241ZM238 98C226 111 211 112 199 100C214 90 226 89 238 98ZM205 78C194 91 179 94 165 84C180 72 193 70 205 78Z" fill="#9BA37F" stroke="#687052" stroke-opacity="0.22"/>
+  <circle cx="91" cy="208" r="7" fill="#FFF8E7" stroke="#D0B16E" stroke-opacity="0.45"/>
+  <circle cx="112" cy="229" r="6" fill="#FFF8E7" stroke="#D0B16E" stroke-opacity="0.45"/>
+  <circle cx="238" cy="121" r="6" fill="#FFF8E7" stroke="#D0B16E" stroke-opacity="0.45"/>
+  <circle cx="214" cy="96" r="7" fill="#FFF8E7" stroke="#D0B16E" stroke-opacity="0.45"/>
 </svg>`;
 const INTRO_ARCH_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="330" height="430" viewBox="0 0 330 430" fill="none">
   <defs>
@@ -193,17 +129,26 @@ const INTRO_ARCH_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="330" heig
   <path d="M48 398H282" stroke="#C59A45" stroke-opacity="0.62" stroke-width="3" stroke-linecap="round"/>
   <path d="M88 128C116 98 139 88 165 88C191 88 215 98 242 128" stroke="#F8E8B8" stroke-opacity="0.35" stroke-width="2" stroke-linecap="round"/>
 </svg>`;
-const INTRO_CURTAIN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="170" height="430" viewBox="0 0 170 430" fill="none">
+const INTRO_CURTAIN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="640" viewBox="0 0 220 640" fill="none">
   <defs>
-    <linearGradient id="curtain" x1="0" y1="0" x2="170" y2="430" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFF7ED" stop-opacity="0.96"/>
-      <stop offset="0.48" stop-color="#E9CFAE" stop-opacity="0.9"/>
-      <stop offset="1" stop-color="#B99063" stop-opacity="0.82"/>
+    <linearGradient id="silkBase" x1="0" y1="0" x2="220" y2="640" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFDF8" stop-opacity="0.98"/>
+      <stop offset="0.5" stop-color="#F2E4D2" stop-opacity="0.94"/>
+      <stop offset="1" stop-color="#D7B98E" stop-opacity="0.86"/>
+    </linearGradient>
+    <linearGradient id="silkFold" x1="0" y1="0" x2="220" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.38"/>
+      <stop offset="0.42" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="0.72" stop-color="#A98256" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.22"/>
     </linearGradient>
   </defs>
-  <path d="M0 0H162C141 77 132 148 142 214C151 276 140 350 166 430H0V0Z" fill="url(#curtain)"/>
-  <path d="M39 0C31 90 35 173 51 249C61 301 55 359 73 430M88 0C72 97 78 183 95 260C107 315 99 366 120 430M132 0C118 88 122 162 139 227C153 282 145 352 164 430" stroke="#FFF8EA" stroke-opacity="0.42" stroke-width="2"/>
-  <path d="M10 0C22 83 25 155 19 217C12 286 18 356 34 430" stroke="#A67545" stroke-opacity="0.14" stroke-width="3"/>
+  <path d="M0 0H220V640H0V0Z" fill="url(#silkBase)"/>
+  <path d="M0 0H220V640H0V0Z" fill="url(#silkFold)"/>
+  <path d="M34 0C24 104 30 197 45 286C59 372 49 502 68 640" stroke="#FFFFFF" stroke-opacity="0.28" stroke-width="2"/>
+  <path d="M86 0C72 118 78 214 93 308C108 406 99 514 118 640" stroke="#8F704D" stroke-opacity="0.08" stroke-width="3"/>
+  <path d="M143 0C130 124 136 220 151 312C167 413 158 520 181 640" stroke="#FFFFFF" stroke-opacity="0.2" stroke-width="2"/>
+  <path d="M0 0H220V68H0V0Z" fill="#FFF8EC" fill-opacity="0.2"/>
 </svg>`;
 
 const P = {
@@ -295,10 +240,10 @@ export default function PhotoBookTemplate({
   const [introVisible, setIntroVisible] = useState(true);
   const [contentVisible, setContentVisible] = useState(false);
   const [heroImageLoaded, setHeroImageLoaded] = useState(false);
+  const [introImageLoaded, setIntroImageLoaded] = useState(false);
   const introOpenAnim = useRef(new Animated.Value(0)).current;
   const introOpacity = useRef(new Animated.Value(1)).current;
   const introHintOpacity = useRef(new Animated.Value(1)).current;
-  const introBookFloatY = useRef(new Animated.Value(0)).current;
   const introPlayingRef = useRef(false);
   const [selectedImageGroup, setSelectedImageGroup] = useState('gallery');
   const imageModalScrollRef = useRef(null);
@@ -383,6 +328,7 @@ export default function PhotoBookTemplate({
   const firstDow = new Date(calYear, calMonth - 1, 1).getDay();
   const daysInMonth = new Date(calYear, calMonth, 0).getDate();
   const dateLine = `${calYear}.${String(calMonth).padStart(2, '0')}.${String(calDay).padStart(2, '0')}`;
+  const introDateText = timeStr ? `${dateLine}  ${timeStr}` : dateLine;
 
   useEffect(() => {
     if (!introVisible) return undefined;
@@ -394,21 +340,6 @@ export default function PhotoBookTemplate({
     return () => loop.stop();
   }, [introVisible, introHintOpacity]);
 
-  useEffect(() => {
-    if (!introVisible) return undefined;
-    let rafId;
-    const start = Date.now();
-    const tick = () => {
-      const t = ((Date.now() - start) % 4600) / 4600;
-      introBookFloatY.setValue(Math.sin(t * Math.PI * 2) * 5);
-      rafId = requestAnimationFrame(tick);
-    };
-    tick();
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-  }, [introBookFloatY, introVisible]);
-
   const openPhotoBookIntro = () => {
     if (introPlayingRef.current) return;
     introPlayingRef.current = true;
@@ -417,14 +348,13 @@ export default function PhotoBookTemplate({
     Animated.sequence([
       Animated.timing(introOpenAnim, {
         toValue: 1,
-        duration: 1550,
-        easing: Easing.bezier(0.22, 0.78, 0.22, 1),
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
-      Animated.delay(220),
       Animated.timing(introOpacity, {
         toValue: 0,
-        duration: 520,
+        duration: 360,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }),
@@ -810,13 +740,6 @@ export default function PhotoBookTemplate({
 
       {introVisible && (
         <Animated.View style={[s.photoBookIntroLayer, { opacity: introOpacity }]}>
-          <View style={s.photoBookIntroSky} pointerEvents="none">
-            <IntroCloud top="9%" size={170} delay={0} duration={34000} opacity={0.38} />
-            <IntroCloud top="25%" size={220} delay={9000} duration={39000} opacity={0.28} />
-            <IntroCloud top="72%" size={145} delay={4200} duration={31000} opacity={0.32} />
-            <Image source={DECOR.babyBreath} style={s.introFloatingFlowerA} resizeMode="contain" />
-            <Image source={DECOR.leafSmall} style={s.introFloatingLeaf} resizeMode="contain" />
-          </View>
           <View pointerEvents="none" style={s.photoBookIntroPreloader}>
             {[mainImage, ...galleryImages.slice(0, 6)].filter(Boolean).map((img, index) => (
               <Image
@@ -829,202 +752,51 @@ export default function PhotoBookTemplate({
             ))}
           </View>
           <TouchableOpacity activeOpacity={0.96} style={s.photoBookIntroTouch} onPress={openPhotoBookIntro}>
-            <Animated.View style={[s.photoBookIntroStage, { transform: [{ translateY: introBookFloatY }] }]}>
-              <Animated.View
-                style={[
-                  s.stageIntroArch,
-                  {
-                    opacity: introOpenAnim.interpolate({
-                      inputRange: [0, 0.26, 1],
-                      outputRange: [0.42, 0.82, 1],
-                    }),
-                    transform: [
-                      {
-                        scale: introOpenAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.96, 1.02],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <SvgXml xml={INTRO_ARCH_SVG} width={330} height={430} />
-              </Animated.View>
-              <Animated.View
-                style={[
-                  s.stageIntroCurtainLeft,
-                  {
-                    opacity: introOpenAnim.interpolate({
-                      inputRange: [0, 0.72, 1],
-                      outputRange: [1, 0.88, 0],
-                    }),
-                    transform: [
-                      {
-                        scaleX: -1,
-                      },
-                      {
-                        translateX: introOpenAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0, -132],
-                        }),
-                      },
-                      {
-                        rotateZ: introOpenAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: ['0deg', '-5deg'],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <SvgXml xml={INTRO_CURTAIN_SVG} width={170} height={430} />
-              </Animated.View>
-              <Animated.View
-                style={[
-                  s.stageIntroCurtainRight,
-                  {
-                    opacity: introOpenAnim.interpolate({
-                      inputRange: [0, 0.72, 1],
-                      outputRange: [1, 0.88, 0],
-                    }),
-                    transform: [
-                      {
-                        translateX: introOpenAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0, 132],
-                        }),
-                      },
-                      {
-                        rotateZ: introOpenAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: ['0deg', '5deg'],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <SvgXml xml={INTRO_CURTAIN_SVG} width={170} height={430} />
-              </Animated.View>
-              <Animated.View
-                style={[
-                  s.stageIntroCard,
-                  {
-                    opacity: introOpenAnim.interpolate({
-                      inputRange: [0, 0.28, 0.78, 1],
-                      outputRange: [0, 0.18, 0.92, 1],
-                    }),
-                    transform: [
-                      {
-                        translateY: introOpenAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [72, -6],
-                        }),
-                      },
-                      {
-                        scale: introOpenAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.88, 1],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <SvgXml xml={INTRO_INVITE_CARD_SVG} width={INTRO_BOOK_W} height={INTRO_BOOK_H} />
-                <View style={s.weddingIntroCardText}>
-                  <Text style={s.weddingIntroCardLabel}>WEDDING INVITATION</Text>
-                  <Text style={s.weddingIntroCardNames}>{groomName} & {brideName}</Text>
-                  <Text style={s.weddingIntroCardDate}>{dateLine}</Text>
-                </View>
-              </Animated.View>
-              <Animated.View
-                style={[
-                  s.stageIntroRings,
-                  {
-                    opacity: introOpenAnim.interpolate({
-                      inputRange: [0, 0.4, 1],
-                      outputRange: [0, 0.4, 1],
-                    }),
-                    transform: [
-                      {
-                        translateY: introOpenAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [-20, -68],
-                        }),
-                      },
-                      {
-                        scale: introOpenAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.72, 1],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <SvgXml xml={INTRO_RINGS_SVG} width={94} height={58} />
-              </Animated.View>
-              <Animated.Text
-                style={[
-                  s.stageIntroTitle,
-                  {
-                    opacity: introOpenAnim.interpolate({
-                      inputRange: [0, 0.32, 1],
-                      outputRange: [0, 0.24, 1],
-                    }),
-                    transform: [
-                      {
-                        translateY: introOpenAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [18, 0],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                결혼식에 초대합니다
-              </Animated.Text>
-              {[0, 1, 2, 3, 4, 5].map((dot) => (
-                <Animated.View
-                  key={`wedding-intro-spark-${dot}`}
-                  style={[
-                    s.weddingIntroSparkle,
+            <Image
+              source={INTRO_REFERENCE_IMAGE}
+              style={s.introReferenceImage}
+              resizeMode="cover"
+              fadeDuration={0}
+              onLoadEnd={() => setIntroImageLoaded(true)}
+            />
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                s.introReferenceContent,
+                {
+                  opacity: introImageLoaded
+                    ? introOpenAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 0.5],
+                      })
+                    : 0,
+                  transform: [
                     {
-                      opacity: introOpenAnim.interpolate({
-                        inputRange: [0, 0.38, 0.86, 1],
-                        outputRange: [0, 0, 1, 0],
+                      scale: introOpenAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 0.985],
                       }),
-                      transform: [
-                        {
-                          translateX: introOpenAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, [-116, 118, -78, 82, -30, 34][dot]],
-                          }),
-                        },
-                        {
-                          translateY: introOpenAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [36, [-126, -118, -76, -66, -22, -18][dot]],
-                          }),
-                        },
-                        {
-                          scale: introOpenAnim.interpolate({
-                            inputRange: [0, 0.66, 1],
-                            outputRange: [0.4, 1, 0.7],
-                          }),
-                        },
-                      ],
                     },
-                  ]}
-                />
-              ))}
-            </Animated.View>
-            <Animated.View style={[s.photoBookIntroHintPill, { opacity: introHintOpacity }]}>
-              <Text style={s.photoBookIntroHint}>앨범 열기</Text>
+                  ],
+                },
+              ]}
+            >
+              <View style={s.introNameBlock}>
+                <Text style={s.introScriptName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
+                  {groomName}
+                </Text>
+                <Text style={s.introAmpersand}>&</Text>
+                <Text style={s.introScriptName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
+                  {brideName}
+                </Text>
+              </View>
+              <Text style={s.introDateText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                {introDateText}
+              </Text>
+              <Animated.View style={[s.introOpenButton, { opacity: introHintOpacity }]}>
+                <Text style={s.introOpenButtonText}>청첩장 열기</Text>
+                <View style={s.introOpenButtonPearl} />
+              </Animated.View>
             </Animated.View>
           </TouchableOpacity>
         </Animated.View>
@@ -1495,13 +1267,114 @@ const s = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 34,
+  },
+  introReferenceImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  introReferenceContent: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+  },
+  introNameBlock: {
+    position: 'absolute',
+    top: IS_TABLET ? '36%' : '38%',
+    left: '14%',
+    right: '14%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  introScriptName: {
+    width: '100%',
+    color: '#9D773A',
+    fontFamily: 'NanumBrushScript',
+    fontSize: IS_TABLET ? 82 : 68,
+    lineHeight: IS_TABLET ? 86 : 72,
+    fontWeight: '400',
+    textAlign: 'center',
+    letterSpacing: 0,
+  },
+  introAmpersand: {
+    color: '#9D773A',
+    fontFamily: 'Great Vibes',
+    fontSize: IS_TABLET ? 32 : 27,
+    lineHeight: IS_TABLET ? 38 : 32,
+    fontWeight: '400',
+    textAlign: 'center',
+    marginVertical: IS_TABLET ? -2 : -4,
+  },
+  introDateText: {
+    position: 'absolute',
+    top: IS_TABLET ? '62%' : '61.5%',
+    left: '17%',
+    right: '17%',
+    color: '#A68145',
+    fontSize: IS_TABLET ? 17 : 14,
+    lineHeight: IS_TABLET ? 22 : 19,
+    fontWeight: '700',
+    letterSpacing: 3.2,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  introOpenButton: {
+    position: 'absolute',
+    top: IS_TABLET ? '70%' : '70.7%',
+    width: IS_TABLET ? 224 : 188,
+    height: IS_TABLET ? 56 : 48,
+    borderRadius: 999,
+    borderWidth: 1.4,
+    borderColor: 'rgba(167,126,62,0.76)',
+    backgroundColor: 'rgba(255,250,240,0.78)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#8D6A38',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
+  },
+  introOpenButtonText: {
+    color: '#896634',
+    fontSize: IS_TABLET ? 15 : 13,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+  },
+  introOpenButtonPearl: {
+    position: 'absolute',
+    bottom: -7,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#FFF7E7',
+    borderWidth: 1,
+    borderColor: 'rgba(167,126,62,0.55)',
   },
   photoBookIntroStage: {
     width: Math.min(W - 40, 430),
     height: Math.min((W - 40) * 1.2, 500),
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  fullCurtainLeft: {
+    position: 'absolute',
+    left: -W * 0.06,
+    top: -42,
+    width: W * 0.62,
+    height: H + 90,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  fullCurtainRight: {
+    position: 'absolute',
+    right: -W * 0.06,
+    top: -42,
+    width: W * 0.62,
+    height: H + 90,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
   },
   photoBookIntroBookShadow: {
     position: 'absolute',
@@ -1521,22 +1394,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,
-  },
-  stageIntroCurtainLeft: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -166,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 7,
-  },
-  stageIntroCurtainRight: {
-    position: 'absolute',
-    right: '50%',
-    marginRight: -166,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 7,
   },
   stageIntroCard: {
     position: 'absolute',
@@ -1562,14 +1419,6 @@ const s = StyleSheet.create({
     letterSpacing: 0.2,
     zIndex: 6,
   },
-  weddingIntroEnvelopeBack: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -165,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
   weddingIntroCard: {
     position: 'absolute',
     width: INTRO_BOOK_W,
@@ -1582,7 +1431,7 @@ const s = StyleSheet.create({
     position: 'absolute',
     left: 28,
     right: 28,
-    top: 126,
+    top: 124,
     alignItems: 'center',
   },
   weddingIntroCardLabel: {
@@ -1605,30 +1454,6 @@ const s = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 2,
     marginTop: 18,
-  },
-  weddingIntroEnvelopeFlap: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -165,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 4,
-  },
-  weddingIntroEnvelopeFront: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -165,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 5,
-  },
-  weddingIntroRingSeal: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -47,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 6,
   },
   weddingIntroSparkle: {
     position: 'absolute',

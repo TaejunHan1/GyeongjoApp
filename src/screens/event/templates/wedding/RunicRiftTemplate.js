@@ -32,6 +32,13 @@ const { width: W, height: H } = Dimensions.get('window');
 const IS_TABLET = W >= 768;
 const HERO_CARD_HEIGHT = IS_TABLET ? Math.min(H * 0.72, 720) : Math.min(H * 0.7, 620);
 const SECTION_DIVIDER = require('../../../../../assets/studio/elements/29-wedding divider champagne floral.png');
+const INTRO_TOP_FLORAL = require('../../../../../assets/studio/elements/1-eucalyptus-branch-top-right.png');
+const INTRO_BOTTOM_FLORAL = require('../../../../../assets/studio/elements/2-white-flowers-bottom-left.png');
+const INTRO_RING_ORNAMENT = require('../../../../../assets/studio/elements/31-wedding ornament rings ribbon.png');
+const INTRO_BOUQUET = require('../../../../../assets/studio/elements/32-wedding watercolor bouquet ornament.png');
+const INTRO_CAKE = require('../../../../../assets/studio/elements/33-wedding cake champagne ornament.png');
+const INTRO_HEELS = require('../../../../../assets/studio/elements/34-wedding bridal heels veil ornament.png');
+const INTRO_ENVELOPE = require('../../../../../assets/studio/elements/35-wedding invitation envelope ornament.png');
 
 const C = {
   ink: '#F8F8F5',
@@ -514,7 +521,12 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
       {introVisible && (
         <Animated.View style={[s.scriptIntroLayer, { opacity: scriptIntroOpacity }]}>
           <TouchableOpacity activeOpacity={0.96} style={s.scriptIntroTouch} onPress={openScriptIntro}>
-            <View style={s.scriptIntroPaper}>
+            <Image source={INTRO_TOP_FLORAL} style={s.scriptIntroTopFloral} resizeMode="contain" />
+            <Image source={INTRO_BOTTOM_FLORAL} style={s.scriptIntroBottomFloral} resizeMode="contain" />
+            <View style={s.scriptIntroPaper} pointerEvents="none">
+              <Image source={INTRO_BOUQUET} style={s.scriptIntroBouquet} resizeMode="contain" />
+              <Image source={INTRO_ENVELOPE} style={s.scriptIntroEnvelope} resizeMode="contain" />
+              <Image source={INTRO_RING_ORNAMENT} style={s.scriptIntroRing} resizeMode="contain" />
               <Text style={s.scriptIntroLabel}>WEDDING DAY SCRIPT</Text>
               <Animated.Text
                 style={[
@@ -530,7 +542,7 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
                   },
                 ]}
               >
-                Our Wedding Day
+                Wedding Day
               </Animated.Text>
               <View style={s.scriptIntroLineTrack}>
                 <Animated.View
@@ -547,16 +559,21 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
                   ]}
                 />
               </View>
+              <Animated.Text style={[s.scriptIntroSubtitle, { opacity: scriptTextAnim }]}>
+                우리 두 사람의 가장 아름다운 문장
+              </Animated.Text>
               <Animated.View style={[s.scriptIntroNames, { opacity: scriptTextAnim }]}>
                 <Text style={s.scriptIntroName}>{groomName}</Text>
                 <Text style={s.scriptIntroAmp}>&</Text>
                 <Text style={s.scriptIntroName}>{brideName}</Text>
               </Animated.View>
               <Text style={s.scriptIntroDate}>{matchDate}</Text>
+              <Image source={INTRO_CAKE} style={s.scriptIntroCake} resizeMode="contain" />
+              <Image source={INTRO_HEELS} style={s.scriptIntroHeels} resizeMode="contain" />
             </View>
-            <Animated.Text style={[s.scriptIntroHint, { opacity: scriptHintOpacity }]}>
-              초대장 펼치기
-            </Animated.Text>
+            <Animated.View style={[s.scriptIntroHintPill, { opacity: scriptHintOpacity }]}>
+              <Text style={s.scriptIntroHint}>청첩장 열기</Text>
+            </Animated.View>
           </TouchableOpacity>
         </Animated.View>
       )}
@@ -788,89 +805,182 @@ const s = StyleSheet.create({
   scriptIntroLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 200,
-    backgroundColor: C.ink,
+    backgroundColor: '#F7F2EA',
   },
   scriptIntroTouch: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 28,
+    paddingHorizontal: 26,
+    paddingTop: IS_TABLET ? 34 : 24,
+    overflow: 'hidden',
+  },
+  scriptIntroTopFloral: {
+    position: 'absolute',
+    top: -72,
+    right: -104,
+    width: IS_TABLET ? 390 : 340,
+    height: IS_TABLET ? 260 : 227,
+    opacity: 0.42,
+    transform: [{ rotate: '3deg' }],
+  },
+  scriptIntroBottomFloral: {
+    position: 'absolute',
+    left: -82,
+    bottom: -70,
+    width: IS_TABLET ? 390 : 330,
+    height: IS_TABLET ? 260 : 220,
+    opacity: 0.48,
+    transform: [{ rotate: '-2deg' }],
   },
   scriptIntroPaper: {
-    width: Math.min(W - 58, 420),
-    minHeight: 370,
-    backgroundColor: C.panel,
+    width: Math.min(W - 52, 430),
+    minHeight: IS_TABLET ? 480 : 405,
+    backgroundColor: 'rgba(255,253,248,0.92)',
     borderWidth: 1,
-    borderColor: 'rgba(37,36,31,0.13)',
+    borderColor: 'rgba(168,139,92,0.2)',
     paddingHorizontal: 30,
-    paddingVertical: 42,
+    paddingTop: IS_TABLET ? 34 : 26,
+    paddingBottom: IS_TABLET ? 50 : 42,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 3,
     shadowColor: '#2B2823',
-    shadowOpacity: 0.14,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.11,
+    shadowRadius: 32,
+    shadowOffset: { width: 0, height: 18 },
     elevation: 5,
   },
+  scriptIntroBouquet: {
+    position: 'absolute',
+    top: -46,
+    left: -42,
+    width: IS_TABLET ? 132 : 108,
+    height: IS_TABLET ? 132 : 108,
+    opacity: 0.86,
+    transform: [{ rotate: '-12deg' }],
+    zIndex: 1,
+  },
+  scriptIntroEnvelope: {
+    position: 'absolute',
+    top: 20,
+    right: -34,
+    width: IS_TABLET ? 118 : 98,
+    height: IS_TABLET ? 118 : 98,
+    opacity: 0.7,
+    transform: [{ rotate: '10deg' }],
+    zIndex: 1,
+  },
+  scriptIntroRing: {
+    width: IS_TABLET ? 128 : 110,
+    height: IS_TABLET ? 128 : 110,
+    marginTop: -24,
+    marginBottom: -12,
+    opacity: 0.82,
+    zIndex: 0,
+  },
+  scriptIntroCake: {
+    position: 'absolute',
+    right: -30,
+    bottom: 26,
+    width: IS_TABLET ? 122 : 100,
+    height: IS_TABLET ? 122 : 100,
+    opacity: 0.62,
+    transform: [{ rotate: '-7deg' }],
+    zIndex: 1,
+  },
+  scriptIntroHeels: {
+    position: 'absolute',
+    left: -28,
+    bottom: 18,
+    width: IS_TABLET ? 118 : 96,
+    height: IS_TABLET ? 118 : 96,
+    opacity: 0.58,
+    transform: [{ rotate: '8deg' }],
+    zIndex: 1,
+  },
   scriptIntroLabel: {
-    color: C.sub,
+    color: '#A48A5E',
     fontSize: 10,
-    letterSpacing: 2.8,
+    letterSpacing: 3,
     fontWeight: '800',
-    marginBottom: 22,
+    marginBottom: 14,
+    transform: [{ translateY: -16 }],
+    zIndex: 2,
   },
   scriptIntroTitle: {
-    color: C.text,
-    fontSize: 36,
-    lineHeight: 45,
-    fontWeight: '300',
+    color: '#2E2923',
+    fontFamily: 'Great Vibes',
+    fontSize: IS_TABLET ? 68 : 58,
+    lineHeight: IS_TABLET ? 88 : 76,
+    fontWeight: '400',
     textAlign: 'center',
-    fontStyle: 'italic',
+    zIndex: 3,
   },
   scriptIntroLineTrack: {
-    width: '86%',
-    height: 28,
+    width: '74%',
+    height: 26,
     justifyContent: 'center',
-    marginTop: 18,
-    marginBottom: 18,
+    marginTop: 4,
+    marginBottom: 4,
   },
   scriptIntroInkLine: {
     width: '100%',
-    height: 1,
-    backgroundColor: C.gold,
+    height: 1.4,
+    backgroundColor: '#B99255',
+  },
+  scriptIntroSubtitle: {
+    color: '#736A5F',
+    fontSize: 14,
+    lineHeight: 22,
+    fontWeight: '500',
+    marginTop: 6,
+    marginBottom: 18,
+    textAlign: 'center',
   },
   scriptIntroNames: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    flexWrap: 'wrap',
   },
   scriptIntroName: {
-    color: C.text,
-    fontSize: 23,
-    lineHeight: 31,
-    fontWeight: '300',
-    letterSpacing: 1.1,
+    color: '#9D773A',
+    fontFamily: 'NanumBrushScript',
+    fontSize: IS_TABLET ? 70 : 58,
+    lineHeight: IS_TABLET ? 76 : 63,
+    fontWeight: '400',
+    textAlign: 'center',
   },
   scriptIntroAmp: {
-    color: C.gold,
-    fontSize: 16,
-    lineHeight: 27,
-    fontWeight: '300',
+    color: '#A88754',
+    fontFamily: 'Great Vibes',
+    fontSize: IS_TABLET ? 34 : 30,
+    lineHeight: IS_TABLET ? 38 : 34,
+    fontWeight: '400',
+    marginVertical: -2,
   },
   scriptIntroDate: {
-    marginTop: 18,
-    color: C.sub,
+    marginTop: 16,
+    color: '#8E7E68',
     fontSize: 12,
-    letterSpacing: 1.8,
+    letterSpacing: 2.2,
     fontWeight: '700',
   },
+  scriptIntroHintPill: {
+    marginTop: 26,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 999,
+    backgroundColor: '#2E2923',
+    shadowColor: '#2B2823',
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
   scriptIntroHint: {
-    marginTop: 28,
-    color: C.sub,
+    color: '#FFF9EF',
     fontSize: 13,
-    letterSpacing: 1.7,
+    letterSpacing: 1.2,
     fontWeight: '800',
   },
 });

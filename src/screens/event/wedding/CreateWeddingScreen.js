@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, KeyboardAvoidingView, Platform, Image,
-  Dimensions, Modal, Animated, Easing, FlatList, DeviceEventEmitter, ActivityIndicator,
+  Dimensions, Modal, Animated, Easing, FlatList, DeviceEventEmitter, ActivityIndicator, BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -218,6 +218,8 @@ const PETAL_COLORS = {
   classic:      { bg: '#FFF0F8', accent: '#EC4899', iconBg: '#FCE7F3' },
   custom_petal: { bg: '#FFF5F0', accent: '#F97316', iconBg: '#FFEDD5' },
 };
+
+const BUILT_IN_INTRO_TEMPLATE_IDS = ['vintage-app', 'ticket-flight', 'cinema-romance', 'runic-rift', 'photo-book'];
 
 const CUSTOM_PETAL_COLOR_OPTIONS = [
   { id: 'pink',   label: '벚꽃', color: '#ffb7c5' },
@@ -1014,8 +1016,10 @@ export default function CreateWeddingScreen({ navigation, route }) {
   const previewSoundRef = useRef(null);
   const progressIntervalRef = useRef(null);
   const preloadedImageUrisRef = useRef(new Set());
+  const completionNavTimeoutRef = useRef(null);
   const [bankPicker, setBankPicker] = useState({ visible: false, field: '' });
   const [isLoading, setIsLoading] = useState(false);
+  const [createdDisplayParams, setCreatedDisplayParams] = useState(null);
   const [alertInfo, setAlertInfo] = useState({ visible: false, title: '', message: '' });
   const [imageUploadState, setImageUploadState] = useState({
     isUploading: false, currentIndex: 0, totalCount: 0, uploadingCategory: null,
@@ -1053,6 +1057,40 @@ export default function CreateWeddingScreen({ navigation, route }) {
     loop.start();
     return () => loop.stop();
   }, [testButtonAnim]);
+
+  useEffect(() => {
+    if (step !== 3) return undefined;
+
+    navigation.setOptions?.({ gestureEnabled: false });
+    const backSub = BackHandler.addEventListener('hardwareBackPress', () => true);
+
+    return () => {
+      backSub.remove();
+      navigation.setOptions?.({ gestureEnabled: true });
+    };
+  }, [navigation, step]);
+
+  useEffect(() => () => {
+    if (completionNavTimeoutRef.current) {
+      clearTimeout(completionNavTimeoutRef.current);
+      completionNavTimeoutRef.current = null;
+    }
+  }, []);
+
+  const goToHome = () => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainTabs', params: { screen: 'Home' } }],
+    });
+  };
+
+  const goToCreatedInvitation = () => {
+    if (!createdDisplayParams) {
+      goToHome();
+      return;
+    }
+    navigation.navigate('EventDisplay', createdDisplayParams);
+  };
 
   // ── 헬퍼 함수들 ──
   const updateForm = (key, value) => setEventData(prev => ({ ...prev, [key]: value }));
@@ -1589,8 +1627,8 @@ export default function CreateWeddingScreen({ navigation, route }) {
     setCurrentPreviewFrameScale(savedFrame?.scale || FRAME_DEFAULT_SCALE);
     setCurrentPreviewFrameOffsetX(savedFrame?.offsetX || 0);
     setCurrentPreviewFrameOffsetY(savedFrame?.offsetY || 0);
-    // 웜 오렌지·시네마 로맨스는 자체 인트로가 있어 외부 인트로 오버레이 강제 비활성화
-    const hasOwnIntro = tpl.id === 'vintage-app' || tpl.id === 'cinema-romance';
+    // 자체 인트로가 있는 템플릿은 외부 인트로 오버레이 강제 비활성화
+    const hasOwnIntro = BUILT_IN_INTRO_TEMPLATE_IDS.includes(tpl.id);
     const savedIntro = hasOwnIntro ? null : templateIntroMap[tpl.id];
     setCurrentPreviewIntroId(savedIntro?.id || 'none');
     setPreviewTemplate(tpl);
@@ -1720,15 +1758,20 @@ export default function CreateWeddingScreen({ navigation, route }) {
       creationCreditSettledRef.current = !!creationCreditReservationRef.current;
       const result = await createEvent(formattedEventData);
       if (result.success) {
+        const displayParams = {
+          eventId: result.data.id,
+          templateStyle: eventData.selectedTemplate?.style || 'modern-dark',
+          categorizedImages,
+          allowMessages: eventData.allowMessages,
+          messageSettings: eventData.messageSettings,
+          closeToHome: true,
+        };
+        setCreatedDisplayParams(displayParams);
         setStep(3);
-        setTimeout(() => {
-          navigation.navigate('EventDisplay', {
-            eventId: result.data.id,
-            templateStyle: eventData.selectedTemplate?.style || 'modern-dark',
-            categorizedImages,
-            allowMessages: eventData.allowMessages,
-            messageSettings: eventData.messageSettings,
-          });
+        if (completionNavTimeoutRef.current) clearTimeout(completionNavTimeoutRef.current);
+        completionNavTimeoutRef.current = setTimeout(() => {
+          completionNavTimeoutRef.current = null;
+          navigation.navigate('EventDisplay', displayParams);
         }, 2000);
       } else {
         throw new Error(result.error);
@@ -1826,10 +1869,14 @@ export default function CreateWeddingScreen({ navigation, route }) {
         <View style={s.header}>
           <View style={s.headerRow}>
             <TouchableOpacity
-              onPress={() => step > 1 ? setStep(step - 1) : navigation.goBack()}
-              style={s.backBtn}
+              onPress={() => {
+                if (step === 3) return;
+                step > 1 ? setStep(step - 1) : navigation.goBack();
+              }}
+              style={[s.backBtn, step === 3 && s.backBtnHidden]}
+              disabled={step === 3}
             >
-              <Ionicons name="chevron-back" size={24} color={C.text} />
+              {step !== 3 && <Ionicons name="chevron-back" size={24} color={C.text} />}
             </TouchableOpacity>
             <Text style={s.headerTitle}>청첩장 만들기</Text>
             <View style={{ width: 28 }} />
@@ -2118,7 +2165,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
                           </View>
                         ))}
                       </View>
-                      {(templateMusicMap[tpl.id] || (templatePetalMap[tpl.id] && templatePetalMap[tpl.id].id !== 'none') || (templateIntroMap[tpl.id] && templateIntroMap[tpl.id].id !== 'none') || templateFrameMap[tpl.id]) && (
+                      {(templateMusicMap[tpl.id] || (templatePetalMap[tpl.id] && templatePetalMap[tpl.id].id !== 'none') || (!BUILT_IN_INTRO_TEMPLATE_IDS.includes(tpl.id) && templateIntroMap[tpl.id] && templateIntroMap[tpl.id].id !== 'none') || templateFrameMap[tpl.id]) && (
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                           {templateMusicMap[tpl.id] && (
                             <View style={s.tplMusicBadge}>
@@ -2136,8 +2183,8 @@ export default function CreateWeddingScreen({ navigation, route }) {
                               </Text>
                             </View>
                           )}
-                          {/* 웜 오렌지(vintage-app)는 자체 인트로라 외부 인트로 뱃지 숨김 */}
-                          {tpl.id !== 'vintage-app' && templateIntroMap[tpl.id] && templateIntroMap[tpl.id].id !== 'none' && (
+                          {/* 자체 인트로 템플릿은 외부 인트로 뱃지 숨김 */}
+                          {!BUILT_IN_INTRO_TEMPLATE_IDS.includes(tpl.id) && templateIntroMap[tpl.id] && templateIntroMap[tpl.id].id !== 'none' && (
                             <View style={[s.tplMusicBadge, { backgroundColor: '#f0f4ff' }]}>
                               <Text style={{ fontSize: 11 }}>🎬</Text>
                               <Text style={[s.tplMusicBadgeText, { color: '#3a5bd9' }]} numberOfLines={1}>
@@ -2182,6 +2229,21 @@ export default function CreateWeddingScreen({ navigation, route }) {
               <View style={s.completionPill}>
                 <Text style={s.completionPillText}>잠시 후 청첩장 화면으로 이동할게요</Text>
               </View>
+              <TouchableOpacity
+                style={s.completionPrimaryButton}
+                onPress={goToCreatedInvitation}
+                activeOpacity={0.88}
+              >
+                <Text style={s.completionPrimaryButtonText}>청첩장 바로 보기</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.completionHomeButton}
+                onPress={goToHome}
+                activeOpacity={0.88}
+              >
+                <Ionicons name="home-outline" size={17} color={C.primary} />
+                <Text style={s.completionHomeButtonText}>메인 화면으로 가기</Text>
+              </TouchableOpacity>
               <View style={s.spinner} />
             </View>
           )}
@@ -2365,8 +2427,8 @@ export default function CreateWeddingScreen({ navigation, route }) {
                 </TouchableOpacity>
               )}
 
-              {/* 인트로 — 웜 오렌지·러브 티켓·시네마 로맨스는 자체 인트로가 있어 별도 선택 불가 */}
-              {previewTemplate?.id !== 'vintage-app' && previewTemplate?.id !== 'ticket-flight' && previewTemplate?.id !== 'cinema-romance' && (
+              {/* 인트로 — 자체 인트로가 있는 템플릿은 별도 선택 불가 */}
+              {!BUILT_IN_INTRO_TEMPLATE_IDS.includes(previewTemplate?.id) && (
                 <TouchableOpacity
                   ref={previewIntroBtnRef}
                   style={[s.previewCtrlBtn, currentPreviewIntroId !== 'none' && s.previewCtrlBtnIntro]}
@@ -2755,6 +2817,7 @@ const s = StyleSheet.create({
   },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, marginBottom: 16 },
   backBtn: { padding: 4, marginLeft: -4 },
+  backBtnHidden: { opacity: 0 },
   headerTitle: { fontSize: 18, fontWeight: '700', color: C.text },
   progressTrack: { height: 6, backgroundColor: C.bg, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: C.primary, borderRadius: 3 },
@@ -3150,6 +3213,44 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: C.bg,
   },
   completionPillText: { color: C.textSub, fontWeight: '500', textAlign: 'center' },
+  completionPrimaryButton: {
+    marginTop: 22,
+    minWidth: 210,
+    backgroundColor: C.primary,
+    paddingHorizontal: 22,
+    paddingVertical: 15,
+    borderRadius: 14,
+    alignItems: 'center',
+    shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  completionPrimaryButtonText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: C.white,
+  },
+  completionHomeButton: {
+    marginTop: 10,
+    minWidth: 210,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: C.white,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  completionHomeButtonText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: C.primary,
+  },
   spinner: {
     width: 44, height: 44, borderRadius: 22, borderWidth: 4,
     borderColor: C.bg, borderTopColor: C.primary, marginTop: 48,

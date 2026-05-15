@@ -18,6 +18,7 @@ import {
   Easing,
   PanResponder,
   DeviceEventEmitter,
+  BackHandler,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,21 +53,25 @@ const MAIN_IMAGE_LAYOUT_DEFAULT = {
   scale: 1,
   translateX: 0,
   translateY: 0,
+  baseWidth: null,
 };
 const MEMORIAL_TEXT_LAYOUT_DEFAULT = {
   scale: 1,
   translateX: 0,
   translateY: 0,
+  baseWidth: null,
 };
 const MEMORIAL_NAME_LAYOUT_DEFAULT = {
   scale: 1,
   translateX: 0,
   translateY: 0,
+  baseWidth: null,
 };
 const MEMORIAL_DATE_LAYOUT_DEFAULT = {
   scale: 1,
   translateX: 0,
   translateY: 0,
+  baseWidth: null,
 };
 const MAIN_IMAGE_MIN_SCALE = 0.25;
 const MAIN_IMAGE_MAX_SCALE = 3;
@@ -1136,7 +1141,10 @@ const ImageUploadModal = ({ visible, currentIndex, totalCount, onCancel }) => (
 export default function CreateFuneralScreen({ navigation, route }) {
   const creationCreditReservationRef = useRef(route?.params?.eventCreationCreditReservation || null);
   const creationCreditSettledRef = useRef(false);
+  const completionNavTimeoutRef = useRef(null);
   const [currentStep, setCurrentStep] = useState(1);
+  const [isCreationComplete, setIsCreationComplete] = useState(false);
+  const [createdDisplayParams, setCreatedDisplayParams] = useState(null);
   const [eventData, setEventData] = useState({
     type: 'funeral', // 🔥 고정값
     title: '',
@@ -1202,9 +1210,14 @@ export default function CreateFuneralScreen({ navigation, route }) {
   const [mainPhotoLayoutView, setMainPhotoLayoutView] = useState({ ...MAIN_IMAGE_LAYOUT_DEFAULT });
   const [memorialNameLayoutView, setMemorialNameLayoutView] = useState({ ...MEMORIAL_NAME_LAYOUT_DEFAULT });
   const [memorialDateLayoutView, setMemorialDateLayoutView] = useState({ ...MEMORIAL_DATE_LAYOUT_DEFAULT });
+  const [composerFrameWidth, setComposerFrameWidth] = useState(null);
 
   React.useEffect(() => {
     return () => {
+      if (completionNavTimeoutRef.current) {
+        clearTimeout(completionNavTimeoutRef.current);
+        completionNavTimeoutRef.current = null;
+      }
       const reservation = creationCreditReservationRef.current;
       if (!reservation?.success || creationCreditSettledRef.current) return;
       refundEventCreationCredit({
@@ -1217,6 +1230,33 @@ export default function CreateFuneralScreen({ navigation, route }) {
         .catch(() => {});
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!isCreationComplete) return undefined;
+
+    navigation.setOptions?.({ gestureEnabled: false });
+    const backSub = BackHandler.addEventListener('hardwareBackPress', () => true);
+
+    return () => {
+      backSub.remove();
+      navigation.setOptions?.({ gestureEnabled: true });
+    };
+  }, [isCreationComplete, navigation]);
+
+  const goToHome = () => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainTabs', params: { screen: 'Home' } }],
+    });
+  };
+
+  const goToCreatedNotice = () => {
+    if (!createdDisplayParams) {
+      goToHome();
+      return;
+    }
+    navigation.navigate('EventDisplay', createdDisplayParams);
+  };
   
   // 이미지 업로드 관련 상태
   const [imageUploadState, setImageUploadState] = useState({
@@ -1570,10 +1610,12 @@ export default function CreateFuneralScreen({ navigation, route }) {
     const scale = Number(raw.scale);
     const translateX = Number(raw.translateX);
     const translateY = Number(raw.translateY);
+    const baseWidth = Number(raw.baseWidth);
     return {
       scale: Number.isFinite(scale) ? Math.min(MAIN_IMAGE_MAX_SCALE, Math.max(MAIN_IMAGE_MIN_SCALE, scale)) : MAIN_IMAGE_LAYOUT_DEFAULT.scale,
       translateX: Number.isFinite(translateX) ? Math.min(MAIN_IMAGE_TRANSLATE_LIMIT, Math.max(-MAIN_IMAGE_TRANSLATE_LIMIT, translateX)) : MAIN_IMAGE_LAYOUT_DEFAULT.translateX,
       translateY: Number.isFinite(translateY) ? Math.min(MAIN_IMAGE_TRANSLATE_LIMIT, Math.max(-MAIN_IMAGE_TRANSLATE_LIMIT, translateY)) : MAIN_IMAGE_LAYOUT_DEFAULT.translateY,
+      baseWidth: Number.isFinite(baseWidth) && baseWidth > 0 ? baseWidth : null,
     };
   };
 
@@ -1586,6 +1628,9 @@ export default function CreateFuneralScreen({ navigation, route }) {
     const nextLayout = normalizeMainImageLayout({
       ...currentLayout,
       ...(patch || {}),
+      baseWidth: (patch && Object.prototype.hasOwnProperty.call(patch, 'baseWidth'))
+        ? patch.baseWidth
+        : currentLayout.baseWidth || composerFrameWidth || null,
     });
     latestMainImageLayoutRef.current = nextLayout;
     setMainPhotoLayoutView(nextLayout);
@@ -1609,8 +1654,11 @@ export default function CreateFuneralScreen({ navigation, route }) {
       eventData.mainPhotoLayout ||
       MAIN_IMAGE_LAYOUT_DEFAULT
     );
-    latestMainImageLayoutRef.current = layout;
-    return layout;
+    const nextLayout = layout.baseWidth || !composerFrameWidth
+      ? layout
+      : { ...layout, baseWidth: composerFrameWidth };
+    latestMainImageLayoutRef.current = nextLayout;
+    return nextLayout;
   };
 
   const commitMainImageLayout = () => {
@@ -1619,17 +1667,21 @@ export default function CreateFuneralScreen({ navigation, route }) {
       eventDataRef.current?.mainPhotoLayout ||
       MAIN_IMAGE_LAYOUT_DEFAULT
     );
-    latestMainImageLayoutRef.current = layout;
-    setMainPhotoLayoutView(layout);
+    const nextLayout = {
+      ...layout,
+      baseWidth: layout.baseWidth || composerFrameWidth || null,
+    };
+    latestMainImageLayoutRef.current = nextLayout;
+    setMainPhotoLayoutView(nextLayout);
     eventDataRef.current = {
       ...(eventDataRef.current || {}),
-      mainPhotoLayout: layout,
+      mainPhotoLayout: nextLayout,
     };
     setEventData(prevData => ({
       ...prevData,
-      mainPhotoLayout: layout,
+      mainPhotoLayout: nextLayout,
     }));
-    return layout;
+    return nextLayout;
   };
 
   const normalizeMemorialTextLayout = (layout) => {
@@ -1637,10 +1689,12 @@ export default function CreateFuneralScreen({ navigation, route }) {
     const scale = Number(raw.scale);
     const translateX = Number(raw.translateX);
     const translateY = Number(raw.translateY);
+    const baseWidth = Number(raw.baseWidth);
     return {
       scale: Number.isFinite(scale) ? Math.min(MEMORIAL_TEXT_MAX_SCALE, Math.max(MEMORIAL_TEXT_MIN_SCALE, scale)) : MEMORIAL_TEXT_LAYOUT_DEFAULT.scale,
       translateX: Number.isFinite(translateX) ? Math.min(MEMORIAL_TEXT_TRANSLATE_LIMIT, Math.max(-MEMORIAL_TEXT_TRANSLATE_LIMIT, translateX)) : MEMORIAL_TEXT_LAYOUT_DEFAULT.translateX,
       translateY: Number.isFinite(translateY) ? Math.min(MEMORIAL_TEXT_TRANSLATE_LIMIT, Math.max(-MEMORIAL_TEXT_TRANSLATE_LIMIT, translateY)) : MEMORIAL_TEXT_LAYOUT_DEFAULT.translateY,
+      baseWidth: Number.isFinite(baseWidth) && baseWidth > 0 ? baseWidth : null,
     };
   };
 
@@ -1670,11 +1724,13 @@ export default function CreateFuneralScreen({ navigation, route }) {
       updateActiveMemorialTextLayout({ scale: layout.scale + delta });
       return;
     }
+    const renderScale = getLayoutRenderScale(layout);
+    const normalizedDelta = renderScale ? delta / renderScale : delta;
     if (axis === 'x') {
-      updateActiveMemorialTextLayout({ translateX: layout.translateX + delta });
+      updateActiveMemorialTextLayout({ translateX: layout.translateX + normalizedDelta });
       return;
     }
-    updateActiveMemorialTextLayout({ translateY: layout.translateY + delta });
+    updateActiveMemorialTextLayout({ translateY: layout.translateY + normalizedDelta });
   };
 
   const resetMemorialTextLayout = () => {
@@ -1700,6 +1756,13 @@ export default function CreateFuneralScreen({ navigation, route }) {
   const getActiveMemorialTextLayout = () => (
     textAdjustTargetRef.current === 'date' ? getMemorialDateLayout() : getMemorialNameLayout()
   );
+
+  const getLayoutRenderScale = (layout, compact = false) => {
+    if (compact) return 0.55;
+    const baseWidth = Number(layout?.baseWidth);
+    if (!composerFrameWidth || !Number.isFinite(baseWidth) || baseWidth <= 0) return 1;
+    return composerFrameWidth / baseWidth;
+  };
 
   const getMemorialFontOption = (fontId) => (
     MEMORIAL_TEXT_FONT_OPTIONS.find(option => option.id === fontId) || MEMORIAL_TEXT_FONT_OPTIONS[0]
@@ -1762,6 +1825,9 @@ export default function CreateFuneralScreen({ navigation, route }) {
     const nextLayout = normalizeMemorialTextLayout({
       ...currentLayout,
       ...safePatch,
+      baseWidth: Object.prototype.hasOwnProperty.call(safePatch, 'baseWidth')
+        ? safePatch.baseWidth
+        : currentLayout.baseWidth || composerFrameWidth || null,
     });
 
     if (target === 'date') {
@@ -1791,20 +1857,24 @@ export default function CreateFuneralScreen({ navigation, route }) {
         ? (latestMemorialDateLayoutRef.current || eventDataRef.current?.memorialDateLayout || MEMORIAL_DATE_LAYOUT_DEFAULT)
         : (latestMemorialNameLayoutRef.current || eventDataRef.current?.memorialNameLayout || MEMORIAL_NAME_LAYOUT_DEFAULT)
     );
+    const nextLayout = {
+      ...layout,
+      baseWidth: layout.baseWidth || composerFrameWidth || null,
+    };
 
     if (target === 'date') {
-      latestMemorialDateLayoutRef.current = layout;
-      setMemorialDateLayoutView(layout);
-      eventDataRef.current = { ...(eventDataRef.current || {}), memorialDateLayout: layout };
-      setEventData(prevData => ({ ...prevData, memorialDateLayout: layout }));
-      return layout;
+      latestMemorialDateLayoutRef.current = nextLayout;
+      setMemorialDateLayoutView(nextLayout);
+      eventDataRef.current = { ...(eventDataRef.current || {}), memorialDateLayout: nextLayout };
+      setEventData(prevData => ({ ...prevData, memorialDateLayout: nextLayout }));
+      return nextLayout;
     }
 
-    latestMemorialNameLayoutRef.current = layout;
-    setMemorialNameLayoutView(layout);
-    eventDataRef.current = { ...(eventDataRef.current || {}), memorialNameLayout: layout };
-    setEventData(prevData => ({ ...prevData, memorialNameLayout: layout }));
-    return layout;
+    latestMemorialNameLayoutRef.current = nextLayout;
+    setMemorialNameLayoutView(nextLayout);
+    eventDataRef.current = { ...(eventDataRef.current || {}), memorialNameLayout: nextLayout };
+    setEventData(prevData => ({ ...prevData, memorialNameLayout: nextLayout }));
+    return nextLayout;
   };
 
   const getSelectedPhotoFrame = () => {
@@ -1884,9 +1954,10 @@ export default function CreateFuneralScreen({ navigation, route }) {
       }
 
       const currentLayout = latestMainImageLayoutRef.current || MAIN_IMAGE_LAYOUT_DEFAULT;
+      const renderScale = getLayoutRenderScale(currentLayout);
       updateMainImageLayout({
-        translateX: currentLayout.translateX + stepX,
-        translateY: currentLayout.translateY + stepY,
+        translateX: currentLayout.translateX + (renderScale ? stepX / renderScale : stepX),
+        translateY: currentLayout.translateY + (renderScale ? stepY / renderScale : stepY),
       });
     }, 16);
   };
@@ -1942,10 +2013,11 @@ export default function CreateFuneralScreen({ navigation, route }) {
         setTextJoystickKnob({ x: knobX, y: knobY });
         const startLayout = textJoystickStartLayoutRef.current || MEMORIAL_TEXT_LAYOUT_DEFAULT;
         const currentLayout = getActiveMemorialTextLayout();
+        const renderScale = getLayoutRenderScale(currentLayout);
         updateActiveMemorialTextLayout({
           scale: currentLayout.scale,
-          translateX: startLayout.translateX + gestureState.dx,
-          translateY: startLayout.translateY + gestureState.dy,
+          translateX: startLayout.translateX + (renderScale ? gestureState.dx / renderScale : gestureState.dx),
+          translateY: startLayout.translateY + (renderScale ? gestureState.dy / renderScale : gestureState.dy),
         });
       },
       onPanResponderRelease: () => {
@@ -2640,7 +2712,10 @@ export default function CreateFuneralScreen({ navigation, route }) {
     const name = eventData.deceasedName?.trim() || '고인명';
     const birth = formatMemorialDate(eventData.birthDate) || '1948. 03. 12';
     const death = formatMemorialDate(eventData.deathDate) || '2026. 05. 12';
-    const translateRatio = compact ? 0.55 : 1;
+    const nameRenderScale = getLayoutRenderScale(nameLayout, compact);
+    const dateRenderScale = getLayoutRenderScale(dateLayout, compact);
+    const textSizeScale = compact ? 1 : Math.min(1.35, Math.max(0.55, nameRenderScale || 1));
+    const dateSizeScale = compact ? 1 : Math.min(1.35, Math.max(0.55, dateRenderScale || 1));
 
     return (
       <>
@@ -2651,14 +2726,22 @@ export default function CreateFuneralScreen({ navigation, route }) {
               compact ? styles.memorialNameOverlayCompact : styles.memorialNameOverlay,
               {
                 transform: [
-                  { translateX: nameLayout.translateX * translateRatio },
-                  { translateY: nameLayout.translateY * translateRatio },
+                  { translateX: nameLayout.translateX * nameRenderScale },
+                  { translateY: nameLayout.translateY * nameRenderScale },
                   { scale: nameLayout.scale },
                 ],
               },
             ]}
           >
-            <Text style={[compact ? styles.memorialNameTextCompact : styles.memorialNameText, getMemorialFontStyle('name')]}>故 {name}</Text>
+            <Text
+              style={[
+                compact ? styles.memorialNameTextCompact : styles.memorialNameText,
+                !compact && { fontSize: 28 * textSizeScale, lineHeight: 34 * textSizeScale },
+                getMemorialFontStyle('name'),
+              ]}
+            >
+              故 {name}
+            </Text>
           </View>
         )}
         {eventData.memorialDateVisible !== false && (
@@ -2668,14 +2751,22 @@ export default function CreateFuneralScreen({ navigation, route }) {
               compact ? styles.memorialDateOverlayCompact : styles.memorialDateOverlay,
               {
                 transform: [
-                  { translateX: dateLayout.translateX * translateRatio },
-                  { translateY: dateLayout.translateY * translateRatio },
+                  { translateX: dateLayout.translateX * dateRenderScale },
+                  { translateY: dateLayout.translateY * dateRenderScale },
                   { scale: dateLayout.scale },
                 ],
               },
             ]}
           >
-            <Text style={[compact ? styles.memorialDateTextCompact : styles.memorialDateText, getMemorialFontStyle('date')]}>{birth} ~ {death}</Text>
+            <Text
+              style={[
+                compact ? styles.memorialDateTextCompact : styles.memorialDateText,
+                !compact && { marginTop: 6 * dateSizeScale, fontSize: 13 * dateSizeScale, lineHeight: 18 * dateSizeScale },
+                getMemorialFontStyle('date'),
+              ]}
+            >
+              {birth} ~ {death}
+            </Text>
           </View>
         )}
       </>
@@ -2688,6 +2779,7 @@ export default function CreateFuneralScreen({ navigation, route }) {
     const selectedFrame = getSelectedPhotoFrame();
     const layout = compact ? mainPhotoLayoutView : getMainImageLayout();
     const frameAspectRatio = getPhotoFrameAspectRatio(selectedFrame);
+    const renderScale = getLayoutRenderScale(layout, compact);
 
     if (!selectedPhotoUri) {
       return (
@@ -2707,8 +2799,8 @@ export default function CreateFuneralScreen({ navigation, route }) {
             styles.templateComposerPhoto,
             {
               transform: [
-                { translateX: layout.translateX * (compact ? 0.55 : 1) },
-                { translateY: layout.translateY * (compact ? 0.55 : 1) },
+                { translateX: layout.translateX * renderScale },
+                { translateY: layout.translateY * renderScale },
                 { scale: layout.scale },
               ],
             },
@@ -2913,6 +3005,30 @@ export default function CreateFuneralScreen({ navigation, route }) {
           bank_name: account.bankName,
           account_number: account.accountNumber.trim(),
         }));
+      const selectedFrame = FUNERAL_PHOTO_FRAMES.find((frame) => frame.id === eventData.selectedPhotoFrameId);
+      const savedMainPhotoLayout = normalizeMainImageLayout(
+        latestMainImageLayoutRef.current ||
+        mainPhotoLayoutView ||
+        eventData.mainPhotoLayout ||
+        MAIN_IMAGE_LAYOUT_DEFAULT
+      );
+      const savedMemorialTextLayout = normalizeMemorialTextLayout(
+        latestMemorialTextLayoutRef.current ||
+        eventData.memorialTextLayout ||
+        MEMORIAL_TEXT_LAYOUT_DEFAULT
+      );
+      const savedMemorialNameLayout = normalizeMemorialTextLayout(
+        latestMemorialNameLayoutRef.current ||
+        memorialNameLayoutView ||
+        eventData.memorialNameLayout ||
+        MEMORIAL_NAME_LAYOUT_DEFAULT
+      );
+      const savedMemorialDateLayout = normalizeMemorialTextLayout(
+        latestMemorialDateLayoutRef.current ||
+        memorialDateLayoutView ||
+        eventData.memorialDateLayout ||
+        MEMORIAL_DATE_LAYOUT_DEFAULT
+      );
       
       console.log('🔍 저장할 부고 데이터:', {
         deceasedName: eventData.deceasedName,
@@ -2980,13 +3096,13 @@ export default function CreateFuneralScreen({ navigation, route }) {
           birth_date: dateToISODate(eventData.birthDate),
           photo_frame: {
             id: eventData.selectedPhotoFrameId,
-            key: FUNERAL_PHOTO_FRAMES.find((frame) => frame.id === eventData.selectedPhotoFrameId)?.key || null,
+            key: selectedFrame?.key || null,
           },
           age_calculation_method: eventData.ageCalculationMethod,
-          main_photo_layout: normalizeMainImageLayout(eventData.mainPhotoLayout || MAIN_IMAGE_LAYOUT_DEFAULT),
-          memorial_text_layout: normalizeMemorialTextLayout(eventData.memorialTextLayout || MEMORIAL_TEXT_LAYOUT_DEFAULT),
-          memorial_name_layout: normalizeMemorialTextLayout(eventData.memorialNameLayout || MEMORIAL_NAME_LAYOUT_DEFAULT),
-          memorial_date_layout: normalizeMemorialTextLayout(eventData.memorialDateLayout || MEMORIAL_DATE_LAYOUT_DEFAULT),
+          main_photo_layout: savedMainPhotoLayout,
+          memorial_text_layout: savedMemorialTextLayout,
+          memorial_name_layout: savedMemorialNameLayout,
+          memorial_date_layout: savedMemorialDateLayout,
           memorial_name_font_id: eventData.memorialNameFontId || MEMORIAL_TEXT_FONT_OPTIONS[0].id,
           memorial_date_font_id: eventData.memorialDateFontId || MEMORIAL_TEXT_FONT_OPTIONS[0].id,
           memorial_name_color: eventData.memorialNameColor || MEMORIAL_NAME_DEFAULT_COLOR,
@@ -3019,14 +3135,20 @@ export default function CreateFuneralScreen({ navigation, route }) {
 
       if (result.success) {
         console.log('✅ 부고 이벤트 생성 및 이미지 저장 완료, ID:', result.data.id);
-        setTimeout(() => {
-          navigation.navigate('EventDisplay', { 
-            eventId: result.data.id,
-            templateStyle: eventData.selectedTemplate?.style || 'modern-card',
-            categorizedImages: categorizedImages,
-            allowMessages: eventData.allowMessages,
-            messageSettings: eventData.messageSettings,
-          });
+        const displayParams = {
+          eventId: result.data.id,
+          templateStyle: eventData.selectedTemplate?.style || 'modern-card',
+          categorizedImages: categorizedImages,
+          allowMessages: eventData.allowMessages,
+          messageSettings: eventData.messageSettings,
+          closeToHome: true,
+        };
+        setCreatedDisplayParams(displayParams);
+        setIsCreationComplete(true);
+        if (completionNavTimeoutRef.current) clearTimeout(completionNavTimeoutRef.current);
+        completionNavTimeoutRef.current = setTimeout(() => {
+          completionNavTimeoutRef.current = null;
+          navigation.navigate('EventDisplay', displayParams);
         }, 2000);
       } else {
         throw new Error(result.error);
@@ -4238,7 +4360,15 @@ export default function CreateFuneralScreen({ navigation, route }) {
         </View>
 
         <View style={styles.templateComposerCanvas}>
-          <View style={[styles.templateComposerPhotoFrame, { aspectRatio: frameAspectRatio }]}>
+          <View
+            style={[styles.templateComposerPhotoFrame, { aspectRatio: frameAspectRatio }]}
+            onLayout={(event) => {
+              const nextWidth = event.nativeEvent.layout.width;
+              if (nextWidth > 0 && Math.abs((composerFrameWidth || 0) - nextWidth) > 1) {
+                setComposerFrameWidth(nextWidth);
+              }
+            }}
+          >
             {renderComposedPhotoFrame({ insideExistingFrame: true })}
             {renderComposerActionFab()}
             {renderPhotoAdjustmentOverlay()}
@@ -4330,6 +4460,33 @@ export default function CreateFuneralScreen({ navigation, route }) {
 
   const renderStep3 = () => renderTemplateComposer();
 
+  const renderCompletion = () => (
+    <View style={styles.completionContainer}>
+      <View style={styles.completionContent}>
+        <View style={styles.completionIconContainer}>
+          <Text style={styles.completionEmoji}>🕯️</Text>
+        </View>
+        <Text style={styles.completionTitle}>{'모바일 부고장이\n완성되었어요'}</Text>
+        <Text style={styles.completionSubtitle}>잠시 후 부고장 화면으로 이동할게요</Text>
+        <TouchableOpacity
+          style={styles.completionPrimaryButton}
+          onPress={goToCreatedNotice}
+          activeOpacity={0.88}
+        >
+          <Text style={styles.completionPrimaryButtonText}>부고장 바로 보기</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.completionHomeButton}
+          onPress={goToHome}
+          activeOpacity={0.88}
+        >
+          <Ionicons name="home-outline" size={17} color={TossColors.primary} />
+          <Text style={styles.completionHomeButtonText}>메인 화면으로 가기</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
@@ -4348,12 +4505,16 @@ export default function CreateFuneralScreen({ navigation, route }) {
         style={styles.content}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {currentStep === 1 && renderStep1()}
-        {currentStep === 2 && renderStep2()}
-        {currentStep === 3 && renderStep3()}
+        {isCreationComplete ? renderCompletion() : (
+          <>
+            {currentStep === 1 && renderStep1()}
+            {currentStep === 2 && renderStep2()}
+            {currentStep === 3 && renderStep3()}
+          </>
+        )}
 
         {/* 하단 버튼 */}
-        {currentStep <= 3 && (
+        {!isCreationComplete && currentStep <= 3 && (
           <>
           {currentStep === 1 && (
             <Animated.View
@@ -6845,6 +7006,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: TossColors.textSecondary,
     textAlign: 'center',
+  },
+  completionPrimaryButton: {
+    marginTop: 24,
+    minWidth: 210,
+    height: 54,
+    borderRadius: 14,
+    backgroundColor: TossColors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: TossColors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  completionPrimaryButtonText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  completionHomeButton: {
+    marginTop: 10,
+    minWidth: 210,
+    height: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: TossColors.border,
+    backgroundColor: TossColors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  completionHomeButtonText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: TossColors.primary,
   },
   
   // 하단 버튼
