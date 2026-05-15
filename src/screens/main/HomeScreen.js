@@ -60,6 +60,15 @@ const RECIPROCITY_EVENT_ICONS = {
   funeral: require('../../../assets/icons/reciprocity/funeral.png'),
 };
 const JEONGDAM_LOGO = require('../../../assets/images/jeongdamlogo.png');
+const HOSTED_EVENT_EDIT_ALLOWED_PHONE = '01058359358';
+
+const normalizeLocalPhoneDigits = (phone) => {
+  const digits = String(phone || '').replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('0082')) return `0${digits.slice(4)}`;
+  if (digits.startsWith('82')) return `0${digits.slice(2)}`;
+  return digits;
+};
 
 // 🔥 이벤트 역할 구분
 const EVENT_ROLES = {
@@ -1637,6 +1646,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   const userName = getUserName();
   const currentUserId = user?.id || userInfo?.userId;
+  const canEditHostedEvents = normalizeLocalPhoneDigits(userInfo?.phone || user?.phone) === HOSTED_EVENT_EDIT_ALLOWED_PHONE;
 
   const formatPhoneNumber = (phone) => {
     const digits = String(phone || '').replace(/[^0-9]/g, '');
@@ -1653,6 +1663,16 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       return `${localDigits.slice(0, 3)}-${localDigits.slice(3, 6)}-${localDigits.slice(6)}`;
     }
     return phone || '';
+  };
+
+  const openHostedEventEdit = (event) => {
+    if (!canEditHostedEvents || !event || event.status !== 'active') return;
+    const targetScreen = event.event_type === 'funeral' ? 'CreateFuneral' : 'CreateWedding';
+    navigation.navigate(targetScreen, {
+      editMode: true,
+      editEventId: event.id,
+      editEvent: event,
+    });
   };
 
   const getReciprocityEventIcon = (eventType) => (
@@ -2600,6 +2620,19 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                         </Text>
                       </View>
                     </TouchableOpacity>
+
+                    {canEditHostedEvents && selectedTab === 'active' && event.status === 'active' && (
+                      <TouchableOpacity
+                        style={styles.hostedEditButton}
+                        onPress={() => openHostedEventEdit(event)}
+                        activeOpacity={0.82}
+                      >
+                        <Ionicons name="create-outline" size={16} color="#0F766E" />
+                        <Text style={styles.hostedEditButtonText}>
+                          {event.event_type === 'funeral' ? '부고장 정보 수정' : '청첩장 정보 수정'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
 
                     {eventGuestbookMessages.length > 0 && (
                       <View style={[
@@ -4519,6 +4552,23 @@ const styles = StyleSheet.create({
         borderColor: '#EEF1F4',
       },
     }),
+  },
+  hostedEditButton: {
+    marginTop: 12,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  hostedEditButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F766E',
   },
 
   // 카드 상단: 배지 + 날짜
@@ -6959,5 +7009,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textSecondary,
   },
-
 });

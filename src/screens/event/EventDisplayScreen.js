@@ -56,6 +56,9 @@ const PHOTO_FRAMES = [
   { id: 'background9', name: '프레임 08', source: require('../../../assets/studio/elements/background9.png') },
   { id: 'background10', name: '프레임 09', source: require('../../../assets/studio/elements/background10.png') },
   { id: 'backround4', name: '프레임 10', source: require('../../../assets/studio/elements/backround4.png') },
+  { id: 'background11', name: '프레임 11', source: require('../../../assets/studio/elements/background11.png') },
+  { id: 'background12', name: '프레임 12', source: require('../../../assets/studio/elements/background12.png') },
+  { id: 'background13', name: '프레임 13', source: require('../../../assets/studio/elements/background13.png') },
 ];
 
 const { width, height } = Dimensions.get('window');

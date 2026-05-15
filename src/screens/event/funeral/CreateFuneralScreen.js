@@ -24,7 +24,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit,
+import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit, updateEvent, getEventDetail,
 } from '../../../lib/supabaseHelper';
 import DaumPostcode from '../../../components/DaumPostcode';
 import FuneralTemplatePreview from '../templates/FuneralTemplatePreview';
@@ -81,6 +81,53 @@ const MEMORIAL_TEXT_MAX_SCALE = 1.8;
 const MEMORIAL_TEXT_TRANSLATE_LIMIT = 500;
 
 const FUNERAL_STEP_COUNT = 3;
+
+const getStoredImageIdentity = (image) => (
+  image?.storagePath ||
+  image?.publicUrl ||
+  image?.originalUri ||
+  image?.uri ||
+  image?.id ||
+  ''
+);
+
+const normalizeStoredFuneralImageForEdit = (img, index, fallbackCategory = 'all', fallbackLabel = null) => {
+  const uri = typeof img === 'string'
+    ? img
+    : (img?.uri || img?.publicUrl || img?.url || img?.originalUri || null);
+  const category = typeof img === 'object' ? (img.category || fallbackCategory) : fallbackCategory;
+  return {
+    ...(typeof img === 'object' ? img : {}),
+    uri,
+    originalUri: typeof img === 'object' ? (img.originalUri || uri) : uri,
+    publicUrl: typeof img === 'string' ? img : (img?.publicUrl || uri || null),
+    category,
+    categoryLabel: typeof img === 'object' ? (img.categoryLabel || fallbackLabel) : fallbackLabel,
+    id: typeof img === 'object' ? (img.id || `edit_${category}_${index}`) : `edit_${category}_${index}`,
+  };
+};
+
+const flattenStoredFuneralCategorizedImages = (categorizedImages = {}) => {
+  if (!categorizedImages || typeof categorizedImages !== 'object') return [];
+  const labels = { main: '고인 사진', gallery: '갤러리' };
+  return ['main', 'gallery', 'all'].flatMap((category) => {
+    const list = categorizedImages[category];
+    if (!Array.isArray(list)) return [];
+    return list.map((img, index) => normalizeStoredFuneralImageForEdit(img, index, category, labels[category] || null));
+  });
+};
+
+const dedupeStoredFuneralImages = (images = []) => {
+  const seen = new Set();
+  return images.filter((image) => {
+    const key = getStoredImageIdentity(image);
+    if (!key) return true;
+    const scopedKey = `${image?.category || 'all'}:${key}`;
+    if (seen.has(scopedKey)) return false;
+    seen.add(scopedKey);
+    return true;
+  });
+};
 
 const MEMORIAL_TEXT_FONT_OPTIONS = [
   // 종이 청첩장 디자이너와 동일한 폰트 옵션
@@ -1139,7 +1186,11 @@ const ImageUploadModal = ({ visible, currentIndex, totalCount, onCancel }) => (
 );
 
 export default function CreateFuneralScreen({ navigation, route }) {
-  const creationCreditReservationRef = useRef(route?.params?.eventCreationCreditReservation || null);
+  const isEditMode = !!route?.params?.editMode;
+  const editEvent = route?.params?.editEvent || null;
+  const editEventId = route?.params?.editEventId || editEvent?.id || null;
+  const editHydratedRef = useRef(false);
+  const creationCreditReservationRef = useRef(isEditMode ? null : (route?.params?.eventCreationCreditReservation || null));
   const creationCreditSettledRef = useRef(false);
   const completionNavTimeoutRef = useRef(null);
   const [currentStep, setCurrentStep] = useState(1);
@@ -1410,6 +1461,108 @@ export default function CreateFuneralScreen({ navigation, route }) {
     ],
   };
 
+  React.useEffect(() => {
+    if (!isEditMode || editHydratedRef.current) return undefined;
+    let cancelled = false;
+
+    const hydrateEditEvent = async () => {
+      let sourceEvent = editEvent || null;
+      if (editEventId) {
+        const detailResult = await getEventDetail(editEventId);
+        if (detailResult.success && detailResult.data) {
+          sourceEvent = detailResult.data;
+        }
+      }
+
+      if (cancelled || !sourceEvent) return;
+      editHydratedRef.current = true;
+
+      const info = sourceEvent.additional_info || {};
+      const selectedTemplate = templates.funeral.find(t => t.style === sourceEvent.template_style) || templates.funeral[0];
+      const eventImages = dedupeStoredFuneralImages([
+        ...flattenStoredFuneralCategorizedImages(info.categorized_images),
+        ...(Array.isArray(sourceEvent.image_urls)
+          ? sourceEvent.image_urls.map((img, index) => normalizeStoredFuneralImageForEdit(img, index, typeof img === 'object' ? img.category || 'all' : 'all'))
+          : []),
+      ]);
+      const familyMembers = Array.isArray(info.family_members)
+        ? info.family_members.map(member => ({ relation: member.relation || '', names: member.names || '' }))
+        : [];
+      const accountSource = info.condolence_accounts || sourceEvent.condolence_accounts || [];
+      const condolenceAccounts = Array.isArray(accountSource)
+        ? accountSource.map(account => ({
+          ownerName: account.owner_name || account.ownerName || '',
+          bankName: account.bank_name || account.bankName || '',
+          accountNumber: account.account_number || account.accountNumber || '',
+        }))
+        : [];
+      const mainPhotoLayout = normalizeMainImageLayout(info.main_photo_layout || sourceEvent.main_photo_layout || MAIN_IMAGE_LAYOUT_DEFAULT);
+      const memorialNameLayout = normalizeMemorialTextLayout(info.memorial_name_layout || sourceEvent.memorial_name_layout || MEMORIAL_NAME_LAYOUT_DEFAULT);
+      const memorialDateLayout = normalizeMemorialTextLayout(info.memorial_date_layout || sourceEvent.memorial_date_layout || MEMORIAL_DATE_LAYOUT_DEFAULT);
+
+      latestMainImageLayoutRef.current = mainPhotoLayout;
+      latestMemorialNameLayoutRef.current = memorialNameLayout;
+      latestMemorialDateLayoutRef.current = memorialDateLayout;
+      setMainPhotoLayoutView(mainPhotoLayout);
+      setMemorialNameLayoutView(memorialNameLayout);
+      setMemorialDateLayoutView(memorialDateLayout);
+
+      setEventData(prev => ({
+        ...prev,
+        title: sourceEvent.event_name || '',
+        date: sourceEvent.event_date || null,
+        location: sourceEvent.location || '',
+        detailedAddress: sourceEvent.detailed_address || '',
+        deceasedName: sourceEvent.main_person_name || sourceEvent.deceasedName || info.deceasedName || '',
+        birthDate: sourceEvent.birth_date || info.birth_date || null,
+        deceasedAge: sourceEvent.deceased_age ? String(sourceEvent.deceased_age) : '',
+        ageCalculationMethod: sourceEvent.age_calculation_method || info.age_calculation_method || prev.ageCalculationMethod,
+        deathDate: sourceEvent.death_date || info.death_date || null,
+        deathTime: sourceEvent.death_time || info.death_time || null,
+        deceasedGender: sourceEvent.deceased_gender || prev.deceasedGender,
+        religiousRite: sourceEvent.religious_rite || info.religious_rite || prev.religiousRite,
+        funeralMethod: sourceEvent.funeral_method || info.funeral_method || prev.funeralMethod,
+        casketDate: sourceEvent.casket_date || info.casket_date || null,
+        casketTime: sourceEvent.casket_time || info.casket_time || null,
+        burialDate: sourceEvent.burial_date || info.burial_date || null,
+        burialTime: sourceEvent.burial_time || info.burial_time || null,
+        burialLocation: sourceEvent.burial_location || info.burial_location || '',
+        secondaryBurialLocation: sourceEvent.secondary_burial_location || info.secondary_burial_location || '',
+        familyMembers,
+        primaryContact: sourceEvent.primary_contact || '',
+        secondaryContact: sourceEvent.secondary_contact || '',
+        funeralDirector: sourceEvent.funeral_director || '',
+        funeralHome: sourceEvent.funeral_home || info.funeral_home || '',
+        funeralAddress: sourceEvent.location || '',
+        visitationType: sourceEvent.visitation_type || info.visitation_type || prev.visitationType,
+        visitationNote: sourceEvent.visitation_note || info.visitation_note || '',
+        parkingTransportInfo: sourceEvent.parking_transport_info || info.parking_transport_info || '',
+        condolenceAccounts,
+        customMessage: sourceEvent.custom_message || info.custom_message || '',
+        allowMessages: sourceEvent.allow_messages !== false,
+        messageSettings: info.message_settings || prev.messageSettings,
+        selectedTemplate,
+        selectedPhotoFrameId: info.photo_frame?.id || prev.selectedPhotoFrameId,
+        mainPhotoLayout,
+        memorialTextLayout: normalizeMemorialTextLayout(info.memorial_text_layout || sourceEvent.memorial_text_layout || MEMORIAL_TEXT_LAYOUT_DEFAULT),
+        memorialNameLayout,
+        memorialDateLayout,
+        memorialNameFontId: info.memorial_name_font_id || prev.memorialNameFontId,
+        memorialDateFontId: info.memorial_date_font_id || prev.memorialDateFontId,
+        memorialNameColor: info.memorial_name_color || prev.memorialNameColor,
+        memorialDateColor: info.memorial_date_color || prev.memorialDateColor,
+        memorialNameVisible: info.memorial_name_visible !== false,
+        memorialDateVisible: info.memorial_date_visible !== false,
+        images: eventImages,
+      }));
+    };
+
+    hydrateEditEvent();
+    return () => {
+      cancelled = true;
+    };
+  }, [editEvent, editEventId, isEditMode]);
+
   // 섹션으로 스크롤하는 함수
   const scrollToSection = (sectionKey) => {
     const position = sectionPositions.current[sectionKey];
@@ -1527,6 +1680,10 @@ export default function CreateFuneralScreen({ navigation, route }) {
     if (!time) return null;
     
     try {
+      if (typeof time === 'string') {
+        const match = time.match(/^(\d{1,2}):(\d{2})/);
+        if (match) return `${match[1].padStart(2, '0')}:${match[2]}`;
+      }
       if (time instanceof Date && !isNaN(time.getTime())) {
         return time.toLocaleTimeString('ko-KR', {
           hour: '2-digit',
@@ -1541,13 +1698,20 @@ export default function CreateFuneralScreen({ navigation, route }) {
   };
 
   const dateToISODate = (date) => (
-    date && date instanceof Date && !isNaN(date.getTime())
+    typeof date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(date)
+      ? date.slice(0, 10)
+      : date && date instanceof Date && !isNaN(date.getTime())
       ? date.toISOString().split('T')[0]
       : null
   );
 
   const timeToISOTime = (time) => (
-    time && time instanceof Date && !isNaN(time.getTime())
+    typeof time === 'string' && /^\d{1,2}:\d{2}/.test(time)
+      ? (() => {
+          const [hh = '00', mm = '00', ss = '00'] = time.split(':');
+          return `${hh.padStart(2, '0')}:${mm.padStart(2, '0')}:${String(ss || '00').padStart(2, '0')}`;
+        })()
+      : time && time instanceof Date && !isNaN(time.getTime())
       ? time.toTimeString().split(' ')[0]
       : null
   );
@@ -2630,7 +2794,7 @@ export default function CreateFuneralScreen({ navigation, route }) {
       return '다음';
     }
 
-    return '부고 만들기';
+    return isEditMode ? '수정 저장하기' : '부고 만들기';
   };
 
   const getStepButtonDisabled = () =>
@@ -3130,13 +3294,21 @@ export default function CreateFuneralScreen({ navigation, route }) {
         imagesWithStoragePath: formattedEventData.image_urls.filter(img => img.storagePath).length,
       });
 
-      creationCreditSettledRef.current = !!creationCreditReservationRef.current;
-      const result = await createEvent(formattedEventData);
+      creationCreditSettledRef.current = isEditMode || !!creationCreditReservationRef.current;
+      const updatePayload = { ...formattedEventData };
+      delete updatePayload.event_creation_credit_reservation;
+      delete updatePayload.deceasedName;
+      delete updatePayload.familyMembers;
+
+      const result = isEditMode
+        ? await updateEvent(editEventId, updatePayload)
+        : await createEvent(formattedEventData);
 
       if (result.success) {
-        console.log('✅ 부고 이벤트 생성 및 이미지 저장 완료, ID:', result.data.id);
+        const nextEventId = isEditMode ? editEventId : result.data.id;
+        console.log('✅ 부고 이벤트 저장 완료, ID:', nextEventId);
         const displayParams = {
-          eventId: result.data.id,
+          eventId: nextEventId,
           templateStyle: eventData.selectedTemplate?.style || 'modern-card',
           categorizedImages: categorizedImages,
           allowMessages: eventData.allowMessages,
@@ -3156,7 +3328,7 @@ export default function CreateFuneralScreen({ navigation, route }) {
 
     } catch (error) {
       console.error('🔍 [DEBUG] 부고 저장 오류:', error);
-      showTossModal('오류', error.message || '부고 생성 중 문제가 발생했어요', () => {});
+      showTossModal('오류', error.message || (isEditMode ? '부고 수정 중 문제가 발생했어요' : '부고 생성 중 문제가 발생했어요'), () => {});
     } finally {
       setIsLoading(false);
     }
@@ -4466,7 +4638,7 @@ export default function CreateFuneralScreen({ navigation, route }) {
         <View style={styles.completionIconContainer}>
           <Text style={styles.completionEmoji}>🕯️</Text>
         </View>
-        <Text style={styles.completionTitle}>{'모바일 부고장이\n완성되었어요'}</Text>
+        <Text style={styles.completionTitle}>{isEditMode ? '모바일 부고장이\n수정되었어요' : '모바일 부고장이\n완성되었어요'}</Text>
         <Text style={styles.completionSubtitle}>잠시 후 부고장 화면으로 이동할게요</Text>
         <TouchableOpacity
           style={styles.completionPrimaryButton}

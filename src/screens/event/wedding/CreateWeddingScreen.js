@@ -12,7 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import {
   createEvent, uploadImageToStorage, deleteImageFromStorage,
-  getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit,
+  getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit, updateEvent, getEventDetail,
 } from '../../../lib/supabaseHelper';
 import DaumPostcode from '../../../components/DaumPostcode';
 import WeddingTemplatePreview from '../templates/WeddingTemplatePreview';
@@ -42,6 +42,37 @@ const getImageIdentity = (image) => (
   image?.id ||
   ''
 );
+
+const normalizeStoredImageForEdit = (img, index, fallbackCategory = 'all', fallbackLabel = null) => {
+  const uri = typeof img === 'string'
+    ? img
+    : (img?.uri || img?.publicUrl || img?.url || img?.originalUri || null);
+  const category = typeof img === 'object' ? (img.category || fallbackCategory) : fallbackCategory;
+  return {
+    ...(typeof img === 'object' ? img : {}),
+    uri,
+    originalUri: typeof img === 'object' ? (img.originalUri || uri) : uri,
+    publicUrl: typeof img === 'string' ? img : (img?.publicUrl || uri || null),
+    category,
+    categoryLabel: typeof img === 'object' ? (img.categoryLabel || fallbackLabel) : fallbackLabel,
+    id: typeof img === 'object' ? (img.id || `edit_${category}_${index}`) : `edit_${category}_${index}`,
+  };
+};
+
+const flattenStoredCategorizedImages = (categorizedImages = {}) => {
+  if (!categorizedImages || typeof categorizedImages !== 'object') return [];
+  const labels = {
+    main: '메인 사진',
+    gallery: '갤러리',
+    groom: '신랑 사진',
+    bride: '신부 사진',
+  };
+  return ['main', 'gallery', 'groom', 'bride', 'all'].flatMap((category) => {
+    const list = categorizedImages[category];
+    if (!Array.isArray(list)) return [];
+    return list.map((img, index) => normalizeStoredImageForEdit(img, index, category, labels[category] || null));
+  });
+};
 
 const dedupeImages = (images = []) => {
   const seen = new Set();
@@ -253,6 +284,9 @@ const PHOTO_FRAMES = [
   { id: 'background9', name: '프레임 08', source: require('../../../../assets/studio/elements/background9.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background9-thumb.png') },
   { id: 'background10', name: '프레임 09', source: require('../../../../assets/studio/elements/background10.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background10-thumb.png') },
   { id: 'backround4', name: '프레임 10', source: require('../../../../assets/studio/elements/backround4.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/backround4-thumb.png') },
+  { id: 'background11', name: '프레임 11', source: require('../../../../assets/studio/elements/background11.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background11-thumb.png') },
+  { id: 'background12', name: '프레임 12', source: require('../../../../assets/studio/elements/background12.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background12-thumb.png') },
+  { id: 'background13', name: '프레임 13', source: require('../../../../assets/studio/elements/background13.png'), thumb: require('../../../../assets/studio/elements/frame-thumbs/background13-thumb.png') },
 ];
 
 const FRAME_DEFAULT_SCALE = 0.78;
@@ -826,7 +860,11 @@ function UploadProgressModal({ visible, currentIndex, totalCount, onCancel }) {
 export default function CreateWeddingScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef(null);
-  const creationCreditReservationRef = useRef(route?.params?.eventCreationCreditReservation || null);
+  const isEditMode = !!route?.params?.editMode;
+  const editEvent = route?.params?.editEvent || null;
+  const editEventId = route?.params?.editEventId || editEvent?.id || null;
+  const editHydratedRef = useRef(false);
+  const creationCreditReservationRef = useRef(isEditMode ? null : (route?.params?.eventCreationCreditReservation || null));
   const creationCreditSettledRef = useRef(false);
   // 튜토리얼 타겟 ref
   const namesSectionRef = useRef(null);
@@ -1024,6 +1062,80 @@ export default function CreateWeddingScreen({ navigation, route }) {
   const [imageUploadState, setImageUploadState] = useState({
     isUploading: false, currentIndex: 0, totalCount: 0, uploadingCategory: null,
   });
+
+  useEffect(() => {
+    if (!isEditMode || editHydratedRef.current) return undefined;
+    let cancelled = false;
+
+    const hydrateEditEvent = async () => {
+      let sourceEvent = editEvent || null;
+      if (editEventId) {
+        const detailResult = await getEventDetail(editEventId);
+        if (detailResult.success && detailResult.data) {
+          sourceEvent = detailResult.data;
+        }
+      }
+
+      if (cancelled || !sourceEvent) return;
+      editHydratedRef.current = true;
+
+      const info = sourceEvent.additional_info || {};
+      const selectedTemplate = TEMPLATES.find(t => t.style === sourceEvent.template_style) || TEMPLATES[0];
+      const eventImages = dedupeImages([
+        ...flattenStoredCategorizedImages(info.categorized_images),
+        ...(Array.isArray(sourceEvent.image_urls)
+          ? sourceEvent.image_urls.map((img, index) => normalizeStoredImageForEdit(img, index, typeof img === 'object' ? img.category || 'all' : 'all'))
+          : []),
+      ]);
+
+      setEventData(prev => ({
+        ...prev,
+        groomName: sourceEvent.groom_name || '',
+        brideName: sourceEvent.bride_name || '',
+        groomContact: sourceEvent.groom_contact || '',
+        brideContact: sourceEvent.bride_contact || '',
+        groomFatherName: sourceEvent.groom_father_name || '',
+        groomMotherName: sourceEvent.groom_mother_name || '',
+        brideFatherName: sourceEvent.bride_father_name || '',
+        brideMotherName: sourceEvent.bride_mother_name || '',
+        groomFatherContact: info.groom_father_contact || '',
+        groomMotherContact: info.groom_mother_contact || '',
+        brideFatherContact: info.bride_father_contact || '',
+        brideMotherContact: info.bride_mother_contact || '',
+        groomBankName: info.groom_bank_name || '',
+        groomAccountNumber: info.groom_account_number || '',
+        brideBankName: info.bride_bank_name || '',
+        brideAccountNumber: info.bride_account_number || '',
+        groomFatherBankName: info.groom_father_bank_name || '',
+        groomFatherAccountNumber: info.groom_father_account_number || '',
+        groomMotherBankName: info.groom_mother_bank_name || '',
+        groomMotherAccountNumber: info.groom_mother_account_number || '',
+        brideFatherBankName: info.bride_father_bank_name || '',
+        brideFatherAccountNumber: info.bride_father_account_number || '',
+        brideMotherBankName: info.bride_mother_bank_name || '',
+        brideMotherAccountNumber: info.bride_mother_account_number || '',
+        date: sourceEvent.event_date || null,
+        ceremonyTime: sourceEvent.ceremony_time || '',
+        location: sourceEvent.location || '',
+        detailedAddress: sourceEvent.detailed_address || '',
+        allowMessages: sourceEvent.allow_messages !== false,
+        messageSettings: info.message_settings || prev.messageSettings,
+        images: eventImages,
+        customMessage: sourceEvent.custom_message || '',
+        parkingInfo: sourceEvent.parking_info || '',
+        selectedTemplate,
+      }));
+      if (info.background_music?.id) setTemplateMusicMap({ [selectedTemplate.id]: info.background_music });
+      if (info.background_petal) setTemplatePetalMap({ [selectedTemplate.id]: info.background_petal });
+      if (info.photo_frame?.id) setTemplateFrameMap({ [selectedTemplate.id]: info.photo_frame });
+      if (info.intro_effect?.id) setTemplateIntroMap({ [selectedTemplate.id]: info.intro_effect });
+    };
+
+    hydrateEditEvent();
+    return () => {
+      cancelled = true;
+    };
+  }, [editEvent, editEventId, isEditMode]);
 
   // 애니메이션
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -1755,11 +1867,17 @@ export default function CreateWeddingScreen({ navigation, route }) {
         event_creation_credit_reservation: creationCreditReservationRef.current,
       };
 
-      creationCreditSettledRef.current = !!creationCreditReservationRef.current;
-      const result = await createEvent(formattedEventData);
+      creationCreditSettledRef.current = isEditMode || !!creationCreditReservationRef.current;
+      const updatePayload = { ...formattedEventData };
+      delete updatePayload.event_creation_credit_reservation;
+
+      const result = isEditMode
+        ? await updateEvent(editEventId, updatePayload)
+        : await createEvent(formattedEventData);
       if (result.success) {
+        const nextEventId = isEditMode ? editEventId : result.data.id;
         const displayParams = {
-          eventId: result.data.id,
+          eventId: nextEventId,
           templateStyle: eventData.selectedTemplate?.style || 'modern-dark',
           categorizedImages,
           allowMessages: eventData.allowMessages,
@@ -1777,7 +1895,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
         throw new Error(result.error);
       }
     } catch (error) {
-      showAlert('오류', error.message || '결혼식 청첩장 생성 중 문제가 발생했어요');
+      showAlert('오류', error.message || (isEditMode ? '결혼식 청첩장 수정 중 문제가 발생했어요' : '결혼식 청첩장 생성 중 문제가 발생했어요'));
     } finally {
       setIsLoading(false);
     }
@@ -1878,7 +1996,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
             >
               {step !== 3 && <Ionicons name="chevron-back" size={24} color={C.text} />}
             </TouchableOpacity>
-            <Text style={s.headerTitle}>청첩장 만들기</Text>
+            <Text style={s.headerTitle}>{isEditMode ? '청첩장 수정' : '청첩장 만들기'}</Text>
             <View style={{ width: 28 }} />
           </View>
           <View style={s.progressTrack}>
@@ -2225,7 +2343,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
           {step === 3 && (
             <View style={s.completionWrap}>
               <Text style={{ fontSize: 60, marginBottom: 24 }}>🎉</Text>
-              <Text style={s.completionTitle}>{'결혼식 청첩장이\n완성되었어요!'}</Text>
+              <Text style={s.completionTitle}>{isEditMode ? '결혼식 청첩장이\n수정되었어요!' : '결혼식 청첩장이\n완성되었어요!'}</Text>
               <View style={s.completionPill}>
                 <Text style={s.completionPillText}>잠시 후 청첩장 화면으로 이동할게요</Text>
               </View>
@@ -2293,7 +2411,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
                 <Text style={s.nextBtnText}>
                   {isLoading ? '생성 중...'
                     : imageUploadState.isUploading ? '이미지 업로드 중...'
-                    : step === 1 ? '다음' : '결혼식 청첩장 만들기'}
+                    : step === 1 ? '다음' : isEditMode ? '수정 저장하기' : '결혼식 청첩장 만들기'}
                 </Text>
               </TouchableOpacity>
             </View>
