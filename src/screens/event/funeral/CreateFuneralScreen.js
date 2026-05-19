@@ -2231,22 +2231,22 @@ export default function CreateFuneralScreen({ navigation, route }) {
     const sampleData = syncCalculatedAge({
       ...eventData,
       title: '故 김정담 부고',
-      date: new Date(2026, 4, 13, 12),
-      time: new Date(2026, 4, 13, 9, 0),
+      date: new Date(2037, 4, 13, 12),
+      time: new Date(2037, 4, 13, 9, 0),
       location: '서울특별시 송파구 올림픽로43길 88',
       detailedAddress: '지하 1층 3호실',
       deceasedName: '김정담',
       birthDate: new Date(1972, 2, 7, 12),
       ageCalculationMethod: 'korean_year',
-      deathDate: new Date(2026, 4, 11, 12),
-      deathTime: new Date(2026, 4, 11, 6, 30),
+      deathDate: new Date(2037, 4, 11, 12),
+      deathTime: new Date(2037, 4, 11, 6, 30),
       deceasedGender: '남',
       religiousRite: '무교/일반',
       funeralMethod: '일반 장례',
-      casketDate: new Date(2026, 4, 12, 12),
-      casketTime: new Date(2026, 4, 12, 14, 0),
-      burialDate: new Date(2026, 4, 13, 12),
-      burialTime: new Date(2026, 4, 13, 9, 0),
+      casketDate: new Date(2037, 4, 12, 12),
+      casketTime: new Date(2037, 4, 12, 14, 0),
+      burialDate: new Date(2037, 4, 13, 12),
+      burialTime: new Date(2037, 4, 13, 9, 0),
       burialLocation: '서울추모공원',
       secondaryBurialLocation: '분당메모리얼파크 봉안당',
       familyMembers: [
@@ -2673,7 +2673,10 @@ export default function CreateFuneralScreen({ navigation, route }) {
 
   const handleTemplatePreview = (template) => {
     console.log('🔍 [DEBUG] 템플릿 미리보기 시작:', template.name);
-    setPreviewTemplate(template);
+    setPreviewTemplate({
+      ...template,
+      style: template.style || template.id,
+    });
     setShowTemplatePreview(true);
   };
 
@@ -4366,6 +4369,34 @@ export default function CreateFuneralScreen({ navigation, route }) {
               <Text style={styles.previewPaperLineText}>상주: 배우자 ○○○</Text>
               <Text style={styles.previewPaperLineText}>빈소: ○○장례식장</Text>
               <Text style={styles.previewPaperLineText}>연락처: 010-0000-0000</Text>
+            </View>
+          </View>
+        );
+      case 'card-certificate':
+        return (
+          <View style={styles.previewCardVisualCertificate}>
+            <View style={styles.previewCertificateHeader}>
+              <Text style={styles.previewCertificateTitle}>부 고</Text>
+              <View style={styles.previewCertificateTitleLine} />
+            </View>
+            <View style={styles.previewCertificatePhoto} />
+            <Text style={styles.previewCertificateName}>故 홍길동</Text>
+            <Text style={styles.previewCertificateSub}>향년 70세 · 2037.05.19 별세</Text>
+            <View style={styles.previewCertificateSection}>
+              <Text style={styles.previewCertificateSectionTitle}>상주의 말</Text>
+              <View style={styles.previewCertificateLineWide} />
+              <View style={styles.previewCertificateLineShort} />
+            </View>
+            <View style={styles.previewCertificateSection}>
+              <Text style={styles.previewCertificateSectionTitle}>상 주</Text>
+              <View style={styles.previewCertificateFamilyRow}>
+                <View style={styles.previewCertificatePill} />
+                <View style={styles.previewCertificateLineWide} />
+              </View>
+              <View style={styles.previewCertificateFamilyRow}>
+                <View style={styles.previewCertificatePill} />
+                <View style={styles.previewCertificateLineShort} />
+              </View>
             </View>
           </View>
         );
@@ -7033,6 +7064,94 @@ const styles = StyleSheet.create({
     color: '#6B5B49',
     marginBottom: 8,
     letterSpacing: 0.2,
+  },
+  previewCardVisualCertificate: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 14,
+    backgroundColor: '#F8F5EF',
+    borderWidth: 1,
+    borderColor: '#D8D0C1',
+    overflow: 'hidden',
+    alignItems: 'center',
+  },
+  previewCertificateHeader: {
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  previewCertificateTitle: {
+    fontSize: 17,
+    color: '#2F3338',
+    fontWeight: '900',
+    letterSpacing: 2,
+  },
+  previewCertificateTitleLine: {
+    width: 42,
+    height: 2,
+    backgroundColor: '#7C6F60',
+    marginTop: 5,
+  },
+  previewCertificatePhoto: {
+    width: 58,
+    height: 66,
+    borderRadius: 6,
+    backgroundColor: '#E4DED3',
+    borderWidth: 1,
+    borderColor: '#CFC5B7',
+    marginBottom: 8,
+  },
+  previewCertificateName: {
+    fontSize: 18,
+    color: '#202429',
+    fontWeight: '900',
+  },
+  previewCertificateSub: {
+    fontSize: 9,
+    color: '#777169',
+    marginTop: 3,
+    marginBottom: 9,
+  },
+  previewCertificateSection: {
+    width: '100%',
+    borderTopWidth: 1,
+    borderTopColor: '#DED7CC',
+    paddingTop: 8,
+    marginTop: 6,
+  },
+  previewCertificateSectionTitle: {
+    fontSize: 10,
+    color: '#4A4036',
+    fontWeight: '900',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  previewCertificateLineWide: {
+    height: 5,
+    width: '76%',
+    alignSelf: 'center',
+    borderRadius: 999,
+    backgroundColor: '#DCD4C8',
+    marginBottom: 5,
+  },
+  previewCertificateLineShort: {
+    height: 5,
+    width: '48%',
+    alignSelf: 'center',
+    borderRadius: 999,
+    backgroundColor: '#E7E0D6',
+  },
+  previewCertificateFamilyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 5,
+    paddingHorizontal: 12,
+  },
+  previewCertificatePill: {
+    width: 28,
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: '#B9AB98',
   },
   previewCardTitle: {
     fontSize: 18,

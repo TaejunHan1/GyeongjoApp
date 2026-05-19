@@ -65,6 +65,15 @@ const parseSavedDateTime = (date_str, time_str) => {
 
 const GROOM_RELATION_OPTIONS = ['아들', '장남', '차남', '삼남'];
 const BRIDE_RELATION_OPTIONS = ['딸', '장녀', '차녀', '삼녀'];
+const TEST_PHOTO = require('../../../../assets/studio/templates/modern/source-photos/modern-photo-1.png');
+
+const getTestPhotoInfo = () => {
+  const resolved = Image.resolveAssetSource(TEST_PHOTO);
+  return {
+    uri: resolved?.uri || null,
+    aspect: resolved?.width && resolved?.height ? resolved.width / resolved.height : null,
+  };
+};
 
 export default function PaperInvitationFormScreen({ navigation, route }) {
   const invitation = route?.params?.invitation; // 수정 모드일 때 들어옴
@@ -106,6 +115,28 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
     supportsBackSide && formStep === 2 && template?.backPreview
       ? template.backPreview
       : template?.preview;
+
+  const fillTestData = () => {
+    const testDate = new Date(2026, 4, 14, 13, 0);
+    const samplePhoto = getTestPhotoInfo();
+
+    if (samplePhoto.uri) {
+      setPhotoUri(samplePhoto.uri);
+      setPhotoAspect(samplePhoto.aspect);
+    }
+    setGroom('김민수');
+    setBride('이서연');
+    setDateObj(testDate);
+    setTempDate(testDate);
+    setVenue('신라호텔 다이너스티 홀 3층');
+    setInvitationText('서로의 계절이 되어준 두 사람이\n하나의 약속으로 새 출발을 합니다.\n귀한 걸음으로 함께 축복해 주세요.');
+    setGroomFather('김성호');
+    setGroomMother('박미정');
+    setBrideFather('이동훈');
+    setBrideMother('최은영');
+    setGroomRelation('장남');
+    setBrideRelation('장녀');
+  };
 
   const pickPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -282,6 +313,14 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
               <Text style={s.templateInfoSub}>{template.subtitle}</Text>
               <Text style={s.templateInfoHint}>다음 단계에서 위치·크기 조정 가능</Text>
             </View>
+          </View>
+
+          <View style={s.testFillWrap}>
+            <TouchableOpacity style={s.testFillBtn} onPress={fillTestData} activeOpacity={0.85}>
+              <Ionicons name="sparkles-outline" size={16} color={TC.blue} />
+              <Text style={s.testFillText}>테스트 입력</Text>
+            </TouchableOpacity>
+            <Text style={s.testFillHint}>앞면·뒷면 정보와 기본 사진을 한 번에 채웁니다.</Text>
           </View>
 
             {(!supportsBackSide || formStep === 1) ? (
@@ -655,6 +694,41 @@ const s = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: -0.2,
     marginTop: 4,
+  },
+  testFillWrap: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFF',
+    borderWidth: 1,
+    borderColor: '#E1ECFF',
+  },
+  testFillBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#D6E8FF',
+  },
+  testFillText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: TC.blue,
+    letterSpacing: -0.2,
+  },
+  testFillHint: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
   },
 
   // 섹션 라벨
