@@ -1,6 +1,6 @@
 // src/screens/main/studio/SavedInvitationsScreen.js
 // 내가 저장한 종이 청첩장 목록
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
   ScrollView,
   Dimensions,
   ActivityIndicator,
+  InteractionManager,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
@@ -23,16 +24,20 @@ import { Image as RNImage } from 'react-native';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TC } from '../guides/tossStyle';
 import {
   listPaperInvitations,
   deletePaperInvitation,
 } from '../../../lib/paperInvitationHelper';
-import SavedInvitationThumb from './SavedInvitationThumb';
+import SavedInvitationThumb, { getOptimizedInvitationPhotoUrl } from './SavedInvitationThumb';
 
 // 인쇄 권장 해상도 — A6(105×148mm) @ 300 DPI = 1240×1748 픽셀
 // 단, 메모리 절약 위해 1024로 시작 (≈248 DPI). 인쇄소 대부분 OK.
 const EXPORT_WIDTH = 1024;
+const SAVED_INVITATIONS_CACHE_KEY = 'savedPaperInvitations:v1';
+const SAVED_INVITATIONS_LIST_LIMIT = 80;
+const SAVED_INVITATION_ROW_HEIGHT = 152;
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -56,19 +61,93 @@ export default function SavedInvitationsScreen({ navigation }) {
   const [detail, setDetail] = useState(null); // 상세 모달
   const [detailSide, setDetailSide] = useState('front');
   const [loadError, setLoadError] = useState('');
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const hasLoadedCacheRef = useRef(false);
+  const itemsCountRef = useRef(0);
+
+  useEffect(() => {
+    itemsCountRef.current = items.length;
+  }, [items.length]);
+
+  const hydrateCachedItems = useCallback(async () => {
+    if (hasLoadedCacheRef.current) return false;
+    hasLoadedCacheRef.current = true;
+
+    try {
+      const raw = await AsyncStorage.getItem(SAVED_INVITATIONS_CACHE_KEY);
+      if (!raw) return false;
+      const cachedItems = JSON.parse(raw);
+      if (!Array.isArray(cachedItems) || cachedItems.length === 0) return false;
+      setItems(cachedItems);
+      setLoading(false);
+      return true;
+    } catch (error) {
+      console.warn('[SavedInvitationsScreen] cache read failed:', error?.message);
+      return false;
+    }
+  }, []);
 
   const load = useCallback(async () => {
-    const r = await listPaperInvitations();
+    const hadCache = await hydrateCachedItems();
+    if (!hadCache && itemsCountRef.current === 0) setLoading(true);
+
+    const r = await listPaperInvitations({ limit: SAVED_INVITATIONS_LIST_LIMIT, offset: 0, summary: true });
     if (r.success) {
-      setItems(r.data || []);
+      const nextItems = r.data || [];
+      setItems(nextItems);
+      setHasMore(nextItems.length === SAVED_INVITATIONS_LIST_LIMIT);
       setLoadError('');
+      AsyncStorage.setItem(SAVED_INVITATIONS_CACHE_KEY, JSON.stringify(nextItems)).catch((error) => {
+        console.warn('[SavedInvitationsScreen] cache write failed:', error?.message);
+      });
     } else {
-      setItems([]);
+      if (!hadCache) setItems([]);
       setLoadError(r.error || '청첩장 목록을 불러오지 못했습니다.');
     }
     setLoading(false);
     setRefreshing(false);
-  }, []);
+  }, [hydrateCachedItems]);
+
+  const loadMore = useCallback(async () => {
+    if (loading || refreshing || loadingMore || !hasMore || items.length === 0) return;
+
+    setLoadingMore(true);
+    const r = await listPaperInvitations({
+      limit: SAVED_INVITATIONS_LIST_LIMIT,
+      offset: items.length,
+      summary: true,
+    });
+
+    if (r.success) {
+      const nextItems = r.data || [];
+      setItems((prev) => {
+        const existingIds = new Set(prev.map((item) => item.id));
+        const merged = [...prev, ...nextItems.filter((item) => !existingIds.has(item.id))];
+        AsyncStorage.setItem(SAVED_INVITATIONS_CACHE_KEY, JSON.stringify(merged.slice(0, SAVED_INVITATIONS_LIST_LIMIT))).catch((error) => {
+          console.warn('[SavedInvitationsScreen] cache write failed:', error?.message);
+        });
+        return merged;
+      });
+      setHasMore(nextItems.length === SAVED_INVITATIONS_LIST_LIMIT);
+    }
+
+    setLoadingMore(false);
+  }, [hasMore, items.length, loading, loadingMore, refreshing]);
+
+  useEffect(() => {
+    if (items.length === 0) return undefined;
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      items.slice(0, 8).forEach((item) => {
+        if (item.photo_url) {
+          RNImage.prefetch(getOptimizedInvitationPhotoUrl(item.photo_url, 240)).catch(() => {});
+        }
+      });
+    });
+
+    return () => task?.cancel?.();
+  }, [items]);
 
   useFocusEffect(
     useCallback(() => {
@@ -78,6 +157,7 @@ export default function SavedInvitationsScreen({ navigation }) {
 
   const onRefresh = () => {
     setRefreshing(true);
+    hasLoadedCacheRef.current = true;
     load();
   };
 
@@ -286,11 +366,30 @@ export default function SavedInvitationsScreen({ navigation }) {
           contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
           onRefresh={onRefresh}
           refreshing={refreshing}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          updateCellsBatchingPeriod={40}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS !== 'ios'}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.45}
+          getItemLayout={(_, index) => ({
+            length: SAVED_INVITATION_ROW_HEIGHT,
+            offset: SAVED_INVITATION_ROW_HEIGHT * index,
+            index,
+          })}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           ListHeaderComponent={
             <Text style={s.listHint}>
               총 {items.length}개 · 길게 누르면 삭제
             </Text>
+          }
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={s.listFooterLoading}>
+                <ActivityIndicator size="small" color={TC.blue} />
+              </View>
+            ) : null
           }
         />
       )}
@@ -503,6 +602,11 @@ const s = StyleSheet.create({
     color: TC.inkMuted,
     marginBottom: 12,
     paddingHorizontal: 4,
+  },
+  listFooterLoading: {
+    paddingVertical: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // 카드

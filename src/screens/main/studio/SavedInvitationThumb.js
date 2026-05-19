@@ -1,7 +1,7 @@
 // src/screens/main/studio/SavedInvitationThumb.js
 // 저장된 청첩장 미리보기 (layout JSON 그대로 적용)
-import React from 'react';
-import { View, Text, Image } from 'react-native';
+import React, { memo, useMemo, useState, useEffect } from 'react';
+import { ActivityIndicator, View, Text, Image } from 'react-native';
 import Svg, { Defs, ClipPath, Path, Image as SvgImage } from 'react-native-svg';
 import { A6_ASPECT_RATIO, MOBILE_TEMPLATES } from './mobileTemplateConfigs';
 
@@ -55,6 +55,19 @@ const getPhotoRadius = (shape, w, radius) => {
     default:
       return { borderRadius: 4 };
   }
+};
+
+export const getOptimizedInvitationPhotoUrl = (photoUrl, targetWidth = 240) => {
+  if (!photoUrl || typeof photoUrl !== 'string') return photoUrl;
+  if (!photoUrl.includes('/storage/v1/object/public/')) return photoUrl;
+
+  const pixelWidth = Math.max(160, Math.min(900, Math.round(targetWidth)));
+  const pixelHeight = Math.max(220, Math.round(pixelWidth * A6_ASPECT_RATIO));
+  const separator = photoUrl.includes('?') ? '&' : '?';
+
+  return photoUrl
+    .replace('/storage/v1/object/public/', '/storage/v1/render/image/public/')
+    + `${separator}width=${pixelWidth}&height=${pixelHeight}&resize=cover&quality=58`;
 };
 
 const parseWeddingDate = (dateStr) => {
@@ -179,8 +192,21 @@ function MiniCalendarThumb({ dateStr, width, height }) {
   );
 }
 
-export default function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
+function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
   const template = MOBILE_TEMPLATES.find((t) => t.id === invitation.template_id);
+  const preferredPhotoUrl = width >= 900
+    ? invitation.photo_url
+    : getOptimizedInvitationPhotoUrl(invitation.photo_url, width <= 120 ? 240 : Math.round(width * 2));
+  const [failedOptimizedPhoto, setFailedOptimizedPhoto] = useState(false);
+  const [photoLoading, setPhotoLoading] = useState(Boolean(invitation.photo_url));
+  const photoUrl = useMemo(() => (
+    failedOptimizedPhoto ? invitation.photo_url : preferredPhotoUrl
+  ), [failedOptimizedPhoto, invitation.photo_url, preferredPhotoUrl]);
+
+  useEffect(() => {
+    setFailedOptimizedPhoto(false);
+    setPhotoLoading(Boolean(invitation.photo_url));
+  }, [invitation.photo_url, preferredPhotoUrl]);
 
   // photoReady prefetch 로직 제거 — 즉시 카드 표시.
   // 사진은 RN Image 컴포넌트가 자동 캐싱/로드하고, 로드 전엔 placeholder 배경색이 보임.
@@ -437,18 +463,44 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
                 )}
                 fill="rgba(168,149,119,0.15)"
               />
-              {invitation.photo_url && (
+              {photoUrl && (
                 <SvgImage
-                  href={{ uri: invitation.photo_url }}
+                  href={{ uri: photoUrl }}
                   x={0}
                   y={0}
                   width={(layout.photo.w / 100) * width}
                   height={(layout.photo.h / 100) * height}
                   preserveAspectRatio="xMidYMid slice"
                   clipPath={`url(#eggClipThumb-${invitation.id || 'x'})`}
+                  onLoad={() => setPhotoLoading(false)}
+                  onError={() => {
+                    if (photoUrl !== invitation.photo_url && invitation.photo_url) {
+                      setFailedOptimizedPhoto(true);
+                      setPhotoLoading(true);
+                      return;
+                    }
+                    setPhotoLoading(false);
+                  }}
                 />
               )}
             </Svg>
+            {photoUrl && photoLoading && (
+              <View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'rgba(255,255,255,0.34)',
+                }}
+              >
+                <ActivityIndicator size="small" color="#A89577" />
+              </View>
+            )}
           </View>
         ) : (
           <View
@@ -468,13 +520,21 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
               ),
             }}
           >
-            {invitation.photo_url ? (
+            {photoUrl ? (
               <Image
-                source={{ uri: invitation.photo_url }}
+                source={{ uri: photoUrl }}
+                fadeDuration={0}
                 style={{ width: '100%', height: '100%', resizeMode: 'cover' }}
-                onError={(e) =>
-                  console.warn('[SavedInvitationThumb] image load error:', invitation.photo_url, e.nativeEvent)
-                }
+                onLoadEnd={() => setPhotoLoading(false)}
+                onError={(e) => {
+                  if (photoUrl !== invitation.photo_url && invitation.photo_url) {
+                    setFailedOptimizedPhoto(true);
+                    setPhotoLoading(true);
+                    return;
+                  }
+                  setPhotoLoading(false);
+                  console.warn('[SavedInvitationThumb] image load error:', photoUrl, e.nativeEvent);
+                }}
               />
             ) : (
               <View
@@ -487,6 +547,23 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
                 <Text style={{ color: '#A89577', fontSize: px(10), letterSpacing: 1 }}>
                   PHOTO
                 </Text>
+              </View>
+            )}
+            {photoUrl && photoLoading && (
+              <View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'rgba(255,255,255,0.34)',
+                }}
+              >
+                <ActivityIndicator size="small" color="#A89577" />
               </View>
             )}
           </View>
@@ -667,3 +744,17 @@ export default function SavedInvitationThumb({ invitation, width = 100, side = '
     </View>
   );
 }
+
+export default memo(SavedInvitationThumb, (prev, next) => (
+  prev.width === next.width &&
+  prev.side === next.side &&
+  prev.invitation?.id === next.invitation?.id &&
+  prev.invitation?.photo_url === next.invitation?.photo_url &&
+  prev.invitation?.template_id === next.invitation?.template_id &&
+  prev.invitation?.groom === next.invitation?.groom &&
+  prev.invitation?.bride === next.invitation?.bride &&
+  prev.invitation?.date_str === next.invitation?.date_str &&
+  prev.invitation?.time_str === next.invitation?.time_str &&
+  prev.invitation?.venue === next.invitation?.venue &&
+  prev.invitation?.layout === next.invitation?.layout
+));

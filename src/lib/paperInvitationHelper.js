@@ -156,16 +156,28 @@ export async function updatePaperInvitation(id, payload) {
 /**
  * 사용자의 청첩장 목록 가져오기
  */
-export async function listPaperInvitations() {
+export async function listPaperInvitations(options = {}) {
   const owner = await getPaperInvitationOwner();
   if (!owner.success) return { success: false, error: owner.error };
   const accessibleUserIds = await getAccessiblePaperInvitationUserIds(owner.userId);
+  const limit = Number.isFinite(options.limit) ? options.limit : null;
+  const offset = Number.isFinite(options.offset) ? options.offset : 0;
 
-  const { data, error } = await supabase
+  const columns = options.summary
+    ? 'id, user_id, template_id, category, groom, bride, date_str, time_str, venue, address, photo_url, layout, status, created_at, updated_at'
+    : '*';
+
+  let query = supabase
     .from('paper_invitations')
-    .select('*')
+    .select(columns)
     .in('user_id', accessibleUserIds)
     .order('created_at', { ascending: false });
+
+  if (limit) {
+    query = query.range(offset, offset + limit - 1);
+  }
+
+  const { data, error } = await query;
 
   if (error) return { success: false, error: error.message };
   return { success: true, data };
