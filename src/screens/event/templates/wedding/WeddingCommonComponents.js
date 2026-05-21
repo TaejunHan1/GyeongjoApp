@@ -132,8 +132,8 @@ const photoFrameStyles = {
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 50,
-    elevation: 50,
+    zIndex: 1000,
+    elevation: 1000,
   },
   layerActive: {
     borderWidth: 1,

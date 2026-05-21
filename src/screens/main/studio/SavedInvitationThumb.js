@@ -20,6 +20,11 @@ const fontFamilyFor = (fontFamily, fallback = SERIF_FONT) =>
 
 const splitManualLines = (value) => String(value ?? '').split(/\r?\n/);
 
+const estimateManualTextWidth = (lines, fontSize, letterSpacing = 0) => {
+  const longest = lines.reduce((max, line) => Math.max(max, String(line || ' ').length), 1);
+  return longest * (fontSize * 0.82 + Math.max(0, letterSpacing)) + fontSize * 2;
+};
+
 const formatDisplayTime = (timeStr) => {
   if (!timeStr) return '';
   const value = String(timeStr).trim();
@@ -62,12 +67,11 @@ export const getOptimizedInvitationPhotoUrl = (photoUrl, targetWidth = 240) => {
   if (!photoUrl.includes('/storage/v1/object/public/')) return photoUrl;
 
   const pixelWidth = Math.max(160, Math.min(900, Math.round(targetWidth)));
-  const pixelHeight = Math.max(220, Math.round(pixelWidth * A6_ASPECT_RATIO));
   const separator = photoUrl.includes('?') ? '&' : '?';
 
   return photoUrl
     .replace('/storage/v1/object/public/', '/storage/v1/render/image/public/')
-    + `${separator}width=${pixelWidth}&height=${pixelHeight}&resize=cover&quality=58`;
+    + `${separator}width=${pixelWidth}&quality=62`;
 };
 
 const parseWeddingDate = (dateStr) => {
@@ -76,7 +80,19 @@ const parseWeddingDate = (dateStr) => {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 };
 
-function MiniCalendarThumb({ dateStr, width, height }) {
+const CALENDAR_STYLE_THUMB = {
+  heart: { accent: '#F1B7BE', text: '#3A3732' },
+  circle: { accent: '#A96770', text: '#3A3732' },
+  ring: { accent: '#A8895A', text: '#2C2A28' },
+  underline: { accent: '#722F37', text: '#3A3732' },
+  minimal: { accent: '#111827', text: '#222222' },
+  classic: { accent: '#8B6F47', text: '#2F2A25' },
+  dot: { accent: '#C8898E', text: '#3A3732' },
+  vertical: { accent: '#6B4A3A', text: '#2C2A28' },
+  band: { accent: '#2C3E50', text: '#1F2933' },
+};
+
+function MiniCalendarThumb({ dateStr, width, height, styleId = 'heart' }) {
   const date = parseWeddingDate(dateStr);
   if (!date) return null;
 
@@ -90,113 +106,211 @@ function MiniCalendarThumb({ dateStr, width, height }) {
     const day = i - firstDay + 1;
     return day > 0 && day <= daysInMonth ? day : null;
   });
-  const horizontalPadding = Math.max(1, width * 0.035);
-  const innerW = Math.max(1, width - horizontalPadding * 2);
-  const cellW = innerW / 7;
-  const headerH = height * 0.18;
-  const weekdaysH = height * 0.13;
   const weekCount = cells.length / 7;
-  const rowH = Math.max(1, (height - headerH - weekdaysH) / weekCount);
-  const monthLabel = `${year}. ${String(month + 1).padStart(2, '0')}`;
-  const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-  const weeks = Array.from({ length: weekCount }, (_, row) =>
-    cells.slice(row * 7, row * 7 + 7)
-  );
+  const weeks = Array.from({ length: weekCount }, (_, row) => cells.slice(row * 7, row * 7 + 7));
+  const calendarStyle = CALENDAR_STYLE_THUMB[styleId] || CALENDAR_STYLE_THUMB.heart;
+  const accent = calendarStyle.accent;
+  const textColor = calendarStyle.text;
+  const monthNumber = String(month + 1).padStart(2, '0');
+  const dayNumber = String(selectedDay).padStart(2, '0');
+  const weekdaysEn = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const weekdaysKo = ['일', '월', '화', '수', '목', '금', '토'];
 
-  return (
-    <View style={{ width, height, paddingHorizontal: horizontalPadding }}>
-      <Text
-        style={{
-          height: headerH,
-          textAlign: 'center',
-          fontSize: Math.max(5, headerH * 0.55),
-          fontWeight: '700',
-          color: '#A96770',
-          letterSpacing: 0.5,
-          lineHeight: headerH,
-        }}
-      >
-        {monthLabel}
-      </Text>
-      <View style={{ flexDirection: 'row' }}>
-        {weekdays.map((d, i) => (
-          <Text
-            key={`${d}-${i}`}
-            style={{
-              width: cellW,
-              height: weekdaysH,
-              textAlign: 'center',
-              fontSize: Math.max(4, weekdaysH * 0.42),
-              fontWeight: '700',
-              color: i === 0 ? '#C98B92' : '#3A3732',
-              lineHeight: weekdaysH,
-            }}
-          >
-            {d}
+  const renderGrid = ({ label = `${year}. ${monthNumber}`, weekdays = weekdaysEn, mode = 'heart', box = false, xPad = Math.max(1, width * 0.035) } = {}) => {
+    const innerW = Math.max(1, width - xPad * 2);
+    const cellW = innerW / 7;
+    const headerH = mode === 'poster' ? 0 : height * 0.18;
+    const weekdaysH = height * 0.13;
+    const rowH = Math.max(1, (height - headerH - weekdaysH - (box ? 4 : 0)) / weekCount);
+    return (
+      <View style={[{ width, height, paddingHorizontal: xPad }, box && { borderWidth: 0.7, borderColor: 'rgba(169,103,112,0.35)', backgroundColor: 'rgba(255,248,249,0.6)', paddingVertical: 2 }]}>
+        {!!label && (
+          <Text style={{ height: headerH, textAlign: 'center', fontSize: Math.max(5, headerH * 0.55), fontWeight: '800', color: mode === 'minimal' ? textColor : accent, letterSpacing: 0.5, lineHeight: headerH }}>
+            {label}
           </Text>
+        )}
+        <View style={{ flexDirection: 'row', borderBottomWidth: mode === 'line' ? 0.6 : 0, borderBottomColor: 'rgba(168,137,90,0.35)' }}>
+          {weekdays.map((d, i) => (
+            <Text key={`${d}-${i}`} style={{ width: cellW, height: weekdaysH, textAlign: 'center', fontSize: Math.max(3, weekdaysH * 0.42), fontWeight: '800', color: i === 0 ? (styleId === 'minimal' ? textColor : '#C98B92') : textColor, lineHeight: weekdaysH }}>
+              {d}
+            </Text>
+          ))}
+        </View>
+        {weeks.map((week, rowIndex) => (
+          <View key={`week-${rowIndex}`} style={{ flexDirection: 'row', width: innerW }}>
+            {week.map((day, colIndex) => {
+              const selected = day === selectedDay;
+              const color = day ? (colIndex === 0 ? (styleId === 'minimal' ? textColor : '#C98B92') : textColor) : 'transparent';
+              return (
+                <View key={`day-${rowIndex}-${colIndex}`} style={{ width: cellW, height: rowH, alignItems: 'center', justifyContent: 'center', borderWidth: box ? 0.35 : 0, borderColor: 'rgba(169,103,112,0.13)' }}>
+                  {selected && mode === 'heart' ? (
+                    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: Math.max(10, rowH * 1.22), color: accent, lineHeight: Math.max(10, rowH * 1.18) }}>♥</Text>
+                      <Text style={{ position: 'absolute', fontSize: Math.max(3, rowH * 0.34), fontWeight: '900', color: '#4A3838' }}>{day}</Text>
+                    </View>
+                  ) : selected && mode === 'box' ? (
+                    <View style={{ width: Math.max(9, rowH * 0.78), height: Math.max(9, rowH * 0.78), backgroundColor: accent, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: Math.max(3, rowH * 0.34), fontWeight: '900', color: '#FFFFFF' }}>{day}</Text>
+                    </View>
+                  ) : selected && mode === 'line' ? (
+                    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: Math.max(4, rowH * 0.42), fontWeight: '900', color: textColor }}>{day}</Text>
+                      <View style={{ width: Math.max(7, rowH * 0.7), height: 1, backgroundColor: accent, marginTop: 0.5 }} />
+                    </View>
+                  ) : (
+                    <Text style={{ fontSize: Math.max(4, rowH * 0.42), fontWeight: selected ? '900' : '500', color: selected ? accent : color }}>{day || ''}</Text>
+                  )}
+                </View>
+              );
+            })}
+          </View>
         ))}
       </View>
-      {weeks.map((week, rowIndex) => (
-        <View key={`week-${rowIndex}`} style={{ flexDirection: 'row', width: innerW }}>
-          {week.map((day, colIndex) => {
-            const selected = day === selectedDay;
-            return (
-              <View
-                key={`day-${rowIndex}-${colIndex}`}
-                style={{
-                  width: cellW,
-                  height: rowH,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {selected ? (
-                  <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-                    <Text
-                      style={{
-                        fontSize: Math.max(10, rowH * 1.22),
-                        color: '#F1B7BE',
-                        lineHeight: Math.max(10, rowH * 1.18),
-                      }}
-                    >
-                      ♥
-                    </Text>
-                    <Text
-                      style={{
-                        position: 'absolute',
-                        fontSize: Math.max(3, rowH * 0.34),
-                        fontWeight: '900',
-                        color: '#4A3838',
-                      }}
-                    >
-                      {day}
-                    </Text>
-                  </View>
-                ) : (
-                  <Text
-                    style={{
-                      fontSize: Math.max(4, rowH * 0.42),
-                      fontWeight: '500',
-                      color: day ? (colIndex === 0 ? '#C98B92' : '#3A3732') : 'transparent',
-                    }}
-                  >
-                    {day || ''}
-                  </Text>
-                )}
+    );
+  };
+
+  if (styleId === 'circle') {
+    return (
+      <View style={{ width, height, paddingHorizontal: Math.max(2, width * 0.055), justifyContent: 'center' }}>
+        <View style={{ padding: Math.max(2, height * 0.045), backgroundColor: 'rgba(255,252,250,0.72)' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'stretch' }}>
+            <View style={{ width: '34%', alignItems: 'center', justifyContent: 'center', borderRightWidth: 0.7, borderRightColor: 'rgba(169,103,112,0.28)', marginRight: width * 0.035 }}>
+              <Text style={{ fontSize: Math.max(3, height * 0.075), fontWeight: '700', color: '#8B5A60' }}>{year}</Text>
+              <Text style={{ marginTop: height * 0.01, fontSize: Math.max(11, height * 0.28), fontWeight: '300', color: textColor }}>{dayNumber}</Text>
+              <Text style={{ fontSize: Math.max(3, height * 0.075), fontWeight: '800', color: accent }}>{monthNumber}월</Text>
+            </View>
+            <View style={{ flex: 1, justifyContent: 'center' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: height * 0.02 }}>
+                {weekdaysKo.map((d, i) => (
+                  <Text key={`box-week-${d}`} style={{ fontSize: Math.max(3, height * 0.06), fontWeight: '800', color: i === 0 ? '#A96770' : '#6B625E' }}>{d}</Text>
+                ))}
               </View>
-            );
-          })}
+              {weeks.map((week, rowIndex) => (
+                <View key={`box-row-${rowIndex}`} style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: rowIndex === 0 ? 0 : height * 0.006 }}>
+                  {week.map((day, colIndex) => {
+                    const selected = day === selectedDay;
+                    return (
+                      <View key={`box-day-${rowIndex}-${colIndex}`} style={{ width: width * 0.02, height: Math.max(4, height * 0.055), alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? accent : 'transparent' }}>
+                        <Text style={{ fontSize: Math.max(2.5, height * 0.04), fontWeight: selected ? '900' : '600', color: !day ? 'transparent' : selected ? '#FFFFFF' : colIndex === 0 ? '#A96770' : '#4B4542' }}>{day || ''}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          </View>
         </View>
-      ))}
-    </View>
-  );
+      </View>
+    );
+  }
+  if (styleId === 'ring') {
+    return (
+      <View style={{ width, height, paddingHorizontal: Math.max(2, width * 0.065), justifyContent: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: height * 0.06 }}>
+          <Text style={{ fontSize: Math.max(3, height * 0.08), fontWeight: '700', color: accent }}>{year}</Text>
+          <Text style={{ fontSize: Math.max(10, height * 0.25), fontWeight: '300', color: textColor }}>{monthNumber}</Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ fontSize: Math.max(3, height * 0.07), fontWeight: '800', color: '#6B625E' }}>{weekdaysKo[date.getDay()]}</Text>
+            <Text style={{ fontSize: Math.max(7, height * 0.17), fontWeight: '900', color: accent }}>{dayNumber}</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: height * 0.035 }}>
+          {weekdaysEn.map((d, i) => (
+            <Text key={`line-week-${d}`} style={{ fontSize: Math.max(2.5, height * 0.055), fontWeight: i === date.getDay() ? '900' : '600', color: i === date.getDay() ? accent : '#8B8580' }}>{d}</Text>
+          ))}
+        </View>
+      </View>
+    );
+  }
+  if (styleId === 'underline') {
+    return (
+      <View style={{ width, height, paddingHorizontal: Math.max(2, width * 0.05), justifyContent: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: height * 0.03 }}>
+          <View>
+            <Text style={{ fontSize: Math.max(10, height * 0.22), fontWeight: '900', color: textColor }}>{monthNumber}.{dayNumber}</Text>
+          </View>
+          <Text style={{ fontSize: Math.max(4, height * 0.11), fontWeight: '700', color: accent }}>{year}</Text>
+        </View>
+        {renderGrid({ xPad: 0, label: '', mode: 'line' })}
+      </View>
+    );
+  }
+  if (styleId === 'minimal') {
+    return (
+      <View style={{ width, height, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Math.max(2, width * 0.06) }}>
+        <Text style={{ fontSize: Math.max(3, height * 0.08), fontWeight: '700', color: '#6B7280', letterSpacing: 1 }}>WEDDING DAY</Text>
+        <Text style={{ marginTop: height * 0.03, fontSize: Math.max(14, height * 0.28), fontWeight: '300', color: textColor }}>{monthNumber}.{dayNumber}</Text>
+        <View style={{ width: '76%', height: 0.7, backgroundColor: '#111827', marginVertical: height * 0.06 }} />
+        <Text style={{ fontSize: Math.max(4, height * 0.09), fontWeight: '700', color: '#374151' }}>{year} / {weekdaysEn[date.getDay()]}</Text>
+      </View>
+    );
+  }
+
+  if (styleId === 'classic') {
+    return (
+      <View style={{ width, height, paddingHorizontal: Math.max(2, width * 0.055), justifyContent: 'center' }}>
+        <Text style={{ textAlign: 'center', fontSize: Math.max(4, height * 0.09), fontWeight: '700', color: accent, marginBottom: height * 0.02 }}>
+          {year}.{monthNumber}
+        </Text>
+        {renderGrid({ xPad: 0, label: '', mode: 'line' })}
+      </View>
+    );
+  }
+
+  if (styleId === 'dot') {
+    return (
+      <View style={{ width, height, paddingHorizontal: Math.max(2, width * 0.06), justifyContent: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', marginBottom: height * 0.025 }}>
+          <Text style={{ fontSize: Math.max(8, height * 0.16), fontWeight: '300', color: textColor }}>{monthNumber}</Text>
+          <Text style={{ marginLeft: 3, fontSize: Math.max(3, height * 0.07), fontWeight: '800', color: accent }}>{year}</Text>
+        </View>
+        {renderGrid({ xPad: 0, label: '', mode: 'line' })}
+      </View>
+    );
+  }
+
+  if (styleId === 'vertical') {
+    return (
+      <View style={{ width, height, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: Math.max(2, width * 0.07) }}>
+        <View style={{ alignItems: 'center', marginRight: width * 0.06 }}>
+          <Text style={{ fontSize: Math.max(3, height * 0.075), fontWeight: '800', color: accent }}>{year}</Text>
+          <Text style={{ marginTop: height * 0.01, fontSize: Math.max(12, height * 0.3), fontWeight: '300', color: textColor }}>{dayNumber}</Text>
+          <Text style={{ fontSize: Math.max(3, height * 0.075), fontWeight: '800', color: accent }}>{monthNumber}월</Text>
+        </View>
+        <View style={{ width: 0.7, height: '62%', backgroundColor: 'rgba(107,74,58,0.25)', marginRight: width * 0.06 }} />
+        <View style={{ alignItems: 'center' }}>
+          {weekdaysKo.map((d, i) => (
+            <Text key={`vertical-week-${d}`} style={{ fontSize: Math.max(3, height * 0.06), fontWeight: i === date.getDay() ? '900' : '600', color: i === date.getDay() ? accent : '#8B8580' }}>
+              {d}
+            </Text>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  if (styleId === 'band') {
+    return (
+      <View style={{ width, height, paddingHorizontal: Math.max(2, width * 0.06), justifyContent: 'center' }}>
+        <View style={{ backgroundColor: 'rgba(44,62,80,0.08)', paddingVertical: height * 0.06, paddingHorizontal: width * 0.04 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: Math.max(3, height * 0.075), fontWeight: '800', color: accent }}>{year}</Text>
+            <Text style={{ fontSize: Math.max(10, height * 0.24), fontWeight: '900', color: textColor }}>{monthNumber}.{dayNumber}</Text>
+          </View>
+          <Text style={{ marginTop: height * 0.025, textAlign: 'right', fontSize: Math.max(3, height * 0.065), fontWeight: '700', color: '#667085' }}>
+            {weekdaysEn[date.getDay()]}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return renderGrid();
 }
 
 function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
   const template = MOBILE_TEMPLATES.find((t) => t.id === invitation.template_id);
-  const preferredPhotoUrl = width >= 900
-    ? invitation.photo_url
-    : getOptimizedInvitationPhotoUrl(invitation.photo_url, width <= 120 ? 240 : Math.round(width * 2));
+  const preferredPhotoUrl = invitation.photo_url;
   const [failedOptimizedPhoto, setFailedOptimizedPhoto] = useState(false);
   const [photoLoading, setPhotoLoading] = useState(Boolean(invitation.photo_url));
   const photoUrl = useMemo(() => (
@@ -236,9 +350,84 @@ function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
     if (el?.size_pct != null) return (el.size_pct / 100) * width;
     return px(el?.size ?? fallback);
   };
+  const scaledBoxWidth = (el, fallback = 100, minWidth = 0) =>
+    Math.max((((el?.w ?? fallback) / 100) * width), minWidth);
   const back = layout.back || {};
   const backData = layout.backData || {};
   const templateBack = template.back || {};
+  const renderPositionedText = (el, value, options = {}) => {
+    if (!el || el.hidden || !value) return null;
+    const sizePx = scaledSize(el, options.fallbackSize || 10);
+    const manualLines = options.preserveManualLines ? splitManualLines(value) : null;
+    const letterSpacing = el.letterSpacing ?? options.letterSpacing ?? 0;
+    const manualWidth = manualLines ? estimateManualTextWidth(manualLines, sizePx, letterSpacing) : 0;
+    const boxWidth = Math.max(
+      scaledBoxWidth(el, options.fallbackWidth || 80, options.minWidth ? options.minWidth * width : 0),
+      options.minPxWidth || 0,
+      manualWidth
+    );
+    const lineCount = manualLines ? Math.max(1, manualLines.length) : options.lines || 1;
+    const lineHeight = options.lineHeight
+      ? options.lineHeight(sizePx)
+      : manualLines || lineCount > 1
+        ? sizePx * 1.55
+        : undefined;
+    const boxHeight = options.height
+      ? options.height(sizePx, lineCount)
+      : manualLines
+        ? sizePx * 1.55 * lineCount
+        : sizePx * (lineCount === 1 ? 2.2 : lineCount * 1.45);
+
+    return (
+      <View
+        style={{
+          position: 'absolute',
+          left: (el.x / 100) * width,
+          top: (el.y / 100) * height,
+          width: boxWidth,
+          height: boxHeight,
+          transform: [{ rotate: `${el.rotation || 0}deg` }],
+        }}
+      >
+        {manualLines ? (
+          manualLines.map((line, idx) => (
+            <Text
+              key={`${options.keyPrefix || 'text'}-line-${idx}`}
+              numberOfLines={1}
+              ellipsizeMode="clip"
+              style={{
+                textAlign: options.align || 'center',
+                fontFamily: fontFamilyFor(el.fontFamily, options.fontFallback || SERIF_FONT),
+                fontSize: sizePx,
+                lineHeight,
+                color: el.color || options.color || '#3A3732',
+                fontWeight: el.bold ? '900' : options.weight || '500',
+                letterSpacing,
+              }}
+            >
+              {line || ' '}
+            </Text>
+          ))
+        ) : (
+          <Text
+            numberOfLines={lineCount === 1 ? 1 : undefined}
+            ellipsizeMode="clip"
+            style={{
+              textAlign: options.align || 'center',
+              fontFamily: fontFamilyFor(el.fontFamily, options.fontFallback || SERIF_FONT),
+              fontSize: sizePx,
+              lineHeight,
+              color: el.color || options.color || '#3A3732',
+              fontWeight: el.bold ? '900' : options.weight || '500',
+              letterSpacing,
+            }}
+          >
+            {value}
+          </Text>
+        )}
+      </View>
+    );
+  };
 
   if (side === 'back' && template.hasBack) {
     const formatParentLine = (father, mother, childLabel) => {
@@ -249,63 +438,7 @@ function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
 
     const renderBackText = (key, value, options = {}) => {
       const el = back[key] || templateBack[key];
-      if (!el || !value) return null;
-      const sizePx = scaledSize(el, 10);
-      // Saved/detail rendering draws Text directly, while the editor draws it inside
-      // a draggable box. Nudge the direct Text up to match the editor's visual baseline.
-      const baselineOffset = options.baselineOffset ?? sizePx * 0.28;
-      const manualLines = options.preserveManualLines ? splitManualLines(value) : null;
-
-      return manualLines ? (
-        <View
-          style={{
-            position: 'absolute',
-            left: (el.x / 100) * width,
-            top: (el.y / 100) * height - baselineOffset,
-            width: ((el.w ?? 80) / 100) * width,
-            transform: [{ rotate: `${el.rotation || 0}deg` }],
-          }}
-        >
-          {manualLines.map((line, idx) => (
-            <Text
-              key={`${key}-line-${idx}`}
-              numberOfLines={1}
-              ellipsizeMode="clip"
-              style={{
-                textAlign: options.align || 'center',
-                fontFamily: fontFamilyFor(el.fontFamily),
-                fontSize: sizePx,
-                lineHeight: sizePx * 1.55,
-                color: el.color || options.color || '#3A3732',
-                fontWeight: el.bold ? '900' : options.weight || '500',
-                letterSpacing: el.letterSpacing ?? options.letterSpacing ?? 0,
-              }}
-            >
-              {line || ' '}
-            </Text>
-          ))}
-        </View>
-      ) : (
-        <Text
-          numberOfLines={options.lines === 1 ? 1 : undefined}
-          style={{
-            position: 'absolute',
-            left: (el.x / 100) * width,
-            top: (el.y / 100) * height - baselineOffset,
-            width: ((el.w ?? 80) / 100) * width,
-            textAlign: options.align || 'center',
-            fontFamily: fontFamilyFor(el.fontFamily),
-            fontSize: sizePx,
-            lineHeight: options.lines && options.lines > 1 ? sizePx * 1.55 : undefined,
-            color: el.color || options.color || '#3A3732',
-            fontWeight: el.bold ? '900' : options.weight || '500',
-            letterSpacing: el.letterSpacing ?? options.letterSpacing ?? 0,
-            transform: [{ rotate: `${el.rotation || 0}deg` }],
-          }}
-        >
-          {value}
-        </Text>
-      );
+      return renderPositionedText(el, value, { ...options, keyPrefix: key });
     };
 
     return (
@@ -334,6 +467,7 @@ function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
         })}
         {renderBackText('invitation', backData.invitationText, {
           preserveManualLines: true,
+          minWidth: 0.74,
           weight: '400',
           letterSpacing: 0.2,
         })}
@@ -379,7 +513,7 @@ function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
 
         {['infoTopDivider', 'infoBottomDivider', 'thanksDivider'].map((key) => {
           const el = back[key] || templateBack[key];
-          if (!el) return null;
+          if (!el || el.hidden) return null;
           return (
           <View
             key={key}
@@ -397,23 +531,30 @@ function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
         })}
 
         {(back.calendar || templateBack.calendar) && (
+          (() => {
+          const calendarEl = back.calendar || templateBack.calendar;
+          if (calendarEl.hidden) return null;
+          return (
           <View
             pointerEvents="none"
             style={{
               position: 'absolute',
-              left: ((back.calendar || templateBack.calendar).x / 100) * width,
-              top: ((back.calendar || templateBack.calendar).y / 100) * height,
-              width: (((back.calendar || templateBack.calendar).w ?? 58) / 100) * width,
-              height: (((back.calendar || templateBack.calendar).h ?? 25) / 100) * height,
-              transform: [{ rotate: `${(back.calendar || templateBack.calendar).rotation || 0}deg` }],
+              left: (calendarEl.x / 100) * width,
+              top: (calendarEl.y / 100) * height,
+              width: ((calendarEl.w ?? 58) / 100) * width,
+              height: ((calendarEl.h ?? 25) / 100) * height,
+              transform: [{ rotate: `${calendarEl.rotation || 0}deg` }],
             }}
           >
             <MiniCalendarThumb
               dateStr={invitation.date_str}
-              width={(((back.calendar || templateBack.calendar).w ?? 58) / 100) * width}
-              height={(((back.calendar || templateBack.calendar).h ?? 25) / 100) * height}
+              width={((calendarEl.w ?? 58) / 100) * width}
+              height={((calendarEl.h ?? 25) / 100) * height}
+              styleId={calendarEl.calendarStyle}
             />
           </View>
+          );
+          })()
         )}
       </View>
     );
@@ -430,7 +571,7 @@ function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
       }}
     >
       {/* 사진 — blank.png 아래 layer (cutout 템플릿이면 사진이 구멍으로 비침) */}
-      {layout.photo && (
+      {layout.photo && !layout.photo.hidden && (
         layout.photo.shape === 'oval' ? (
           <View
             style={{
@@ -593,73 +734,48 @@ function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
       ))}
 
       {/* 신랑 */}
-      {layout.groom && invitation.groom && (
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="clip"
-          style={{
-            position: 'absolute',
-            left: (layout.groom.x / 100) * width,
-            top: (layout.groom.y / 100) * height,
-            width: (layout.groom.w / 100) * width,
-            textAlign: 'center',
-            fontFamily: fontFamilyFor(layout.groom.fontFamily),
-            fontSize: scaledSize(layout.groom, 13),
-            color: layout.groom.color || '#3A2E22',
-            fontWeight: layout.groom.bold ? '900' : '500',
-            transform: [{ rotate: `${layout.groom.rotation || 0}deg` }],
-          }}
-        >
-          {invitation.groom}
-        </Text>
-      )}
+      {layout.groom && !layout.groom.hidden && invitation.groom && (() => {
+        const groomSize = scaledSize(layout.groom, 13);
+        return renderPositionedText(layout.groom, invitation.groom, {
+          fallbackSize: 13,
+          fallbackWidth: 35,
+          minPxWidth: groomSize * 5,
+          color: '#3A2E22',
+          weight: '500',
+          height: (size) => size * 2.2,
+        });
+      })()}
 
       {/* 신부 */}
-      {layout.bride && invitation.bride && (
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="clip"
-          style={{
-            position: 'absolute',
-            left: (layout.bride.x / 100) * width,
-            top: (layout.bride.y / 100) * height,
-            width: (layout.bride.w / 100) * width,
-            textAlign: 'center',
-            fontFamily: fontFamilyFor(layout.bride.fontFamily),
-            fontSize: scaledSize(layout.bride, 13),
-            color: layout.bride.color || '#3A2E22',
-            fontWeight: layout.bride.bold ? '900' : '500',
-            transform: [{ rotate: `${layout.bride.rotation || 0}deg` }],
-          }}
-        >
-          {invitation.bride}
-        </Text>
-      )}
+      {layout.bride && !layout.bride.hidden && invitation.bride && (() => {
+        const brideSize = scaledSize(layout.bride, 13);
+        return renderPositionedText(layout.bride, invitation.bride, {
+          fallbackSize: 13,
+          fallbackWidth: 35,
+          minPxWidth: brideSize * 5,
+          color: '#3A2E22',
+          weight: '500',
+          height: (size) => size * 2.2,
+        });
+      })()}
 
-      {/* 날짜 — 편집 화면과 위치 정확히 일치하도록 좌측 보정 (width 비례) */}
-      {layout.date && invitation.date_str && (
-        <Text
-          style={{
-            position: 'absolute',
-            left: (layout.date.x / 100) * width - px(2),
-            top: (layout.date.y / 100) * height,
-            width: ((layout.date.w ?? 100) / 100) * width,
-            textAlign: 'center',
-            fontFamily: fontFamilyFor(layout.date.fontFamily, NUMERIC_FONT),
-            fontSize: scaledSize(layout.date, 9),
-            color: layout.date.color || '#6B5B44',
-            letterSpacing: px(1.2),
-            fontWeight: layout.date.bold ? '900' : '600',
-            transform: [{ rotate: `${layout.date.rotation || 0}deg` }],
-          }}
-        >
-          {invitation.date_str}
-          {invitation.time_str ? ` ${formatDisplayTime(invitation.time_str)}` : ''}
-        </Text>
+      {/* 날짜 */}
+      {layout.date && !layout.date.hidden && invitation.date_str && renderPositionedText(
+        layout.date,
+        `${invitation.date_str}${invitation.time_str ? ` ${formatDisplayTime(invitation.time_str)}` : ''}`,
+        {
+          fallbackSize: 9,
+          fallbackWidth: 100,
+          fontFallback: NUMERIC_FONT,
+          color: '#6B5B44',
+          weight: '600',
+          letterSpacing: px(1.2),
+          height: (size) => size * 2.2,
+        }
       )}
 
       {/* 예식장 */}
-      {layout.venue && invitation.venue && (() => {
+      {layout.venue && !layout.venue.hidden && invitation.venue && (() => {
         const venueSize = scaledSize(layout.venue, 9);
         const venueLines = splitManualLines(invitation.venue);
         return (
@@ -668,7 +784,7 @@ function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
               position: 'absolute',
               left: (layout.venue.x / 100) * width,
               top: (layout.venue.y / 100) * height,
-              width: ((layout.venue.w ?? 100) / 100) * width,
+              width: scaledBoxWidth(layout.venue, 100),
               transform: [{ rotate: `${layout.venue.rotation || 0}deg` }],
             }}
           >
@@ -694,52 +810,33 @@ function SavedInvitationThumb({ invitation, width = 100, side = 'front' }) {
       })()}
 
       {/* 큰 날짜 (월/일 두 줄) — invitation.layout.dateBig 있을 때만 */}
-      {layout.dateBig && invitation.date_str && (() => {
+      {layout.dateBig && !layout.dateBig.hidden && invitation.date_str && (() => {
         const m = (invitation.date_str || '').match(/\d+\.(\d+)\.(\d+)/);
         if (!m) return null;
-        const sizePx = scaledSize(layout.dateBig, 28);
-        return (
-          <Text
-            style={{
-              position: 'absolute',
-              left: (layout.dateBig.x / 100) * width,
-              top: (layout.dateBig.y / 100) * height,
-              width: ((layout.dateBig.w ?? 100) / 100) * width,
-              textAlign: 'center',
-              fontFamily: fontFamilyFor(layout.dateBig.fontFamily),
-              fontSize: sizePx,
-              color: layout.dateBig.color || '#2C2A28',
-              fontWeight: layout.dateBig.bold ? '900' : '300',
-              letterSpacing: 1,
-              lineHeight: sizePx * 1.1,
-              transform: [{ rotate: `${layout.dateBig.rotation || 0}deg` }],
-            }}
-          >
-            {`${m[1]}.\n${m[2]}.`}
-          </Text>
-        );
+        return renderPositionedText(layout.dateBig, `${m[1]}.\n${m[2]}.`, {
+          fallbackSize: 28,
+          fallbackWidth: 100,
+          preserveManualLines: true,
+          color: '#2C2A28',
+          weight: '300',
+          letterSpacing: 1,
+          lineHeight: (size) => size * 1.1,
+          height: (size) => size * 2.6,
+        });
       })()}
 
       {/* 인사말 — 템플릿이 greeting 정의했을 때 (예: minimal-4 "결 혼 합 니 다") */}
-      {layout.greeting && template.text?.greeting?.text && (
-        <Text
-          numberOfLines={1}
-          style={{
-            position: 'absolute',
-            left: (layout.greeting.x / 100) * width,
-            top: (layout.greeting.y / 100) * height,
-            width: ((layout.greeting.w ?? 100) / 100) * width,
-            textAlign: 'center',
-            fontFamily: fontFamilyFor(layout.greeting.fontFamily),
-            fontSize: scaledSize(layout.greeting, 12),
-            color: layout.greeting.color || '#5A5854',
-            fontWeight: layout.greeting.bold ? '900' : '500',
-            letterSpacing: px(1),
-            transform: [{ rotate: `${layout.greeting.rotation || 0}deg` }],
-          }}
-        >
-          {template.text.greeting.text}
-        </Text>
+      {layout.greeting && !layout.greeting.hidden && template.text?.greeting?.text && renderPositionedText(
+        layout.greeting,
+        template.text.greeting.text,
+        {
+          fallbackSize: 12,
+          fallbackWidth: 100,
+          color: '#5A5854',
+          weight: '500',
+          letterSpacing: px(1),
+          height: (size) => size * 2.2,
+        }
       )}
     </View>
   );

@@ -29,6 +29,7 @@ import { TC } from '../guides/tossStyle';
 import {
   listPaperInvitations,
   deletePaperInvitation,
+  getPaperInvitation,
 } from '../../../lib/paperInvitationHelper';
 import SavedInvitationThumb, { getOptimizedInvitationPhotoUrl } from './SavedInvitationThumb';
 
@@ -161,11 +162,20 @@ export default function SavedInvitationsScreen({ navigation }) {
     load();
   };
 
-  const handleEdit = (item) => {
+  const handleEdit = async (item) => {
     setDetail(null);
-    // 폼 화면으로 prefill해서 이동 — 거기서 다음 → 레이아웃으로 이어짐
+    const fallback = item;
+    let invitation = fallback;
+    try {
+      const fresh = await getPaperInvitation(item.id);
+      if (fresh.success && fresh.data) {
+        invitation = fresh.data;
+      }
+    } catch (error) {
+      console.warn('[SavedInvitationsScreen] edit fresh fetch failed:', error?.message);
+    }
     setTimeout(() => {
-      navigation.navigate('PaperInvitationForm', { invitation: item });
+      navigation.navigate('PaperInvitationForm', { invitation });
     }, 200);
   };
 

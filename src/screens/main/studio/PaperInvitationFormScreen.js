@@ -65,7 +65,30 @@ const parseSavedDateTime = (date_str, time_str) => {
 
 const GROOM_RELATION_OPTIONS = ['아들', '장남', '차남', '삼남'];
 const BRIDE_RELATION_OPTIONS = ['딸', '장녀', '차녀', '삼녀'];
-const TEST_PHOTO = require('../../../../assets/studio/templates/modern/source-photos/modern-photo-1.png');
+const TEST_PHOTO = require('../../../../assets/images/photo-book-preview.png');
+const INVITATION_TEXT_SAMPLES = {
+  short: [
+    '서로의 오늘을 약속하는 날,\n소중한 분들을 초대합니다.\n따뜻한 마음으로 함께해 주세요.',
+    '두 사람이 한 길을 걷습니다.\n기쁜 마음으로 함께해 주시면\n큰 축복이 되겠습니다.',
+    '사랑으로 함께할 첫날,\n귀한 걸음으로 축복해 주세요.\n감사한 마음 오래 간직하겠습니다.',
+    '저희 두 사람의 시작에\n따뜻한 마음을 더해 주세요.\n소중한 날 함께하고 싶습니다.',
+    '소중한 약속의 자리에\n함께해 주시면 감사하겠습니다.\n기쁜 마음으로 모시겠습니다.',
+  ],
+  medium: [
+    '서로에게 가장 좋은 계절이 되어준 두 사람이\n이제 하나의 이름으로 걸어가려 합니다.\n귀한 걸음으로 축복해 주세요.',
+    '늘 곁에서 아껴주신 마음을 기억하며\n저희 두 사람이 새로운 시작을 합니다.\n함께 자리해 주시면 큰 기쁨이 되겠습니다.',
+    '서로의 손을 잡고 같은 방향을 바라보며\n저희 두 사람이 부부의 연을 맺습니다.\n소중한 날에 함께해 주세요.',
+    '작은 인연이 깊은 사랑이 되어\n평생을 함께할 약속으로 이어졌습니다.\n기쁜 날, 따뜻한 축복을 부탁드립니다.',
+    '서로를 향한 믿음과 사랑으로\n새로운 가정을 이루려 합니다.\n귀한 시간 내어 함께해 주시면 감사하겠습니다.',
+  ],
+  long: [
+    '서로 다른 길을 걷던 두 사람이\n이제 같은 마음으로 하나의 길을 걸어가려 합니다.\n그 시작의 자리에 소중한 분들을 모시고\n감사의 마음을 전하고 싶습니다.\n부디 귀한 걸음으로 함께해 주세요.',
+    '오랜 시간 저희를 아껴주시고 응원해 주신 분들께\n감사한 마음을 담아 이 자리를 마련했습니다.\n저희 두 사람이 사랑과 믿음으로 새 출발을 하는 날,\n함께해 주시면 더없는 기쁨이 되겠습니다.\n축복의 마음 오래 간직하겠습니다.',
+    '함께 웃고, 함께 기대며,\n서로에게 가장 든든한 사람이 되기로 약속했습니다.\n저희의 첫걸음이 따뜻한 축복 속에서 시작될 수 있도록\n귀한 걸음으로 함께해 주세요.\n앞으로의 날들도 예쁘게 살아가겠습니다.',
+    '서로의 부족함을 채워주고\n서로의 기쁨을 더 크게 나누며 살아가겠습니다.\n새로운 가정을 이루는 뜻깊은 날,\n소중한 분들의 축복을 마음 깊이 간직하겠습니다.\n함께해 주시면 감사하겠습니다.',
+    '두 사람이 만나 하나의 계절을 만들고\n그 계절이 이제 평생의 약속으로 이어집니다.\n저희가 함께 써 내려갈 첫 장에\n따뜻한 마음으로 함께해 주시면 감사하겠습니다.\n늘 받은 사랑을 기억하며 살아가겠습니다.',
+  ],
+};
 
 const getTestPhotoInfo = () => {
   const resolved = Image.resolveAssetSource(TEST_PHOTO);
@@ -100,6 +123,7 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
   const [venue, setVenue] = useState(invitation?.venue || '');
   const backData = invitation?.layout?.backData || {};
   const [formStep, setFormStep] = useState(1);
+  const [sampleOpen, setSampleOpen] = useState(false);
   const [invitationText, setInvitationText] = useState(
     backData.invitationText ||
       '서로의 이름을 부르는 것만으로도\n따뜻한 약속이 되는 날,\n소중한 분들을 모시고 함께하고 싶습니다.'
@@ -353,6 +377,17 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
 
                 {/* 이름 */}
                 <Text style={s.sectionLabel}>이름</Text>
+                <View style={s.tipCard}>
+                  <View style={s.tipIcon}>
+                    <Ionicons name="sparkles-outline" size={16} color={TC.blue} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.tipTitle}>이름 연출 팁</Text>
+                    <Text style={s.tipText}>
+                      템플릿 분위기에 맞춰 "김 민 수"처럼 한 칸씩 띄어 입력해도 좋아요.
+                    </Text>
+                  </View>
+                </View>
                 <View style={s.row}>
                   <View style={[s.inputCellInRow, { flex: 1 }]}>
                     <Text style={s.inputLabel}>신랑</Text>
@@ -435,11 +470,62 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
                     multiline
                     blurOnSubmit={false}
                     textAlignVertical="top"
-                    maxLength={160}
+                    maxLength={420}
                   />
+                </View>
+                <View style={s.sampleCard}>
+                  <TouchableOpacity style={s.sampleHeader} onPress={() => setSampleOpen((prev) => !prev)} activeOpacity={0.75}>
+                    <View>
+                      <Text style={s.sampleHeaderTitle}>샘플 문구</Text>
+                      <Text style={s.sampleHeaderSub}>짧은/중간/긴 문구 중 선택</Text>
+                    </View>
+                    <Ionicons name={sampleOpen ? 'chevron-up' : 'chevron-down'} size={18} color={TC.inkMuted} />
+                  </TouchableOpacity>
+                  {sampleOpen && (
+                    <>
+                      {[
+                        { id: 'short', title: '짧은 문구', items: INVITATION_TEXT_SAMPLES.short },
+                        { id: 'medium', title: '중간 문구', items: INVITATION_TEXT_SAMPLES.medium },
+                        { id: 'long', title: '긴 문구', items: INVITATION_TEXT_SAMPLES.long },
+                      ].map((group) => (
+                        <View key={group.id} style={s.sampleGroup}>
+                          <Text style={s.sampleGroupTitle}>{group.title}</Text>
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.sampleRow}>
+                            {group.items.map((sample, index) => (
+                              <TouchableOpacity
+                                key={`${group.id}-${index}`}
+                                style={s.sampleChip}
+                                onPress={() => {
+                                  setInvitationText(sample);
+                                  setSampleOpen(false);
+                                }}
+                                activeOpacity={0.75}
+                              >
+                                <Text style={s.sampleChipTitle}>{index + 1}</Text>
+                                <Text style={s.sampleChipText} numberOfLines={2}>
+                                  {sample.replace(/\n/g, ' ')}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        </View>
+                      ))}
+                    </>
+                  )}
                 </View>
 
                 <Text style={s.sectionLabel}>혼주 성함</Text>
+                <View style={s.tipCard}>
+                  <View style={s.tipIcon}>
+                    <Ionicons name="text-outline" size={16} color={TC.blue} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.tipTitle}>혼주 성함 표기</Text>
+                    <Text style={s.tipText}>
+                      "김 성 호"처럼 띄어 쓰면 더 격식 있는 느낌으로 연출할 수 있어요.
+                    </Text>
+                  </View>
+                </View>
                 <View style={s.row}>
                   <View style={[s.inputCellInRow, { flex: 1 }]}>
                     <Text style={s.inputLabel}>신랑 아버님</Text>
@@ -503,9 +589,11 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
                 </View>
 
                 <View style={s.backHintCard}>
-                  <Ionicons name="heart" size={18} color="#E78A9A" />
+                  <View style={s.tipIcon}>
+                    <Ionicons name="calendar-outline" size={16} color={TC.blue} />
+                  </View>
                   <Text style={s.backHintText}>
-                    달력은 1단계에서 선택한 예식 날짜를 기준으로 자동 생성되고, 해당 날짜는 핑크 하트로 표시됩니다.
+                    달력은 1단계에서 선택한 예식 날짜를 기준으로 자동 생성돼요. 다음 단계에서 달력 스타일도 바꿀 수 있어요.
                   </Text>
                 </View>
               </>
@@ -521,12 +609,9 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
               </TouchableOpacity>
             )}
             <TouchableOpacity style={[s.nextBtn, supportsBackSide && formStep === 2 && { flex: 1 }]} onPress={handleNext} activeOpacity={0.85}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.nextBtnEyebrow}>다음 단계</Text>
-                <Text style={s.nextBtnText}>
-                  {supportsBackSide && formStep === 1 ? '뒷면 입력' : '위치 조정'}
-                </Text>
-              </View>
+              <Text style={s.nextBtnText}>
+                {supportsBackSide && formStep === 1 ? '뒷면 입력' : '위치 조정하기'}
+              </Text>
               <View style={s.nextIconBubble}>
                 <Ionicons name="arrow-forward" size={18} color="#fff" />
               </View>
@@ -623,14 +708,14 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: TC.bg },
+  root: { flex: 1, backgroundColor: '#F7F8FA' },
 
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingTop: Platform.OS === 'ios' ? 8 : 50,
-    paddingBottom: 12,
+    paddingBottom: 14,
     backgroundColor: '#FFFFFF',
   },
   headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
@@ -649,29 +734,29 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
-    paddingBottom: 12,
-    gap: 8,
+    paddingBottom: 16,
+    gap: 7,
   },
   stepDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: TC.bg,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#F2F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepDotActive: { backgroundColor: TC.ink },
+  stepDotActive: { backgroundColor: '#111827' },
   stepDotText: { fontSize: 11, fontWeight: '800', color: '#fff' },
-  stepLine: { width: 32, height: 2, backgroundColor: TC.bg },
+  stepLine: { width: 34, height: 2, borderRadius: 1, backgroundColor: '#E5E8EB' },
 
   // 템플릿 정보
   templateInfo: {
     flexDirection: 'row',
     marginHorizontal: 20,
     marginTop: 16,
-    padding: 12,
+    padding: 14,
     backgroundColor: TC.card,
-    borderRadius: 14,
+    borderRadius: 20,
     gap: 12,
     alignItems: 'center',
   },
@@ -698,9 +783,9 @@ const s = StyleSheet.create({
   testFillWrap: {
     marginHorizontal: 20,
     marginTop: 12,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: '#F8FAFF',
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: '#F7FAFF',
     borderWidth: 1,
     borderColor: '#E1ECFF',
   },
@@ -741,6 +826,51 @@ const s = StyleSheet.create({
     marginTop: 24,
     marginBottom: 8,
   },
+  sectionHint: {
+    marginHorizontal: 20,
+    marginTop: -2,
+    marginBottom: 8,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
+  tipCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginHorizontal: 20,
+    marginTop: -2,
+    marginBottom: 10,
+    padding: 13,
+    borderRadius: 18,
+    backgroundColor: '#F7FAFF',
+    borderWidth: 1,
+    borderColor: '#E3EEFF',
+  },
+  tipIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: '#EAF3FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tipTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: TC.ink,
+    letterSpacing: -0.2,
+    marginBottom: 2,
+  },
+  tipText: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
 
   // 사진 카드
   photoCard: {
@@ -748,8 +878,8 @@ const s = StyleSheet.create({
     alignItems: 'center',
     marginHorizontal: 20,
     backgroundColor: TC.card,
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 20,
+    padding: 14,
     gap: 12,
   },
   photoPlaceholder: {
@@ -765,32 +895,32 @@ const s = StyleSheet.create({
   photoSub: { fontSize: 12, color: TC.inkMuted, letterSpacing: -0.2 },
 
   // 인풋 - row
-  row: { flexDirection: 'row', paddingHorizontal: 20, gap: 8, marginBottom: 8 },
+  row: { flexDirection: 'row', paddingHorizontal: 20, gap: 10, marginBottom: 10 },
   inputCellInRow: {
     backgroundColor: TC.card,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   // 인풋 - 단독
   inputCell: {
     backgroundColor: TC.card,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     marginHorizontal: 20,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   inputLabel: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '800',
     color: TC.inkMuted,
     letterSpacing: -0.2,
     marginBottom: 4,
   },
   input: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: TC.ink,
     letterSpacing: -0.3,
     padding: 0,
@@ -807,12 +937,86 @@ const s = StyleSheet.create({
     textAlignVertical: 'top',
     paddingTop: 2,
   },
+  sampleCard: {
+    marginHorizontal: 20,
+    marginTop: 4,
+    marginBottom: 10,
+    backgroundColor: TC.card,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  sampleHeader: {
+    minHeight: 58,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sampleHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: TC.ink,
+    letterSpacing: -0.2,
+  },
+  sampleHeaderSub: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '600',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
+  sampleGroup: {
+    marginBottom: 12,
+  },
+  sampleGroupTitle: {
+    paddingHorizontal: 14,
+    marginBottom: 8,
+    fontSize: 12,
+    fontWeight: '900',
+    color: TC.ink,
+    letterSpacing: -0.2,
+  },
+  sampleRow: {
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  sampleChip: {
+    width: 152,
+    minHeight: 64,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: '#F7F8FA',
+    borderWidth: 1,
+    borderColor: '#EEF1F4',
+  },
+  sampleChipTitle: {
+    alignSelf: 'flex-start',
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    overflow: 'hidden',
+    textAlign: 'center',
+    lineHeight: 22,
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    backgroundColor: TC.ink,
+    marginBottom: 7,
+  },
+  sampleChipText: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '700',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
   relationCard: {
     marginHorizontal: 20,
-    marginBottom: 8,
+    marginBottom: 10,
     padding: 14,
     backgroundColor: TC.card,
-    borderRadius: 12,
+    borderRadius: 18,
   },
   relationRow: {
     flexDirection: 'row',
@@ -822,12 +1026,12 @@ const s = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: '#F2F4F6',
   },
   relationChipActive: {
-    backgroundColor: TC.ink,
+    backgroundColor: '#111827',
   },
   relationChipText: {
     fontSize: 13,
@@ -857,8 +1061,8 @@ const s = StyleSheet.create({
     alignItems: 'center',
     marginHorizontal: 20,
     backgroundColor: TC.card,
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 20,
+    padding: 16,
     gap: 12,
   },
   dateTimeIcon: {
@@ -940,38 +1144,31 @@ const s = StyleSheet.create({
   bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 18,
-    paddingTop: 14,
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 12,
     paddingBottom: Platform.OS === 'ios' ? 30 : 18,
     backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#EEF0F3',
   },
   nextBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    justifyContent: 'center',
+    gap: 10,
     flex: 1,
-    minHeight: 58,
+    height: 56,
     paddingHorizontal: 18,
-    paddingVertical: 11,
     backgroundColor: '#111827',
-    borderRadius: 18,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    elevation: 4,
+    borderRadius: 16,
   },
   prevBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    minHeight: 54,
-    paddingHorizontal: 15,
-    backgroundColor: '#F3F4F6',
+    gap: 3,
+    width: 88,
+    height: 56,
+    backgroundColor: '#F2F4F6',
     borderRadius: 16,
   },
   prevBtnText: {
@@ -980,23 +1177,16 @@ const s = StyleSheet.create({
     color: TC.ink,
     letterSpacing: -0.3,
   },
-  nextBtnEyebrow: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.62)',
-    letterSpacing: -0.1,
-    marginBottom: 2,
-  },
   nextBtnText: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '900',
     color: '#fff',
     letterSpacing: -0.3,
   },
   nextIconBubble: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1008,15 +1198,17 @@ const s = StyleSheet.create({
     marginHorizontal: 20,
     marginTop: 12,
     padding: 14,
-    backgroundColor: '#FFF4F6',
-    borderRadius: 14,
+    backgroundColor: '#F7FAFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E3EEFF',
   },
   backHintText: {
     flex: 1,
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '600',
-    color: '#7B4D57',
+    color: TC.inkMuted,
     letterSpacing: -0.2,
   },
 });

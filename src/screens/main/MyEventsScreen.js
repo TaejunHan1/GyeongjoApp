@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Modal,
   Image,
+  InteractionManager,
   Platform,
   Alert,
 } from 'react-native';
@@ -36,8 +37,9 @@ const EVENT_CARD_COVERS = [
     key: 'classic_ivory',
     label: '클래식 아이보리',
     description: '고급스러운 봉투 느낌',
-    price: 0,
+    price: 50,
     image: require('../../../assets/event-card-covers/cover-classic-ivory.png'),
+    thumb: require('../../../assets/event-card-covers/thumbs/cover-classic-ivory-thumb.png'),
   },
   {
     key: 'modern_blue',
@@ -45,6 +47,7 @@ const EVENT_CARD_COVERS = [
     description: '차분한 프리미엄 톤',
     price: 60,
     image: require('../../../assets/event-card-covers/cover-modern-blue.png'),
+    thumb: require('../../../assets/event-card-covers/thumbs/cover-modern-blue-thumb.png'),
   },
   {
     key: 'hanji_gold',
@@ -52,6 +55,7 @@ const EVENT_CARD_COVERS = [
     description: '전통 문양과 금박',
     price: 90,
     image: require('../../../assets/event-card-covers/cover-hanji-gold.png'),
+    thumb: require('../../../assets/event-card-covers/thumbs/cover-hanji-gold-thumb.png'),
   },
   {
     key: 'floral_soft',
@@ -59,6 +63,7 @@ const EVENT_CARD_COVERS = [
     description: '밝은 꽃 장식',
     price: 60,
     image: require('../../../assets/event-card-covers/cover-floral-soft.png'),
+    thumb: require('../../../assets/event-card-covers/thumbs/cover-floral-soft-thumb.png'),
   },
   {
     key: 'black_premium',
@@ -66,6 +71,7 @@ const EVENT_CARD_COVERS = [
     description: '묵직한 행사 카드',
     price: 120,
     image: require('../../../assets/event-card-covers/cover-black-premium.png'),
+    thumb: require('../../../assets/event-card-covers/thumbs/cover-black-premium-thumb.png'),
   },
   {
     key: 'minimal_lock',
@@ -73,6 +79,7 @@ const EVENT_CARD_COVERS = [
     description: '정보 보호에 집중',
     price: 50,
     image: require('../../../assets/event-card-covers/cover-minimal-lock.png'),
+    thumb: require('../../../assets/event-card-covers/thumbs/cover-minimal-lock-thumb.png'),
   },
   {
     key: 'pearl_seal',
@@ -80,6 +87,7 @@ const EVENT_CARD_COVERS = [
     description: '아이보리 실링 덮개',
     price: 90,
     image: require('../../../assets/event-card-covers/cover-pearl-seal.png'),
+    thumb: require('../../../assets/event-card-covers/thumbs/cover-pearl-seal-thumb.png'),
   },
   {
     key: 'sage_clasp',
@@ -87,6 +95,7 @@ const EVENT_CARD_COVERS = [
     description: '차분한 잠금 커버',
     price: 90,
     image: require('../../../assets/event-card-covers/cover-sage-clasp.png'),
+    thumb: require('../../../assets/event-card-covers/thumbs/cover-sage-clasp-thumb.png'),
   },
   {
     key: 'onyx_seal',
@@ -94,6 +103,7 @@ const EVENT_CARD_COVERS = [
     description: '블랙 프리미엄 덮개',
     price: 120,
     image: require('../../../assets/event-card-covers/cover-onyx-seal.png'),
+    thumb: require('../../../assets/event-card-covers/thumbs/cover-onyx-seal-thumb.png'),
   },
   {
     key: 'rose_camellia',
@@ -101,6 +111,7 @@ const EVENT_CARD_COVERS = [
     description: '부드러운 로즈 덮개',
     price: 90,
     image: require('../../../assets/event-card-covers/cover-rose-camellia.png'),
+    thumb: require('../../../assets/event-card-covers/thumbs/cover-rose-camellia-thumb.png'),
   },
   {
     key: 'navy_plum',
@@ -108,6 +119,7 @@ const EVENT_CARD_COVERS = [
     description: '금빛 매화 잠금 커버',
     price: 110,
     image: require('../../../assets/event-card-covers/cover-navy-plum.png'),
+    thumb: require('../../../assets/event-card-covers/thumbs/cover-navy-plum-thumb.png'),
   },
   {
     key: 'taupe_lattice',
@@ -115,6 +127,7 @@ const EVENT_CARD_COVERS = [
     description: '은은한 창호 덮개',
     price: 90,
     image: require('../../../assets/event-card-covers/cover-taupe-lattice.png'),
+    thumb: require('../../../assets/event-card-covers/thumbs/cover-taupe-lattice-thumb.png'),
   },
 ];
 
@@ -124,6 +137,17 @@ const EVENT_TYPE_IMAGES = {
 };
 
 const FREE_COVER_KEYS = EVENT_CARD_COVERS.filter((cover) => cover.price <= 0).map((cover) => cover.key);
+const EVENT_COVER_THUMB_SOURCES = EVENT_CARD_COVERS.map((cover) => cover.thumb || cover.image);
+let coverThumbsPreloadStarted = false;
+
+const preloadEventCoverOptionImages = () => {
+  if (coverThumbsPreloadStarted) return;
+  coverThumbsPreloadStarted = true;
+  EVENT_COVER_THUMB_SOURCES.forEach((source) => {
+    const uri = Image.resolveAssetSource(source)?.uri;
+    if (uri) Image.prefetch(uri).catch(() => {});
+  });
+};
 
 const parseAdditionalInfo = (value) => {
   if (!value) return {};
@@ -175,6 +199,15 @@ export default function MyEventsScreen({ navigation, userInfo }) {
   const [selectedCoverEvent, setSelectedCoverEvent] = useState(null);
   const [ownedCoverKeys, setOwnedCoverKeys] = useState(FREE_COVER_KEYS);
   const [coverPurchaseLoading, setCoverPurchaseLoading] = useState(false);
+  const [coverPreloadMounted, setCoverPreloadMounted] = useState(false);
+
+  React.useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      preloadEventCoverOptionImages();
+      setCoverPreloadMounted(true);
+    });
+    return () => task?.cancel?.();
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -572,6 +605,8 @@ export default function MyEventsScreen({ navigation, userInfo }) {
     if (event?.shared_access) {
       return;
     }
+    preloadEventCoverOptionImages();
+    setCoverPreloadMounted(true);
     setSelectedCoverEvent(event);
     setCoverSheetVisible(true);
   };
@@ -1187,7 +1222,7 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                     activeOpacity={0.82}
                     disabled={coverPurchaseLoading}
                   >
-                    <Image source={cover.image} style={styles.coverOptionImage} resizeMode="cover" />
+                    <Image source={cover.thumb || cover.image} style={styles.coverOptionImage} resizeMode="cover" fadeDuration={0} />
                     <View style={styles.coverOptionInfo}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.coverOptionTitle}>{cover.label}</Text>
@@ -1214,6 +1249,19 @@ export default function MyEventsScreen({ navigation, userInfo }) {
           </View>
         </View>
       </Modal>
+
+      {coverPreloadMounted && (
+        <View pointerEvents="none" style={styles.coverPreloadLayer}>
+          {EVENT_CARD_COVERS.map((cover) => (
+            <Image
+              key={`cover-preload-${cover.key}`}
+              source={cover.thumb || cover.image}
+              style={styles.coverPreloadImage}
+              fadeDuration={0}
+            />
+          ))}
+        </View>
+      )}
 
       {/* 공통 커스텀 Alert (iOS/안드 통일) */}
       <SimpleModal {...alertProps} />
@@ -1933,6 +1981,17 @@ const styles = StyleSheet.create({
   },
   coverPriceTextActive: {
     color: '#FFFFFF',
+  },
+  coverPreloadLayer: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    overflow: 'hidden',
+  },
+  coverPreloadImage: {
+    width: 1,
+    height: 1,
   },
 
   // 로딩

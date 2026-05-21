@@ -840,8 +840,8 @@ const s = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 5,
-    elevation: 5,
+    zIndex: 1000,
+    elevation: 1000,
   },
   coverFrameLayerActive: {
     borderWidth: 1,
