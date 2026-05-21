@@ -7,12 +7,12 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "build:android": "eas build --platform android",
-    "build:ios": "eas build --platform ios",
-    "build:all": "eas build --platform all",
-    "submit:android": "eas submit --platform android",
-    "submit:ios": "eas submit --platform ios",
-    "update": "eas update",
+    "build:android": "npx eas-cli build --platform android",
+    "build:ios": "npx eas-cli build --platform ios",
+    "build:all": "npx eas-cli build --platform all",
+    "submit:android": "npx eas-cli submit --platform android",
+    "submit:ios": "npx eas-cli submit --platform ios",
+    "update": "npx eas-cli update",
     "lint": "eslint .",
     "test": "jest"
   },
@@ -29,29 +29,29 @@
     "@supabase/supabase-js": "^2.45.4",
     "crypto-js": "^4.2.0",
     "digital-ink-recognition": "file:./modules/digital-ink-recognition",
-    "expo": "^54.0.0",
+    "expo": "~54.0.34",
     "expo-av": "~16.0.8",
     "expo-blur": "~15.0.8",
+    "expo-build-properties": "~1.0.10",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.11",
-    "expo-dev-client": "~6.0.20",
+    "expo-dev-client": "~6.0.21",
     "expo-file-system": "~19.0.21",
     "expo-font": "~14.0.10",
     "expo-image-manipulator": "~14.0.8",
-    "expo-image-picker": "~17.0.9",
+    "expo-image-picker": "~17.0.11",
     "expo-keep-awake": "~15.0.8",
     "expo-linear-gradient": "~15.0.8",
-    "expo-linking": "~8.0.10",
-    "expo-notifications": "~0.32.14",
+    "expo-linking": "~8.0.12",
+    "expo-notifications": "~0.32.17",
     "expo-print": "~15.0.8",
-    "expo-screen-orientation": "~9.0.8",
+    "expo-screen-orientation": "~9.0.9",
     "expo-sharing": "~14.0.8",
     "expo-sms": "~14.0.8",
-    "expo-splash-screen": "~31.0.12",
+    "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
-    "expo-web-browser": "~15.0.10",
+    "expo-web-browser": "~15.0.11",
     "install": "^0.13.0",
-    "npm": "^11.6.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
@@ -76,6 +76,14 @@
   },
   "private": true,
   "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "@react-native-ml-kit/text-recognition",
+          "digital-ink-recognition"
+        ]
+      }
+    },
     "install": {
       "exclude": [
         "react-native-safe-area-context"

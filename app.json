@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/jeongdamlogo.png",
     "userInterfaceStyle": "light",
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -17,7 +18,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.jeongdam.gyeongjoapp",
-      "deploymentTarget": "15.1",
       "infoPlist": {
         "CFBundleURLTypes": [
           {
@@ -78,14 +78,24 @@
           "color": "#191F28"
         }
       ],
-      "./plugins/withWorkManagerFix"
+      "./plugins/withWorkManagerFix",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.5"
+          }
+        }
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "revenueCatIosApiKey": "replace_with_revenuecat_ios_public_sdk_key",
       "revenueCatAndroidApiKey": "replace_with_revenuecat_android_public_sdk_key",
       "eas": {
-        "projectId": "6e007e44-78af-48b5-b36e-ab75a54ab3fa"
+        "projectId": "e021b247-d3a8-4338-a6e3-de63f7fb22c9"
       }
-    }
+    },
+    "owner": "taejunhan"
   }
 }

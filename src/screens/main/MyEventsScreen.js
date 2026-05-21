@@ -12,7 +12,7 @@ import {
   Image,
   InteractionManager,
   Platform,
-  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -132,18 +132,29 @@ const EVENT_CARD_COVERS = [
 ];
 
 const EVENT_TYPE_IMAGES = {
-  wedding: require('../../../assets/icons/reciprocity/wedding.png'),
-  funeral: require('../../../assets/icons/reciprocity/funeral.png'),
+  wedding: require('../../../assets/icons/reciprocity/thumbs/wedding-thumb.png'),
+  funeral: require('../../../assets/icons/reciprocity/thumbs/funeral-thumb.png'),
 };
+const EVENT_TYPE_IMAGE_SOURCES = Object.values(EVENT_TYPE_IMAGES);
 
 const FREE_COVER_KEYS = EVENT_CARD_COVERS.filter((cover) => cover.price <= 0).map((cover) => cover.key);
 const EVENT_COVER_THUMB_SOURCES = EVENT_CARD_COVERS.map((cover) => cover.thumb || cover.image);
 let coverThumbsPreloadStarted = false;
+let eventTypeIconsPreloadStarted = false;
 
 const preloadEventCoverOptionImages = () => {
   if (coverThumbsPreloadStarted) return;
   coverThumbsPreloadStarted = true;
   EVENT_COVER_THUMB_SOURCES.forEach((source) => {
+    const uri = Image.resolveAssetSource(source)?.uri;
+    if (uri) Image.prefetch(uri).catch(() => {});
+  });
+};
+
+const preloadEventTypeIcons = () => {
+  if (eventTypeIconsPreloadStarted) return;
+  eventTypeIconsPreloadStarted = true;
+  EVENT_TYPE_IMAGE_SOURCES.forEach((source) => {
     const uri = Image.resolveAssetSource(source)?.uri;
     if (uri) Image.prefetch(uri).catch(() => {});
   });
@@ -199,11 +210,15 @@ export default function MyEventsScreen({ navigation, userInfo }) {
   const [selectedCoverEvent, setSelectedCoverEvent] = useState(null);
   const [ownedCoverKeys, setOwnedCoverKeys] = useState(FREE_COVER_KEYS);
   const [coverPurchaseLoading, setCoverPurchaseLoading] = useState(false);
+  const [coverPurchaseConfirm, setCoverPurchaseConfirm] = useState({ visible: false, cover: null });
   const [coverPreloadMounted, setCoverPreloadMounted] = useState(false);
+  const [eventIconPreloadMounted, setEventIconPreloadMounted] = useState(false);
 
   React.useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
+      preloadEventTypeIcons();
       preloadEventCoverOptionImages();
+      setEventIconPreloadMounted(true);
       setCoverPreloadMounted(true);
     });
     return () => task?.cancel?.();
@@ -613,17 +628,27 @@ export default function MyEventsScreen({ navigation, userInfo }) {
 
   const closeCoverSheet = () => {
     if (coverPurchaseLoading) return;
+    setCoverPurchaseConfirm({ visible: false, cover: null });
     setCoverSheetVisible(false);
     setSelectedCoverEvent(null);
+  };
+
+  const closeCoverPurchaseConfirm = () => {
+    if (coverPurchaseLoading) return;
+    setCoverPurchaseConfirm({ visible: false, cover: null });
   };
 
   const applyCoverToEvent = async (event, coverKey) => {
     if (!event?.id) return;
     if (event.shared_access) {
-      showAlert({
-        title: '덮개 설정 권한이 없어요',
-        message: '카드 덮개는 행사를 만든 사람만 변경할 수 있어요.',
-      });
+      setCoverSheetVisible(false);
+      setCoverPurchaseConfirm({ visible: false, cover: null });
+      setTimeout(() => {
+        showAlert({
+          title: '덮개 설정 권한이 없어요',
+          message: '카드 덮개는 행사를 만든 사람만 변경할 수 있어요.',
+        });
+      }, 180);
       return;
     }
 
@@ -637,10 +662,14 @@ export default function MyEventsScreen({ navigation, userInfo }) {
 
     const result = await updateEvent(event.id, { additional_info: nextInfo });
     if (!result?.success) {
-      showAlert({
-        title: '덮개 적용 실패',
-        message: result?.error || '잠시 후 다시 시도해주세요.',
-      });
+      setCoverSheetVisible(false);
+      setCoverPurchaseConfirm({ visible: false, cover: null });
+      setTimeout(() => {
+        showAlert({
+          title: '덮개 적용 실패',
+          message: result?.error || '잠시 후 다시 시도해주세요.',
+        });
+      }, 180);
       return;
     }
 
@@ -649,11 +678,13 @@ export default function MyEventsScreen({ navigation, userInfo }) {
     );
     setHostedEvents(prev => prev.map(updateLocalEvent));
     setSelectedCoverEvent(prev => (prev?.id === event.id ? updateLocalEvent(prev) : prev));
+    setCoverPurchaseConfirm({ visible: false, cover: null });
     setCoverSheetVisible(false);
   };
 
   const purchaseAndApplyCover = async (cover) => {
     if (!selectedCoverEvent || !cover || coverPurchaseLoading) return;
+    const targetEvent = selectedCoverEvent;
     setCoverPurchaseLoading(true);
 
     try {
@@ -664,20 +695,34 @@ export default function MyEventsScreen({ navigation, userInfo }) {
       });
 
       if (!purchase?.success) {
-        setAlimtalkBalance(purchase?.balance ?? alimtalkBalance);
-        showAlert({
+        const alertConfig = {
           title: purchase?.error === 'insufficient_balance' ? '크레딧이 부족해요' : '구매 실패',
           message: purchase?.error === 'insufficient_balance'
             ? `${cover.label} 덮개는 ${cover.price}크레딧이 필요해요.`
             : purchase?.message || '잠시 후 다시 시도해주세요.',
-        });
+        };
+        setAlimtalkBalance(purchase?.balance ?? alimtalkBalance);
+        setCoverPurchaseConfirm({ visible: false, cover: null });
+        setCoverSheetVisible(false);
+        setSelectedCoverEvent(null);
+        setTimeout(() => showAlert(alertConfig), 180);
         return;
       }
 
       setOwnedCoverKeys(prev => Array.from(new Set([...prev, cover.key])));
       if (typeof purchase.balance === 'number') setAlimtalkBalance(purchase.balance);
-      await applyCoverToEvent(selectedCoverEvent, cover.key);
+      await applyCoverToEvent(targetEvent, cover.key);
       loadCoverPurchaseState(currentUserId);
+    } catch (error) {
+      setCoverPurchaseConfirm({ visible: false, cover: null });
+      setCoverSheetVisible(false);
+      setSelectedCoverEvent(null);
+      setTimeout(() => {
+        showAlert({
+          title: '구매 실패',
+          message: error?.message || '잠시 후 다시 시도해주세요.',
+        });
+      }, 180);
     } finally {
       setCoverPurchaseLoading(false);
     }
@@ -698,17 +743,7 @@ export default function MyEventsScreen({ navigation, userInfo }) {
       return;
     }
 
-    Alert.alert(
-      '덮개 구매',
-      `${cover.label} 덮개를 ${cover.price}크레딧으로 구매하고 바로 적용할까요?`,
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '구매',
-          onPress: () => purchaseAndApplyCover(cover),
-        },
-      ],
-    );
+    setCoverPurchaseConfirm({ visible: true, cover });
   };
 
   const handleRemoveCover = () => {
@@ -878,9 +913,9 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                           <View style={styles.eventTopRow}>
                             <View style={[styles.eventTypeIcon, event.event_type === 'funeral' && styles.eventTypeIconFuneral]}>
                               {event.event_type === 'wedding' ? (
-                                <Image source={EVENT_TYPE_IMAGES.wedding} style={styles.eventTypeImage} resizeMode="contain" />
+                                <Image source={EVENT_TYPE_IMAGES.wedding} style={styles.eventTypeImage} resizeMode="contain" fadeDuration={0} />
                               ) : event.event_type === 'funeral' ? (
-                                <Image source={EVENT_TYPE_IMAGES.funeral} style={styles.eventTypeImage} resizeMode="contain" />
+                                <Image source={EVENT_TYPE_IMAGES.funeral} style={styles.eventTypeImage} resizeMode="contain" fadeDuration={0} />
                               ) : (
                                 <Ionicons name="calendar" size={18} color="#FFFFFF" />
                               )}
@@ -1052,9 +1087,9 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                       <View style={styles.eventTopRow}>
                         <View style={[styles.eventTypeIcon, event.event_type === 'funeral' && styles.eventTypeIconFuneral]}>
                           {event.event_type === 'wedding' ? (
-                            <Image source={EVENT_TYPE_IMAGES.wedding} style={styles.eventTypeImage} resizeMode="contain" />
+                            <Image source={EVENT_TYPE_IMAGES.wedding} style={styles.eventTypeImage} resizeMode="contain" fadeDuration={0} />
                           ) : event.event_type === 'funeral' ? (
-                            <Image source={EVENT_TYPE_IMAGES.funeral} style={styles.eventTypeImage} resizeMode="contain" />
+                            <Image source={EVENT_TYPE_IMAGES.funeral} style={styles.eventTypeImage} resizeMode="contain" fadeDuration={0} />
                           ) : (
                             <Ionicons name="calendar" size={18} color="#FFFFFF" />
                           )}
@@ -1247,6 +1282,66 @@ export default function MyEventsScreen({ navigation, userInfo }) {
               })}
             </ScrollView>
           </View>
+
+          {coverPurchaseConfirm.visible && (
+            <View style={styles.coverPurchaseConfirmLayer}>
+              <TouchableOpacity
+                style={styles.coverPurchaseConfirmDim}
+                activeOpacity={1}
+                onPress={closeCoverPurchaseConfirm}
+                disabled={coverPurchaseLoading}
+              />
+              <View style={styles.coverPurchaseConfirmBox}>
+                <View style={styles.coverPurchaseConfirmIcon}>
+                  <Ionicons name="sparkles" size={22} color="#3182F6" />
+                </View>
+                <Text style={styles.coverPurchaseConfirmTitle}>덮개 구매</Text>
+                <Text style={styles.coverPurchaseConfirmMessage}>
+                  {`${coverPurchaseConfirm.cover?.label || '선택한'} 덮개를 구매하고 바로 적용할까요?`}
+                </Text>
+                <View style={styles.coverPurchaseConfirmMeta}>
+                  <View>
+                    <Text style={styles.coverPurchaseConfirmMetaLabel}>필요 크레딧</Text>
+                    <Text style={styles.coverPurchaseConfirmMetaValue}>
+                      {coverPurchaseConfirm.cover?.price || 0}크레딧
+                    </Text>
+                  </View>
+                  <View style={styles.coverPurchaseConfirmMetaDivider} />
+                  <View>
+                    <Text style={styles.coverPurchaseConfirmMetaLabel}>보유 크레딧</Text>
+                    <Text style={styles.coverPurchaseConfirmMetaValue}>
+                      {alimtalkBalance == null ? '-' : alimtalkBalance}크레딧
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.coverPurchaseConfirmActions}>
+                  <TouchableOpacity
+                    style={styles.coverPurchaseCancelBtn}
+                    onPress={closeCoverPurchaseConfirm}
+                    activeOpacity={0.8}
+                    disabled={coverPurchaseLoading}
+                  >
+                    <Text style={styles.coverPurchaseCancelText}>취소</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.coverPurchaseConfirmBtn,
+                      coverPurchaseLoading && styles.coverPurchaseConfirmBtnDisabled,
+                    ]}
+                    onPress={() => purchaseAndApplyCover(coverPurchaseConfirm.cover)}
+                    activeOpacity={0.86}
+                    disabled={coverPurchaseLoading}
+                  >
+                    {coverPurchaseLoading ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.coverPurchaseConfirmText}>구매</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
         </View>
       </Modal>
 
@@ -1257,6 +1352,19 @@ export default function MyEventsScreen({ navigation, userInfo }) {
               key={`cover-preload-${cover.key}`}
               source={cover.thumb || cover.image}
               style={styles.coverPreloadImage}
+              fadeDuration={0}
+            />
+          ))}
+        </View>
+      )}
+
+      {eventIconPreloadMounted && (
+        <View pointerEvents="none" style={styles.eventIconPreloadLayer}>
+          {EVENT_TYPE_IMAGE_SOURCES.map((source, index) => (
+            <Image
+              key={`event-icon-preload-${index}`}
+              source={source}
+              style={styles.eventIconPreloadImage}
               fadeDuration={0}
             />
           ))}
@@ -1558,6 +1666,17 @@ const styles = StyleSheet.create({
   eventTypeImage: {
     width: 60,
     height: 60,
+  },
+  eventIconPreloadLayer: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    overflow: 'hidden',
+  },
+  eventIconPreloadImage: {
+    width: 1,
+    height: 1,
   },
   eventName: {
     fontSize: 16,
@@ -1980,6 +2099,118 @@ const styles = StyleSheet.create({
     color: '#4E5968',
   },
   coverPriceTextActive: {
+    color: '#FFFFFF',
+  },
+  coverPurchaseConfirmLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  coverPurchaseConfirmDim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.22)',
+  },
+  coverPurchaseConfirmBox: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 22,
+    paddingTop: 24,
+    paddingBottom: 18,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.18,
+    shadowRadius: 28,
+    elevation: 18,
+  },
+  coverPurchaseConfirmIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: '#EBF3FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  coverPurchaseConfirmTitle: {
+    fontSize: 19,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: -0.3,
+  },
+  coverPurchaseConfirmMessage: {
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: '#6B7684',
+    textAlign: 'center',
+  },
+  coverPurchaseConfirmMeta: {
+    width: '100%',
+    marginTop: 18,
+    borderRadius: 18,
+    backgroundColor: '#F7F8FA',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  coverPurchaseConfirmMetaDivider: {
+    width: 1,
+    height: 34,
+    backgroundColor: '#E5E8EB',
+  },
+  coverPurchaseConfirmMetaLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8B95A1',
+    textAlign: 'center',
+  },
+  coverPurchaseConfirmMetaValue: {
+    marginTop: 4,
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#191F28',
+    textAlign: 'center',
+  },
+  coverPurchaseConfirmActions: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 18,
+  },
+  coverPurchaseCancelBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#F2F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coverPurchaseCancelText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#4E5968',
+  },
+  coverPurchaseConfirmBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#191F28',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coverPurchaseConfirmBtnDisabled: {
+    opacity: 0.65,
+  },
+  coverPurchaseConfirmText: {
+    fontSize: 15,
+    fontWeight: '900',
     color: '#FFFFFF',
   },
   coverPreloadLayer: {

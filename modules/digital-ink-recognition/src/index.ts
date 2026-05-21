@@ -1,4 +1,4 @@
-import { requireOptionalNativeModule } from 'expo-modules-core';
+import { requireOptionalNativeModule } from 'expo';
 
 // 네이티브 모듈이 없거나 로드 실패 시 null 반환 (앱 크래시 방지)
 const DigitalInkRecognitionNative = requireOptionalNativeModule('DigitalInkRecognition');
