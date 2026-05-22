@@ -99,11 +99,11 @@ export default function WelcomeScreen({ navigation }) {
   );
 
   const handleStartPress = () => {
-    navigation.navigate('PhoneAuth', { isSignUp: true });
+    navigation.navigate('PhoneAuth', { isSignUp: false });
   };
 
-  const handleLoginPress = () => {
-    navigation.navigate('PhoneAuth', { isSignUp: false });
+  const handleGuestPress = () => {
+    navigation.navigate('GuestGuide');
   };
 
   return (
@@ -183,13 +183,13 @@ export default function WelcomeScreen({ navigation }) {
           <TouchableOpacity style={styles.startButton} onPress={handleStartPress}>
             <Animated.View style={[styles.buttonFloatingCircle, styles.buttonFloatingCircle1, { transform: [{ translateX: buttonFloatingAnim1.interpolate({ inputRange: [0, 1], outputRange: [10, 80] }) }, { translateY: buttonFloatingAnim1.interpolate({ inputRange: [0, 1], outputRange: [5, 45] }) }], opacity: buttonFloatingAnim1.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.1, 0.3, 0.1] }) }]} />
             <Animated.View style={[styles.buttonFloatingCircle, styles.buttonFloatingCircle2, { transform: [{ translateX: buttonFloatingAnim2.interpolate({ inputRange: [0, 1], outputRange: [70, 20] }) }, { translateY: buttonFloatingAnim2.interpolate({ inputRange: [0, 1], outputRange: [10, 40] }) }], opacity: buttonFloatingAnim2.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.1, 0.25, 0.1] }) }]} />
-            <Text style={styles.startButtonText}>시작하기</Text>
+            <Text style={styles.startButtonText}>휴대폰 번호로 시작하기</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.loginButton} onPress={handleLoginPress}>
-            <Text style={styles.loginButtonText}>로그인</Text>
+          <TouchableOpacity style={styles.guestButton} onPress={handleGuestPress}>
+            <Text style={styles.guestButtonText}>가이드 먼저 보기</Text>
           </TouchableOpacity>
           <Text style={styles.footerText}>
-            가입하면 <Text style={styles.linkText}>이용약관</Text> 및{' '}
+            계속하면 <Text style={styles.linkText}>이용약관</Text> 및{' '}
             <Text style={styles.linkText}>개인정보처리방침</Text>에 동의하게 됩니다.
           </Text>
         </View>
@@ -375,26 +375,18 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     zIndex: 10,
   },
-  loginButton: {
-    backgroundColor: Colors.white,
-    height: 56,
-    borderRadius: 16,
+  guestButton: {
+    height: 48,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E5E8EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
-    marginTop:5
+    marginTop: 2,
   },
-  loginButtonText: {
-    fontSize: 17,
+  guestButtonText: {
+    fontSize: 15,
     fontWeight: '600',
-    color: Colors.textPrimary,
-    letterSpacing: -0.3,
+    color: Colors.textSecondary,
+    letterSpacing: -0.2,
   },
   footerText: {
     fontSize: 12,

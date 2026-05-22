@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "경조사 관리",
+    "name": "정담",
     "slug": "gyeongjoapp",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -18,14 +18,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.jeongdam.gyeongjoapp",
+      "buildNumber": "2",
       "infoPlist": {
+        "CFBundleDisplayName": "정담",
         "CFBundleURLTypes": [
-          {
-            "CFBundleURLName": "gyeongjoapp",
-            "CFBundleURLSchemes": [
-              "gyeongjoapp"
-            ]
-          },
           {
             "CFBundleURLName": "gyeongjoapp",
             "CFBundleURLSchemes": [

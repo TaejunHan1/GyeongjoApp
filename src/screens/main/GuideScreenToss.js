@@ -181,6 +181,7 @@ const creditBadgeStyles = StyleSheet.create({
 });
 
 export default function GuideScreenToss({ navigation, userInfo, session, isAuthenticated }) {
+  const canUseAccountFeatures = isAuthenticated !== false && !userInfo?.isGuest;
   const [selectedUserType, setSelectedUserType] = useState(null);
   const [activeTheme, setActiveTheme] = useState('toss'); // 'toss' | 'character' | 'magazine' | 'dashboard'
   const [displayedHostFAQ, setDisplayedHostFAQ] = useState([]);
@@ -566,11 +567,13 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
         <View style={styles.header}>
           <Text style={styles.headerTitle}>{headerTitle}</Text>
           <View style={{ flex: 1 }} />
-          <CreditBadge
-            balance={aiStatus.balance}
-            onPress={() => navigation.navigate('Credit')}
-            compact
-          />
+          {canUseAccountFeatures && (
+            <CreditBadge
+              balance={aiStatus.balance}
+              onPress={() => navigation.navigate('Credit')}
+              compact
+            />
+          )}
         </View>
       )}
       <GuideThemeMinimal
@@ -584,7 +587,7 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
         AI_COST={AI_COST}
         selectedUserType={selectedUserType}
         setSelectedUserType={setSelectedUserType}
-        onCreditPress={() => navigation.navigate('Credit')}
+        onCreditPress={canUseAccountFeatures ? () => navigation.navigate('Credit') : undefined}
       />
     </SafeAreaView>
   );

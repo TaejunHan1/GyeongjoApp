@@ -137,7 +137,7 @@ const rememberPaperInvitationAuthUserId = async (authUserId) => {
 export default function PhoneAuthScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { isSignUp: initialIsSignUp = true, setUserInfo, setIsAuthenticated } = route.params || {};
+  const { isSignUp: initialIsSignUp = false, setUserInfo, setIsAuthenticated } = route.params || {};
 
   const [isSignUp, setIsSignUp] = useState(initialIsSignUp);
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -283,19 +283,11 @@ export default function PhoneAuthScreen() {
       if (existingUser) {
         console.log('✅ 기존 회원 확인됨:', existingUser);
         setIsDuplicatePhone(true);
-        if (currentIsSignUp) {
-          setDuplicateCheckMessage('이미 가입된 번호');
-        } else {
-          setDuplicateCheckMessage('회원 확인됨');
-        }
+        setDuplicateCheckMessage(currentIsSignUp ? '이미 가입된 번호' : '가입된 번호 확인');
       } else {
         console.log('❌ 미가입 번호 확인됨');
         setIsDuplicatePhone(false);
-        if (currentIsSignUp) {
-          setDuplicateCheckMessage('사용 가능');
-        } else {
-          setDuplicateCheckMessage('미가입 번호');
-        }
+        setDuplicateCheckMessage(currentIsSignUp ? '사용 가능' : '처음 이용하는 번호');
       }
     } catch (error) {
       console.error('🚨 회원 검사 오류:', error);
@@ -423,7 +415,7 @@ export default function PhoneAuthScreen() {
         '로그인 화면에서 계속하실까요?',
         [
           { text: '취소' },
-          { text: '로그인하기', primary: true, onPress: () => setIsSignUp(false) },
+          { text: '계속하기', primary: true, onPress: () => setIsSignUp(false) },
         ]
       );
       return;
@@ -583,7 +575,7 @@ export default function PhoneAuthScreen() {
 
           if (insertError) {
             console.error('❌ 사용자 생성 오류:', insertError);
-            showModal('회원가입 실패', '사용자 정보 저장 중 오류가 발생했습니다.', [{ text: '확인', primary: true }]);
+            showModal('정보 저장 실패', '사용자 정보 저장 중 오류가 발생했습니다.', [{ text: '확인', primary: true }]);
             setIsLoading(false);
             return;
           }
@@ -683,25 +675,6 @@ export default function PhoneAuthScreen() {
     }
   };
 
-  const handleModeSwitch = () => {
-    const newIsSignUp = !isSignUp;
-    setIsSignUp(newIsSignUp);
-
-    setIsDuplicatePhone(false);
-    setDuplicateCheckMessage('');
-
-    if (!newIsSignUp) {
-      setName('');
-    }
-
-    // 번호가 이미 입력되어 있으면 새 모드로 재검사
-    const numbers = phoneNumber.replace(/[^\d]/g, '');
-    if (numbers.length === 11) {
-      const formattedPhone = `+82${numbers.slice(1)}`;
-      checkPhoneDuplicate(formattedPhone, newIsSignUp);
-    }
-  };
-
   const handleSwitchToLogin = () => {
     setIsSignUp(false);
     setIsDuplicatePhone(false);
@@ -713,6 +686,7 @@ export default function PhoneAuthScreen() {
     setIsSignUp(true);
     setIsDuplicatePhone(false);
     setDuplicateCheckMessage('');
+    setTimeout(() => nameInputRef.current?.focus(), 220);
   };
 
   const handleMainButtonPress = () => {
@@ -724,8 +698,8 @@ export default function PhoneAuthScreen() {
     } else if (isSignUp && isDuplicatePhone) {
       // 회원가입인데 이미 가입된 번호 → 로그인으로 전환
       handleSwitchToLogin();
-    } else if (!isSignUp && !isDuplicatePhone && duplicateCheckMessage === '미가입 번호') {
-      // 로그인인데 미가입 번호 → 회원가입으로 전환
+    } else if (!isSignUp && !isDuplicatePhone && duplicateCheckMessage === '처음 이용하는 번호') {
+      // 처음 이용하는 번호 → 이름 입력 단계로 전환
       handleSwitchToSignUp();
     } else {
       handleSendVerification();
@@ -740,10 +714,10 @@ export default function PhoneAuthScreen() {
       return '인증번호 입력하기';
     }
     if (isSignUp && isDuplicatePhone) {
-      return '로그인하기';
+      return '계속하기';
     }
-    if (!isSignUp && !isDuplicatePhone && duplicateCheckMessage === '미가입 번호') {
-      return '회원가입하기';
+    if (!isSignUp && !isDuplicatePhone && duplicateCheckMessage === '처음 이용하는 번호') {
+      return '이름 입력하고 계속';
     }
     return '인증번호 받기';
   };
@@ -848,10 +822,10 @@ export default function PhoneAuthScreen() {
         </View>
         
         <Text style={styles.title}>
-          {isSignUp ? '정담과 함께\n마음을 나눠보세요' : '다시 만나서\n반가워요!'}
+          {isSignUp ? '처음 오셨네요\n이름만 알려주세요' : '휴대폰 번호로\n시작하세요'}
         </Text>
         <Text style={styles.subtitle}>
-          {isSignUp ? '간단한 정보로 바로 시작할 수 있어요' : '휴대폰 번호로 빠르게 로그인하세요'}
+          {isSignUp ? '정담에서 사용할 이름을 입력하면 인증을 진행해요' : '기존 회원은 바로 인증하고, 처음이라면 이름 입력으로 이어집니다'}
         </Text>
       </View>
       
@@ -900,23 +874,16 @@ export default function PhoneAuthScreen() {
                   <View style={styles.statusRow}>
                     <Ionicons
                       name={
-                        isSignUp
-                          ? (isDuplicatePhone ? "close-circle" : "checkmark-circle")
-                          : (isDuplicatePhone ? "checkmark-circle" : "close-circle")
+                        isDuplicatePhone || !isSignUp ? "checkmark-circle" : "close-circle"
                       }
                       size={16}
                       color={
-                        isSignUp
-                          ? (isDuplicatePhone ? '#FF6B6B' : '#20C65A')
-                          : (isDuplicatePhone ? '#20C65A' : '#FF6B6B')
+                        isSignUp && isDuplicatePhone ? '#FF6B6B' : '#20C65A'
                       }
                     />
                     <Text style={[
                       styles.statusText,
-                      { color: isSignUp
-                          ? (isDuplicatePhone ? '#FF6B6B' : '#20C65A')
-                          : (isDuplicatePhone ? '#20C65A' : '#FF6B6B')
-                      }
+                      { color: isSignUp && isDuplicatePhone ? '#FF6B6B' : '#20C65A' }
                     ]}>
                       {duplicateCheckMessage}
                     </Text>
@@ -944,16 +911,6 @@ export default function PhoneAuthScreen() {
           )}
         </TouchableOpacity>
         
-        <View style={styles.switchSection}>
-          <Text style={styles.switchText}>
-            {isSignUp ? '이미 회원이신가요?' : '아직 회원이 아니신가요?'}
-          </Text>
-          <TouchableOpacity onPress={handleModeSwitch} style={styles.switchButton}>
-            <Text style={styles.switchButtonText}>
-              {isSignUp ? '로그인하기' : '회원가입하기'}
-            </Text>
-          </TouchableOpacity>
-        </View>
       </View>
     </Animated.View>
   );
@@ -1098,7 +1055,7 @@ export default function PhoneAuthScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {step === 'verification' ? '휴대폰 인증' : (isSignUp ? '회원가입' : '로그인')}
+          {step === 'verification' ? '휴대폰 인증' : (isSignUp ? '정보 입력' : '휴대폰으로 시작')}
         </Text>
         <View style={{ width: 40 }} />
       </View>
