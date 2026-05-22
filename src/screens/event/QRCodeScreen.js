@@ -10,10 +10,11 @@ import {
   Alert,
   Share,
   Dimensions,
-  Clipboard,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import Toast from 'react-native-toast-message';
 import QRCode from 'react-native-qrcode-svg';
 import { Colors } from '../../styles/constants';
 import { getEventDetail } from '../../lib/supabaseHelper';
@@ -77,10 +78,21 @@ export default function QRCodeScreen({ navigation, route }) {
 
   const handleCopyLink = async () => {
     try {
-      await Clipboard.setString(qrValue);
-      Alert.alert('복사 완료', '링크가 클립보드에 복사되었습니다.');
+      await Clipboard.setStringAsync(qrValue);
+      Toast.show({
+        type: 'success',
+        text1: '링크 복사 완료',
+        text2: '부조 참여 링크가 클립보드에 복사되었습니다.',
+        position: 'top',
+        visibilityTime: 1800,
+      });
     } catch (error) {
-      Alert.alert('오류', '링크 복사에 실패했습니다.');
+      Toast.show({
+        type: 'error',
+        text1: '복사 실패',
+        text2: '링크 복사에 실패했습니다.',
+        position: 'top',
+      });
     }
   };
 

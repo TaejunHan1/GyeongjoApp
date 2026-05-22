@@ -12,13 +12,14 @@ import {
   Alert,
   Modal,
   Share,
-  Clipboard,
   ScrollView,
   FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Clipboard from 'expo-clipboard';
+import Toast from 'react-native-toast-message';
 import QRCode from 'react-native-qrcode-svg';
 import { Colors } from '../../styles/constants';
 import { getEventDetail, getEventMessages, createEventMessage, updateEvent } from '../../lib/supabaseHelper';
@@ -79,6 +80,7 @@ export default function EventDisplayScreen({ navigation, route }) {
   const [eventMessages, setEventMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
+  const [qrCopyNotice, setQrCopyNotice] = useState('');
   const [signedCategorizedImages, setSignedCategorizedImages] = useState(null);
 
   // 🎬 인트로 관련 state
@@ -96,6 +98,7 @@ export default function EventDisplayScreen({ navigation, route }) {
   const progressIntervalRef = useRef(null);
   const autoPlayTimeoutRef = useRef(null);
   const previewStopTimeoutRef = useRef(null);
+  const qrCopyNoticeTimerRef = useRef(null);
   const isScreenActiveRef = useRef(true);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -110,6 +113,15 @@ export default function EventDisplayScreen({ navigation, route }) {
       previewStopTimeoutRef.current = null;
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (qrCopyNoticeTimerRef.current) {
+        clearTimeout(qrCopyNoticeTimerRef.current);
+        qrCopyNoticeTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     isScreenActiveRef.current = true;
@@ -896,10 +908,28 @@ export default function EventDisplayScreen({ navigation, route }) {
   const handleQRCopyLink = async () => {
     try {
       const qrValue = getQRValue();
-      await Clipboard.setString(qrValue);
-      Alert.alert('복사 완료', '링크가 클립보드에 복사되었습니다.');
+      await Clipboard.setStringAsync(qrValue);
+      setShowQRModal(false);
+      if (qrCopyNoticeTimerRef.current) {
+        clearTimeout(qrCopyNoticeTimerRef.current);
+      }
+      qrCopyNoticeTimerRef.current = setTimeout(() => {
+        Toast.show({
+          type: 'success',
+          text1: '링크 복사 완료',
+          text2: '부조 참여 링크가 클립보드에 복사되었습니다.',
+          position: 'top',
+          visibilityTime: 1800,
+        });
+        qrCopyNoticeTimerRef.current = null;
+      }, 260);
     } catch (error) {
-      Alert.alert('오류', '링크 복사에 실패했습니다.');
+      Toast.show({
+        type: 'error',
+        text1: '복사 실패',
+        text2: '링크 복사에 실패했습니다.',
+        position: 'top',
+      });
     }
   };
 
