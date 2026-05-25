@@ -12,7 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import {
   createEvent, uploadImageToStorage, deleteImageFromStorage,
-  getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit, updateEvent, getEventDetail,
+  getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit, updateEvent, getEventDetail, getEventStorageImages,
 } from '../../../lib/supabaseHelper';
 import DaumPostcode from '../../../components/DaumPostcode';
 import WeddingTemplatePreview from '../templates/WeddingTemplatePreview';
@@ -20,6 +20,7 @@ import { GlobalFallingEffect } from '../templates/wedding/WeddingCommonComponent
 import WeddingIntroSelectModal, { INTRO_OVERLAYS, INTRO_LIST } from './WeddingIntroSelectModal';
 import { useTutorial } from '../../../contexts/TutorialContext';
 import TutorialOverlay from '../../../components/TutorialOverlay';
+import { prepareImagesForRender, resolveImageUri, toImageSource, unwrapImageValue } from '../../../lib/imageUri';
 
 const { width } = Dimensions.get('window');
 
@@ -35,31 +36,198 @@ const formatLocalDateKey = (value) => {
 };
 
 const getImageIdentity = (image) => (
-  image?.storagePath ||
-  image?.publicUrl ||
-  image?.originalUri ||
-  image?.uri ||
-  image?.id ||
-  ''
+  String(resolveImageUri(image) || image?.storagePath || image?.id || '')
+    .split('?')[0]
+    .replace(/%2F/ig, '/')
+    .trim() ||
+    ''
 );
 
+const inferWeddingImageCategory = (image, fallbackCategory = 'all') => {
+  const normalizedImage = unwrapImageValue(image);
+  const explicitCategory = normalizedImage && typeof normalizedImage === 'object'
+    ? normalizedImage.category
+    : null;
+
+  if (explicitCategory === 'main' || explicitCategory === 'gallery' || explicitCategory === 'groom' || explicitCategory === 'bride') {
+    return explicitCategory;
+  }
+
+  const uri = decodeURIComponent(String(resolveImageUri(normalizedImage) || ''));
+  const filename = uri.split('?')[0].split('/').pop() || '';
+
+  if (/(^|[_-])main([_.-]|$)/i.test(filename)) return 'main';
+  if (/(^|[_-])gallery([_.-]|$)/i.test(filename)) return 'gallery';
+  if (/(^|[_-])groom([_.-]|$)/i.test(filename)) return 'groom';
+  if (/(^|[_-])bride([_.-]|$)/i.test(filename)) return 'bride';
+
+  return fallbackCategory;
+};
+
+const getPersistedImageUri = (image) => {
+  const normalizedImage = unwrapImageValue(image);
+  if (normalizedImage && typeof normalizedImage === 'object') {
+    return resolveImageUri({
+      ...normalizedImage,
+      renderUri: null,
+      uri: normalizedImage.publicUrl || normalizedImage.url || normalizedImage.originalUri || normalizedImage.uri,
+    });
+  }
+  return resolveImageUri(normalizedImage);
+};
+
 const normalizeStoredImageForEdit = (img, index, fallbackCategory = 'all', fallbackLabel = null) => {
-  const uri = typeof img === 'string'
-    ? img
-    : (img?.uri || img?.publicUrl || img?.url || img?.originalUri || null);
-  const category = typeof img === 'object' ? (img.category || fallbackCategory) : fallbackCategory;
+  const normalizedImage = unwrapImageValue(img);
+  const imageObject = normalizedImage && typeof normalizedImage === 'object' ? normalizedImage : {};
+  const uri = resolveImageUri(normalizedImage);
+  const category = inferWeddingImageCategory(normalizedImage, fallbackCategory);
   return {
-    ...(typeof img === 'object' ? img : {}),
+    ...imageObject,
     uri,
-    originalUri: typeof img === 'object' ? (img.originalUri || uri) : uri,
-    publicUrl: typeof img === 'string' ? img : (img?.publicUrl || uri || null),
+    originalUri: imageObject.originalUri || uri,
+    publicUrl: imageObject.publicUrl || uri || null,
     category,
-    categoryLabel: typeof img === 'object' ? (img.categoryLabel || fallbackLabel) : fallbackLabel,
-    id: typeof img === 'object' ? (img.id || `edit_${category}_${index}`) : `edit_${category}_${index}`,
+    categoryLabel: imageObject.categoryLabel || fallbackLabel,
+    id: imageObject.id || `edit_${category}_${index}`,
   };
 };
 
-const flattenStoredCategorizedImages = (categorizedImages = {}) => {
+const normalizeWeddingEditImageCategories = (images = []) => {
+  const uniqueImages = dedupeImages(images).filter(image => image?.uri || image?.publicUrl);
+  const hasUploadCategories = uniqueImages.some(image => (
+    inferWeddingImageCategory(image, null) === 'main' ||
+    inferWeddingImageCategory(image, null) === 'gallery'
+  ));
+  let fallbackIndex = 0;
+
+  let categorized = uniqueImages.map((image, index) => {
+    let category = inferWeddingImageCategory(image, null);
+
+    if (category !== 'main' && category !== 'gallery') {
+      category = !hasUploadCategories && fallbackIndex === 0 ? 'main' : 'gallery';
+      fallbackIndex += 1;
+    }
+
+    return {
+      ...image,
+      category,
+      categoryLabel: category === 'main' ? '메인 사진' : '갤러리 사진',
+      id: image.id || `edit_${category}_${index}`,
+    };
+  });
+
+  const mainImages = categorized.filter(image => image.category === 'main');
+  if (mainImages.length === 0) {
+    const firstGalleryIndex = categorized.findIndex(image => image.category === 'gallery');
+    if (firstGalleryIndex >= 0) {
+      categorized = categorized.map((image, index) => (
+        index === firstGalleryIndex
+          ? { ...image, category: 'main', categoryLabel: '메인 사진' }
+          : image
+      ));
+    }
+  }
+
+  const mainIdentities = new Set(
+    categorized
+      .filter(image => image.category === 'main')
+      .map(image => getImageIdentity(image))
+      .filter(Boolean)
+  );
+  const uploadImages = [
+    ...categorized.filter(image => image.category === 'main').slice(0, 5),
+    ...categorized.filter(image => image.category === 'gallery' && !mainIdentities.has(getImageIdentity(image))).slice(0, 30),
+  ];
+
+  return [
+    ...uploadImages.filter(image => image.category === 'main'),
+    ...uploadImages.filter(image => image.category === 'gallery'),
+  ];
+};
+
+const getWeddingImageBatchKey = (image) => {
+  const normalizedImage = unwrapImageValue(image);
+  const candidates = [];
+
+  if (normalizedImage && typeof normalizedImage === 'object') {
+    candidates.push(
+      normalizedImage.storagePath,
+      normalizedImage.publicUrl,
+      normalizedImage.url,
+      normalizedImage.uri,
+      normalizedImage.originalUri,
+    );
+  }
+  candidates.push(resolveImageUri(normalizedImage));
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string' || !candidate.trim()) continue;
+    const decoded = decodeURIComponent(candidate).split('?')[0];
+    const eventImagesPath = decoded.includes('/event-images/')
+      ? decoded.split('/event-images/')[1]
+      : decoded.replace(/^.*\/public\/event-images\//, '');
+    const parts = eventImagesPath.split('/').filter(Boolean);
+    const tempIndex = parts.findIndex(part => /^temp_/i.test(part));
+
+    if (tempIndex > 0) return parts.slice(0, tempIndex + 1).join('/');
+    if (tempIndex === 0) return parts[0];
+  }
+
+  return 'ungrouped';
+};
+
+const getWeddingImageBatchTimestamp = (batchKey) => {
+  const timestamp = String(batchKey || '').match(/temp_(\d+)/i)?.[1];
+  return timestamp ? Number(timestamp) : 0;
+};
+
+const selectBestWeddingImageBatch = (images = []) => {
+  const groups = new Map();
+
+  images.forEach((image) => {
+    const batchKey = getWeddingImageBatchKey(image);
+    const group = groups.get(batchKey) || {
+      key: batchKey,
+      images: [],
+      uniqueImages: [],
+      identities: new Set(),
+      main: 0,
+      gallery: 0,
+      timestamp: getWeddingImageBatchTimestamp(batchKey),
+    };
+    const category = inferWeddingImageCategory(image, null);
+    const identity = getImageIdentity(image) || `${batchKey}:${group.images.length}`;
+
+    if (!group.identities.has(identity)) {
+      group.identities.add(identity);
+      group.uniqueImages.push(image);
+      if (category === 'main') group.main += 1;
+      if (category === 'gallery') group.gallery += 1;
+    }
+
+    group.images.push(image);
+    groups.set(batchKey, group);
+  });
+
+  if (groups.size <= 1) return images;
+
+  const bestGroup = [...groups.values()].sort((a, b) => {
+    const aHasMain = a.main > 0 ? 1 : 0;
+    const bHasMain = b.main > 0 ? 1 : 0;
+    if (aHasMain !== bHasMain) return bHasMain - aHasMain;
+
+    const aGalleryScore = Math.min(a.gallery, 30);
+    const bGalleryScore = Math.min(b.gallery, 30);
+    if (aGalleryScore !== bGalleryScore) return bGalleryScore - aGalleryScore;
+
+    if (a.uniqueImages.length !== b.uniqueImages.length) return b.uniqueImages.length - a.uniqueImages.length;
+    return b.timestamp - a.timestamp;
+  })[0];
+
+  return bestGroup?.uniqueImages || images;
+};
+
+const flattenStoredCategorizedImages = (categorizedImages = {}, categories = ['main', 'gallery', 'groom', 'bride', 'all']) => {
   if (!categorizedImages || typeof categorizedImages !== 'object') return [];
   const labels = {
     main: '메인 사진',
@@ -67,11 +235,39 @@ const flattenStoredCategorizedImages = (categorizedImages = {}) => {
     groom: '신랑 사진',
     bride: '신부 사진',
   };
-  return ['main', 'gallery', 'groom', 'bride', 'all'].flatMap((category) => {
+  return categories.flatMap((category) => {
     const list = categorizedImages[category];
     if (!Array.isArray(list)) return [];
-    return list.map((img, index) => normalizeStoredImageForEdit(img, index, category, labels[category] || null));
+    const editCategory = category === 'groom' || category === 'bride' ? 'gallery' : category;
+    return list.map((img, index) => normalizeStoredImageForEdit(img, index, editCategory, labels[category] || null));
   });
+};
+
+const buildWeddingEditImages = (storedCategorizedImages = {}, imageUrls = []) => {
+  const hasSpecificCategories = ['main', 'gallery', 'groom', 'bride'].some(category => (
+    Array.isArray(storedCategorizedImages?.[category]) && storedCategorizedImages[category].length > 0
+  ));
+
+  if (hasSpecificCategories) {
+    const specificImages = normalizeWeddingEditImageCategories(
+      flattenStoredCategorizedImages(storedCategorizedImages, ['main', 'gallery', 'groom', 'bride'])
+    );
+    if (specificImages.length > 0) return specificImages;
+  }
+
+  if (Array.isArray(imageUrls) && imageUrls.length > 0) {
+    const normalizedImageUrls = imageUrls.map((img, index) => (
+      normalizeStoredImageForEdit(img, index, typeof img === 'object' ? img.category || 'all' : 'all')
+    ));
+    const imageUrlImages = normalizeWeddingEditImageCategories(
+      selectBestWeddingImageBatch(normalizedImageUrls)
+    );
+    if (imageUrlImages.length > 0) return imageUrlImages;
+  }
+
+  return normalizeWeddingEditImageCategories(
+    flattenStoredCategorizedImages(storedCategorizedImages, ['all'])
+  );
 };
 
 const dedupeImages = (images = []) => {
@@ -1080,13 +1276,28 @@ export default function CreateWeddingScreen({ navigation, route }) {
       editHydratedRef.current = true;
 
       const info = sourceEvent.additional_info || {};
+      const storedCategorizedImages = info.categorized_images ||
+        info.categorizedImages ||
+        sourceEvent.categorized_images ||
+        sourceEvent.categorizedImages ||
+        {};
       const selectedTemplate = TEMPLATES.find(t => t.style === sourceEvent.template_style) || TEMPLATES[0];
-      const eventImages = dedupeImages([
-        ...flattenStoredCategorizedImages(info.categorized_images),
-        ...(Array.isArray(sourceEvent.image_urls)
-          ? sourceEvent.image_urls.map((img, index) => normalizeStoredImageForEdit(img, index, typeof img === 'object' ? img.category || 'all' : 'all'))
-          : []),
-      ]);
+      let eventImages = buildWeddingEditImages(storedCategorizedImages, sourceEvent.image_urls);
+
+      if (eventImages.length === 0 && sourceEvent.user_id && sourceEvent.id) {
+        const storageResult = await getEventStorageImages(sourceEvent.user_id, sourceEvent.id);
+        if (storageResult.success && Array.isArray(storageResult.data?.files)) {
+          eventImages = normalizeWeddingEditImageCategories(
+            storageResult.data.files.map((file, index) => normalizeStoredImageForEdit({
+              uri: file.publicUrl,
+              publicUrl: file.publicUrl,
+              storagePath: file.fullPath,
+              category: file.category || 'gallery',
+              id: `storage_${index}_${file.name || index}`,
+            }, index, file.category || 'gallery'))
+          );
+        }
+      }
 
       setEventData(prev => ({
         ...prev,
@@ -1125,6 +1336,22 @@ export default function CreateWeddingScreen({ navigation, route }) {
         parkingInfo: sourceEvent.parking_info || '',
         selectedTemplate,
       }));
+      console.log('[WeddingEdit] restored images', {
+        total: eventImages.length,
+        main: eventImages.filter(image => image.category === 'main').length,
+        gallery: eventImages.filter(image => image.category === 'gallery').length,
+      });
+
+      prepareImagesForRender(eventImages)
+        .then((renderReadyImages) => {
+          if (cancelled || !Array.isArray(renderReadyImages) || renderReadyImages.length === 0) return;
+          const renderReadyById = new Map(renderReadyImages.map(image => [image.id, image]));
+          setEventData(prev => ({
+            ...prev,
+            images: prev.images.map(image => renderReadyById.get(image.id) || image),
+          }));
+        })
+        .catch(() => {});
       if (info.background_music?.id) setTemplateMusicMap({ [selectedTemplate.id]: info.background_music });
       if (info.background_petal) setTemplatePetalMap({ [selectedTemplate.id]: info.background_petal });
       if (info.photo_frame?.id) setTemplateFrameMap({ [selectedTemplate.id]: info.photo_frame });
@@ -1789,7 +2016,22 @@ export default function CreateWeddingScreen({ navigation, route }) {
     try {
       const eventTitle = `${eventData.groomName} ♥ ${eventData.brideName} 결혼식`;
       const uniqueEventImages = dedupeImages(eventData.images);
-      const categorizedImages = buildCategorizedImages(uniqueEventImages);
+      const persistableEventImages = uniqueEventImages
+        .map((img, index) => {
+          const category = inferWeddingImageCategory(img, img?.category || 'gallery');
+          const persistedUri = getPersistedImageUri(img);
+          if (!persistedUri) return null;
+          return {
+            ...normalizeStoredImageForEdit(img, index, category),
+            uri: persistedUri,
+            publicUrl: persistedUri,
+            renderUri: null,
+            category,
+            categoryLabel: category === 'main' ? '메인 사진' : '갤러리 사진',
+          };
+        })
+        .filter(Boolean);
+      const categorizedImages = buildCategorizedImages(persistableEventImages);
 
       // 테스트용: 메인 사진 없으면 랜덤 플레이스홀더 1장 삽입
       if (categorizedImages.main.length === 0) {
@@ -1810,10 +2052,9 @@ export default function CreateWeddingScreen({ navigation, route }) {
         preset_amounts: eventData.presetAmounts,
         status: 'active',
         is_finalized: false,
-        image_urls: uniqueEventImages.map(img => ({
-          uri: img.publicUrl || img.uri, category: img.category, categoryLabel: img.categoryLabel,
-          id: img.id, storagePath: img.storagePath || null, publicUrl: img.publicUrl || null, eventId: img.eventId || null,
-        })),
+        image_urls: persistableEventImages
+          .map(img => getPersistedImageUri(img))
+          .filter(Boolean),
         allow_messages: eventData.allowMessages,
         message_placeholder: eventData.messageSettings.placeholder,
         event_date: formatLocalDateKey(eventData.date),
@@ -1863,6 +2104,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
               }
             : null,
           intro_effect: templateIntroMap[eventData.selectedTemplate?.id] || null, // { id }
+          categorized_images: categorizedImages,
         },
         event_creation_credit_reservation: creationCreditReservationRef.current,
       };
@@ -2187,23 +2429,27 @@ export default function CreateWeddingScreen({ navigation, route }) {
                             <Ionicons name="camera" size={18} color={C.textSub} />
                             <Text style={s.photoAddText}>추가</Text>
                           </TouchableOpacity>
-                          {images.map((image) => (
-                            <View key={image.id} style={s.photoThumb}>
-                              <Image source={{ uri: image.uri || image.publicUrl }} style={s.photoThumbImg} />
-                              <TouchableOpacity
-                                style={s.photoRemoveBtn}
-                                onPress={() => removeImage(image.id)}
-                                disabled={imageUploadState.isUploading}
-                              >
-                                <Ionicons name="close" size={12} color="#fff" />
-                              </TouchableOpacity>
-                              {image.publicUrl && (
-                                <View style={s.photoCheckBadge}>
-                                  <Ionicons name="checkmark" size={10} color="#fff" />
-                                </View>
-                              )}
-                            </View>
-                          ))}
+                          {images.map((image) => {
+                            const imageSource = toImageSource(image);
+                            if (!imageSource) return null;
+                            return (
+                              <View key={image.id} style={s.photoThumb}>
+                                <Image source={imageSource} style={s.photoThumbImg} />
+                                <TouchableOpacity
+                                  style={s.photoRemoveBtn}
+                                  onPress={() => removeImage(image.id)}
+                                  disabled={imageUploadState.isUploading}
+                                >
+                                  <Ionicons name="close" size={12} color="#fff" />
+                                </TouchableOpacity>
+                                {resolveImageUri(image) && (
+                                  <View style={s.photoCheckBadge}>
+                                    <Ionicons name="checkmark" size={10} color="#fff" />
+                                  </View>
+                                )}
+                              </View>
+                            );
+                          })}
                         </ScrollView>
                       </View>
                     );

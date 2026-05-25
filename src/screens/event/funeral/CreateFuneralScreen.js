@@ -24,10 +24,11 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit, updateEvent, getEventDetail,
+import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit, updateEvent, getEventDetail, getEventStorageImages,
 } from '../../../lib/supabaseHelper';
 import DaumPostcode from '../../../components/DaumPostcode';
 import FuneralTemplatePreview from '../templates/FuneralTemplatePreview';
+import { resolveImageUri, toImageSource } from '../../../lib/imageUri';
 
 const { width, height } = Dimensions.get('window');
 const calendarDaySize = Math.floor((width - 40) / 7);
@@ -92,19 +93,38 @@ const getStoredImageIdentity = (image) => (
 );
 
 const normalizeStoredFuneralImageForEdit = (img, index, fallbackCategory = 'all', fallbackLabel = null) => {
-  const uri = typeof img === 'string'
-    ? img
-    : (img?.uri || img?.publicUrl || img?.url || img?.originalUri || null);
+  const uri = resolveImageUri(img);
   const category = typeof img === 'object' ? (img.category || fallbackCategory) : fallbackCategory;
   return {
     ...(typeof img === 'object' ? img : {}),
     uri,
     originalUri: typeof img === 'object' ? (img.originalUri || uri) : uri,
-    publicUrl: typeof img === 'string' ? img : (img?.publicUrl || uri || null),
+    publicUrl: uri || null,
     category,
     categoryLabel: typeof img === 'object' ? (img.categoryLabel || fallbackLabel) : fallbackLabel,
     id: typeof img === 'object' ? (img.id || `edit_${category}_${index}`) : `edit_${category}_${index}`,
   };
+};
+
+const normalizeFuneralEditImageCategories = (images = []) => {
+  const uniqueImages = dedupeStoredFuneralImages(images).filter(image => image?.uri || image?.publicUrl);
+  let mainAssigned = uniqueImages.some(image => image.category === 'main');
+
+  return uniqueImages.map((image, index) => {
+    let category = image.category;
+
+    if (category !== 'main' && !mainAssigned) {
+      category = 'main';
+      mainAssigned = true;
+    }
+
+    return {
+      ...image,
+      category,
+      categoryLabel: category === 'main' ? '고인 사진' : (image.categoryLabel || '갤러리'),
+      id: image.id || `edit_${category}_${index}`,
+    };
+  });
 };
 
 const flattenStoredFuneralCategorizedImages = (categorizedImages = {}) => {
@@ -1478,13 +1498,33 @@ export default function CreateFuneralScreen({ navigation, route }) {
       editHydratedRef.current = true;
 
       const info = sourceEvent.additional_info || {};
+      const storedCategorizedImages = info.categorized_images ||
+        info.categorizedImages ||
+        sourceEvent.categorized_images ||
+        sourceEvent.categorizedImages ||
+        {};
       const selectedTemplate = templates.funeral.find(t => t.style === sourceEvent.template_style) || templates.funeral[0];
-      const eventImages = dedupeStoredFuneralImages([
-        ...flattenStoredFuneralCategorizedImages(info.categorized_images),
+      let eventImages = normalizeFuneralEditImageCategories([
+        ...flattenStoredFuneralCategorizedImages(storedCategorizedImages),
         ...(Array.isArray(sourceEvent.image_urls)
           ? sourceEvent.image_urls.map((img, index) => normalizeStoredFuneralImageForEdit(img, index, typeof img === 'object' ? img.category || 'all' : 'all'))
           : []),
       ]);
+
+      if (eventImages.length === 0 && sourceEvent.user_id && sourceEvent.id) {
+        const storageResult = await getEventStorageImages(sourceEvent.user_id, sourceEvent.id);
+        if (storageResult.success && Array.isArray(storageResult.data?.files)) {
+          eventImages = normalizeFuneralEditImageCategories(
+            storageResult.data.files.map((file, index) => normalizeStoredFuneralImageForEdit({
+              uri: file.publicUrl,
+              publicUrl: file.publicUrl,
+              storagePath: file.fullPath,
+              category: file.category || 'main',
+              id: `storage_${index}_${file.name || index}`,
+            }, index, file.category || 'main'))
+          );
+        }
+      }
       const familyMembers = Array.isArray(info.family_members)
         ? info.family_members.map(member => ({ relation: member.relation || '', names: member.names || '' }))
         : [];
@@ -2942,7 +2982,7 @@ export default function CreateFuneralScreen({ navigation, route }) {
 
   const renderComposedPhotoFrame = ({ compact = false, insideExistingFrame = false } = {}) => {
     const selectedPhoto = getCategoryImages('main')[0];
-    const selectedPhotoUri = selectedPhoto?.publicUrl || selectedPhoto?.uri;
+    const selectedPhotoUri = resolveImageUri(selectedPhoto);
     const selectedFrame = getSelectedPhotoFrame();
     const layout = compact ? mainPhotoLayoutView : getMainImageLayout();
     const frameAspectRatio = getPhotoFrameAspectRatio(selectedFrame);
@@ -4241,31 +4281,35 @@ export default function CreateFuneralScreen({ navigation, route }) {
                     showsHorizontalScrollIndicator={false}
                     style={styles.categoryImagesScroll}
                   >
-                    {categoryImages.map((image) => (
-                      <View key={image.id} style={styles.categoryImageItem}>
-                        <Image source={{ uri: image.publicUrl || image.uri }} style={styles.categoryImage} />
-                        
-                        {/* 업로드 상태 표시 */}
-                        <View style={styles.categoryImageStatus}>
-                          <Ionicons 
-                            name={image.publicUrl || image.localOnly ? "checkmark-circle" : "cloud-upload-outline"} 
-                            size={12} 
-                            color={image.publicUrl || image.localOnly ? TossColors.textSecondary : TossColors.warning} 
-                          />
+                    {categoryImages.map((image) => {
+                      const imageSource = toImageSource(image);
+                      if (!imageSource) return null;
+                      return (
+                        <View key={image.id} style={styles.categoryImageItem}>
+                          <Image source={imageSource} style={styles.categoryImage} />
+
+                          {/* 업로드 상태 표시 */}
+                          <View style={styles.categoryImageStatus}>
+                            <Ionicons
+                              name={image.publicUrl || image.localOnly ? "checkmark-circle" : "cloud-upload-outline"}
+                              size={12}
+                              color={image.publicUrl || image.localOnly ? TossColors.textSecondary : TossColors.warning}
+                            />
+                          </View>
+
+                          <TouchableOpacity
+                            style={styles.categoryImageRemove}
+                            onPress={() => {
+                              console.log('🔍 [DEBUG] 이미지 제거 버튼 클릭:', image.id, image.category);
+                              removeImage(image.id);
+                            }}
+                            disabled={imageUploadState.isUploading}
+                          >
+                            <Ionicons name="close-circle" size={20} color={TossColors.error} />
+                          </TouchableOpacity>
                         </View>
-                        
-                        <TouchableOpacity
-                          style={styles.categoryImageRemove}
-                          onPress={() => {
-                            console.log('🔍 [DEBUG] 이미지 제거 버튼 클릭:', image.id, image.category);
-                            removeImage(image.id);
-                          }}
-                          disabled={imageUploadState.isUploading}
-                        >
-                          <Ionicons name="close-circle" size={20} color={TossColors.error} />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </ScrollView>
                 )}
               </View>
@@ -4541,7 +4585,7 @@ export default function CreateFuneralScreen({ navigation, route }) {
 
   const renderPhotoFrameComposer = () => {
     const selectedPhoto = getCategoryImages('main')[0];
-    const selectedPhotoUri = selectedPhoto?.publicUrl || selectedPhoto?.uri;
+    const selectedPhotoUri = resolveImageUri(selectedPhoto);
     const selectedFrame = getSelectedPhotoFrame();
     const layout = getMainImageLayout();
     const frameAspectRatio = getPhotoFrameAspectRatio(selectedFrame);

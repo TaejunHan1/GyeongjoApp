@@ -1,6 +1,7 @@
 // src/screens/event/templates/wedding/WeddingUtils.js
 import { useState, useEffect } from 'react';
 import { Dimensions } from 'react-native';
+import { toImageSource } from '../../../../lib/imageUri';
 
 const { width, height } = Dimensions.get('window');
 
@@ -265,20 +266,14 @@ export const processImageArray = (images, defaultFallback = []) => {
     
     // 문자열 URL인 경우 - 모든 URL 형태 허용
     if (typeof img === 'string') {
-      return { 
-        uri: img
-      };
+      return toImageSource(img) || (defaultFallback[index % defaultFallback.length] || defaultFallback[0]);
     } 
-    // 이미 객체 형태인 경우 - 로컬 파일 우선, 없으면 publicUrl
-    else if (img && (img.uri || img.publicUrl)) {
-      const isLocal = img.uri && (img.uri.startsWith('file://') || img.uri.startsWith('ph://') || img.uri.startsWith('assets-library://') || img.uri.startsWith('data:'));
-      const uri = isLocal ? img.uri : (img.publicUrl || img.uri);
-      return {
-        uri: uri
-      };
+    // 이미 객체 형태인 경우 - 서버 URL이 있으면 서버 URL 우선
+    else if (img && (img.uri || img.publicUrl || img.url)) {
+      return toImageSource(img) || (defaultFallback[index % defaultFallback.length] || defaultFallback[0]);
     } 
     // require()된 이미지인 경우
-    else if (typeof img === 'object' && !img.uri && !img.publicUrl) {
+    else if (typeof img === 'number') {
       return img;
     }
     

@@ -6,6 +6,19 @@ import { buildEventSlugBase, buildSlugCandidate } from './slugUtils';
 
 export const EVENT_CREATION_FREE_LIMIT = 2;
 export const EVENT_CREATION_CREDIT_COST = 60;
+const HOSTED_EVENT_EDIT_ADMIN_PHONE = '01058359358';
+
+const normalizeLocalPhoneDigits = (phone) => {
+  const digits = String(phone || '').replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('0082')) return `0${digits.slice(4)}`;
+  if (digits.startsWith('82')) return `0${digits.slice(2)}`;
+  return digits;
+};
+
+const canAdminEditHostedEvents = (user) => (
+  normalizeLocalPhoneDigits(user?.phone) === HOSTED_EVENT_EDIT_ADMIN_PHONE
+);
 
 const base64ToBytes = (base64) => {
   const binary = global.atob
@@ -1616,13 +1629,16 @@ export const updateEvent = async (eventId, updates) => {
       }
     }
 
-    const { data, error } = await supabase
+    let updateQuery = supabase
       .from('events')
       .update(processedUpdates)
-      .eq('user_id', currentUser.id)
-      .eq('id', eventId)
-      .select()
-      .single();
+      .eq('id', eventId);
+
+    if (!canAdminEditHostedEvents(currentUser)) {
+      updateQuery = updateQuery.eq('user_id', currentUser.id);
+    }
+
+    const { data, error } = await updateQuery.select().single();
 
     if (error) {
       if (

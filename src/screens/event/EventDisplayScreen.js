@@ -428,11 +428,10 @@ export default function EventDisplayScreen({ navigation, route }) {
       result[key] = await Promise.all(ci[key].map(async (img) => {
         if (!img || typeof img !== 'object') return img;
         const isLocal = img.uri && (img.uri.startsWith('file://') || img.uri.startsWith('ph://') || img.uri.startsWith('data:'));
-        if (isLocal) return img;
-        const supabaseUrl = img.publicUrl || img.uri;
+        const supabaseUrl = img.publicUrl || img.url || (!isLocal ? img.uri : null);
         if (!supabaseUrl || !supabaseUrl.startsWith('http')) return img;
         const base64 = await fetchImageAsBase64(supabaseUrl);
-        if (!base64) return img;
+        if (!base64) return { ...img, uri: supabaseUrl };
         return { ...img, uri: base64 };
       }));
     }

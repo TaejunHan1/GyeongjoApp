@@ -27,6 +27,7 @@ import {
   getCategorizedImagesSafe,
 } from './WeddingUtils';
 import { PhotoFrameOverlay } from './WeddingCommonComponents';
+import { toImageSource } from '../../../../lib/imageUri';
 
 const { width: W, height: H } = Dimensions.get('window');
 const IS_TABLET = W >= 768;
@@ -62,11 +63,8 @@ const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
 const getImageSource = (img) => {
   if (!img) return null;
-  if (typeof img === 'string') return { uri: img };
-  if (img.uri) return { uri: img.uri };
-  if (img.publicUrl) return { uri: img.publicUrl };
-  if (img.url) return { uri: img.url };
-  return img;
+  if (typeof img === 'number') return img;
+  return toImageSource(img) || img;
 };
 
 const formatPhone = (phone) => {

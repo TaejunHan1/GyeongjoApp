@@ -28,6 +28,7 @@ import {
   formatKoreanTime,
   getCategorizedImagesSafe,
 } from './WeddingUtils';
+import { toImageSource } from '../../../../lib/imageUri';
 
 const { width: W, height: H } = Dimensions.get('window');
 const IS_TABLET = W >= 600;
@@ -164,11 +165,8 @@ const P = {
 
 const getImageSource = (img) => {
   if (!img) return null;
-  if (typeof img === 'string') return { uri: img };
-  if (img.uri) return { uri: img.uri };
-  if (img.publicUrl) return { uri: img.publicUrl };
-  if (img.url) return { uri: img.url };
-  return img;
+  if (typeof img === 'number') return img;
+  return toImageSource(img) || img;
 };
 
 const formatPhone = (phone) => {

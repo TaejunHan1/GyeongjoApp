@@ -1108,7 +1108,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
         currentUserInfo = {
           id: userInfo.userId,
           name: userInfo.userName,
-          phone: userInfo.phone,
+          phone: userInfo.phone || userInfo.userPhone,
           auth_method: 'phone'
         };
       } else if (session?.user) {
@@ -1646,7 +1646,7 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
 
   const userName = getUserName();
   const currentUserId = user?.id || userInfo?.userId;
-  const canEditHostedEvents = normalizeLocalPhoneDigits(userInfo?.phone || user?.phone) === HOSTED_EVENT_EDIT_ALLOWED_PHONE;
+  const canEditHostedEvents = normalizeLocalPhoneDigits(userInfo?.phone || userInfo?.userPhone || user?.phone) === HOSTED_EVENT_EDIT_ALLOWED_PHONE;
 
   const formatPhoneNumber = (phone) => {
     const digits = String(phone || '').replace(/[^0-9]/g, '');
