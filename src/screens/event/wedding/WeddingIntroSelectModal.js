@@ -589,6 +589,10 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
   const [selected,  setSelected]  = useState('none');
   const [tapToOpen, setTapToOpen] = useState(false);
   const [playKey,   setPlayKey]   = useState(0);
+  const selectedIntroId = typeof selectedId === 'string' ? selectedId : selectedId?.id || 'none';
+  const selectedTapToOpen = typeof selectedId === 'object' && selectedId !== null
+    ? !!selectedId.tapToOpen
+    : false;
 
   // 튜토리얼 연동 — 포커스만 잡고 탭 시 수동 advance (handler 자동화 X, 사용자 조작 자유)
   const { step: tutorialStep, registerTarget, advanceStep: tutorialAdvance } = useTutorial();
@@ -629,15 +633,11 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
   }, [visible, tutorialStep?.id, registerTarget]);
 
   useEffect(() => {
-    if (visible) {
-      const id  = typeof selectedId === 'string' ? selectedId : selectedId?.id || 'none';
-      const tap = typeof selectedId === 'object' && selectedId !== null
-                ? selectedId.tapToOpen || false : false;
-      setSelected(id);
-      setTapToOpen(tap);
-      setPlayKey(k => k + 1);
-    }
-  }, [visible, selectedId]);
+    if (!visible) return;
+    setSelected(selectedIntroId);
+    setTapToOpen(selectedTapToOpen);
+    setPlayKey(k => k + 1);
+  }, [visible, selectedIntroId, selectedTapToOpen]);
 
   const handleTapToOpenChange = (val) => {
     setTapToOpen(val);

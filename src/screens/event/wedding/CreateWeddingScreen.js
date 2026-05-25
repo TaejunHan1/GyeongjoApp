@@ -1829,8 +1829,10 @@ export default function CreateWeddingScreen({ navigation, route }) {
   };
 
   const handleSelectIntro = (introData) => {
-    const id        = typeof introData === 'string' ? introData : introData?.id || 'grand';
-    const tapToOpen = typeof introData === 'object' && introData !== null ? introData.tapToOpen || false : false;
+    const id = typeof introData === 'string' ? introData : introData?.id || 'grand';
+    const tapToOpen = id === 'none'
+      ? false
+      : (typeof introData === 'object' && introData !== null ? !!introData.tapToOpen : false);
     setCurrentPreviewIntroId(id);
     setCurrentPreviewTapToOpen(tapToOpen);
     const tplId = currentPreviewTemplateRef.current;
@@ -1931,6 +1933,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
     setCurrentPreviewPetalQty('normal');
     setCurrentPreviewPetalColor('pink');
     setCurrentPreviewIntroId('none');
+    setCurrentPreviewTapToOpen(false);
     setCurrentPreviewFrameId('none');
     setCurrentPreviewFrameScale(FRAME_DEFAULT_SCALE);
     setCurrentPreviewFrameOffsetX(0);
@@ -1970,6 +1973,7 @@ export default function CreateWeddingScreen({ navigation, route }) {
     const hasOwnIntro = BUILT_IN_INTRO_TEMPLATE_IDS.includes(tpl.id);
     const savedIntro = hasOwnIntro ? null : templateIntroMap[tpl.id];
     setCurrentPreviewIntroId(savedIntro?.id || 'none');
+    setCurrentPreviewTapToOpen(!!savedIntro?.tapToOpen);
     setPreviewTemplate(tpl);
     if (savedIntro?.id) {
       setShowIntroOverlay(true); // 모달 열리기 전에 미리 true → 열리자마자 인트로가 덮음
