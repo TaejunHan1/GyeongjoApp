@@ -3030,6 +3030,25 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
           )}
         </View>
 
+        <View style={styles.thankHomeSection}>
+          <TouchableOpacity
+            style={styles.thankHomeCard}
+            onPress={() => navigation.navigate('ThankYouMessages')}
+            activeOpacity={0.84}
+          >
+            <View style={styles.thankHomeIcon}>
+              <Ionicons name="chatbubble-ellipses-outline" size={24} color="#2563EB" />
+            </View>
+            <View style={styles.thankHomeTextBox}>
+              <Text style={styles.thankHomeTitle}>감사 인사 보내기</Text>
+              <Text style={styles.thankHomeSubtitle}>
+                하객 연락처를 골라 문자앱으로 인사를 전해요
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#B0B8C1" />
+          </TouchableOpacity>
+        </View>
+
         {/* ━━━━━━━━━━━━━━━━ 품앗이 장부 ━━━━━━━━━━━━━━━━ */}
         <View style={[styles.pmSection, styles.pmSectionHidden]}>
 
@@ -5991,6 +6010,50 @@ const styles = StyleSheet.create({
   // ── 품앗이 장부 (pm prefix) ──
   reciprocitySection: {
     marginBottom: 28,
+  },
+  thankHomeSection: {
+    marginBottom: 28,
+  },
+  thankHomeCard: {
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8EEF8',
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowColor: '#2D6CDF',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 3,
+  },
+  thankHomeIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thankHomeTextBox: {
+    flex: 1,
+    minWidth: 0,
+  },
+  thankHomeTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: 0,
+  },
+  thankHomeSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+    color: '#6B7280',
+    letterSpacing: 0,
   },
   reciprocityHeader: {
     flexDirection: 'row',

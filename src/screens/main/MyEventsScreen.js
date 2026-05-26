@@ -190,7 +190,7 @@ export default function MyEventsScreen({ navigation, userInfo }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hostedFilter, setHostedFilter] = useState('all');
-  const [hostedSortBy, setHostedSortBy] = useState('eventDate'); // 'eventDate' or 'createdAt'
+  const [hostedSortBy, setHostedSortBy] = useState('eventDate'); // 'eventDate', 'createdAt', or 'totalAmount'
   const [hostedSortOrder, setHostedSortOrder] = useState('desc'); // 'desc' or 'asc'
   const [dataLoaded, setDataLoaded] = useState(false);
   const [lastLoadTime, setLastLoadTime] = useState(0);
@@ -766,6 +766,15 @@ export default function MyEventsScreen({ navigation, userInfo }) {
     if (hostedFilter === 'completed') return e.status === 'completed';
     return true;
   }).sort((a, b) => {
+    if (hostedSortBy === 'totalAmount') {
+      const aAmount = Number(a.stats?.totalAmount || 0);
+      const bAmount = Number(b.stats?.totalAmount || 0);
+      if (aAmount !== bAmount) {
+        return hostedSortOrder === 'asc' ? aAmount - bAmount : bAmount - aAmount;
+      }
+      return new Date(b.event_date || b.created_at || 0) - new Date(a.event_date || a.created_at || 0);
+    }
+
     const aTime = getHostedEventSortTime(a);
     const bTime = getHostedEventSortTime(b);
 
@@ -941,6 +950,26 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                     hostedSortBy === 'createdAt' && styles.hostedSortChipTextActive,
                   ]}>
                     생성일
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.hostedSortChip,
+                    hostedSortBy === 'totalAmount' && styles.hostedSortChipActive,
+                  ]}
+                  onPress={() => handleHostedSortByPress('totalAmount')}
+                  activeOpacity={0.78}
+                >
+                  <Ionicons
+                    name="cash-outline"
+                    size={14}
+                    color={hostedSortBy === 'totalAmount' ? '#191F28' : '#8B95A1'}
+                  />
+                  <Text style={[
+                    styles.hostedSortChipText,
+                    hostedSortBy === 'totalAmount' && styles.hostedSortChipTextActive,
+                  ]}>
+                    부조금
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1587,6 +1616,7 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   hostedSortGroup: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,

@@ -247,9 +247,22 @@ export default function PhoneAuthScreen() {
   };
   const hideModal = () => setModalConfig(prev => ({ ...prev, visible: false }));
 
+  const normalizePhoneDigits = (value) => {
+    const digits = String(value || '').replace(/[^\d]/g, '');
+    if (digits.startsWith('8210') && digits.length === 12) {
+      return `0${digits.slice(2)}`;
+    }
+    return digits;
+  };
+
+  const getFormattedPhone = (value = phoneNumber) => {
+    const numbers = normalizePhoneDigits(value);
+    return numbers.length === 11 ? `+82${numbers.slice(1)}` : '';
+  };
+
   // 핸드폰 번호 형식 자동 변환
   const formatPhoneNumber = (text) => {
-    const numbers = text.replace(/[^\d]/g, '');
+    const numbers = normalizePhoneDigits(text);
     if (numbers.length > 11) return phoneNumber;
     if (numbers.length <= 3) return numbers;
     if (numbers.length <= 7) return `${numbers.slice(0, 3)}-${numbers.slice(3)}`;
@@ -302,7 +315,7 @@ export default function PhoneAuthScreen() {
     const formatted = formatPhoneNumber(text);
     setPhoneNumber(formatted);
 
-    const numbers = formatted.replace(/[^\d]/g, '');
+    const numbers = normalizePhoneDigits(formatted);
 
     if (numbers.length < 11) {
       setIsDuplicatePhone(false);
@@ -311,8 +324,7 @@ export default function PhoneAuthScreen() {
 
     if (numbers.length === 11) {
       Keyboard.dismiss();
-      const formattedPhone = `+82${numbers.slice(1)}`;
-      checkPhoneDuplicate(formattedPhone);
+      checkPhoneDuplicate(getFormattedPhone(formatted));
     }
   };
 
@@ -395,13 +407,13 @@ export default function PhoneAuthScreen() {
   const handleSendVerification = async () => {
     if (isLoading) return;
     
-    const numbers = phoneNumber.replace(/[^\d]/g, '');
+    const numbers = normalizePhoneDigits(phoneNumber);
     if (numbers.length !== 11) {
       showModal('휴대폰 번호를 확인해주세요', '올바른 휴대폰 번호를 입력해주세요.', [{ text: '확인', primary: true }]);
       return;
     }
 
-    const formattedPhone = `+82${numbers.slice(1)}`;
+    const formattedPhone = getFormattedPhone();
     const isBypassLogin = isBypassAuthPhone(formattedPhone);
 
     if (isSignUp && !name.trim() && !isBypassLogin) {
@@ -452,8 +464,7 @@ export default function PhoneAuthScreen() {
     if (verificationCode.length !== 6 || isLoading) return;
     
     setIsLoading(true);
-    const numbers = phoneNumber.replace(/[^\d]/g, '');
-    const formattedPhone = `+82${numbers.slice(1)}`;
+    const formattedPhone = getFormattedPhone();
     
     try {
       if (isReviewPhone(formattedPhone)) {
@@ -690,8 +701,7 @@ export default function PhoneAuthScreen() {
   };
 
   const handleMainButtonPress = () => {
-    const numbers = phoneNumber.replace(/[^\d]/g, '');
-    const formattedPhone = numbers.length === 11 ? `+82${numbers.slice(1)}` : '';
+    const formattedPhone = getFormattedPhone();
 
     if (isBypassAuthPhone(formattedPhone)) {
       handleSendVerification();
@@ -707,8 +717,7 @@ export default function PhoneAuthScreen() {
   };
 
   const getMainButtonText = () => {
-    const numbers = phoneNumber.replace(/[^\d]/g, '');
-    const formattedPhone = numbers.length === 11 ? `+82${numbers.slice(1)}` : '';
+    const formattedPhone = getFormattedPhone();
 
     if (isBypassAuthPhone(formattedPhone)) {
       return '인증번호 입력하기';
@@ -725,10 +734,10 @@ export default function PhoneAuthScreen() {
   const isMainButtonDisabled = () => {
     if (isLoading || isCheckingDuplicate) return true;
     
-    const numbers = phoneNumber.replace(/[^\d]/g, '');
+    const numbers = normalizePhoneDigits(phoneNumber);
     if (numbers.length !== 11) return true;
 
-    const formattedPhone = `+82${numbers.slice(1)}`;
+    const formattedPhone = getFormattedPhone();
     if (isBypassAuthPhone(formattedPhone)) return false;
 
     if (isSignUp && !name.trim()) return true;
@@ -857,7 +866,7 @@ export default function PhoneAuthScreen() {
               value={phoneNumber} 
               onChangeText={handlePhoneNumberChange} 
               keyboardType="numeric" 
-              maxLength={13} 
+              maxLength={17} 
               returnKeyType="done" 
               onSubmitEditing={handleMainButtonPress} 
             />
@@ -1000,7 +1009,11 @@ export default function PhoneAuthScreen() {
         </View>
         
         <Text style={styles.title}>인증번호를{'\n'}확인해주세요</Text>
-        <Text style={styles.subtitle}>{phoneNumber}로 발송된{'\n'}6자리 인증번호를 입력해주세요</Text>
+        {isReviewPhone(getFormattedPhone()) ? (
+          <Text style={styles.subtitle}>App Review 심사용 계정입니다{'\n'}인증번호 000000을 입력해주세요</Text>
+        ) : (
+          <Text style={styles.subtitle}>{phoneNumber}로 발송된{'\n'}6자리 인증번호를 입력해주세요</Text>
+        )}
       </View>
       
       <View style={styles.formSection}>
