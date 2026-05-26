@@ -20,6 +20,31 @@ const canAdminEditHostedEvents = (user) => (
   normalizeLocalPhoneDigits(user?.phone) === HOSTED_EVENT_EDIT_ADMIN_PHONE
 );
 
+const parseJsonObject = (value) => {
+  if (!value) return {};
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+};
+
+const isWebGuestbookOnlyEntry = (entry) => {
+  const amount = Number(entry?.amount || 0);
+  const additionalInfo = parseJsonObject(entry?.additional_info);
+  const inputMethod = String(entry?.input_method || '').toLowerCase();
+  const createdVia = String(additionalInfo.created_via || additionalInfo.source_type || '').toLowerCase();
+
+  if (amount > 0) return false;
+  if (inputMethod === 'web_guestbook' || createdVia === 'web_guestbook') return true;
+  return createdVia === 'web' && !!entry?.message;
+};
+
+const filterContributionDisplayEntries = (entries = []) => (
+  entries.filter((entry) => !isWebGuestbookOnlyEntry(entry))
+);
+
 const base64ToBytes = (base64) => {
   const binary = global.atob
     ? global.atob(base64)
@@ -1757,13 +1782,18 @@ export const getEventDetail = async (eventId) => {
         guest_book (
           id,
           guest_name,
+          guest_phone,
           amount,
           ticket_count,
           relation_category,
           relation_detail,
+          side,
           message,
           message_type,
+          input_method,
+          additional_info,
           is_verified,
+          alimtalk_sent,
           created_at,
           updated_at
         )
@@ -1782,17 +1812,18 @@ export const getEventDetail = async (eventId) => {
       .eq('event_id', eventId);
 
     if (guestBookEntries && !guestBookError) {
-      const totalAmount = guestBookEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
-      const totalEntries = guestBookEntries.length;
-      const attendingCount = guestBookEntries.filter(entry => entry.attending === true).length;
+      const displayEntries = filterContributionDisplayEntries(guestBookEntries);
+      const totalAmount = displayEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+      const totalEntries = displayEntries.length;
+      const attendingCount = displayEntries.filter(entry => entry.attending === true).length;
       const messageCount = guestBookEntries.filter(entry => entry.message && entry.message.trim() !== '').length;
-      const verifiedCount = guestBookEntries.filter(entry => entry.is_verified === true).length;
+      const verifiedCount = displayEntries.filter(entry => entry.is_verified === true).length;
 
       // 결혼식 전용 통계 (relation_category로 구분)
-      const groomSideEntries = guestBookEntries.filter(entry =>
+      const groomSideEntries = displayEntries.filter(entry =>
         entry.relation_category === '신랑측' || entry.relation_category === 'groom'
       );
-      const brideSideEntries = guestBookEntries.filter(entry =>
+      const brideSideEntries = displayEntries.filter(entry =>
         entry.relation_category === '신부측' || entry.relation_category === 'bride'
       );
 
@@ -1828,6 +1859,10 @@ export const getEventDetail = async (eventId) => {
       } catch (e) {
         data.additional_info = {};
       }
+    }
+
+    if (Array.isArray(data.guest_book)) {
+      data.guest_book = filterContributionDisplayEntries(data.guest_book);
     }
     
     // 추가 정보 처리
@@ -2128,7 +2163,7 @@ export const getEventStatistics = async (eventId) => {
   try {
     const { data: entries, error } = await supabase
       .from('guest_book')
-      .select('amount, attending')
+      .select('amount, attending, message, input_method, additional_info')
       .eq('event_id', eventId);
 
     if (error) {
@@ -2144,7 +2179,9 @@ export const getEventStatistics = async (eventId) => {
       };
     }
 
-    if (!entries || entries.length === 0) {
+    const displayEntries = filterContributionDisplayEntries(entries || []);
+
+    if (displayEntries.length === 0) {
       return {
         success: true,
         data: {
@@ -2158,18 +2195,18 @@ export const getEventStatistics = async (eventId) => {
     }
 
     // 통계 계산
-    const totalAmount = entries.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
-    const attendingCount = entries.filter(entry => entry.attending === true).length;
+    const totalAmount = displayEntries.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
+    const attendingCount = displayEntries.filter(entry => entry.attending === true).length;
 
     
 
     return {
       success: true,
       data: {
-        totalContributions: entries.length,
+        totalContributions: displayEntries.length,
         totalAmount: totalAmount,
         attendingCount: attendingCount,
-        averageAmount: entries.length > 0 ? Math.round(totalAmount / entries.length) : 0,
+        averageAmount: displayEntries.length > 0 ? Math.round(totalAmount / displayEntries.length) : 0,
         relationStats: []
       }
     };
@@ -2267,6 +2304,8 @@ export const getEventContributions = async (eventId) => {
         side,
         message,
         message_type,
+        input_method,
+        additional_info,
         is_verified,
         alimtalk_sent,
         created_at,
@@ -2283,7 +2322,7 @@ export const getEventContributions = async (eventId) => {
     
     return {
       success: true,
-      data: contributions || []
+      data: filterContributionDisplayEntries(contributions || [])
     };
 
   } catch (error) {
@@ -2362,15 +2401,16 @@ export const getMonthlyStatistics = async (userId) => {
       // 🔥 전체 통계 - guest_book 테이블에서 직접 계산
       const { data: guestBookEntries } = await supabase
         .from('guest_book')
-        .select('amount, attending')
+        .select('amount, attending, message, input_method, additional_info')
         .eq('event_id', event.id);
 
       let eventTotal = 0;
       let eventCount = 0;
 
       if (guestBookEntries) {
-        eventTotal = guestBookEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
-        eventCount = guestBookEntries.length;
+        const displayEntries = filterContributionDisplayEntries(guestBookEntries);
+        eventTotal = displayEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+        eventCount = displayEntries.length;
       }
 
       if (eventTotal > 0 || eventCount > 0) {
@@ -2395,10 +2435,11 @@ export const getMonthlyStatistics = async (userId) => {
         .lte('created_at', endOfMonth.toISOString());
 
       if (!monthlyError && monthlyGuests && monthlyGuests.length > 0) {
-        const monthlyEventTotal = monthlyGuests.reduce((sum, guest) => 
+        const displayMonthlyGuests = filterContributionDisplayEntries(monthlyGuests);
+        const monthlyEventTotal = displayMonthlyGuests.reduce((sum, guest) => 
           sum + (guest.amount || 0), 0
         );
-        const monthlyEventCount = monthlyGuests.length;
+        const monthlyEventCount = displayMonthlyGuests.length;
         
         stats.monthlyReceivedAmount += monthlyEventTotal;
         stats.monthlyEntries += monthlyEventCount;
@@ -2950,8 +2991,29 @@ export const updateGuestBookEntry = async (entryId, updateData) => {
 /**
  * 방명록 항목 삭제
  */
-export const deleteGuestBookEntry = async (entryId) => {
+export const deleteGuestBookEntry = async (entryId, actorUserId = null) => {
   try {
+    if (!entryId) {
+      return { success: false, error: '삭제할 항목을 찾을 수 없습니다.' };
+    }
+
+    if (actorUserId) {
+      const { data, error } = await supabase.rpc('delete_guest_book_entry_for_owner', {
+        p_entry_id: entryId,
+        p_actor_id: actorUserId,
+      });
+
+      if (!error) {
+        const result = Array.isArray(data) ? data[0] : data;
+        if (result?.success) return { success: true };
+        return { success: false, error: result?.error || '방명록을 삭제하지 못했습니다.' };
+      }
+
+      // RPC가 아직 배포되지 않은 개발 DB에서는 기존 delete 정책으로 한 번 더 시도한다.
+      if (error.code !== '42883' && !String(error.message || '').includes('delete_guest_book_entry_for_owner')) {
+        throw error;
+      }
+    }
 
     // guest_book 테이블에서 확인 (실제 데이터가 저장되는 테이블)
     const { data: guestBookData, error: guestBookError } = await supabase

@@ -14,6 +14,8 @@ import EtiquetteGuideScreen from '../screens/main/guides/participant/EtiquetteGu
 import WeddingPrepGuideScreen from '../screens/main/guides/host/WeddingPrepGuideScreen';
 import FuneralPrepGuideScreen from '../screens/main/guides/host/FuneralPrepGuideScreen';
 import FAQScreen from '../screens/main/guides/FAQScreen';
+import TermsScreen from '../screens/legal/TermsScreen';
+import PrivacyScreen from '../screens/legal/PrivacyScreen';
 
 const Stack = createStackNavigator();
 
@@ -35,6 +37,8 @@ export default function AuthNavigator({ setUserInfo, setIsAuthenticated }) {
         <Stack.Screen name="WeddingPrepGuide" component={WeddingPrepGuideScreen} />
         <Stack.Screen name="FuneralPrepGuide" component={FuneralPrepGuideScreen} />
         <Stack.Screen name="FAQ" component={FAQScreen} />
+        <Stack.Screen name="Terms" component={TermsScreen} />
+        <Stack.Screen name="Privacy" component={PrivacyScreen} />
         <Stack.Screen 
           name="PhoneAuth" 
           component={PhoneAuthScreen}

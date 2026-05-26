@@ -37,6 +37,7 @@ import {
   getEventGuestBook,
   getMonthlyStatistics,
   getEventStatistics,
+  deleteGuestBookEntry,
   getEventCreationCreditState,
   consumeEventCreationCredit,
   markEventCreationWelcomeSeen,
@@ -414,6 +415,8 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
   const [loading, setLoading] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [selectedTab, setSelectedTab] = useState('active'); // 'active' or 'completed'
+  const [hostedSortBy, setHostedSortBy] = useState('eventDate'); // 'eventDate' or 'createdAt'
+  const [hostedSortOrder, setHostedSortOrder] = useState('desc'); // 'desc' or 'asc'
   
   // 🚀 캐싱을 위한 상태들 - 성능 최적화
   const [lastLoadTime, setLastLoadTime] = useState(0);
@@ -1704,8 +1707,41 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
     return isCompleted;
   });
 
+  const getHostedEventSortTime = (event) => {
+    const dateValue = hostedSortBy === 'createdAt'
+      ? event.created_at || event.createdAt || event.created_at_local
+      : getEventDisplayDate(event);
+    const time = new Date(dateValue || '').getTime();
+    return Number.isFinite(time) ? time : null;
+  };
+
+  const sortHostedEvents = (eventList) => (
+    [...eventList].sort((a, b) => {
+      const aTime = getHostedEventSortTime(a);
+      const bTime = getHostedEventSortTime(b);
+
+      if (aTime === null && bTime === null) {
+        return String(a.event_name || a.title || '').localeCompare(String(b.event_name || b.title || ''), 'ko');
+      }
+      if (aTime === null) return 1;
+      if (bTime === null) return -1;
+
+      return hostedSortOrder === 'asc' ? aTime - bTime : bTime - aTime;
+    })
+  );
+
+  const handleHostedSortByPress = (sortBy) => {
+    setHostedSortBy(sortBy);
+    setHostedEventPage(0);
+  };
+
+  const toggleHostedSortOrder = () => {
+    setHostedSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'));
+    setHostedEventPage(0);
+  };
+
   // 🔥 페이지네이션으로 표시
-  const displayedEvents = selectedTab === 'active' ? activeEventsFiltered : completedEventsFiltered;
+  const displayedEvents = sortHostedEvents(selectedTab === 'active' ? activeEventsFiltered : completedEventsFiltered);
   const totalCount = displayedEvents.length;
   const hostedTotalPages = Math.ceil(totalCount / eventsPerPage);
   const currentEvents = displayedEvents.slice(
@@ -1869,6 +1905,37 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
       ...prev,
       [eventId]: safePage,
     }));
+  };
+
+  const handleDeleteGuestbookMessage = (messageItem) => {
+    if (!messageItem?.id) return;
+    const actorUserId = user?.id || userInfo?.userId;
+    const writerName = messageItem.guest_name || '익명';
+
+    Alert.alert(
+      '방명록 삭제',
+      `${writerName}님의 방명록을 삭제하시겠어요?\n\n삭제된 글은 복구할 수 없습니다.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await deleteGuestBookEntry(messageItem.id, actorUserId);
+            if (!result.success) {
+              Alert.alert('삭제 실패', result.error || '방명록 삭제 중 오류가 발생했습니다.');
+              return;
+            }
+
+            setRecentGuestbookMessages(prev => prev.filter(item => item.id !== messageItem.id));
+            setPumasiReceived(prev => prev.filter(item => item.id !== messageItem.id));
+            setGuestBookList(prev => prev.filter(item => item.id !== messageItem.id));
+            setDataLoaded(false);
+            loadMonthlyStatistics();
+          },
+        },
+      ]
+    );
   };
 
 
@@ -2529,6 +2596,66 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
             </TouchableOpacity>
           </View>
 
+          <View style={styles.hostedSortBar}>
+            <View style={styles.hostedSortGroup}>
+              <TouchableOpacity
+                style={[
+                  styles.hostedSortChip,
+                  hostedSortBy === 'eventDate' && styles.hostedSortChipActive,
+                ]}
+                onPress={() => handleHostedSortByPress('eventDate')}
+                activeOpacity={0.78}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={14}
+                  color={hostedSortBy === 'eventDate' ? '#191F28' : '#8B95A1'}
+                />
+                <Text style={[
+                  styles.hostedSortChipText,
+                  hostedSortBy === 'eventDate' && styles.hostedSortChipTextActive,
+                ]}>
+                  행사일
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.hostedSortChip,
+                  hostedSortBy === 'createdAt' && styles.hostedSortChipActive,
+                ]}
+                onPress={() => handleHostedSortByPress('createdAt')}
+                activeOpacity={0.78}
+              >
+                <Ionicons
+                  name="time-outline"
+                  size={14}
+                  color={hostedSortBy === 'createdAt' ? '#191F28' : '#8B95A1'}
+                />
+                <Text style={[
+                  styles.hostedSortChipText,
+                  hostedSortBy === 'createdAt' && styles.hostedSortChipTextActive,
+                ]}>
+                  생성일
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.hostedSortOrderButton}
+              onPress={toggleHostedSortOrder}
+              activeOpacity={0.78}
+            >
+              <Ionicons
+                name={hostedSortOrder === 'desc' ? 'arrow-down' : 'arrow-up'}
+                size={14}
+                color="#4E5968"
+              />
+              <Text style={styles.hostedSortOrderText}>
+                {hostedSortOrder === 'desc' ? '내림차순' : '오름차순'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           {/* 이벤트 리스트 */}
           {loading ? (
             <View style={styles.loadingContainer}>
@@ -2661,15 +2788,25 @@ export default function HomeScreen({ navigation, userInfo, session, isAuthentica
                           <View style={styles.eventGuestbookMessages}>
                             {pagedGuestbookMessages.map((messageItem) => (
                               <View key={messageItem.id} style={styles.eventGuestbookMessageRow}>
-                                <Text style={styles.eventGuestbookMessageName} numberOfLines={1}>
-                                  {messageItem.guest_name || '익명'}
-                                </Text>
-                                <Text style={styles.eventGuestbookMessageText} numberOfLines={2}>
-                                  {messageItem.message}
-                                </Text>
-                                <Text style={styles.eventGuestbookMessageDate}>
-                                  {formatDate(messageItem.created_at)}
-                                </Text>
+                                <View style={styles.eventGuestbookMessageBody}>
+                                  <Text style={styles.eventGuestbookMessageName} numberOfLines={1}>
+                                    {messageItem.guest_name || '익명'}
+                                  </Text>
+                                  <Text style={styles.eventGuestbookMessageText} numberOfLines={2}>
+                                    {messageItem.message}
+                                  </Text>
+                                  <Text style={styles.eventGuestbookMessageDate}>
+                                    {formatDate(messageItem.created_at)}
+                                  </Text>
+                                </View>
+                                <TouchableOpacity
+                                  style={styles.eventGuestbookDeleteButton}
+                                  onPress={() => handleDeleteGuestbookMessage(messageItem)}
+                                  activeOpacity={0.78}
+                                  accessibilityLabel="방명록 삭제"
+                                >
+                                  <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                                </TouchableOpacity>
                               </View>
                             ))}
 
@@ -4523,6 +4660,53 @@ const styles = StyleSheet.create({
     color: '#191F28',
     fontWeight: '700',
   },
+  hostedSortBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: -4,
+    marginBottom: 14,
+  },
+  hostedSortGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  hostedSortChip: {
+    height: 34,
+    paddingHorizontal: 11,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  hostedSortChipActive: {
+    backgroundColor: '#E8F2FF',
+  },
+  hostedSortChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  hostedSortChipTextActive: {
+    color: '#191F28',
+  },
+  hostedSortOrderButton: {
+    height: 34,
+    paddingHorizontal: 11,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  hostedSortOrderText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4E5968',
+  },
 
   // 이벤트 리스트
   eventsList: {
@@ -4686,6 +4870,12 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F3EFFD',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  eventGuestbookMessageBody: {
+    flex: 1,
   },
   eventGuestbookMessageName: {
     fontSize: 13,
@@ -4704,6 +4894,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#8B95A1',
+  },
+  eventGuestbookDeleteButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FEF2F2',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   eventGuestbookPagination: {
     minHeight: 34,

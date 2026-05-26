@@ -190,6 +190,8 @@ export default function MyEventsScreen({ navigation, userInfo }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hostedFilter, setHostedFilter] = useState('all');
+  const [hostedSortBy, setHostedSortBy] = useState('eventDate'); // 'eventDate' or 'createdAt'
+  const [hostedSortOrder, setHostedSortOrder] = useState('desc'); // 'desc' or 'asc'
   const [dataLoaded, setDataLoaded] = useState(false);
   const [lastLoadTime, setLastLoadTime] = useState(0);
   const CACHE_DURATION = 30000;
@@ -751,11 +753,38 @@ export default function MyEventsScreen({ navigation, userInfo }) {
     applyCoverToEvent(selectedCoverEvent, null);
   };
 
+  const getHostedEventSortTime = (event) => {
+    const dateValue = hostedSortBy === 'createdAt'
+      ? event.created_at || event.createdAt || event.created_at_local
+      : event.event_date;
+    const time = new Date(dateValue || '').getTime();
+    return Number.isFinite(time) ? time : null;
+  };
+
   const filteredHostedEvents = hostedEvents.filter(e => {
     if (hostedFilter === 'active') return e.status === 'active';
     if (hostedFilter === 'completed') return e.status === 'completed';
     return true;
+  }).sort((a, b) => {
+    const aTime = getHostedEventSortTime(a);
+    const bTime = getHostedEventSortTime(b);
+
+    if (aTime === null && bTime === null) {
+      return String(a.event_name || '').localeCompare(String(b.event_name || ''), 'ko');
+    }
+    if (aTime === null) return 1;
+    if (bTime === null) return -1;
+
+    return hostedSortOrder === 'asc' ? aTime - bTime : bTime - aTime;
   });
+
+  const handleHostedSortByPress = (sortBy) => {
+    setHostedSortBy(sortBy);
+  };
+
+  const toggleHostedSortOrder = () => {
+    setHostedSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'));
+  };
 
   const formatAmount = (amount) => {
     if (!amount || amount === 0) return '0원';
@@ -870,6 +899,66 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                   </Text>
                 </TouchableOpacity>
               ))}
+            </View>
+
+            <View style={styles.hostedSortBar}>
+              <View style={styles.hostedSortGroup}>
+                <TouchableOpacity
+                  style={[
+                    styles.hostedSortChip,
+                    hostedSortBy === 'eventDate' && styles.hostedSortChipActive,
+                  ]}
+                  onPress={() => handleHostedSortByPress('eventDate')}
+                  activeOpacity={0.78}
+                >
+                  <Ionicons
+                    name="calendar-outline"
+                    size={14}
+                    color={hostedSortBy === 'eventDate' ? '#191F28' : '#8B95A1'}
+                  />
+                  <Text style={[
+                    styles.hostedSortChipText,
+                    hostedSortBy === 'eventDate' && styles.hostedSortChipTextActive,
+                  ]}>
+                    행사일
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.hostedSortChip,
+                    hostedSortBy === 'createdAt' && styles.hostedSortChipActive,
+                  ]}
+                  onPress={() => handleHostedSortByPress('createdAt')}
+                  activeOpacity={0.78}
+                >
+                  <Ionicons
+                    name="time-outline"
+                    size={14}
+                    color={hostedSortBy === 'createdAt' ? '#191F28' : '#8B95A1'}
+                  />
+                  <Text style={[
+                    styles.hostedSortChipText,
+                    hostedSortBy === 'createdAt' && styles.hostedSortChipTextActive,
+                  ]}>
+                    생성일
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.hostedSortOrderButton}
+                onPress={toggleHostedSortOrder}
+                activeOpacity={0.78}
+              >
+                <Ionicons
+                  name={hostedSortOrder === 'desc' ? 'arrow-down' : 'arrow-up'}
+                  size={14}
+                  color="#4E5968"
+                />
+                <Text style={styles.hostedSortOrderText}>
+                  {hostedSortOrder === 'desc' ? '내림차순' : '오름차순'}
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* 이벤트 목록 */}
@@ -1488,6 +1577,58 @@ const styles = StyleSheet.create({
   },
   filterChipTextActive: {
     color: '#FFFFFF',
+  },
+  hostedSortBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+  },
+  hostedSortGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  hostedSortChip: {
+    height: 34,
+    paddingHorizontal: 11,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  hostedSortChipActive: {
+    backgroundColor: '#E8F2FF',
+    borderColor: '#B7D7FF',
+  },
+  hostedSortChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#8B95A1',
+  },
+  hostedSortChipTextActive: {
+    color: '#191F28',
+  },
+  hostedSortOrderButton: {
+    height: 34,
+    paddingHorizontal: 11,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  hostedSortOrderText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4E5968',
   },
 
   // 리스트 섹션

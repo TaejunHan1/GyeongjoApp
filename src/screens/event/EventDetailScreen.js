@@ -496,7 +496,7 @@ export default function EventDetailScreen({ navigation, route }) {
 
   // 인라인 수정 열기
   const formatPhone = (text) => {
-    const d = text.replace(/[^0-9]/g, '').slice(0, 11);
+    const d = normalizePhone(text).slice(0, 11);
     if (d.length <= 3) return d;
     if (d.length <= 7) return `${d.slice(0,3)}-${d.slice(3)}`;
     return `${d.slice(0,3)}-${d.slice(3,7)}-${d.slice(7)}`;
@@ -770,6 +770,26 @@ export default function EventDetailScreen({ navigation, route }) {
     } catch (error) {
       return {};
     }
+  };
+
+  const getContributionSource = (entry) => {
+    const info = parseAdditionalInfo(entry?.additional_info);
+    const inputMethod = String(entry?.input_method || '').toLowerCase();
+    const createdVia = String(info.created_via || info.source_type || '').toLowerCase();
+
+    if (inputMethod.includes('web') || createdVia.includes('web')) return 'web';
+    return 'app';
+  };
+
+  const isWebGuestbookOnlyEntry = (entry) => {
+    const amount = Number(entry?.amount || 0);
+    const info = parseAdditionalInfo(entry?.additional_info);
+    const inputMethod = String(entry?.input_method || '').toLowerCase();
+    const createdVia = String(info.created_via || info.source_type || '').toLowerCase();
+
+    if (amount > 0) return false;
+    if (inputMethod === 'web_guestbook' || createdVia === 'web_guestbook') return true;
+    return createdVia === 'web' && !!entry?.message;
   };
 
   const getMealSettlement = () => {
@@ -1259,6 +1279,7 @@ export default function EventDetailScreen({ navigation, route }) {
       'guestbook_new_entry',
       ({ eventId: updatedEventId, entry }) => {
         if (updatedEventId !== eventId) return;
+        if (isWebGuestbookOnlyEntry(entry)) return;
         setContributions((prev) => {
           if (prev.some((c) => c.id === entry.id)) return prev; // 중복 방지
           return [entry, ...prev];
@@ -1298,6 +1319,7 @@ export default function EventDetailScreen({ navigation, route }) {
         (payload) => {
           const entry = payload.new;
           if (entry?.event_id !== eventId) return;
+          if (isWebGuestbookOnlyEntry(entry)) return;
           setContributions((prev) => {
             if (prev.some((c) => c.id === entry.id)) return prev; // 중복 방지
             return [entry, ...prev];
@@ -1310,6 +1332,10 @@ export default function EventDetailScreen({ navigation, route }) {
         (payload) => {
           const entry = payload.new;
           if (entry?.event_id !== eventId) return;
+          if (isWebGuestbookOnlyEntry(entry)) {
+            setContributions((prev) => prev.filter((c) => c.id !== entry.id));
+            return;
+          }
           setContributions((prev) =>
             prev.map((c) => (c.id === entry.id ? entry : c))
           );
@@ -1380,9 +1406,9 @@ export default function EventDetailScreen({ navigation, route }) {
 
       // 부조 목록
       if (contributionsResult.success && contributionsResult.data?.length > 0) {
-        setContributions(contributionsResult.data);
+        setContributions(contributionsResult.data.filter((entry) => !isWebGuestbookOnlyEntry(entry)));
       } else if (eventResult.data?.guest_book?.length > 0) {
-        setContributions(eventResult.data.guest_book);
+        setContributions(eventResult.data.guest_book.filter((entry) => !isWebGuestbookOnlyEntry(entry)));
       } else {
         setContributions([]);
       }
@@ -2078,6 +2104,7 @@ export default function EventDetailScreen({ navigation, route }) {
                 const sideConfig = sideOptions.find(side => side.key === sideKey) || sideOptions[0];
                 const sideAccent = sideConfig?.color || '#3182F6';
                 const sideSoft = sideConfig?.soft || '#EEF5FF';
+                const isWebContribution = getContributionSource(contribution) === 'web';
                 const railImage = isFuneralEvent
                   ? GUEST_CARD_ASSETS.funeralRail
                   : sideKey === 'bride'
@@ -2300,6 +2327,17 @@ export default function EventDetailScreen({ navigation, route }) {
                             </View>
 
                             <View style={styles.flatCardHeaderRight}>
+                              {isWebContribution && (
+                                <View style={styles.flatCardSourceBadge}>
+                                  <Ionicons name="globe-outline" size={scaleGuestCard(12, 10)} color="#2563EB" />
+                                  <Text
+                                    style={[styles.flatCardSourceText, { fontSize: scaleGuestFont(10, 8) }]}
+                                    maxFontSizeMultiplier={1}
+                                  >
+                                    웹 작성
+                                  </Text>
+                                </View>
+                              )}
                               {!!timeStr && (
                                 <Text style={[styles.flatCardTime, { fontSize: scaleGuestFont(12, 10) }]} maxFontSizeMultiplier={1}>
                                   {timeStr} 접수
@@ -4718,6 +4756,20 @@ const styles = StyleSheet.create({
     fontFamily: GUEST_CARD_FONT_FAMILY,
     fontWeight: '700',
     color: '#505766',
+  },
+  flatCardSourceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderRadius: 9,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+  flatCardSourceText: {
+    fontFamily: GUEST_CARD_FONT_FAMILY,
+    fontWeight: '800',
+    color: '#2563EB',
   },
   flatCardResendBadge: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 // src/screens/auth/WelcomeScreen.js
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  Dimensions,
+  useWindowDimensions,
   Image,
   Animated,
   Platform,
@@ -17,9 +17,45 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native'; // useFocusEffect 훅 임포트
 import { Colors } from '../../styles/constants';
 
-const { width, height } = Dimensions.get('window');
+const JEONGDAM_LOGO = require('../../../assets/images/jeongdamlogonobackground.png');
+
+const WELCOME_SLIDES = [
+  {
+    id: 'reception-pad',
+    image: require('../../../assets/images/welcome-carousel/reception-pad.png'),
+  },
+  {
+    id: 'mobile-invitation',
+    image: require('../../../assets/images/welcome-carousel/mobile-invitation.png'),
+  },
+  {
+    id: 'ledger-management',
+    image: require('../../../assets/images/welcome-carousel/ledger-management.png'),
+  },
+];
+
+const getCarouselMetrics = (screenWidth) => {
+  const isTabletViewport = screenWidth >= 768;
+  const availableWidth = screenWidth - 48;
+  const cardWidth = isTabletViewport ? Math.min(availableWidth, 620) : availableWidth;
+
+  return {
+    cardWidth,
+    imageHeight: Math.round(cardWidth * 0.75),
+    slidePadding: isTabletViewport ? 10 : 8,
+    cardRadius: isTabletViewport ? 26 : 22,
+    imageRadius: isTabletViewport ? 24 : 18,
+  };
+};
 
 export default function WelcomeScreen({ navigation }) {
+  const [activeSlide, setActiveSlide] = useState(0);
+  const { width: screenWidth } = useWindowDimensions();
+  const carouselMetrics = getCarouselMetrics(screenWidth);
+  const carouselRef = useRef(null);
+  const activeSlideRef = useRef(0);
+  const isCarouselDraggingRef = useRef(false);
+
   // 애니메이션 값 참조
   const floatingAnim1 = useRef(new Animated.Value(0)).current;
   const floatingAnim2 = useRef(new Animated.Value(0)).current;
@@ -31,11 +67,6 @@ export default function WelcomeScreen({ navigation }) {
   const locationOpacityAnim = useRef(new Animated.Value(0.8)).current;
   const cardScaleAnim = useRef(new Animated.Value(0.9)).current;
   const cardOpacityAnim = useRef(new Animated.Value(0)).current;
-  const iconAnim1 = useRef(new Animated.Value(0)).current;
-  const iconAnim2 = useRef(new Animated.Value(0)).current;
-  const iconAnim3 = useRef(new Animated.Value(0)).current;
-  const textSlideAnim = useRef(new Animated.Value(20)).current;
-  const textOpacityAnim = useRef(new Animated.Value(0)).current;
 
   // 화면 포커스 시 애니메이션을 제어
   useFocusEffect(
@@ -51,11 +82,6 @@ export default function WelcomeScreen({ navigation }) {
         locationOpacityAnim.setValue(0.8);
         cardScaleAnim.setValue(0.9);
         cardOpacityAnim.setValue(0);
-        iconAnim1.setValue(0);
-        iconAnim2.setValue(0);
-        iconAnim3.setValue(0);
-        textSlideAnim.setValue(20);
-        textOpacityAnim.setValue(0);
       };
       
       resetAnimations();
@@ -67,8 +93,6 @@ export default function WelcomeScreen({ navigation }) {
       const locationScaleAnimation = () => Animated.loop(Animated.sequence([Animated.timing(locationScaleAnim, { toValue: 1.02, duration: 3000, useNativeDriver: true }), Animated.timing(locationScaleAnim, { toValue: 0.98, duration: 3000, useNativeDriver: true })]));
       const locationOpacityAnimation = () => Animated.loop(Animated.sequence([Animated.timing(locationOpacityAnim, { toValue: 1, duration: 2000, useNativeDriver: true }), Animated.timing(locationOpacityAnim, { toValue: 0.8, duration: 2000, useNativeDriver: true })]));
       const cardAppearAnimation = () => Animated.parallel([Animated.timing(cardScaleAnim, { toValue: 1, duration: 800, useNativeDriver: true }), Animated.timing(cardOpacityAnim, { toValue: 1, duration: 800, useNativeDriver: true })]);
-      const iconsAnimation = () => Animated.stagger(150, [Animated.spring(iconAnim1, { toValue: 1, tension: 80, friction: 8, useNativeDriver: true }), Animated.spring(iconAnim2, { toValue: 1, tension: 80, friction: 8, useNativeDriver: true }), Animated.spring(iconAnim3, { toValue: 1, tension: 80, friction: 8, useNativeDriver: true })]);
-      const textAnimation = () => Animated.parallel([Animated.timing(textSlideAnim, { toValue: 0, duration: 600, useNativeDriver: true }), Animated.timing(textOpacityAnim, { toValue: 1, duration: 600, useNativeDriver: true })]);
 
       const loopingAnimations = [
         createFloatingAnimation(floatingAnim1, 3000, 0),
@@ -82,20 +106,44 @@ export default function WelcomeScreen({ navigation }) {
       loopingAnimations.forEach(anim => anim.start());
 
       const sequenceTimer = setTimeout(() => {
-        cardAppearAnimation().start(() => {
-          iconsAnimation().start(() => {
-            textAnimation().start();
-          });
-        });
+        cardAppearAnimation().start();
       }, 300);
 
       // --- 3. 클린업 함수 ---
       return () => {
         loopingAnimations.forEach(anim => anim.stop());
         clearTimeout(sequenceTimer);
-        [floatingAnim1, floatingAnim2, floatingAnim3, buttonFloatingAnim1, buttonFloatingAnim2, locationScaleAnim, locationOpacityAnim, cardScaleAnim, cardOpacityAnim, iconAnim1, iconAnim2, iconAnim3, textSlideAnim, textOpacityAnim].forEach(anim => anim.stopAnimation());
+        [floatingAnim1, floatingAnim2, floatingAnim3, buttonFloatingAnim1, buttonFloatingAnim2, locationScaleAnim, locationOpacityAnim, cardScaleAnim, cardOpacityAnim].forEach(anim => anim.stopAnimation());
       };
     }, [])
+  );
+
+  useEffect(() => {
+    activeSlideRef.current = activeSlide;
+  }, [activeSlide]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (WELCOME_SLIDES.length <= 1) {
+        return undefined;
+      }
+
+      const carouselTimer = setInterval(() => {
+        if (isCarouselDraggingRef.current) {
+          return;
+        }
+
+        const nextIndex = (activeSlideRef.current + 1) % WELCOME_SLIDES.length;
+        activeSlideRef.current = nextIndex;
+        setActiveSlide(nextIndex);
+        carouselRef.current?.scrollTo({
+          x: nextIndex * carouselMetrics.cardWidth,
+          animated: true,
+        });
+      }, 2000);
+
+      return () => clearInterval(carouselTimer);
+    }, [carouselMetrics.cardWidth])
   );
 
   const handleStartPress = () => {
@@ -104,6 +152,26 @@ export default function WelcomeScreen({ navigation }) {
 
   const handleGuestPress = () => {
     navigation.navigate('GuestGuide');
+  };
+
+  const handleTermsPress = () => {
+    navigation.navigate('Terms');
+  };
+
+  const handlePrivacyPress = () => {
+    navigation.navigate('Privacy');
+  };
+
+  const handleCarouselScrollBeginDrag = () => {
+    isCarouselDraggingRef.current = true;
+  };
+
+  const handleCarouselScrollEnd = (event) => {
+    const nextIndex = Math.round(event.nativeEvent.contentOffset.x / carouselMetrics.cardWidth);
+    const boundedIndex = Math.max(0, Math.min(WELCOME_SLIDES.length - 1, nextIndex));
+    isCarouselDraggingRef.current = false;
+    activeSlideRef.current = boundedIndex;
+    setActiveSlide(boundedIndex);
   };
 
   return (
@@ -125,7 +193,7 @@ export default function WelcomeScreen({ navigation }) {
           {/* 로고 및 메인 메시지 */}
           <View style={styles.logoSection}>
             <View style={styles.logoContainer}>
-              <Ionicons name="heart" size={60} color={Colors.primary} />
+              <Image source={JEONGDAM_LOGO} style={styles.logoImage} resizeMode="contain" />
             </View>
             
             <Text style={styles.mainTitle}>
@@ -158,22 +226,65 @@ export default function WelcomeScreen({ navigation }) {
 
           {/* 일러스트레이션 영역 */}
           <View style={styles.illustrationSection}>
-            <Animated.View style={[styles.illustrationCard, { transform: [{ scale: cardScaleAnim }], opacity: cardOpacityAnim }]}>
-              <View style={styles.iconRow}>
-                <Animated.View style={[styles.miniIcon, { backgroundColor: Colors.wedding }, { transform: [{ scale: iconAnim1.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }) }], opacity: iconAnim1 }]}>
-                  <Ionicons name="heart" size={20} color={Colors.white} />
-                </Animated.View>
-                <Animated.View style={[styles.miniIcon, { backgroundColor: Colors.primary }, { transform: [{ scale: iconAnim2.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }) }], opacity: iconAnim2 }]}>
-                  <Ionicons name="gift" size={20} color={Colors.white} />
-                </Animated.View>
-                <Animated.View style={[styles.miniIcon, { backgroundColor: Colors.funeral }, { transform: [{ scale: iconAnim3.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }) }], opacity: iconAnim3 }]}>
-                  <Ionicons name="flower" size={20} color={Colors.white} />
-                </Animated.View>
+            <Animated.View
+              style={[
+                styles.illustrationCard,
+                {
+                  width: carouselMetrics.cardWidth,
+                  borderRadius: carouselMetrics.cardRadius,
+                  transform: [{ scale: cardScaleAnim }],
+                  opacity: cardOpacityAnim,
+                },
+              ]}
+            >
+              <ScrollView
+                ref={carouselRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                bounces={false}
+                decelerationRate="fast"
+                onScrollBeginDrag={handleCarouselScrollBeginDrag}
+                onMomentumScrollEnd={handleCarouselScrollEnd}
+                style={styles.carouselScroller}
+              >
+                {WELCOME_SLIDES.map((slide) => (
+                  <View
+                    key={slide.id}
+                    style={[
+                      styles.carouselSlide,
+                      {
+                        width: carouselMetrics.cardWidth,
+                        padding: carouselMetrics.slidePadding,
+                      },
+                    ]}
+                  >
+                    <Image
+                      source={slide.image}
+                      style={[
+                        styles.carouselImage,
+                        {
+                          height: carouselMetrics.imageHeight,
+                          borderRadius: carouselMetrics.imageRadius,
+                        },
+                      ]}
+                      resizeMode="cover"
+                    />
+                  </View>
+                ))}
+              </ScrollView>
+
+              <View style={styles.carouselDots}>
+                {WELCOME_SLIDES.map((slide, index) => (
+                  <View
+                    key={`${slide.id}-dot`}
+                    style={[
+                      styles.carouselDot,
+                      index === activeSlide && styles.carouselDotActive,
+                    ]}
+                  />
+                ))}
               </View>
-              <Animated.Text style={[styles.illustrationText, { opacity: textOpacityAnim, transform: [{ translateY: textSlideAnim }] }]}>
-                결혼식, 장례식, 돌잔치{'\n'}
-                모든 경조사를 한 곳에서
-              </Animated.Text>
             </Animated.View>
           </View>
         </View>
@@ -189,8 +300,8 @@ export default function WelcomeScreen({ navigation }) {
             <Text style={styles.guestButtonText}>가이드 먼저 보기</Text>
           </TouchableOpacity>
           <Text style={styles.footerText}>
-            계속하면 <Text style={styles.linkText}>이용약관</Text> 및{' '}
-            <Text style={styles.linkText}>개인정보처리방침</Text>에 동의하게 됩니다.
+            계속하면 <Text style={styles.linkText} onPress={handleTermsPress}>이용약관</Text> 및{' '}
+            <Text style={styles.linkText} onPress={handlePrivacyPress}>개인정보처리방침</Text>에 동의하게 됩니다.
           </Text>
         </View>
       </ScrollView>
@@ -207,22 +318,22 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 24,
     justifyContent: 'space-between',
-    paddingTop: Platform.OS === 'ios' ? 10 : 50,
+    paddingTop: Platform.OS === 'ios' ? 0 : 28,
     paddingBottom: Platform.OS === 'ios' ? 10 : 44,
   },
   logoSection: {
     alignItems: 'center',
-    marginBottom: 40,
-    marginTop: 20,
+    marginBottom: 28,
+    marginTop: 0,
   },
   logoContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     backgroundColor: Colors.white,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 24,
     shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
@@ -231,13 +342,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F0F7FF',
   },
+  logoImage: {
+    width: 96,
+    height: 96,
+  },
   mainTitle: {
     fontSize: 28,
     fontWeight: '800',
     color: Colors.textPrimary,
     textAlign: 'center',
     lineHeight: 38,
-    marginBottom: 16,
+    marginBottom: 12,
     letterSpacing: -0.5,
   },
   subtitle: {
@@ -245,7 +360,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
-    marginBottom: 24,
+    marginBottom: 18,
     fontWeight: '400',
   },
   locationContainer: {
@@ -297,13 +412,11 @@ const styles = StyleSheet.create({
   },
   illustrationSection: {
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 24,
   },
   illustrationCard: {
     backgroundColor: '#FAFBFC',
-    borderRadius: 24,
-    padding: 28,
-    width: '100%',
+    padding: 0,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#F1F3F4',
@@ -312,6 +425,33 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 12,
     elevation: 2,
+    overflow: 'hidden',
+  },
+  carouselScroller: {
+    width: '100%',
+  },
+  carouselSlide: {},
+  carouselImage: {
+    width: '100%',
+    backgroundColor: Colors.white,
+  },
+  carouselDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 2,
+    paddingBottom: 12,
+  },
+  carouselDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.gray300,
+  },
+  carouselDotActive: {
+    width: 18,
+    backgroundColor: Colors.primary,
   },
   iconRow: {
     flexDirection: 'row',
