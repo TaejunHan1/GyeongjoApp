@@ -1,28 +1,27 @@
 // src/lib/supabaseHelper.js - guest_book 테이블 사용 버전
-import { supabase } from './supabase';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system/legacy';
-import { buildEventSlugBase, buildSlugCandidate } from './slugUtils';
+import { supabase } from "./supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as FileSystem from "expo-file-system/legacy";
+import { buildEventSlugBase, buildSlugCandidate } from "./slugUtils";
 
 export const EVENT_CREATION_FREE_LIMIT = 2;
 export const EVENT_CREATION_CREDIT_COST = 60;
-const HOSTED_EVENT_EDIT_ADMIN_PHONE = '01058359358';
+const HOSTED_EVENT_EDIT_ADMIN_PHONE = "01058359358";
 
 const normalizeLocalPhoneDigits = (phone) => {
-  const digits = String(phone || '').replace(/[^0-9]/g, '');
-  if (!digits) return '';
-  if (digits.startsWith('0082')) return `0${digits.slice(4)}`;
-  if (digits.startsWith('82')) return `0${digits.slice(2)}`;
+  const digits = String(phone || "").replace(/[^0-9]/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("0082")) return `0${digits.slice(4)}`;
+  if (digits.startsWith("82")) return `0${digits.slice(2)}`;
   return digits;
 };
 
-const canAdminEditHostedEvents = (user) => (
-  normalizeLocalPhoneDigits(user?.phone) === HOSTED_EVENT_EDIT_ADMIN_PHONE
-);
+const canAdminEditHostedEvents = (user) =>
+  normalizeLocalPhoneDigits(user?.phone) === HOSTED_EVENT_EDIT_ADMIN_PHONE;
 
 const parseJsonObject = (value) => {
   if (!value) return {};
-  if (typeof value === 'object') return value;
+  if (typeof value === "object") return value;
   try {
     return JSON.parse(value);
   } catch {
@@ -33,25 +32,29 @@ const parseJsonObject = (value) => {
 const isWebGuestbookOnlyEntry = (entry) => {
   const amount = Number(entry?.amount || 0);
   const additionalInfo = parseJsonObject(entry?.additional_info);
-  const inputMethod = String(entry?.input_method || '').toLowerCase();
-  const createdVia = String(additionalInfo.created_via || additionalInfo.source_type || '').toLowerCase();
+  const inputMethod = String(entry?.input_method || "").toLowerCase();
+  const createdVia = String(
+    additionalInfo.created_via || additionalInfo.source_type || "",
+  ).toLowerCase();
 
   if (amount > 0) return false;
-  if (inputMethod === 'web_guestbook' || createdVia === 'web_guestbook') return true;
-  return createdVia === 'web' && !!entry?.message;
+  if (inputMethod === "web_guestbook" || createdVia === "web_guestbook")
+    return true;
+  return createdVia === "web" && !!entry?.message;
 };
 
-const filterContributionDisplayEntries = (entries = []) => (
-  entries.filter((entry) => !isWebGuestbookOnlyEntry(entry))
-);
+const filterContributionDisplayEntries = (entries = []) =>
+  entries.filter((entry) => !isWebGuestbookOnlyEntry(entry));
 
 const base64ToBytes = (base64) => {
   const binary = global.atob
     ? global.atob(base64)
-    : (typeof Buffer !== 'undefined' ? Buffer.from(base64, 'base64').toString('binary') : null);
+    : typeof Buffer !== "undefined"
+      ? Buffer.from(base64, "base64").toString("binary")
+      : null;
 
   if (!binary) {
-    throw new Error('base64 디코더를 사용할 수 없습니다.');
+    throw new Error("base64 디코더를 사용할 수 없습니다.");
   }
 
   const bytes = new Uint8Array(binary.length);
@@ -63,33 +66,35 @@ const base64ToBytes = (base64) => {
 
 const readImageUriForUpload = async (imageUri) => {
   if (!imageUri) {
-    throw new Error('이미지 경로가 없습니다.');
+    throw new Error("이미지 경로가 없습니다.");
   }
 
-  if (imageUri.startsWith('data:')) {
-    const [metadata, base64 = ''] = imageUri.split(',');
-    const contentType = metadata.match(/^data:(.*?);base64/)?.[1] || 'image/jpeg';
+  if (imageUri.startsWith("data:")) {
+    const [metadata, base64 = ""] = imageUri.split(",");
+    const contentType =
+      metadata.match(/^data:(.*?);base64/)?.[1] || "image/jpeg";
     return {
       fileData: base64ToBytes(base64),
       contentType,
     };
   }
 
-  if (imageUri.startsWith('file://') || imageUri.startsWith('content://')) {
+  if (imageUri.startsWith("file://") || imageUri.startsWith("content://")) {
     const base64 = await FileSystem.readAsStringAsync(imageUri, {
-      encoding: 'base64',
+      encoding: "base64",
     });
-    const ext = (imageUri.split('.').pop() || '').split('?')[0].toLowerCase();
+    const ext = (imageUri.split(".").pop() || "").split("?")[0].toLowerCase();
     return {
       fileData: base64ToBytes(base64),
-      contentType: ext === 'png' ? 'image/png' : 'image/jpeg',
+      contentType: ext === "png" ? "image/png" : "image/jpeg",
     };
   }
 
   const response = await fetch(imageUri);
-  if (!response.ok) throw new Error(`파일을 불러올 수 없습니다 (status: ${response.status})`);
+  if (!response.ok)
+    throw new Error(`파일을 불러올 수 없습니다 (status: ${response.status})`);
   const fileData = await response.arrayBuffer();
-  const contentType = response.headers?.get?.('content-type') || 'image/jpeg';
+  const contentType = response.headers?.get?.("content-type") || "image/jpeg";
   return { fileData, contentType };
 };
 
@@ -98,32 +103,28 @@ const readImageUriForUpload = async (imageUri) => {
  */
 export const testRealtimeConnection = async () => {
   try {
-    
     // 테스트 채널 생성
     const testChannel = supabase
-      .channel('test-connection')
-      .on('broadcast', { event: 'test' }, (payload) => {
-      })
+      .channel("test-connection")
+      .on("broadcast", { event: "test" }, (payload) => {})
       .subscribe((status) => {
-        
-        if (status === 'SUBSCRIBED') {
-          
+        if (status === "SUBSCRIBED") {
           // 테스트 메시지 브로드캐스트
           testChannel.send({
-            type: 'broadcast',
-            event: 'test',
-            payload: { message: '테스트 메시지' }
+            type: "broadcast",
+            event: "test",
+            payload: { message: "테스트 메시지" },
           });
-          
+
           // 3초 후 채널 정리
           setTimeout(() => {
             supabase.removeChannel(testChannel);
           }, 3000);
-        } else if (status === 'TIMED_OUT') {
-        } else if (status === 'CLOSED') {
+        } else if (status === "TIMED_OUT") {
+        } else if (status === "CLOSED") {
         }
       });
-      
+
     return testChannel;
   } catch (error) {
     return null;
@@ -136,40 +137,42 @@ export const testRealtimeConnection = async () => {
 export const getUserSubscriptionInfo = async (userId = null) => {
   try {
     let targetUserId = userId;
-    
+
     if (!targetUserId) {
       const userInfo = await getCurrentUserInfo();
       if (!userInfo.success) {
-        return { success: false, error: '사용자 인증이 필요합니다.' };
+        return { success: false, error: "사용자 인증이 필요합니다." };
       }
       targetUserId = userInfo.user.id;
     }
-    
+
     const { data, error } = await supabase
-      .from('users')
-      .select('subscription_type, max_wedding_events, max_funeral_events, current_wedding_events, current_funeral_events, subscription_start_date, subscription_end_date')
-      .eq('id', targetUserId)
+      .from("users")
+      .select(
+        "subscription_type, max_wedding_events, max_funeral_events, current_wedding_events, current_funeral_events, subscription_start_date, subscription_end_date",
+      )
+      .eq("id", targetUserId)
       .single();
-    
+
     if (error) {
       return { success: false, error: error.message };
     }
-    
+
     return {
       success: true,
       subscription: {
-        type: data.subscription_type || 'free',
+        type: data.subscription_type || "free",
         maxWeddingEvents: data.max_wedding_events,
         maxFuneralEvents: data.max_funeral_events,
         currentWeddingEvents: data.current_wedding_events || 0,
         currentFuneralEvents: data.current_funeral_events || 0,
         startDate: data.subscription_start_date,
         endDate: data.subscription_end_date,
-        isPremium: data.subscription_type === 'premium'
-      }
+        isPremium: data.subscription_type === "premium",
+      },
     };
   } catch (error) {
-    return { success: false, error: '구독 정보 조회에 실패했습니다.' };
+    return { success: false, error: "구독 정보 조회에 실패했습니다." };
   }
 };
 
@@ -179,93 +182,98 @@ export const getUserSubscriptionInfo = async (userId = null) => {
 export const checkEventCreationLimit = async (eventType, userId = null) => {
   try {
     const subscriptionInfo = await getUserSubscriptionInfo(userId);
-    
+
     if (!subscriptionInfo.success) {
       return subscriptionInfo;
     }
-    
+
     const { subscription } = subscriptionInfo;
-    
+
     // 프리미엄 사용자는 제한 없음
     if (subscription.isPremium) {
-      return { 
-        success: true, 
-        canCreate: true, 
-        reason: 'premium',
-        subscription 
+      return {
+        success: true,
+        canCreate: true,
+        reason: "premium",
+        subscription,
       };
     }
-    
+
     // 무료 사용자 제한 체크
-    if (eventType === 'wedding') {
-      const canCreate = subscription.currentWeddingEvents < subscription.maxWeddingEvents;
+    if (eventType === "wedding") {
+      const canCreate =
+        subscription.currentWeddingEvents < subscription.maxWeddingEvents;
       return {
         success: true,
         canCreate,
-        reason: canCreate ? 'within_limit' : 'limit_exceeded',
+        reason: canCreate ? "within_limit" : "limit_exceeded",
         currentCount: subscription.currentWeddingEvents,
         maxCount: subscription.maxWeddingEvents,
-        subscription
+        subscription,
       };
-    } else if (eventType === 'funeral') {
-      const canCreate = subscription.currentFuneralEvents < subscription.maxFuneralEvents;
+    } else if (eventType === "funeral") {
+      const canCreate =
+        subscription.currentFuneralEvents < subscription.maxFuneralEvents;
       return {
         success: true,
         canCreate,
-        reason: canCreate ? 'within_limit' : 'limit_exceeded',
+        reason: canCreate ? "within_limit" : "limit_exceeded",
         currentCount: subscription.currentFuneralEvents,
         maxCount: subscription.maxFuneralEvents,
-        subscription
+        subscription,
       };
     }
-    
-    return { success: false, error: '지원하지 않는 이벤트 타입입니다.' };
+
+    return { success: false, error: "지원하지 않는 이벤트 타입입니다." };
   } catch (error) {
-    return { success: false, error: '제한 체크에 실패했습니다.' };
+    return { success: false, error: "제한 체크에 실패했습니다." };
   }
 };
 
 /**
  * 사용자 구독 타입 업그레이드
  */
-export const upgradeUserSubscription = async (userId = null, subscriptionType = 'premium') => {
+export const upgradeUserSubscription = async (
+  userId = null,
+  subscriptionType = "premium",
+) => {
   try {
     let targetUserId = userId;
-    
+
     if (!targetUserId) {
       const userInfo = await getCurrentUserInfo();
       if (!userInfo.success) {
-        return { success: false, error: '사용자 인증이 필요합니다.' };
+        return { success: false, error: "사용자 인증이 필요합니다." };
       }
       targetUserId = userInfo.user.id;
     }
-    
+
     const updateData = {
       subscription_type: subscriptionType,
       subscription_start_date: new Date().toISOString(),
     };
-    
+
     // 프리미엄으로 업그레이드 시 제한 해제
-    if (subscriptionType === 'premium') {
+    if (subscriptionType === "premium") {
       updateData.max_wedding_events = null;
       updateData.max_funeral_events = null;
       updateData.subscription_end_date = null; // 무제한
     }
-    
+
     const { data, error } = await supabase
-      .from('users')
+      .from("users")
       .update(updateData)
-      .eq('id', targetUserId)
+      .eq("id", targetUserId)
       .select()
       .single();
-    
+
     if (error) {
       return { success: false, error: error.message };
     }
-    
+
     return { success: true, data };
   } catch (error) {
-    return { success: false, error: '구독 업그레이드에 실패했습니다.' };
+    return { success: false, error: "구독 업그레이드에 실패했습니다." };
   }
 };
 
@@ -279,16 +287,19 @@ export const getEventCreationCreditState = async (userId = null) => {
     if (!targetUserId) {
       const userInfo = await getCurrentUserInfo();
       if (!userInfo.success) {
-        return { success: false, error: '사용자 인증이 필요합니다.' };
+        return { success: false, error: "사용자 인증이 필요합니다." };
       }
       targetUserId = userInfo.user.id;
     }
 
-    const { data, error } = await supabase.rpc('get_event_creation_credit_state', {
-      p_user_id: targetUserId,
-      p_free_limit: EVENT_CREATION_FREE_LIMIT,
-      p_price_credits: EVENT_CREATION_CREDIT_COST,
-    });
+    const { data, error } = await supabase.rpc(
+      "get_event_creation_credit_state",
+      {
+        p_user_id: targetUserId,
+        p_free_limit: EVENT_CREATION_FREE_LIMIT,
+        p_price_credits: EVENT_CREATION_CREDIT_COST,
+      },
+    );
 
     if (error) {
       return { success: false, error: error.message };
@@ -296,7 +307,10 @@ export const getEventCreationCreditState = async (userId = null) => {
 
     const state = Array.isArray(data) ? data[0] : data;
     if (!state?.success) {
-      return { success: false, error: state?.error || '크레딧 상태 조회에 실패했습니다.' };
+      return {
+        success: false,
+        error: state?.error || "크레딧 상태 조회에 실패했습니다.",
+      };
     }
 
     return {
@@ -308,7 +322,7 @@ export const getEventCreationCreditState = async (userId = null) => {
       welcomeSeen: !!state.welcome_seen,
     };
   } catch (error) {
-    return { success: false, error: '크레딧 상태 조회에 실패했습니다.' };
+    return { success: false, error: "크레딧 상태 조회에 실패했습니다." };
   }
 };
 
@@ -322,17 +336,20 @@ export const consumeEventCreationCredit = async (eventType, userId = null) => {
     if (!targetUserId) {
       const userInfo = await getCurrentUserInfo();
       if (!userInfo.success) {
-        return { success: false, error: '사용자 인증이 필요합니다.' };
+        return { success: false, error: "사용자 인증이 필요합니다." };
       }
       targetUserId = userInfo.user.id;
     }
 
-    const { data, error } = await supabase.rpc('consume_event_creation_credit', {
-      p_user_id: targetUserId,
-      p_event_type: eventType,
-      p_price_credits: EVENT_CREATION_CREDIT_COST,
-      p_free_limit: EVENT_CREATION_FREE_LIMIT,
-    });
+    const { data, error } = await supabase.rpc(
+      "consume_event_creation_credit",
+      {
+        p_user_id: targetUserId,
+        p_event_type: eventType,
+        p_price_credits: EVENT_CREATION_CREDIT_COST,
+        p_free_limit: EVENT_CREATION_FREE_LIMIT,
+      },
+    );
 
     if (error) {
       return { success: false, error: error.message };
@@ -342,10 +359,12 @@ export const consumeEventCreationCredit = async (eventType, userId = null) => {
     if (!result?.success) {
       return {
         success: false,
-        error: result?.error || '크레딧 사용에 실패했습니다.',
+        error: result?.error || "크레딧 사용에 실패했습니다.",
         balance: Number(result?.new_balance || 0),
         freeRemaining: Number(result?.free_remaining || 0),
-        priceCredits: Number(result?.price_credits || EVENT_CREATION_CREDIT_COST),
+        priceCredits: Number(
+          result?.price_credits || EVENT_CREATION_CREDIT_COST,
+        ),
       };
     }
 
@@ -358,7 +377,7 @@ export const consumeEventCreationCredit = async (eventType, userId = null) => {
       priceCredits: Number(result.price_credits || EVENT_CREATION_CREDIT_COST),
     };
   } catch (error) {
-    return { success: false, error: '크레딧 사용에 실패했습니다.' };
+    return { success: false, error: "크레딧 사용에 실패했습니다." };
   }
 };
 
@@ -369,14 +388,14 @@ export const refundEventCreationCredit = async ({
   userId,
   paymentMethod,
   priceCredits = EVENT_CREATION_CREDIT_COST,
-  reason = 'event_create_failed',
+  reason = "event_create_failed",
 }) => {
   if (!userId || !paymentMethod) {
-    return { success: false, error: '환불 정보가 부족합니다.' };
+    return { success: false, error: "환불 정보가 부족합니다." };
   }
 
   try {
-    const { data, error } = await supabase.rpc('refund_event_creation_credit', {
+    const { data, error } = await supabase.rpc("refund_event_creation_credit", {
       p_user_id: userId,
       p_payment_method: paymentMethod,
       p_price_credits: priceCredits,
@@ -394,7 +413,7 @@ export const refundEventCreationCredit = async ({
       freeUsed: Number(result?.free_used || 0),
     };
   } catch (error) {
-    return { success: false, error: '크레딧 복구에 실패했습니다.' };
+    return { success: false, error: "크레딧 복구에 실패했습니다." };
   }
 };
 
@@ -408,14 +427,17 @@ export const markEventCreationWelcomeSeen = async (userId = null) => {
     if (!targetUserId) {
       const userInfo = await getCurrentUserInfo();
       if (!userInfo.success) {
-        return { success: false, error: '사용자 인증이 필요합니다.' };
+        return { success: false, error: "사용자 인증이 필요합니다." };
       }
       targetUserId = userInfo.user.id;
     }
 
-    const { data, error } = await supabase.rpc('mark_event_creation_welcome_seen', {
-      p_user_id: targetUserId,
-    });
+    const { data, error } = await supabase.rpc(
+      "mark_event_creation_welcome_seen",
+      {
+        p_user_id: targetUserId,
+      },
+    );
 
     if (error) {
       return { success: false, error: error.message };
@@ -428,7 +450,7 @@ export const markEventCreationWelcomeSeen = async (userId = null) => {
       error: result?.error,
     };
   } catch (error) {
-    return { success: false, error: '안내 확인 처리에 실패했습니다.' };
+    return { success: false, error: "안내 확인 처리에 실패했습니다." };
   }
 };
 
@@ -437,56 +459,56 @@ export const markEventCreationWelcomeSeen = async (userId = null) => {
  */
 export const getCurrentUserInfo = async () => {
   try {
-    
     // 1순위: AsyncStorage에서 폰 인증 사용자 확인
-    const storedUserInfo = await AsyncStorage.getItem('userInfo');
-    const isLoggedIn = await AsyncStorage.getItem('isLoggedIn');
-    
-    if (isLoggedIn === 'true' && storedUserInfo) {
+    const storedUserInfo = await AsyncStorage.getItem("userInfo");
+    const isLoggedIn = await AsyncStorage.getItem("isLoggedIn");
+
+    if (isLoggedIn === "true" && storedUserInfo) {
       const userInfo = JSON.parse(storedUserInfo);
-      const phone = userInfo.phone || userInfo.userPhone || '';
-      const name = userInfo.userName || userInfo.name || '';
-      
+      const phone = userInfo.phone || userInfo.userPhone || "";
+      const name = userInfo.userName || userInfo.name || "";
+
       return {
         success: true,
         user: {
           id: userInfo.userId,
           phone,
           name,
-          email: `${phone.replace(/\D/g, '')}@phone.temp`, // 임시 이메일
-          auth_method: 'phone'
+          email: `${phone.replace(/\D/g, "")}@phone.temp`, // 임시 이메일
+          auth_method: "phone",
         },
-        source: 'asyncstorage'
+        source: "asyncstorage",
       };
     }
-    
+
     // 2순위: Supabase Auth 세션 확인
-    const { data: { user }, error } = await supabase.auth.getUser();
-    
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
     if (error || !user) {
       return {
         success: false,
-        error: '로그인이 필요합니다.'
+        error: "로그인이 필요합니다.",
       };
     }
-    
-    
+
     return {
       success: true,
       user: {
         id: user.id,
         phone: user.phone,
         email: user.email,
-        name: user.user_metadata?.name || user.email?.split('@')[0] || '사용자',
-        auth_method: 'supabase'
+        name: user.user_metadata?.name || user.email?.split("@")[0] || "사용자",
+        auth_method: "supabase",
       },
-      source: 'supabase'
+      source: "supabase",
     };
-    
   } catch (error) {
     return {
       success: false,
-      error: '사용자 정보를 가져올 수 없습니다.'
+      error: "사용자 정보를 가져올 수 없습니다.",
     };
   }
 };
@@ -494,22 +516,25 @@ export const getCurrentUserInfo = async () => {
 /**
  * 🔥 임시 이미지들을 실제 eventId 폴더로 이동
  */
-export const moveImagesToEventFolder = async (images, realEventId, tempEventId) => {
+export const moveImagesToEventFolder = async (
+  images,
+  realEventId,
+  tempEventId,
+) => {
   try {
-
     const movePromises = images.map(async (image) => {
       try {
         if (!image.storagePath || !image.publicUrl) {
           return {
             ...image,
             moveSuccess: false,
-            error: 'Storage 정보 없음'
+            error: "Storage 정보 없음",
           };
         }
 
         // 기존 경로에서 파일 다운로드
         const { data: fileData, error: downloadError } = await supabase.storage
-          .from('event-images')
+          .from("event-images")
           .download(image.storagePath);
 
         if (downloadError) {
@@ -517,17 +542,17 @@ export const moveImagesToEventFolder = async (images, realEventId, tempEventId) 
         }
 
         // 새 경로 생성
-        const pathParts = image.storagePath.split('/');
+        const pathParts = image.storagePath.split("/");
         const userId = pathParts[0];
         const fileName = pathParts[pathParts.length - 1];
         const newPath = `${userId}/${realEventId}/${fileName}`;
 
         // 새 위치에 업로드
         const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('event-images')
+          .from("event-images")
           .upload(newPath, fileData, {
-            contentType: 'image/jpeg',
-            upsert: true
+            contentType: "image/jpeg",
+            upsert: true,
           });
 
         if (uploadError) {
@@ -535,41 +560,37 @@ export const moveImagesToEventFolder = async (images, realEventId, tempEventId) 
         }
 
         // 새 Public URL 생성
-        const { data: { publicUrl: newPublicUrl } } = supabase.storage
-          .from('event-images')
-          .getPublicUrl(newPath);
+        const {
+          data: { publicUrl: newPublicUrl },
+        } = supabase.storage.from("event-images").getPublicUrl(newPath);
 
         // 기존 파일 삭제
         try {
           await supabase.storage
-            .from('event-images')
+            .from("event-images")
             .remove([image.storagePath]);
-        } catch (deleteError) {
-        }
-
+        } catch (deleteError) {}
 
         return {
           ...image,
           storagePath: newPath,
           publicUrl: newPublicUrl,
           eventId: realEventId,
-          moveSuccess: true
+          moveSuccess: true,
         };
-
       } catch (error) {
         return {
           ...image,
           moveSuccess: false,
-          error: error.message
+          error: error.message,
         };
       }
     });
 
     const results = await Promise.all(movePromises);
-    
-    const successfulMoves = results.filter(result => result.moveSuccess);
-    const failedMoves = results.filter(result => !result.moveSuccess);
 
+    const successfulMoves = results.filter((result) => result.moveSuccess);
+    const failedMoves = results.filter((result) => !result.moveSuccess);
 
     return {
       success: true,
@@ -577,14 +598,13 @@ export const moveImagesToEventFolder = async (images, realEventId, tempEventId) 
         updatedImages: successfulMoves,
         failedImages: failedMoves,
         totalSuccess: successfulMoves.length,
-        totalFailed: failedMoves.length
-      }
+        totalFailed: failedMoves.length,
+      },
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '이미지 이동에 실패했습니다.'
+      error: error.message || "이미지 이동에 실패했습니다.",
     };
   }
 };
@@ -594,24 +614,23 @@ export const moveImagesToEventFolder = async (images, realEventId, tempEventId) 
  */
 export const updateEventImages = async (eventId, updatedImages) => {
   try {
-
-    const imageUrls = updatedImages.map(img => ({
+    const imageUrls = updatedImages.map((img) => ({
       uri: img.publicUrl,
       category: img.category,
       categoryLabel: img.categoryLabel,
       id: img.id,
       storagePath: img.storagePath,
       publicUrl: img.publicUrl,
-      eventId: img.eventId
+      eventId: img.eventId,
     }));
 
     const { data, error } = await supabase
-      .from('events')
+      .from("events")
       .update({
         image_urls: imageUrls,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       })
-      .eq('id', eventId)
+      .eq("id", eventId)
       .select()
       .single();
 
@@ -619,16 +638,14 @@ export const updateEventImages = async (eventId, updatedImages) => {
       throw error;
     }
 
-    
     return {
       success: true,
-      data
+      data,
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '이미지 DB 업데이트에 실패했습니다.'
+      error: error.message || "이미지 DB 업데이트에 실패했습니다.",
     };
   }
 };
@@ -638,10 +655,9 @@ export const updateEventImages = async (eventId, updatedImages) => {
  */
 export const getEventStorageImages = async (userId, eventId) => {
   try {
-    
     // eventId 폴더의 파일 목록 가져오기
     const { data: files, error } = await supabase.storage
-      .from('event-images')
+      .from("event-images")
       .list(`${userId}/${eventId}`);
 
     if (error) {
@@ -652,20 +668,19 @@ export const getEventStorageImages = async (userId, eventId) => {
       return { success: true, data: { files: [], count: 0 } };
     }
 
-    
     // 각 파일의 public URL 생성
-    const filesWithUrls = files.map(file => {
+    const filesWithUrls = files.map((file) => {
       const fullPath = `${userId}/${eventId}/${file.name}`;
-      const { data: { publicUrl } } = supabase.storage
-        .from('event-images')
-        .getPublicUrl(fullPath);
-      
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("event-images").getPublicUrl(fullPath);
+
       return {
         ...file,
         publicUrl,
         fullPath,
         eventId,
-        category: determineImageCategory(file.name) // 파일명에서 카테고리 추정
+        category: determineImageCategory(file.name), // 파일명에서 카테고리 추정
       };
     });
 
@@ -673,10 +688,9 @@ export const getEventStorageImages = async (userId, eventId) => {
       success: true,
       data: {
         files: filesWithUrls,
-        count: files.length
-      }
+        count: files.length,
+      },
     };
-    
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -687,14 +701,14 @@ export const getEventStorageImages = async (userId, eventId) => {
  */
 const determineImageCategory = (fileName) => {
   const lowerFileName = fileName.toLowerCase();
-  
-  if (lowerFileName.includes('main')) return 'main';
-  if (lowerFileName.includes('gallery')) return 'gallery';
-  if (lowerFileName.includes('groom')) return 'groom';
-  if (lowerFileName.includes('bride')) return 'bride';
-  
+
+  if (lowerFileName.includes("main")) return "main";
+  if (lowerFileName.includes("gallery")) return "gallery";
+  if (lowerFileName.includes("groom")) return "groom";
+  if (lowerFileName.includes("bride")) return "bride";
+
   // 기본값은 main
-  return 'main';
+  return "main";
 };
 
 /**
@@ -702,10 +716,9 @@ const determineImageCategory = (fileName) => {
  */
 export const deleteEventStorageImages = async (userId, eventId) => {
   try {
-    
     // 해당 이벤트 폴더의 모든 파일 목록 가져오기
     const { data: files, error: listError } = await supabase.storage
-      .from('event-images')
+      .from("event-images")
       .list(`${userId}/${eventId}`);
 
     if (listError) {
@@ -717,101 +730,110 @@ export const deleteEventStorageImages = async (userId, eventId) => {
     }
 
     // 파일 경로 생성
-    const filePaths = files.map(file => `${userId}/${eventId}/${file.name}`);
-    
+    const filePaths = files.map((file) => `${userId}/${eventId}/${file.name}`);
+
     // 일괄 삭제
     const { data, error: deleteError } = await supabase.storage
-      .from('event-images')
+      .from("event-images")
       .remove(filePaths);
 
     if (deleteError) {
       return { success: false, error: deleteError.message };
     }
 
-    
     return {
       success: true,
       data: {
         deletedCount: filePaths.length,
-        deletedFiles: filePaths
-      }
+        deletedFiles: filePaths,
+      },
     };
-
   } catch (error) {
     return { success: false, error: error.message };
   }
 };
 
-export const uploadImageToStorage = async (imageUri, fileName, userId, eventId = null) => {
+export const uploadImageToStorage = async (
+  imageUri,
+  fileName,
+  userId,
+  eventId = null,
+) => {
   try {
-    
     // 1. 파일 읽기. iOS 로컬 파일은 fetch가 멈추는 경우가 있어 FileSystem으로 처리한다.
     let fileData;
-    let detectedContentType = 'image/jpeg';
+    let detectedContentType = "image/jpeg";
     try {
       const readResult = await readImageUriForUpload(imageUri);
       fileData = readResult.fileData;
       detectedContentType = readResult.contentType || detectedContentType;
-      if (!fileData || fileData.byteLength === 0) throw new Error('파일이 비어있습니다.');
+      if (!fileData || fileData.byteLength === 0)
+        throw new Error("파일이 비어있습니다.");
     } catch (fileError) {
       throw new Error(`파일 읽기 실패: ${fileError.message}`);
     }
-    
+
     // 2. 파일 이름 정리 및 경로 생성 - eventId 포함
     const timestamp = new Date().getTime();
-    const cleanFileName = fileName?.replace(/[^a-zA-Z0-9.-]/g, '_') || 'image.jpg';
-    
+    const cleanFileName =
+      fileName?.replace(/[^a-zA-Z0-9.-]/g, "_") || "image.jpg";
+
     // 🔥 Storage 경로: userId/eventId/fileName 구조
     const storageEventId = eventId || `temp_${timestamp}`;
     const uniqueFileName = `${userId}/${storageEventId}/${timestamp}_${cleanFileName}`;
-    
-    
+
     // 3. Supabase Storage에 업로드
     const { data, error } = await supabase.storage
-      .from('event-images')
+      .from("event-images")
       .upload(uniqueFileName, fileData, {
         contentType: detectedContentType,
         upsert: true,
       });
 
     if (error) {
-      
-      if (error.message?.includes('does not exist') || error.message?.includes('not found')) {
-        throw new Error('event-images 버킷이 존재하지 않습니다. Supabase Dashboard에서 버킷을 생성해주세요.');
+      if (
+        error.message?.includes("does not exist") ||
+        error.message?.includes("not found")
+      ) {
+        throw new Error(
+          "event-images 버킷이 존재하지 않습니다. Supabase Dashboard에서 버킷을 생성해주세요.",
+        );
       }
-      
-      if (error.message?.includes('permission') || error.message?.includes('policy')) {
-        throw new Error('Storage 업로드 권한이 없습니다. Supabase Dashboard에서 Storage 정책을 확인해주세요.');
+
+      if (
+        error.message?.includes("permission") ||
+        error.message?.includes("policy")
+      ) {
+        throw new Error(
+          "Storage 업로드 권한이 없습니다. Supabase Dashboard에서 Storage 정책을 확인해주세요.",
+        );
       }
-      
+
       throw new Error(`업로드 실패: ${error.message}`);
     }
 
-
     // 4. Public URL 가져오기
-    const { data: { publicUrl } } = supabase.storage
-      .from('event-images')
-      .getPublicUrl(uniqueFileName);
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("event-images").getPublicUrl(uniqueFileName);
 
     if (!publicUrl) {
-      throw new Error('Public URL 생성에 실패했습니다.');
+      throw new Error("Public URL 생성에 실패했습니다.");
     }
 
-    
     return {
       success: true,
       data: {
         path: data.path,
         publicUrl: publicUrl,
         fileName: uniqueFileName,
-        eventId: storageEventId
-      }
+        eventId: storageEventId,
+      },
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '이미지 업로드에 실패했습니다.'
+      error: error.message || "이미지 업로드에 실패했습니다.",
     };
   }
 };
@@ -819,63 +841,64 @@ export const uploadImageToStorage = async (imageUri, fileName, userId, eventId =
 /**
  * 여러 이미지를 일괄 업로드
  */
-export const uploadMultipleImages = async (images, userId, onProgress = null) => {
+export const uploadMultipleImages = async (
+  images,
+  userId,
+  onProgress = null,
+) => {
   try {
-    
     const uploadPromises = images.map(async (image, index) => {
       try {
         // 파일 이름 생성 (카테고리 포함)
         const fileName = `${image.category}_${index}.jpg`;
-        
+
         const result = await uploadImageToStorage(image.uri, fileName, userId);
-        
+
         if (onProgress) {
           onProgress(index + 1, images.length);
         }
-        
+
         if (result.success) {
           return {
             ...image,
             publicUrl: result.data.publicUrl,
             storagePath: result.data.path,
-            uploadSuccess: true
+            uploadSuccess: true,
           };
         } else {
           return {
             ...image,
             uploadSuccess: false,
-            error: result.error
+            error: result.error,
           };
         }
       } catch (error) {
         return {
           ...image,
           uploadSuccess: false,
-          error: error.message
+          error: error.message,
         };
       }
     });
 
     const results = await Promise.all(uploadPromises);
-    
-    const successfulUploads = results.filter(result => result.uploadSuccess);
-    const failedUploads = results.filter(result => !result.uploadSuccess);
-    
-    
+
+    const successfulUploads = results.filter((result) => result.uploadSuccess);
+    const failedUploads = results.filter((result) => !result.uploadSuccess);
+
     return {
       success: true,
       data: {
         successful: successfulUploads,
         failed: failedUploads,
         totalSuccess: successfulUploads.length,
-        totalFailed: failedUploads.length
-      }
+        totalFailed: failedUploads.length,
+      },
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '다중 이미지 업로드에 실패했습니다.'
+      error: error.message || "다중 이미지 업로드에 실패했습니다.",
     };
   }
 };
@@ -885,24 +908,21 @@ export const uploadMultipleImages = async (images, userId, onProgress = null) =>
  */
 export const deleteImageFromStorage = async (storagePath) => {
   try {
-    
     const { error } = await supabase.storage
-      .from('event-images')
+      .from("event-images")
       .remove([storagePath]);
 
     if (error) {
       throw error;
     }
 
-    
     return {
-      success: true
+      success: true,
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '이미지 삭제에 실패했습니다.'
+      error: error.message || "이미지 삭제에 실패했습니다.",
     };
   }
 };
@@ -912,7 +932,6 @@ export const deleteImageFromStorage = async (storagePath) => {
  */
 export const deleteEventImages = async (imageUrls) => {
   try {
-    
     const deletePromises = imageUrls.map(async (imageData) => {
       if (imageData.storagePath) {
         return await deleteImageFromStorage(imageData.storagePath);
@@ -921,24 +940,22 @@ export const deleteEventImages = async (imageUrls) => {
     });
 
     const results = await Promise.allSettled(deletePromises);
-    
-    const successCount = results.filter(result => 
-      result.status === 'fulfilled' && result.value.success
+
+    const successCount = results.filter(
+      (result) => result.status === "fulfilled" && result.value.success,
     ).length;
-    
-    
+
     return {
       success: true,
       data: {
         total: imageUrls.length,
-        success: successCount
-      }
+        success: successCount,
+      },
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '이벤트 이미지 삭제에 실패했습니다.'
+      error: error.message || "이벤트 이미지 삭제에 실패했습니다.",
     };
   }
 };
@@ -961,8 +978,9 @@ export const getUserEvents = async (passedUserInfo = null) => {
     }
 
     const { data, error } = await supabase
-      .from('events')
-      .select(`
+      .from("events")
+      .select(
+        `
         id,
         event_name,
         event_type,
@@ -975,6 +993,7 @@ export const getUserEvents = async (passedUserInfo = null) => {
         detailed_address,
         template_style,
         status,
+        is_finalized,
         created_at,
         updated_at,
         user_id,
@@ -1006,9 +1025,10 @@ export const getUserEvents = async (passedUserInfo = null) => {
         visitation_note,
         parking_transport_info,
         condolence_accounts
-      `)
-      .eq('user_id', currentUser.id)
-      .order('created_at', { ascending: false });
+      `,
+      )
+      .eq("user_id", currentUser.id)
+      .order("created_at", { ascending: false });
 
     if (error) {
       throw error;
@@ -1016,13 +1036,12 @@ export const getUserEvents = async (passedUserInfo = null) => {
 
     return {
       success: true,
-      data: data || []
+      data: data || [],
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '이벤트를 불러올 수 없습니다.'
+      error: error.message || "이벤트를 불러올 수 없습니다.",
     };
   }
 };
@@ -1040,9 +1059,9 @@ const createUniquePublicSlug = async (eventData) => {
   for (let index = 1; index <= 100; index += 1) {
     const candidate = buildSlugCandidate(baseSlug, index);
     const { data, error } = await supabase
-      .from('events')
-      .select('id')
-      .eq('public_slug', candidate)
+      .from("events")
+      .select("id")
+      .eq("public_slug", candidate)
       .limit(1);
 
     if (error) {
@@ -1062,9 +1081,8 @@ const createUniquePublicSlug = async (eventData) => {
  */
 export const getPersonalSchedules = async (passedUserInfo = null) => {
   try {
-    
     let currentUser = null;
-    
+
     if (passedUserInfo?.id) {
       currentUser = passedUserInfo;
     } else {
@@ -1074,11 +1092,11 @@ export const getPersonalSchedules = async (passedUserInfo = null) => {
       }
       currentUser = userResult.user;
     }
-    
-    
+
     const { data, error } = await supabase
-      .from('personal_schedules')
-      .select(`
+      .from("personal_schedules")
+      .select(
+        `
         id,
         title,
         event_type,
@@ -1087,17 +1105,17 @@ export const getPersonalSchedules = async (passedUserInfo = null) => {
         notes,
         created_at,
         updated_at
-      `)
-      .eq('user_id', currentUser.id)
-      .order('event_date', { ascending: false });
+      `,
+      )
+      .eq("user_id", currentUser.id)
+      .order("event_date", { ascending: false });
 
     if (error) {
       throw error;
     }
 
-    
     // 개인 일정 데이터를 이벤트 형식에 맞게 변환
-    const personalSchedules = (data || []).map(schedule => ({
+    const personalSchedules = (data || []).map((schedule) => ({
       id: schedule.id,
       event_name: schedule.title,
       title: schedule.title, // 호환성을 위해 둘 다 제공
@@ -1105,23 +1123,22 @@ export const getPersonalSchedules = async (passedUserInfo = null) => {
       event_date: schedule.event_date,
       location: schedule.location,
       notes: schedule.notes,
-      source: 'personal', // 개인 일정임을 표시
+      source: "personal", // 개인 일정임을 표시
       is_personal_schedule: true,
       is_reminder_set: false, // 기본값 설정
       created_at: schedule.created_at,
       updated_at: schedule.updated_at,
-      status: 'active'
+      status: "active",
     }));
-    
+
     return {
       success: true,
-      data: personalSchedules
+      data: personalSchedules,
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '개인 일정을 불러올 수 없습니다.'
+      error: error.message || "개인 일정을 불러올 수 없습니다.",
     };
   }
 };
@@ -1129,11 +1146,13 @@ export const getPersonalSchedules = async (passedUserInfo = null) => {
 /**
  * 개인 일정 생성
  */
-export const createPersonalSchedule = async (scheduleData, passedUserInfo = null) => {
+export const createPersonalSchedule = async (
+  scheduleData,
+  passedUserInfo = null,
+) => {
   try {
-    
     let currentUser = null;
-    
+
     if (passedUserInfo?.id) {
       currentUser = passedUserInfo;
     } else {
@@ -1143,19 +1162,19 @@ export const createPersonalSchedule = async (scheduleData, passedUserInfo = null
       }
       currentUser = userResult.user;
     }
-    
-    
-    
+
     const { data, error } = await supabase
-      .from('personal_schedules')
-      .insert([{
-        user_id: currentUser.id,
-        title: scheduleData.title,
-        event_type: scheduleData.event_type,
-        event_date: scheduleData.event_date,
-        location: scheduleData.location || null,
-        notes: scheduleData.notes || null
-      }])
+      .from("personal_schedules")
+      .insert([
+        {
+          user_id: currentUser.id,
+          title: scheduleData.title,
+          event_type: scheduleData.event_type,
+          event_date: scheduleData.event_date,
+          location: scheduleData.location || null,
+          notes: scheduleData.notes || null,
+        },
+      ])
       .select()
       .single();
 
@@ -1163,7 +1182,6 @@ export const createPersonalSchedule = async (scheduleData, passedUserInfo = null
       throw error;
     }
 
-    
     return {
       success: true,
       data: {
@@ -1174,17 +1192,16 @@ export const createPersonalSchedule = async (scheduleData, passedUserInfo = null
         event_date: data.event_date,
         location: data.location,
         notes: data.notes,
-        source: 'personal',
+        source: "personal",
         is_personal_schedule: true,
-        status: 'active',
-        created_at: data.created_at
-      }
+        status: "active",
+        created_at: data.created_at,
+      },
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '개인 일정을 생성할 수 없습니다.'
+      error: error.message || "개인 일정을 생성할 수 없습니다.",
     };
   }
 };
@@ -1194,26 +1211,30 @@ export const createPersonalSchedule = async (scheduleData, passedUserInfo = null
  */
 export const getAllUserEvents = async (passedUserInfo = null) => {
   try {
-    
     // 주최 경조사 조회
     const hostedEventsResult = await getUserEvents(passedUserInfo);
     const personalSchedulesResult = await getPersonalSchedules(passedUserInfo);
-    
-    const hostedEvents = hostedEventsResult.success ? hostedEventsResult.data : [];
-    const personalSchedules = personalSchedulesResult.success ? personalSchedulesResult.data : [];
-    
+
+    const hostedEvents = hostedEventsResult.success
+      ? hostedEventsResult.data
+      : [];
+    const personalSchedules = personalSchedulesResult.success
+      ? personalSchedulesResult.data
+      : [];
+
     // 주최 경조사에 source 마킹
-    const markedHostedEvents = hostedEvents.map(event => ({
+    const markedHostedEvents = hostedEvents.map((event) => ({
       ...event,
-      source: 'hosted',
-      is_personal_schedule: false
+      source: "hosted",
+      is_personal_schedule: false,
     }));
-    
+
     const getEventSortDate = (event) => {
       if (!event) return null;
-      if (event.event_type === 'funeral') {
+      if (event.event_type === "funeral") {
         const additionalInfo = event.additional_info || {};
-        return event.burial_date ||
+        return (
+          event.burial_date ||
           event.funeral_end_date ||
           event.casket_date ||
           event.death_date ||
@@ -1222,14 +1243,15 @@ export const getAllUserEvents = async (passedUserInfo = null) => {
           additionalInfo.funeral_end_date ||
           additionalInfo.casket_date ||
           additionalInfo.death_date ||
-          null;
+          null
+        );
       }
       return event.event_date || null;
     };
 
     // 두 데이터 병합
     const allEvents = [...markedHostedEvents, ...personalSchedules];
-    
+
     // 날짜순 정렬 (최신순)
     allEvents.sort((a, b) => {
       const aDate = getEventSortDate(a);
@@ -1238,22 +1260,20 @@ export const getAllUserEvents = async (passedUserInfo = null) => {
       const bTime = bDate ? new Date(bDate).getTime() : 0;
       return bTime - aTime;
     });
-    
-    
+
     return {
       success: true,
       data: allEvents,
       breakdown: {
         hosted: hostedEvents.length,
         personal: personalSchedules.length,
-        total: allEvents.length
-      }
+        total: allEvents.length,
+      },
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '이벤트를 불러올 수 없습니다.'
+      error: error.message || "이벤트를 불러올 수 없습니다.",
     };
   }
 };
@@ -1266,7 +1286,6 @@ export const createEvent = async (eventData) => {
   let currentUser = null;
 
   try {
-    
     const userResult = await getCurrentUserInfo();
     if (!userResult.success) {
       throw new Error(userResult.error);
@@ -1277,29 +1296,68 @@ export const createEvent = async (eventData) => {
     // ✅ 허용된 컬럼들만 화이트리스트로 추출 (실제 DB 컬럼들만)
     const allowedColumns = [
       // 기본 컬럼들
-      'event_type', 'event_name', 'main_person_name', 'family_relations', 
-      'preset_amounts', 'status', 'event_date', 'is_finalized',
-      'image_urls', 'location', 'detailed_address', 'template_style', 'public_slug',
-      
+      "event_type",
+      "event_name",
+      "main_person_name",
+      "family_relations",
+      "preset_amounts",
+      "status",
+      "event_date",
+      "is_finalized",
+      "image_urls",
+      "location",
+      "detailed_address",
+      "template_style",
+      "public_slug",
+
       // 결혼식 관련 컬럼들
-      'bride_name', 'groom_name', 'bride_father_name', 'bride_mother_name', 
-      'groom_father_name', 'groom_mother_name', 'bride_contact', 'groom_contact', 
-      'ceremony_time', 'reception_time', 'custom_message', 'dress_code', 'parking_info',
-      
+      "bride_name",
+      "groom_name",
+      "bride_father_name",
+      "bride_mother_name",
+      "groom_father_name",
+      "groom_mother_name",
+      "bride_contact",
+      "groom_contact",
+      "ceremony_time",
+      "reception_time",
+      "custom_message",
+      "dress_code",
+      "parking_info",
+
       // 부고 관련 컬럼들 (실제 DB 컬럼들만)
-      'birth_date', 'deceased_age', 'age_calculation_method', 'death_date', 'death_time',
-      'deceased_gender', 'religious_rite', 'funeral_method', 'casket_date', 'casket_time',
-      'burial_date', 'burial_time', 'burial_location', 'secondary_burial_location',
-      'primary_contact', 'secondary_contact', 'funeral_director', 'funeral_home',
-      'visitation_type', 'visitation_note', 'parking_transport_info', 'condolence_accounts',
-      
+      "birth_date",
+      "deceased_age",
+      "age_calculation_method",
+      "death_date",
+      "death_time",
+      "deceased_gender",
+      "religious_rite",
+      "funeral_method",
+      "casket_date",
+      "casket_time",
+      "burial_date",
+      "burial_time",
+      "burial_location",
+      "secondary_burial_location",
+      "primary_contact",
+      "secondary_contact",
+      "funeral_director",
+      "funeral_home",
+      "visitation_type",
+      "visitation_note",
+      "parking_transport_info",
+      "condolence_accounts",
+
       // 메시지 관련 컬럼들
-      'allow_messages', 'message_placeholder', 'additional_info'
+      "allow_messages",
+      "message_placeholder",
+      "additional_info",
     ];
 
     // 허용된 컬럼들만 추출
     let processedEventData = {};
-    allowedColumns.forEach(column => {
+    allowedColumns.forEach((column) => {
       if (eventData[column] !== undefined) {
         processedEventData[column] = eventData[column];
       }
@@ -1307,24 +1365,22 @@ export const createEvent = async (eventData) => {
 
     // 시스템 필드 추가
     processedEventData.user_id = currentUser.id;
-    processedEventData.status = 'active';
+    processedEventData.status = "active";
     processedEventData.is_finalized = false;
     processedEventData.created_at = new Date().toISOString();
-    processedEventData.allow_messages = eventData.allow_messages !== undefined ? eventData.allow_messages : true;
-    processedEventData.message_placeholder = eventData.message_placeholder || getDefaultMessagePlaceholder(eventData.event_type);
+    processedEventData.allow_messages =
+      eventData.allow_messages !== undefined ? eventData.allow_messages : true;
+    processedEventData.message_placeholder =
+      eventData.message_placeholder ||
+      getDefaultMessagePlaceholder(eventData.event_type);
 
-    const getImageIdentity = (image) => (
-      image?.storagePath ||
-      image?.publicUrl ||
-      image?.uri ||
-      image?.id ||
-      ''
-    );
+    const getImageIdentity = (image) =>
+      image?.storagePath || image?.publicUrl || image?.uri || image?.id || "";
 
     const dedupeImageList = (images = []) => {
       const seen = new Set();
       return images.filter((image) => {
-        const key = typeof image === 'string' ? image : getImageIdentity(image);
+        const key = typeof image === "string" ? image : getImageIdentity(image);
         if (!key) return true;
         if (seen.has(key)) return false;
         seen.add(key);
@@ -1334,32 +1390,33 @@ export const createEvent = async (eventData) => {
 
     // 🔥 이미지 처리 - 이미 업로드된 이미지들의 publicUrl 저장
     if (eventData.image_urls && Array.isArray(eventData.image_urls)) {
-      processedEventData.image_urls = dedupeImageList(eventData.image_urls).map(img => {
-        // 이미지가 문자열인 경우 (URL)
-        if (typeof img === 'string') {
+      processedEventData.image_urls = dedupeImageList(eventData.image_urls).map(
+        (img) => {
+          // 이미지가 문자열인 경우 (URL)
+          if (typeof img === "string") {
+            return {
+              uri: img,
+              category: "all",
+              publicUrl: img,
+            };
+          }
+
+          // 객체인 경우
           return {
-            uri: img,
-            category: 'all',
-            publicUrl: img
+            uri: img.publicUrl || img.uri, // publicUrl이 있으면 사용, 없으면 기존 uri
+            category: img.category || "all",
+            categoryLabel: img.categoryLabel,
+            id: img.id,
+            storagePath: img.storagePath || null, // storage path 정보 보존
+            publicUrl: img.publicUrl || img.uri || null,
           };
-        }
-        
-        // 객체인 경우
-        return {
-          uri: img.publicUrl || img.uri, // publicUrl이 있으면 사용, 없으면 기존 uri
-          category: img.category || 'all',
-          categoryLabel: img.categoryLabel,
-          id: img.id,
-          storagePath: img.storagePath || null, // storage path 정보 보존
-          publicUrl: img.publicUrl || img.uri || null
-        };
-      });
-      
+        },
+      );
     }
 
-    if (eventData.event_type === 'wedding') {
+    if (eventData.event_type === "wedding") {
       if (!eventData.groom_name || !eventData.bride_name) {
-        throw new Error('신랑과 신부 이름은 필수입니다.');
+        throw new Error("신랑과 신부 이름은 필수입니다.");
       }
       if (!eventData.main_person_name) {
         processedEventData.main_person_name = `${eventData.groom_name}, ${eventData.bride_name}`;
@@ -1370,58 +1427,62 @@ export const createEvent = async (eventData) => {
       processedEventData.additional_info = {
         ...eventData.additional_info,
         reception_time: eventData.reception_time,
-        created_via: 'app_v2.3',
-        version: '2.3'
+        created_via: "app_v2.3",
+        version: "2.3",
       };
-      
+
       // 🔥 카테고리별 이미지 정보도 additional_info에 추가
-      if (processedEventData.image_urls && Array.isArray(processedEventData.image_urls)) {
+      if (
+        processedEventData.image_urls &&
+        Array.isArray(processedEventData.image_urls)
+      ) {
         const categorizedImages = {
           main: [],
           gallery: [],
           groom: [],
           bride: [],
         };
-        
-        processedEventData.image_urls.forEach(img => {
+
+        processedEventData.image_urls.forEach((img) => {
           const imageData = {
             uri: img.publicUrl || img.uri,
             publicUrl: img.publicUrl || img.uri,
-            category: img.category
+            category: img.category,
           };
-          
+
           // 카테고리별로 분류
-          if (img.category === 'main') {
+          if (img.category === "main") {
             categorizedImages.main.push(imageData);
-          } else if (img.category === 'gallery') {
+          } else if (img.category === "gallery") {
             categorizedImages.gallery.push(imageData);
-          } else if (img.category === 'groom') {
+          } else if (img.category === "groom") {
             categorizedImages.groom.push(imageData);
-          } else if (img.category === 'bride') {
+          } else if (img.category === "bride") {
             categorizedImages.bride.push(imageData);
           }
-          
-          if (img.category === 'all') {
+
+          if (img.category === "all") {
             categorizedImages.gallery.push(imageData);
           }
         });
-        
-        processedEventData.additional_info.categorized_images = categorizedImages;
+
+        processedEventData.additional_info.categorized_images =
+          categorizedImages;
       }
-    } else if (eventData.event_type === 'funeral') {
+    } else if (eventData.event_type === "funeral") {
       // 🔥 고인명 체크 - camelCase와 snake_case 모두 지원
       const deceasedName = eventData.deceasedName || eventData.deceased_name;
       if (!deceasedName || !deceasedName.trim()) {
-        throw new Error('고인명은 필수입니다.');
+        throw new Error("고인명은 필수입니다.");
       }
-      
+
       // 🔥 상주 정보 처리 - familyMembers에서 family_members로 변환
-      const familyMembers = eventData.familyMembers || eventData.family_members || [];
-      const validFamilyMembers = Array.isArray(familyMembers) 
-        ? familyMembers.filter(member => member.names && member.names.trim())
+      const familyMembers =
+        eventData.familyMembers || eventData.family_members || [];
+      const validFamilyMembers = Array.isArray(familyMembers)
+        ? familyMembers.filter((member) => member.names && member.names.trim())
         : [];
-      
-      
+
       // 🔥 고인명을 main_person_name으로 매핑 (deceased_name 컬럼은 DB에 없음)
       processedEventData.main_person_name = deceasedName.trim();
       if (!eventData.event_name) {
@@ -1430,25 +1491,30 @@ export const createEvent = async (eventData) => {
 
       // 🔥 camelCase 필드들을 DB 컬럼으로 변환
       if (eventData.deceasedAge || eventData.deceased_age) {
-        processedEventData.deceased_age = parseInt(eventData.deceasedAge || eventData.deceased_age);
+        processedEventData.deceased_age = parseInt(
+          eventData.deceasedAge || eventData.deceased_age,
+        );
       }
 
       if (eventData.birthDate || eventData.birth_date) {
         const birthDate = eventData.birthDate || eventData.birth_date;
         if (birthDate instanceof Date && !isNaN(birthDate.getTime())) {
-          processedEventData.birth_date = birthDate.toISOString().split('T')[0];
-        } else if (typeof birthDate === 'string') {
+          processedEventData.birth_date = birthDate.toISOString().split("T")[0];
+        } else if (typeof birthDate === "string") {
           processedEventData.birth_date = birthDate;
         }
       }
 
-      processedEventData.age_calculation_method = eventData.ageCalculationMethod || eventData.age_calculation_method || 'korean_year';
-      
+      processedEventData.age_calculation_method =
+        eventData.ageCalculationMethod ||
+        eventData.age_calculation_method ||
+        "korean_year";
+
       if (eventData.deathDate || eventData.death_date) {
         const deathDate = eventData.deathDate || eventData.death_date;
         if (deathDate instanceof Date && !isNaN(deathDate.getTime())) {
-          processedEventData.death_date = deathDate.toISOString().split('T')[0];
-        } else if (typeof deathDate === 'string') {
+          processedEventData.death_date = deathDate.toISOString().split("T")[0];
+        } else if (typeof deathDate === "string") {
           processedEventData.death_date = deathDate;
         }
       }
@@ -1456,64 +1522,91 @@ export const createEvent = async (eventData) => {
       if (eventData.deathTime || eventData.death_time) {
         const deathTime = eventData.deathTime || eventData.death_time;
         if (deathTime instanceof Date && !isNaN(deathTime.getTime())) {
-          processedEventData.death_time = deathTime.toTimeString().split(' ')[0];
-        } else if (typeof deathTime === 'string') {
+          processedEventData.death_time = deathTime
+            .toTimeString()
+            .split(" ")[0];
+        } else if (typeof deathTime === "string") {
           processedEventData.death_time = deathTime;
         }
       }
-      
-      processedEventData.deceased_gender = eventData.deceasedGender || eventData.deceased_gender || '남';
-      processedEventData.religious_rite = eventData.religiousRite || eventData.religious_rite || null;
-      processedEventData.funeral_method = eventData.funeralMethod || eventData.funeral_method || null;
-      
+
+      processedEventData.deceased_gender =
+        eventData.deceasedGender || eventData.deceased_gender || "남";
+      processedEventData.religious_rite =
+        eventData.religiousRite || eventData.religious_rite || null;
+      processedEventData.funeral_method =
+        eventData.funeralMethod || eventData.funeral_method || null;
+
       // 장례 일정 변환
       if (eventData.casketDate || eventData.casket_date) {
         const casketDate = eventData.casketDate || eventData.casket_date;
         if (casketDate instanceof Date && !isNaN(casketDate.getTime())) {
-          processedEventData.casket_date = casketDate.toISOString().split('T')[0];
-        } else if (typeof casketDate === 'string') {
+          processedEventData.casket_date = casketDate
+            .toISOString()
+            .split("T")[0];
+        } else if (typeof casketDate === "string") {
           processedEventData.casket_date = casketDate;
         }
       }
-      
+
       if (eventData.casketTime || eventData.casket_time) {
         const casketTime = eventData.casketTime || eventData.casket_time;
         if (casketTime instanceof Date && !isNaN(casketTime.getTime())) {
-          processedEventData.casket_time = casketTime.toTimeString().split(' ')[0];
-        } else if (typeof casketTime === 'string') {
+          processedEventData.casket_time = casketTime
+            .toTimeString()
+            .split(" ")[0];
+        } else if (typeof casketTime === "string") {
           processedEventData.casket_time = casketTime;
         }
       }
-      
+
       if (eventData.burialDate || eventData.burial_date) {
         const burialDate = eventData.burialDate || eventData.burial_date;
         if (burialDate instanceof Date && !isNaN(burialDate.getTime())) {
-          processedEventData.burial_date = burialDate.toISOString().split('T')[0];
-        } else if (typeof burialDate === 'string') {
+          processedEventData.burial_date = burialDate
+            .toISOString()
+            .split("T")[0];
+        } else if (typeof burialDate === "string") {
           processedEventData.burial_date = burialDate;
         }
       }
-      
+
       if (eventData.burialTime || eventData.burial_time) {
         const burialTime = eventData.burialTime || eventData.burial_time;
         if (burialTime instanceof Date && !isNaN(burialTime.getTime())) {
-          processedEventData.burial_time = burialTime.toTimeString().split(' ')[0];
-        } else if (typeof burialTime === 'string') {
+          processedEventData.burial_time = burialTime
+            .toTimeString()
+            .split(" ")[0];
+        } else if (typeof burialTime === "string") {
           processedEventData.burial_time = burialTime;
         }
       }
-      
+
       // 나머지 부고 필드들
-      processedEventData.burial_location = eventData.burialLocation || eventData.burial_location || null;
-      processedEventData.secondary_burial_location = eventData.secondaryBurialLocation || eventData.secondary_burial_location || null;
-      processedEventData.primary_contact = eventData.primaryContact || eventData.primary_contact || null;
-      processedEventData.secondary_contact = eventData.secondaryContact || eventData.secondary_contact || null;
-      processedEventData.funeral_director = eventData.funeralDirector || eventData.funeral_director || null;
-      processedEventData.funeral_home = eventData.funeralHome || eventData.funeral_home || null;
-      processedEventData.visitation_type = eventData.visitationType || eventData.visitation_type || 'available';
-      processedEventData.visitation_note = eventData.visitationNote || eventData.visitation_note || null;
-      processedEventData.parking_transport_info = eventData.parkingTransportInfo || eventData.parking_transport_info || null;
-      processedEventData.condolence_accounts = eventData.condolenceAccounts || eventData.condolence_accounts || [];
+      processedEventData.burial_location =
+        eventData.burialLocation || eventData.burial_location || null;
+      processedEventData.secondary_burial_location =
+        eventData.secondaryBurialLocation ||
+        eventData.secondary_burial_location ||
+        null;
+      processedEventData.primary_contact =
+        eventData.primaryContact || eventData.primary_contact || null;
+      processedEventData.secondary_contact =
+        eventData.secondaryContact || eventData.secondary_contact || null;
+      processedEventData.funeral_director =
+        eventData.funeralDirector || eventData.funeral_director || null;
+      processedEventData.funeral_home =
+        eventData.funeralHome || eventData.funeral_home || null;
+      processedEventData.visitation_type =
+        eventData.visitationType || eventData.visitation_type || "available";
+      processedEventData.visitation_note =
+        eventData.visitationNote || eventData.visitation_note || null;
+      processedEventData.parking_transport_info =
+        eventData.parkingTransportInfo ||
+        eventData.parking_transport_info ||
+        null;
+      processedEventData.condolence_accounts =
+        eventData.condolenceAccounts || eventData.condolence_accounts || [];
 
       // 테이블에 없는 필드들과 family_members는 additional_info에 저장
       processedEventData.additional_info = {
@@ -1543,37 +1636,41 @@ export const createEvent = async (eventData) => {
         condolence_accounts: processedEventData.condolence_accounts,
         funeral_start_date: eventData.funeral_start_date,
         funeral_end_date: eventData.funeral_end_date,
-        created_via: 'app_v2.3',
-        version: '2.3'
+        created_via: "app_v2.3",
+        version: "2.3",
       };
-      
+
       // 🔥 카테고리별 이미지 정보도 additional_info에 추가 (부고도 동일하게 처리)
-      if (processedEventData.image_urls && Array.isArray(processedEventData.image_urls)) {
+      if (
+        processedEventData.image_urls &&
+        Array.isArray(processedEventData.image_urls)
+      ) {
         const categorizedImages = {
           main: [],
           gallery: [],
-          all: []
+          all: [],
         };
-        
-        processedEventData.image_urls.forEach(img => {
+
+        processedEventData.image_urls.forEach((img) => {
           const imageData = {
             uri: img.publicUrl || img.uri,
             publicUrl: img.publicUrl || img.uri,
-            category: img.category
+            category: img.category,
           };
-          
+
           // 카테고리별로 분류
-          if (img.category === 'main') {
+          if (img.category === "main") {
             categorizedImages.main.push(imageData);
-          } else if (img.category === 'gallery') {
+          } else if (img.category === "gallery") {
             categorizedImages.gallery.push(imageData);
           }
-          
+
           // 모든 이미지는 all에도 추가
           categorizedImages.all.push(imageData);
         });
-        
-        processedEventData.additional_info.categorized_images = categorizedImages;
+
+        processedEventData.additional_info.categorized_images =
+          categorizedImages;
       }
     }
 
@@ -1585,17 +1682,22 @@ export const createEvent = async (eventData) => {
     }
 
     if (!creationCredit) {
-      creationCredit = await consumeEventCreationCredit(eventData.event_type, currentUser.id);
+      creationCredit = await consumeEventCreationCredit(
+        eventData.event_type,
+        currentUser.id,
+      );
       if (!creationCredit.success) {
-        if (creationCredit.error === 'insufficient_balance') {
-          throw new Error(`무료 생성 2회를 모두 사용했습니다. ${eventData.event_type === 'funeral' ? '부고장' : '청첩장'} 만들기는 ${creationCredit.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 필요합니다.`);
+        if (creationCredit.error === "insufficient_balance") {
+          throw new Error(
+            `무료 생성 2회를 모두 사용했습니다. ${eventData.event_type === "funeral" ? "부고장" : "청첩장"} 만들기는 ${creationCredit.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 필요합니다.`,
+          );
         }
-        throw new Error(creationCredit.error || '크레딧 사용에 실패했습니다.');
+        throw new Error(creationCredit.error || "크레딧 사용에 실패했습니다.");
       }
     }
 
     const { data, error } = await supabase
-      .from('events')
+      .from("events")
       .insert([processedEventData])
       .select()
       .single();
@@ -1604,26 +1706,24 @@ export const createEvent = async (eventData) => {
       throw error;
     }
 
-    
     return {
       success: true,
       data,
-      creationCredit
+      creationCredit,
     };
-
   } catch (error) {
     if (creationCredit?.success && currentUser?.id) {
       await refundEventCreationCredit({
         userId: currentUser.id,
         paymentMethod: creationCredit.paymentMethod,
         priceCredits: creationCredit.priceCredits,
-        reason: `event_create_failed:${String(error.message || 'unknown').slice(0, 120)}`,
+        reason: `event_create_failed:${String(error.message || "unknown").slice(0, 120)}`,
       });
     }
 
     return {
       success: false,
-      error: error.message || '이벤트 생성에 실패했습니다.'
+      error: error.message || "이벤트 생성에 실패했습니다.",
     };
   }
 };
@@ -1642,10 +1742,14 @@ export const updateEvent = async (eventId, updates) => {
 
     let processedUpdates = {
       ...updates,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
     };
 
-    if (updates.event_type === 'wedding' || updates.groom_name || updates.bride_name) {
+    if (
+      updates.event_type === "wedding" ||
+      updates.groom_name ||
+      updates.bride_name
+    ) {
       if (updates.groom_name && updates.bride_name) {
         processedUpdates.main_person_name = `${updates.groom_name}, ${updates.bride_name}`;
       }
@@ -1655,27 +1759,33 @@ export const updateEvent = async (eventId, updates) => {
     }
 
     let updateQuery = supabase
-      .from('events')
+      .from("events")
       .update(processedUpdates)
-      .eq('id', eventId);
+      .eq("id", eventId);
 
     if (!canAdminEditHostedEvents(currentUser)) {
-      updateQuery = updateQuery.eq('user_id', currentUser.id);
+      updateQuery = updateQuery.eq("user_id", currentUser.id);
     }
 
     const { data, error } = await updateQuery.select().single();
 
     if (error) {
       if (
-        Object.prototype.hasOwnProperty.call(updates, 'additional_info') &&
-        (error.code === 'PGRST116' || /0 rows|no rows|multiple/.test(error.message || ''))
+        Object.prototype.hasOwnProperty.call(updates, "additional_info") &&
+        (error.code === "PGRST116" ||
+          /0 rows|no rows|multiple/.test(error.message || ""))
       ) {
-        const rpcRes = await supabase.rpc('update_shared_event_additional_info', {
-          p_actor_id: currentUser.id,
-          p_event_id: eventId,
-          p_additional_info: updates.additional_info || {},
-        });
-        const rpcData = Array.isArray(rpcRes.data) ? rpcRes.data[0] : rpcRes.data;
+        const rpcRes = await supabase.rpc(
+          "update_shared_event_additional_info",
+          {
+            p_actor_id: currentUser.id,
+            p_event_id: eventId,
+            p_additional_info: updates.additional_info || {},
+          },
+        );
+        const rpcData = Array.isArray(rpcRes.data)
+          ? rpcRes.data[0]
+          : rpcRes.data;
         if (!rpcRes.error && rpcData?.success) {
           return {
             success: true,
@@ -1690,16 +1800,14 @@ export const updateEvent = async (eventId, updates) => {
       throw error;
     }
 
-    
     return {
       success: true,
-      data
+      data,
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '이벤트 수정에 실패했습니다.'
+      error: error.message || "이벤트 수정에 실패했습니다.",
     };
   }
 };
@@ -1718,10 +1826,10 @@ export const deleteEvent = async (eventId) => {
 
     // 먼저 이벤트 정보 조회하여 이미지 정보 가져오기
     const { data: eventData } = await supabase
-      .from('events')
-      .select('image_urls')
-      .eq('id', eventId)
-      .eq('user_id', currentUser.id)
+      .from("events")
+      .select("image_urls")
+      .eq("id", eventId)
+      .eq("user_id", currentUser.id)
       .single();
 
     // 관련 이미지 삭제
@@ -1731,41 +1839,31 @@ export const deleteEvent = async (eventId) => {
 
     // 관련 데이터 삭제
     try {
-      await supabase
-        .from('event_messages')
-        .delete()
-        .eq('event_id', eventId);
-    } catch (messageError) {
-    }
+      await supabase.from("event_messages").delete().eq("event_id", eventId);
+    } catch (messageError) {}
 
     // 🔥 guest_book 데이터 삭제
     try {
-      await supabase
-        .from('guest_book')
-        .delete()
-        .eq('event_id', eventId);
-    } catch (guestBookError) {
-    }
+      await supabase.from("guest_book").delete().eq("event_id", eventId);
+    } catch (guestBookError) {}
 
     const { error } = await supabase
-      .from('events')
+      .from("events")
       .delete()
-      .eq('user_id', currentUser.id)
-      .eq('id', eventId);
+      .eq("user_id", currentUser.id)
+      .eq("id", eventId);
 
     if (error) {
       throw error;
     }
 
-    
     return {
-      success: true
+      success: true,
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '이벤트 삭제에 실패했습니다.'
+      error: error.message || "이벤트 삭제에 실패했습니다.",
     };
   }
 };
@@ -1776,8 +1874,9 @@ export const deleteEvent = async (eventId) => {
 export const getEventDetail = async (eventId) => {
   try {
     const { data, error } = await supabase
-      .from('events')
-      .select(`
+      .from("events")
+      .select(
+        `
         *,
         guest_book (
           id,
@@ -1797,8 +1896,9 @@ export const getEventDetail = async (eventId) => {
           created_at,
           updated_at
         )
-      `)
-      .eq('id', eventId)
+      `,
+      )
+      .eq("id", eventId)
       .single();
 
     if (error) {
@@ -1807,24 +1907,37 @@ export const getEventDetail = async (eventId) => {
 
     // 🔥 guest_book 테이블에서 직접 통계 계산
     const { data: guestBookEntries, error: guestBookError } = await supabase
-      .from('guest_book')
-      .select('*')
-      .eq('event_id', eventId);
+      .from("guest_book")
+      .select("*")
+      .eq("event_id", eventId);
 
     if (guestBookEntries && !guestBookError) {
       const displayEntries = filterContributionDisplayEntries(guestBookEntries);
-      const totalAmount = displayEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+      const totalAmount = displayEntries.reduce(
+        (sum, entry) => sum + (entry.amount || 0),
+        0,
+      );
       const totalEntries = displayEntries.length;
-      const attendingCount = displayEntries.filter(entry => entry.attending === true).length;
-      const messageCount = guestBookEntries.filter(entry => entry.message && entry.message.trim() !== '').length;
-      const verifiedCount = displayEntries.filter(entry => entry.is_verified === true).length;
+      const attendingCount = displayEntries.filter(
+        (entry) => entry.attending === true,
+      ).length;
+      const messageCount = guestBookEntries.filter(
+        (entry) => entry.message && entry.message.trim() !== "",
+      ).length;
+      const verifiedCount = displayEntries.filter(
+        (entry) => entry.is_verified === true,
+      ).length;
 
       // 결혼식 전용 통계 (relation_category로 구분)
-      const groomSideEntries = displayEntries.filter(entry =>
-        entry.relation_category === '신랑측' || entry.relation_category === 'groom'
+      const groomSideEntries = displayEntries.filter(
+        (entry) =>
+          entry.relation_category === "신랑측" ||
+          entry.relation_category === "groom",
       );
-      const brideSideEntries = displayEntries.filter(entry =>
-        entry.relation_category === '신부측' || entry.relation_category === 'bride'
+      const brideSideEntries = displayEntries.filter(
+        (entry) =>
+          entry.relation_category === "신부측" ||
+          entry.relation_category === "bride",
       );
 
       data.statistics = {
@@ -1833,8 +1946,14 @@ export const getEventDetail = async (eventId) => {
         attendingCount,
         messageCount,
         verifiedCount,
-        groomSideAmount: groomSideEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0),
-        brideSideAmount: brideSideEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0),
+        groomSideAmount: groomSideEntries.reduce(
+          (sum, entry) => sum + (entry.amount || 0),
+          0,
+        ),
+        brideSideAmount: brideSideEntries.reduce(
+          (sum, entry) => sum + (entry.amount || 0),
+          0,
+        ),
         groomSideCount: groomSideEntries.length,
         brideSideCount: brideSideEntries.length,
       };
@@ -1853,7 +1972,7 @@ export const getEventDetail = async (eventId) => {
     }
 
     // additional_info JSON 파싱 처리
-    if (data.additional_info && typeof data.additional_info === 'string') {
+    if (data.additional_info && typeof data.additional_info === "string") {
       try {
         data.additional_info = JSON.parse(data.additional_info);
       } catch (e) {
@@ -1864,55 +1983,57 @@ export const getEventDetail = async (eventId) => {
     if (Array.isArray(data.guest_book)) {
       data.guest_book = filterContributionDisplayEntries(data.guest_book);
     }
-    
+
     // 추가 정보 처리
-    if (data.event_type === 'wedding') {
+    if (data.event_type === "wedding") {
       if (data.additional_info?.reception_time) {
         data.reception_time = data.additional_info.reception_time;
       }
-    } else if (data.event_type === 'funeral') {
+    } else if (data.event_type === "funeral") {
       if (data.additional_info) {
         [
-          'birth_date',
-          'deceased_age',
-          'age_calculation_method',
-          'death_date',
-          'death_time',
-          'deceased_gender',
-          'religious_rite',
-          'funeral_method',
-          'casket_date',
-          'casket_time',
-          'burial_date',
-          'burial_time',
-          'burial_location',
-          'secondary_burial_location',
-          'family_members',
-          'funeral_home',
-          'funeral_director',
-          'primary_contact',
-          'secondary_contact',
-          'visitation_type',
-          'visitation_note',
-          'parking_transport_info',
-          'condolence_accounts',
-        ].forEach(key => {
-          if ((data[key] === undefined || data[key] === null) && data.additional_info[key] !== undefined) {
+          "birth_date",
+          "deceased_age",
+          "age_calculation_method",
+          "death_date",
+          "death_time",
+          "deceased_gender",
+          "religious_rite",
+          "funeral_method",
+          "casket_date",
+          "casket_time",
+          "burial_date",
+          "burial_time",
+          "burial_location",
+          "secondary_burial_location",
+          "family_members",
+          "funeral_home",
+          "funeral_director",
+          "primary_contact",
+          "secondary_contact",
+          "visitation_type",
+          "visitation_note",
+          "parking_transport_info",
+          "condolence_accounts",
+        ].forEach((key) => {
+          if (
+            (data[key] === undefined || data[key] === null) &&
+            data.additional_info[key] !== undefined
+          ) {
             data[key] = data.additional_info[key];
           }
         });
       }
     }
-    
+
     return {
       success: true,
-      data
+      data,
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '이벤트 정보를 불러올 수 없습니다.'
+      error: error.message || "이벤트 정보를 불러올 수 없습니다.",
     };
   }
 };
@@ -1924,9 +2045,8 @@ export const getEventDetail = async (eventId) => {
  */
 export const createEventMessage = async (eventId, messageData) => {
   try {
-
     const { data, error } = await supabase
-      .from('event_messages')
+      .from("event_messages")
       .insert([
         {
           event_id: eventId,
@@ -1935,7 +2055,7 @@ export const createEventMessage = async (eventId, messageData) => {
           message: messageData.message,
           message_type: messageData.message_type,
           is_anonymous: messageData.is_anonymous || false,
-        }
+        },
       ])
       .select()
       .single();
@@ -1955,12 +2075,11 @@ export const createEventMessage = async (eventId, messageData) => {
  */
 export const getEventMessages = async (eventId, limit = 50) => {
   try {
-
     const { data, error } = await supabase
-      .from('event_messages')
-      .select('*')
-      .eq('event_id', eventId)
-      .order('created_at', { ascending: false })
+      .from("event_messages")
+      .select("*")
+      .eq("event_id", eventId)
+      .order("created_at", { ascending: false })
       .limit(limit);
 
     if (error) {
@@ -1979,38 +2098,47 @@ export const getEventMessages = async (eventId, limit = 50) => {
 export const deleteEventMessage = async (messageId, actorUserId = null) => {
   try {
     if (!messageId) {
-      return { success: false, error: '삭제할 메시지를 찾을 수 없습니다.' };
+      return { success: false, error: "삭제할 메시지를 찾을 수 없습니다." };
     }
 
     if (actorUserId) {
-      const { data, error } = await supabase.rpc('delete_event_message_for_owner', {
-        p_message_id: messageId,
-        p_actor_id: actorUserId,
-      });
+      const { data, error } = await supabase.rpc(
+        "delete_event_message_for_owner",
+        {
+          p_message_id: messageId,
+          p_actor_id: actorUserId,
+        },
+      );
 
       if (!error) {
         const result = Array.isArray(data) ? data[0] : data;
         if (result?.success) return { success: true };
-        return { success: false, error: result?.error || '메시지를 삭제하지 못했습니다.' };
+        return {
+          success: false,
+          error: result?.error || "메시지를 삭제하지 못했습니다.",
+        };
       }
 
       // RPC가 아직 배포되지 않은 개발 DB에서는 기존 delete 정책으로 한 번 더 시도한다.
-      if (error.code !== '42883' && !String(error.message || '').includes('delete_event_message_for_owner')) {
+      if (
+        error.code !== "42883" &&
+        !String(error.message || "").includes("delete_event_message_for_owner")
+      ) {
         throw error;
       }
     }
 
     const { error: deleteError } = await supabase
-      .from('event_messages')
+      .from("event_messages")
       .delete()
-      .eq('id', messageId);
+      .eq("id", messageId);
 
     if (deleteError) throw deleteError;
     return { success: true };
   } catch (error) {
     return {
       success: false,
-      error: error.message || '메시지 삭제에 실패했습니다.',
+      error: error.message || "메시지 삭제에 실패했습니다.",
     };
   }
 };
@@ -2022,19 +2150,21 @@ export const deleteEventMessage = async (messageId, actorUserId = null) => {
  */
 export const addGuestBookEntry = async (eventId, guestData) => {
   try {
-
     // 현재 사용자 정보 가져오기 - 실패해도 계속 진행
-    const { data: { user } } = await supabase.auth.getUser();
-    
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     // 이벤트 타입 확인
     const { data: event } = await supabase
-      .from('events')
-      .select('event_type')
-      .eq('id', eventId)
+      .from("events")
+      .select("event_type")
+      .eq("id", eventId)
       .single();
 
     // message_type 자동 설정 (결혼식이면 축하, 장례식이면 조의)
-    const messageType = event?.event_type === 'wedding' ? 'congratulation' : 'condolence';
+    const messageType =
+      event?.event_type === "wedding" ? "congratulation" : "condolence";
 
     // guest_book 테이블에 데이터 추가 (created_by는 선택적)
     const insertData = {
@@ -2048,47 +2178,45 @@ export const addGuestBookEntry = async (eventId, guestData) => {
       side: guestData.side || null,
       message: guestData.message,
       message_type: messageType,
-      amount_type: 'money',
-      payment_method: guestData.payment_method || 'cash',
+      amount_type: "money",
+      payment_method: guestData.payment_method || "cash",
       attending: guestData.attending !== false,
       is_verified: false,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     };
-    
+
     // user.id가 있으면 추가
     if (user?.id) {
       insertData.created_by = user.id;
     }
 
     const { data, error } = await supabase
-      .from('guest_book')
+      .from("guest_book")
       .insert([insertData])
       .select()
       .single();
 
     if (error) {
-      
       // RLS 정책 오류인 경우 안내 메시지
-      if (error.code === '42501') {
+      if (error.code === "42501") {
         return {
           success: false,
-          error: 'guest_book 테이블의 RLS 정책을 확인해주세요. authenticated 대신 anon 또는 public으로 설정해보세요.'
+          error:
+            "guest_book 테이블의 RLS 정책을 확인해주세요. authenticated 대신 anon 또는 public으로 설정해보세요.",
         };
       }
-      
+
       throw error;
     }
 
-    
     return {
       success: true,
-      data
+      data,
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '방명록 추가에 실패했습니다.'
+      error: error.message || "방명록 추가에 실패했습니다.",
     };
   }
 };
@@ -2099,10 +2227,10 @@ export const addGuestBookEntry = async (eventId, guestData) => {
 export const getEventGuestBook = async (eventId) => {
   try {
     const { data, error } = await supabase
-      .from('guest_book')
-      .select('*')
-      .eq('event_id', eventId)
-      .order('created_at', { ascending: false });
+      .from("guest_book")
+      .select("*")
+      .eq("event_id", eventId)
+      .order("created_at", { ascending: false });
 
     if (error) {
       throw error;
@@ -2110,61 +2238,53 @@ export const getEventGuestBook = async (eventId) => {
 
     // 관계별 통계도 함께 조회
     const { data: relationStats } = await supabase
-      .from('guest_book_relation_stats')
-      .select('*')
-      .eq('event_id', eventId);
+      .from("guest_book_relation_stats")
+      .select("*")
+      .eq("event_id", eventId);
 
-    
     return {
       success: true,
       data: {
         entries: data || [],
-        relationStats: relationStats || []
-      }
+        relationStats: relationStats || [],
+      },
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '방명록을 불러올 수 없습니다.'
+      error: error.message || "방명록을 불러올 수 없습니다.",
     };
   }
 };
 
 // 간단한 Supabase 연결 테스트
 export const testSupabaseConnection = async () => {
-  
   try {
     // 1. guest_book 테이블 존재 여부 확인
     const { data, error, count } = await supabase
-      .from('guest_book')
-      .select('*', { count: 'exact' })
+      .from("guest_book")
+      .select("*", { count: "exact" })
       .limit(5);
-    
-    
+
     if (error) {
       return;
     }
 
     // 2. 특정 event_id 조회 테스트
-    const testEventId = 'ddaa48e8-1d3d-42fd-a027-d25179d5036e';
+    const testEventId = "ddaa48e8-1d3d-42fd-a027-d25179d5036e";
     const { data: specificData, error: specificError } = await supabase
-      .from('guest_book')
-      .select('*')
-      .eq('event_id', testEventId);
-    
-    
-
-  } catch (err) {
-  }
+      .from("guest_book")
+      .select("*")
+      .eq("event_id", testEventId);
+  } catch (err) {}
 };
 
 export const getEventStatistics = async (eventId) => {
   try {
     const { data: entries, error } = await supabase
-      .from('guest_book')
-      .select('amount, attending, message, input_method, additional_info')
-      .eq('event_id', eventId);
+      .from("guest_book")
+      .select("amount, attending, message, input_method, additional_info")
+      .eq("event_id", eventId);
 
     if (error) {
       return {
@@ -2174,8 +2294,8 @@ export const getEventStatistics = async (eventId) => {
           totalAmount: 0,
           attendingCount: 0,
           averageAmount: 0,
-          relationStats: []
-        }
+          relationStats: [],
+        },
       };
     }
 
@@ -2189,16 +2309,19 @@ export const getEventStatistics = async (eventId) => {
           totalAmount: 0,
           attendingCount: 0,
           averageAmount: 0,
-          relationStats: []
-        }
+          relationStats: [],
+        },
       };
     }
 
     // 통계 계산
-    const totalAmount = displayEntries.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
-    const attendingCount = displayEntries.filter(entry => entry.attending === true).length;
-
-    
+    const totalAmount = displayEntries.reduce(
+      (sum, entry) => sum + (Number(entry.amount) || 0),
+      0,
+    );
+    const attendingCount = displayEntries.filter(
+      (entry) => entry.attending === true,
+    ).length;
 
     return {
       success: true,
@@ -2206,15 +2329,17 @@ export const getEventStatistics = async (eventId) => {
         totalContributions: displayEntries.length,
         totalAmount: totalAmount,
         attendingCount: attendingCount,
-        averageAmount: displayEntries.length > 0 ? Math.round(totalAmount / displayEntries.length) : 0,
-        relationStats: []
-      }
+        averageAmount:
+          displayEntries.length > 0
+            ? Math.round(totalAmount / displayEntries.length)
+            : 0,
+        relationStats: [],
+      },
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message
+      error: error.message,
     };
   }
 };
@@ -2224,76 +2349,74 @@ export const getEventStatistics = async (eventId) => {
  */
 export const getEventContributions = async (eventId) => {
   try {
-    
     // 🔥 contributions 테이블부터 시도해보기 (CLAUDE.md에 따르면 이 테이블이 실제 데이터)
-    const { data: contributionsData, error: contributionsError } = await supabase
-      .from('contributions')
-      .select('*')
-      .eq('event_id', eventId);
-      
-    
-    if (!contributionsError && contributionsData && contributionsData.length > 0) {
+    const { data: contributionsData, error: contributionsError } =
+      await supabase.from("contributions").select("*").eq("event_id", eventId);
+
+    if (
+      !contributionsError &&
+      contributionsData &&
+      contributionsData.length > 0
+    ) {
       // contributions 테이블에서 데이터 찾음 - 올바른 컬럼명 사용
-      const formattedData = contributionsData.map(item => ({
+      const formattedData = contributionsData.map((item) => ({
         id: item.id,
-        guest_name: item.contributor_name || '이름 없음', // contributor_name이 올바른 컬럼명
+        guest_name: item.contributor_name || "이름 없음", // contributor_name이 올바른 컬럼명
         amount: item.amount || 0,
-        relation_category: item.relation_to || '', // relation_to가 올바른 컬럼명
-        relation_detail: item.relation_to || '',
+        relation_category: item.relation_to || "", // relation_to가 올바른 컬럼명
+        relation_detail: item.relation_to || "",
         ticket_count: item.ticket_count || 0,
-        message: item.notes || '', // notes가 메시지 역할
-        message_type: 'congratulation',
+        message: item.notes || "", // notes가 메시지 역할
+        message_type: "congratulation",
         is_verified: item.is_confirmed || false, // is_confirmed가 올바른 컬럼명
         created_at: item.created_at,
-        updated_at: item.updated_at
+        updated_at: item.updated_at,
       }));
-      
+
       return {
         success: true,
-        data: formattedData
+        data: formattedData,
       };
     }
-    
-    
+
     // 🔍 다른 가능한 테이블들도 확인해보기
-    const possibleTables = ['event_messages', 'public_guest_messages', 'event_summary'];
-    
+    const possibleTables = [
+      "event_messages",
+      "public_guest_messages",
+      "event_summary",
+    ];
+
     for (const tableName of possibleTables) {
       try {
         const { data: tableData, error: tableError } = await supabase
           .from(tableName)
-          .select('*')
-          .eq('event_id', eventId);
-          
-        
+          .select("*")
+          .eq("event_id", eventId);
+
         if (!tableError && tableData && tableData.length > 0) {
-          
           // event_messages에서 데이터가 발견되면 더 자세히 확인
-          if (tableName === 'event_messages') {
-            
+          if (tableName === "event_messages") {
             // 혹시 amount 관련 컬럼이 있나 더 자세히 조회해보기
             const { data: detailData, error: detailError } = await supabase
-              .from('event_messages')
-              .select('*')
-              .eq('event_id', eventId);
-              
+              .from("event_messages")
+              .select("*")
+              .eq("event_id", eventId);
           }
         }
-      } catch (error) {
-      }
+      } catch (error) {}
     }
-    
+
     // 🔍 전체 guest_book 테이블 데이터 확인
     const { data: allData, error: allError } = await supabase
-      .from('guest_book')
-      .select('event_id, guest_name, amount')
+      .from("guest_book")
+      .select("event_id, guest_name, amount")
       .limit(10);
-    
 
     // guest_book 테이블에서 부조금 내역 가져오기
     const { data: contributions, error } = await supabase
-      .from('guest_book')
-      .select(`
+      .from("guest_book")
+      .select(
+        `
         id,
         guest_name,
         guest_phone,
@@ -2310,26 +2433,24 @@ export const getEventContributions = async (eventId) => {
         alimtalk_sent,
         created_at,
         updated_at
-      `)
-      .eq('event_id', eventId)
-      .order('created_at', { ascending: false });
-
+      `,
+      )
+      .eq("event_id", eventId)
+      .order("created_at", { ascending: false });
 
     if (error) {
       throw error;
     }
 
-    
     return {
       success: true,
-      data: filterContributionDisplayEntries(contributions || [])
+      data: filterContributionDisplayEntries(contributions || []),
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '부조금 내역 조회에 실패했습니다.',
-      data: []
+      error: error.message || "부조금 내역 조회에 실패했습니다.",
+      data: [],
     };
   }
 };
@@ -2337,11 +2458,10 @@ export const getEventContributions = async (eventId) => {
 // 1. supabaseHelper.js - getMonthlyStatistics 함수 수정
 export const getMonthlyStatistics = async (userId) => {
   try {
-    
     if (!userId) {
       return {
         success: false,
-        error: '사용자 정보가 없습니다.'
+        error: "사용자 정보가 없습니다.",
       };
     }
 
@@ -2349,33 +2469,30 @@ export const getMonthlyStatistics = async (userId) => {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
-    
+
     // 이번 달 1일 00:00:00 (로컬 시간)
     const startOfMonth = new Date(year, month, 1, 0, 0, 0);
     // 이번 달 마지막날 23:59:59 (로컬 시간)
     const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59);
-    
 
     // 1. 사용자의 모든 이벤트 가져오기
     const { data: events, error: eventsError } = await supabase
-      .from('events')
-      .select('id, event_name, event_type, event_date, status, created_at')
-      .eq('user_id', userId);
+      .from("events")
+      .select("id, event_name, event_type, event_date, status, created_at")
+      .eq("user_id", userId);
 
     if (eventsError) {
       throw eventsError;
     }
 
-
     // 2. 이번 달 생성된 이벤트 필터링
-    const monthlyEvents = events.filter(event => {
+    const monthlyEvents = events.filter((event) => {
       const createdDate = new Date(event.created_at);
       return createdDate >= startOfMonth && createdDate <= endOfMonth;
     });
 
-
     // 3. 활성 이벤트 수 계산
-    const activeEvents = events.filter(event => event.status === 'active');
+    const activeEvents = events.filter((event) => event.status === "active");
 
     // 4. 🔥 전체 및 월별 통계 초기화
     let stats = {
@@ -2384,73 +2501,77 @@ export const getMonthlyStatistics = async (userId) => {
       totalWeddingAmount: 0,
       totalFuneralAmount: 0,
       totalEntries: 0,
-      
+
       // 이번 달 통계
       monthlyReceivedAmount: 0,
       monthlyWeddingAmount: 0,
       monthlyFuneralAmount: 0,
       monthlyEntries: 0,
-      
+
       // 이벤트별 상세
-      eventDetails: []
+      eventDetails: [],
     };
 
     // 5. 각 이벤트별 guest_book 통계 조회
     for (const event of events) {
-
       // 🔥 전체 통계 - guest_book 테이블에서 직접 계산
       const { data: guestBookEntries } = await supabase
-        .from('guest_book')
-        .select('amount, attending, message, input_method, additional_info')
-        .eq('event_id', event.id);
+        .from("guest_book")
+        .select("amount, attending, message, input_method, additional_info")
+        .eq("event_id", event.id);
 
       let eventTotal = 0;
       let eventCount = 0;
 
       if (guestBookEntries) {
-        const displayEntries = filterContributionDisplayEntries(guestBookEntries);
-        eventTotal = displayEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+        const displayEntries =
+          filterContributionDisplayEntries(guestBookEntries);
+        eventTotal = displayEntries.reduce(
+          (sum, entry) => sum + (entry.amount || 0),
+          0,
+        );
         eventCount = displayEntries.length;
       }
 
       if (eventTotal > 0 || eventCount > 0) {
         stats.totalReceivedAmount += eventTotal;
         stats.totalEntries += eventCount;
-        
+
         // 타입별 분류
-        if (event.event_type === 'wedding') {
+        if (event.event_type === "wedding") {
           stats.totalWeddingAmount += eventTotal;
-        } else if (event.event_type === 'funeral') {
+        } else if (event.event_type === "funeral") {
           stats.totalFuneralAmount += eventTotal;
         }
-        
       }
 
       // 🔥 이번 달 데이터만 직접 조회
       const { data: monthlyGuests, error: monthlyError } = await supabase
-        .from('guest_book')
-        .select('*')
-        .eq('event_id', event.id)
-        .gte('created_at', startOfMonth.toISOString())
-        .lte('created_at', endOfMonth.toISOString());
+        .from("guest_book")
+        .select("*")
+        .eq("event_id", event.id)
+        .gte("created_at", startOfMonth.toISOString())
+        .lte("created_at", endOfMonth.toISOString());
 
       if (!monthlyError && monthlyGuests && monthlyGuests.length > 0) {
-        const displayMonthlyGuests = filterContributionDisplayEntries(monthlyGuests);
-        const monthlyEventTotal = displayMonthlyGuests.reduce((sum, guest) => 
-          sum + (guest.amount || 0), 0
+        const displayMonthlyGuests =
+          filterContributionDisplayEntries(monthlyGuests);
+        const monthlyEventTotal = displayMonthlyGuests.reduce(
+          (sum, guest) => sum + (guest.amount || 0),
+          0,
         );
         const monthlyEventCount = displayMonthlyGuests.length;
-        
+
         stats.monthlyReceivedAmount += monthlyEventTotal;
         stats.monthlyEntries += monthlyEventCount;
-        
+
         // 타입별 분류
-        if (event.event_type === 'wedding') {
+        if (event.event_type === "wedding") {
           stats.monthlyWeddingAmount += monthlyEventTotal;
-        } else if (event.event_type === 'funeral') {
+        } else if (event.event_type === "funeral") {
           stats.monthlyFuneralAmount += monthlyEventTotal;
         }
-        
+
         // 이벤트별 상세 정보 저장
         if (monthlyEventCount > 0) {
           stats.eventDetails.push({
@@ -2458,10 +2579,9 @@ export const getMonthlyStatistics = async (userId) => {
             eventName: event.event_name,
             eventType: event.event_type,
             amount: monthlyEventTotal,
-            count: monthlyEventCount
+            count: monthlyEventCount,
           });
         }
-        
       }
     }
 
@@ -2471,63 +2591,60 @@ export const getMonthlyStatistics = async (userId) => {
       totalEvents: events.length,
       monthlyEvents: monthlyEvents.length,
       activeEvents: activeEvents.length,
-      
+
       // 🔥 전체 통계
       totalAmount: stats.totalReceivedAmount,
       totalWeddingAmount: stats.totalWeddingAmount,
       totalFuneralAmount: stats.totalFuneralAmount,
       totalEntries: stats.totalEntries,
-      
+
       // 🔥 이번 달 통계
       receivedAmount: stats.monthlyReceivedAmount,
       monthlyWeddingAmount: stats.monthlyWeddingAmount,
       monthlyFuneralAmount: stats.monthlyFuneralAmount,
       totalContributions: stats.monthlyEntries,
-      
+
       // 이벤트별 상세
       eventDetails: stats.eventDetails,
-      
+
       // 추후 구현 예정 (보낸 금액)
       sentAmount: 0,
       sentContributions: 0,
-      
+
       // 기간 정보
       period: {
         year: year,
         month: month + 1,
-        monthName: new Date(year, month).toLocaleDateString('ko-KR', { month: 'long' }),
+        monthName: new Date(year, month).toLocaleDateString("ko-KR", {
+          month: "long",
+        }),
         startDate: startOfMonth.toISOString(),
-        endDate: endOfMonth.toISOString()
-      }
+        endDate: endOfMonth.toISOString(),
+      },
     };
 
-   
-    
     return {
       success: true,
-      data: result
+      data: result,
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '월별 통계 조회에 실패했습니다.'
+      error: error.message || "월별 통계 조회에 실패했습니다.",
     };
   }
 };
-
 
 /**
  * 부조금 확정/미확정 토글
  */
 export const toggleGuestBookVerification = async (entryId) => {
   try {
-
     // 현재 상태 조회
     const { data: currentEntry, error: fetchError } = await supabase
-      .from('guest_book')
-      .select('is_verified')
-      .eq('id', entryId)
+      .from("guest_book")
+      .select("is_verified")
+      .eq("id", entryId)
       .single();
 
     if (fetchError) {
@@ -2538,12 +2655,12 @@ export const toggleGuestBookVerification = async (entryId) => {
     const newVerifiedState = !currentEntry.is_verified;
 
     const { data, error } = await supabase
-      .from('guest_book')
-      .update({ 
+      .from("guest_book")
+      .update({
         is_verified: newVerifiedState,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       })
-      .eq('id', entryId)
+      .eq("id", entryId)
       .select()
       .single();
 
@@ -2551,17 +2668,15 @@ export const toggleGuestBookVerification = async (entryId) => {
       throw error;
     }
 
-
     return {
       success: true,
       data: data,
-      isVerified: newVerifiedState
+      isVerified: newVerifiedState,
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '확정 상태 변경에 실패했습니다.'
+      error: error.message || "확정 상태 변경에 실패했습니다.",
     };
   }
 };
@@ -2571,13 +2686,12 @@ export const toggleGuestBookVerification = async (entryId) => {
  */
 export const getActiveEvents = async () => {
   try {
-    
     // 1. 현재 사용자 정보 가져오기
     const userResult = await getCurrentUserInfo();
     if (!userResult.success) {
       return {
         success: false,
-        error: userResult.error
+        error: userResult.error,
       };
     }
 
@@ -2585,8 +2699,9 @@ export const getActiveEvents = async () => {
 
     // 2. 🔥 중복 방지를 위한 DISTINCT 쿼리 사용
     const { data, error } = await supabase
-      .from('events')
-      .select(`
+      .from("events")
+      .select(
+        `
         id,
         event_name,
         event_type,
@@ -2599,6 +2714,7 @@ export const getActiveEvents = async () => {
         detailed_address,
         template_style,
         status,
+        is_finalized,
         created_at,
         updated_at,
         user_id,
@@ -2629,43 +2745,45 @@ export const getActiveEvents = async () => {
         visitation_note,
         parking_transport_info,
         condolence_accounts
-      `)
-      .eq('user_id', currentUser.id)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false });
+      `,
+      )
+      .eq("user_id", currentUser.id)
+      .eq("status", "active")
+      .order("created_at", { ascending: false });
 
     if (error) {
       return {
         success: false,
-        error: error.message
+        error: error.message,
       };
     }
 
     if (!data || data.length === 0) {
       return {
         success: true,
-        data: []
+        data: [],
       };
     }
 
     // 3. 🔥 클라이언트 사이드에서도 중복 제거 (안전장치)
-    const uniqueEvents = data.filter((event, index, self) => 
-      index === self.findIndex(e => e.id === event.id)
+    const uniqueEvents = data.filter(
+      (event, index, self) =>
+        index === self.findIndex((e) => e.id === event.id),
     );
 
     // 4. 🔥 부고 데이터 후처리 - additional_info에서 정보 추출
-    const processedData = uniqueEvents.map(event => {
+    const processedData = uniqueEvents.map((event) => {
       const processedEvent = { ...event };
-      
-      if (event.event_type === 'funeral' && event.additional_info) {
+
+      if (event.event_type === "funeral" && event.additional_info) {
         // additional_info에서 부고 관련 정보 추출
         const additionalInfo = event.additional_info;
-        
+
         // 가족 구성원 정보 추출
         if (additionalInfo.family_members) {
           processedEvent.family_members = additionalInfo.family_members;
         }
-        
+
         // 기타 부고 정보들도 추출
         if (additionalInfo.funeral_start_date) {
           processedEvent.funeral_start_date = additionalInfo.funeral_start_date;
@@ -2674,61 +2792,63 @@ export const getActiveEvents = async () => {
           processedEvent.funeral_end_date = additionalInfo.funeral_end_date;
         }
         [
-          'birth_date',
-          'deceased_age',
-          'age_calculation_method',
-          'death_date',
-          'death_time',
-          'deceased_gender',
-          'religious_rite',
-          'funeral_method',
-          'casket_date',
-          'casket_time',
-          'burial_date',
-          'burial_time',
-          'burial_location',
-          'secondary_burial_location',
-          'primary_contact',
-          'secondary_contact',
-          'funeral_director',
-          'funeral_home',
-          'visitation_type',
-          'visitation_note',
-          'parking_transport_info',
-          'condolence_accounts',
-          'main_photo_layout',
-          'memorial_text_layout',
-          'memorial_name_layout',
-          'memorial_date_layout',
-          'memorial_name_font_id',
-          'memorial_date_font_id',
-          'memorial_name_color',
-          'memorial_date_color',
-          'memorial_name_visible',
-          'memorial_date_visible',
-          'photo_frame',
-          'categorized_images',
-          'message_settings',
-        ].forEach(key => {
-          if ((processedEvent[key] === undefined || processedEvent[key] === null) && additionalInfo[key] !== undefined) {
+          "birth_date",
+          "deceased_age",
+          "age_calculation_method",
+          "death_date",
+          "death_time",
+          "deceased_gender",
+          "religious_rite",
+          "funeral_method",
+          "casket_date",
+          "casket_time",
+          "burial_date",
+          "burial_time",
+          "burial_location",
+          "secondary_burial_location",
+          "primary_contact",
+          "secondary_contact",
+          "funeral_director",
+          "funeral_home",
+          "visitation_type",
+          "visitation_note",
+          "parking_transport_info",
+          "condolence_accounts",
+          "main_photo_layout",
+          "memorial_text_layout",
+          "memorial_name_layout",
+          "memorial_date_layout",
+          "memorial_name_font_id",
+          "memorial_date_font_id",
+          "memorial_name_color",
+          "memorial_date_color",
+          "memorial_name_visible",
+          "memorial_date_visible",
+          "photo_frame",
+          "categorized_images",
+          "message_settings",
+        ].forEach((key) => {
+          if (
+            (processedEvent[key] === undefined ||
+              processedEvent[key] === null) &&
+            additionalInfo[key] !== undefined
+          ) {
             processedEvent[key] = additionalInfo[key];
           }
         });
-        
       }
-      
+
       return processedEvent;
     });
 
     return {
       success: true,
-      data: processedData
+      data: processedData,
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '활성 이벤트를 불러올 수 없습니다.'
+      error: error.message || "활성 이벤트를 불러올 수 없습니다.",
     };
   }
 };
@@ -2738,14 +2858,13 @@ export const getActiveEvents = async () => {
  */
 export const updateEventStatus = async (eventId, status) => {
   try {
-
     const { data, error } = await supabase
-      .from('events')
-      .update({ 
-        status, 
-        updated_at: new Date().toISOString() 
+      .from("events")
+      .update({
+        status,
+        updated_at: new Date().toISOString(),
       })
-      .eq('id', eventId)
+      .eq("id", eventId)
       .select()
       .single();
 
@@ -2764,15 +2883,14 @@ export const updateEventStatus = async (eventId, status) => {
  */
 export const finalizeEvent = async (eventId) => {
   try {
-
     const { data, error } = await supabase
-      .from('events')
-      .update({ 
+      .from("events")
+      .update({
         is_finalized: true,
-        status: 'completed',
-        updated_at: new Date().toISOString() 
+        status: "completed",
+        updated_at: new Date().toISOString(),
       })
-      .eq('id', eventId)
+      .eq("id", eventId)
       .select()
       .single();
 
@@ -2793,14 +2911,14 @@ export const finalizeEvent = async (eventId) => {
  */
 export const getDefaultMessagePlaceholder = (eventType) => {
   switch (eventType) {
-    case 'wedding':
-      return '결혼을 축하합니다.';
-    case 'funeral':
-      return '삼가 고인의 명복을 빕니다.';
-    case 'birthday':
-      return '첫 돌을 축하합니다.';
+    case "wedding":
+      return "결혼을 축하합니다.";
+    case "funeral":
+      return "삼가 고인의 명복을 빕니다.";
+    case "birthday":
+      return "첫 돌을 축하합니다.";
     default:
-      return '축하합니다.';
+      return "축하합니다.";
   }
 };
 
@@ -2808,21 +2926,21 @@ export const getDefaultMessagePlaceholder = (eventType) => {
  * 유틸리티: 금액 포맷팅
  */
 export const formatAmount = (amount) => {
-  if (!amount || amount === 0) return '0원';
-  return new Intl.NumberFormat('ko-KR').format(amount) + '원';
+  if (!amount || amount === 0) return "0원";
+  return new Intl.NumberFormat("ko-KR").format(amount) + "원";
 };
 
 /**
  * 유틸리티: 날짜 포맷팅
  */
 export const formatDate = (dateString) => {
-  if (!dateString) return '날짜 미정';
-  
+  if (!dateString) return "날짜 미정";
+
   const date = new Date(dateString);
-  return date.toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
+  return date.toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
 };
 
@@ -2830,20 +2948,20 @@ export const formatDate = (dateString) => {
  * 유틸리티: 시간 포맷팅
  */
 export const formatTime = (timeString) => {
-  if (!timeString) return '시간 미정';
-  
-  if (typeof timeString === 'string' && timeString.includes(':')) {
-    const [hours, minutes] = timeString.split(':');
+  if (!timeString) return "시간 미정";
+
+  if (typeof timeString === "string" && timeString.includes(":")) {
+    const [hours, minutes] = timeString.split(":");
     const hour = parseInt(hours);
     const isPM = hour >= 12;
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${isPM ? '오후' : '오전'} ${displayHour}:${minutes}`;
+    return `${isPM ? "오후" : "오전"} ${displayHour}:${minutes}`;
   }
-  
+
   const date = new Date(timeString);
-  return date.toLocaleTimeString('ko-KR', {
-    hour: '2-digit',
-    minute: '2-digit',
+  return date.toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
     hour12: true,
   });
 };
@@ -2852,15 +2970,15 @@ export const formatTime = (timeString) => {
  * 유틸리티: 상대 시간 포맷팅
  */
 export const formatRelativeTime = (dateString) => {
-  if (!dateString) return '알 수 없음';
-  
+  if (!dateString) return "알 수 없음";
+
   const date = new Date(dateString);
   const now = new Date();
   const diffMs = now - date;
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  
-  if (diffDays === 0) return '오늘';
-  if (diffDays === 1) return '어제';
+
+  if (diffDays === 0) return "오늘";
+  if (diffDays === 1) return "어제";
   if (diffDays < 7) return `${diffDays}일 전`;
   if (diffDays < 30) return `${Math.floor(diffDays / 7)}주 전`;
   if (diffDays < 365) return `${Math.floor(diffDays / 30)}개월 전`;
@@ -2872,17 +2990,17 @@ export const formatRelativeTime = (dateString) => {
  */
 export const calculateDDay = (eventDateString) => {
   if (!eventDateString) return null;
-  
+
   const eventDate = new Date(eventDateString);
   const today = new Date();
-  
+
   eventDate.setHours(0, 0, 0, 0);
   today.setHours(0, 0, 0, 0);
-  
+
   const diffTime = eventDate - today;
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
-  if (diffDays === 0) return 'D-Day';
+
+  if (diffDays === 0) return "D-Day";
   if (diffDays > 0) return `D-${diffDays}`;
   return `D+${Math.abs(diffDays)}`;
 };
@@ -2892,16 +3010,16 @@ export const calculateDDay = (eventDateString) => {
  */
 export const debugUserInfo = async () => {
   try {
-    
-    const storedUserInfo = await AsyncStorage.getItem('userInfo');
-    const isLoggedIn = await AsyncStorage.getItem('isLoggedIn');
-    
-    const { data: { user }, error } = await supabase.auth.getUser();
-    
+    const storedUserInfo = await AsyncStorage.getItem("userInfo");
+    const isLoggedIn = await AsyncStorage.getItem("isLoggedIn");
+
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
     const userResult = await getCurrentUserInfo();
-    
-  } catch (error) {
-  }
+  } catch (error) {}
 };
 
 /**
@@ -2909,81 +3027,75 @@ export const debugUserInfo = async () => {
  */
 export const updateGuestBookEntry = async (entryId, updateData) => {
   try {
-    
     // entryId가 유효한지 먼저 확인
     if (!entryId) {
-      throw new Error('entryId가 제공되지 않았습니다.');
+      throw new Error("entryId가 제공되지 않았습니다.");
     }
 
     // guest_book 테이블에서 확인 (실제 데이터가 저장되는 테이블)
     const { data: guestBookData, error: guestBookError } = await supabase
-      .from('guest_book')
-      .select('*')
-      .eq('id', entryId);
-
+      .from("guest_book")
+      .select("*")
+      .eq("id", entryId);
 
     if (guestBookError) {
       throw guestBookError;
     }
 
     if (!guestBookData || guestBookData.length === 0) {
-      throw new Error(`ID ${entryId}에 해당하는 데이터가 guest_book 테이블에 존재하지 않습니다.`);
+      throw new Error(
+        `ID ${entryId}에 해당하는 데이터가 guest_book 테이블에 존재하지 않습니다.`,
+      );
     }
 
-    const targetTable = 'guest_book';
+    const targetTable = "guest_book";
     const existingData = guestBookData[0];
 
     // guest_book 테이블 업데이트 실행
-    
+
     // RLS 비활성화 후 업데이트 실행
-    
+
     try {
       // 1. RLS 비활성화
-      await supabase.rpc('exec_sql', {
-        sql: 'ALTER TABLE guest_book DISABLE ROW LEVEL SECURITY;'
+      await supabase.rpc("exec_sql", {
+        sql: "ALTER TABLE guest_book DISABLE ROW LEVEL SECURITY;",
       });
-      
 
       // 2. 업데이트 실행
       const { data: updateResult, error: updateError } = await supabase
-        .from('guest_book')
+        .from("guest_book")
         .update({
           guest_name: updateData.guest_name,
           amount: updateData.amount,
           relation_category: updateData.relation_category,
           relation_detail: updateData.relation_detail,
           guest_phone: updateData.guest_phone ?? null,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
-        .eq('id', entryId)
+        .eq("id", entryId)
         .select()
         .single();
-
 
       if (updateError) {
         throw new Error(updateError.message);
       }
 
-      
       return {
         success: true,
-        data: updateResult
+        data: updateResult,
       };
-
     } finally {
       // 3. RLS 다시 활성화 (성공/실패 관계없이)
       try {
-        await supabase.rpc('exec_sql', {
-          sql: 'ALTER TABLE guest_book ENABLE ROW LEVEL SECURITY;'
+        await supabase.rpc("exec_sql", {
+          sql: "ALTER TABLE guest_book ENABLE ROW LEVEL SECURITY;",
         });
-      } catch (rlsError) {
-      }
+      } catch (rlsError) {}
     }
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '부조 수정에 실패했습니다.'
+      error: error.message || "부조 수정에 실패했습니다.",
     };
   }
 };
@@ -2994,48 +3106,59 @@ export const updateGuestBookEntry = async (entryId, updateData) => {
 export const deleteGuestBookEntry = async (entryId, actorUserId = null) => {
   try {
     if (!entryId) {
-      return { success: false, error: '삭제할 항목을 찾을 수 없습니다.' };
+      return { success: false, error: "삭제할 항목을 찾을 수 없습니다." };
     }
 
     if (actorUserId) {
-      const { data, error } = await supabase.rpc('delete_guest_book_entry_for_owner', {
-        p_entry_id: entryId,
-        p_actor_id: actorUserId,
-      });
+      const { data, error } = await supabase.rpc(
+        "delete_guest_book_entry_for_owner",
+        {
+          p_entry_id: entryId,
+          p_actor_id: actorUserId,
+        },
+      );
 
       if (!error) {
         const result = Array.isArray(data) ? data[0] : data;
         if (result?.success) return { success: true };
-        return { success: false, error: result?.error || '방명록을 삭제하지 못했습니다.' };
+        return {
+          success: false,
+          error: result?.error || "방명록을 삭제하지 못했습니다.",
+        };
       }
 
       // RPC가 아직 배포되지 않은 개발 DB에서는 기존 delete 정책으로 한 번 더 시도한다.
-      if (error.code !== '42883' && !String(error.message || '').includes('delete_guest_book_entry_for_owner')) {
+      if (
+        error.code !== "42883" &&
+        !String(error.message || "").includes(
+          "delete_guest_book_entry_for_owner",
+        )
+      ) {
         throw error;
       }
     }
 
     // guest_book 테이블에서 확인 (실제 데이터가 저장되는 테이블)
     const { data: guestBookData, error: guestBookError } = await supabase
-      .from('guest_book')
-      .select('*')
-      .eq('id', entryId);
-
+      .from("guest_book")
+      .select("*")
+      .eq("id", entryId);
 
     if (guestBookError) {
       throw guestBookError;
     }
 
     if (!guestBookData || guestBookData.length === 0) {
-      throw new Error(`ID ${entryId}에 해당하는 데이터가 guest_book 테이블에 존재하지 않습니다.`);
+      throw new Error(
+        `ID ${entryId}에 해당하는 데이터가 guest_book 테이블에 존재하지 않습니다.`,
+      );
     }
-
 
     // guest_book 테이블에서 삭제 실행
     const { data, error } = await supabase
-      .from('guest_book')
+      .from("guest_book")
       .delete()
-      .eq('id', entryId)
+      .eq("id", entryId)
       .select();
 
     if (error) {
@@ -3043,18 +3166,16 @@ export const deleteGuestBookEntry = async (entryId, actorUserId = null) => {
     }
 
     if (!data || data.length === 0) {
-      throw new Error('삭제할 항목을 찾을 수 없습니다.');
+      throw new Error("삭제할 항목을 찾을 수 없습니다.");
     }
 
-    
     return {
-      success: true
+      success: true,
     };
-
   } catch (error) {
     return {
       success: false,
-      error: error.message || '부조 삭제에 실패했습니다.'
+      error: error.message || "부조 삭제에 실패했습니다.",
     };
   }
 };

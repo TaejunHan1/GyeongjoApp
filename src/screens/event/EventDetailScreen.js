@@ -2253,7 +2253,7 @@ export default function EventDetailScreen({ navigation, route }) {
                     ) : (
                       <View style={[
                         styles.flatGuestCard,
-                        { height: canManageEvent ? scaleGuestCard(238, 194) : scaleGuestCard(186, 154) },
+                        { height: canManageEvent ? scaleGuestCard(250, 206) : scaleGuestCard(186, 154) },
                         !canManageEvent && styles.flatGuestCardReadOnly,
                       ]}>
                         <Image
@@ -2595,7 +2595,7 @@ export default function EventDetailScreen({ navigation, route }) {
           </View>
         )}
 
-	        <View style={{ height: 40 }} />
+	        <View style={styles.detailBottomSpacer} />
 	        </ScrollView>
       </KeyboardAvoidingView>
 
@@ -3729,6 +3729,9 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  detailBottomSpacer: {
+    height: Platform.OS === 'ios' ? 170 : 130,
   },
   
   // 로딩 및 에러
