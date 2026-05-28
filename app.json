@@ -8,25 +8,21 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/images/jeongdamlogonobackground.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.jeongdam.gyeongjoapp",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "infoPlist": {
         "CFBundleDisplayName": "정담",
         "CFBundleURLTypes": [
           {
             "CFBundleURLName": "gyeongjoapp",
-            "CFBundleURLSchemes": [
-              "gyeongjoapp"
-            ]
+            "CFBundleURLSchemes": ["gyeongjoapp"]
           }
         ],
         "NSPhotoLibraryUsageDescription": "청첩장, 부고장, 종이 청첩장에 사용할 사진을 선택하기 위해 사진 보관함 접근 권한이 필요합니다.",
@@ -50,10 +46,7 @@
               "scheme": "gyeongjoapp"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
     },
@@ -67,6 +60,14 @@
     },
     "scheme": "gyeongjoapp",
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/jeongdamlogonobackground.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
       [
         "expo-notifications",
         {
