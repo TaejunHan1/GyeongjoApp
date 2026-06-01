@@ -4,9 +4,16 @@ node_modules/
 dist/
 npm-debug.*
 *.jks
+*.keystore
+*.pem
 *.p8
 *.p12
 *.key
+*-service-account.json
+*service-account*.json
+gyeongjoapp-*.json
+google-services-account*.json
+credentials.json
 *.mobileprovision
 *.orig.*
 web-build/
