@@ -5062,16 +5062,19 @@ export default function HomeScreen({
                     color="#0F766E"
                   />
                   <Text style={styles.creditShortageNoticeText}>
-                    크레딧 충전 기능은 준비되는 대로 연결할게요.
+                    충전 후 바로 청첩장 만들기를 이어갈 수 있어요.
                   </Text>
                 </View>
 
                 <TouchableOpacity
                   style={styles.creditShortageButton}
                   activeOpacity={0.85}
-                  onPress={closeCreditShortageModal}
+                  onPress={() => {
+                    closeCreditShortageModal();
+                    navigation.navigate("Credit");
+                  }}
                 >
-                  <Text style={styles.creditShortageButtonText}>확인</Text>
+                  <Text style={styles.creditShortageButtonText}>충전하러 가기</Text>
                 </TouchableOpacity>
               </View>
             </TouchableWithoutFeedback>

@@ -1782,7 +1782,7 @@ export default function EventDetailScreen({ navigation, route }) {
                   </View>
                   <TouchableOpacity
                     style={styles.chargeBtn}
-                    onPress={() => showAlert({ title: '알림톡 크레딧 충전', message: '충전 기능은 곧 제공될 예정입니다.' })}
+                    onPress={() => navigation.navigate('Credit')}
                     activeOpacity={0.8}
                   >
                     <Text style={styles.chargeBtnText}>충전</Text>

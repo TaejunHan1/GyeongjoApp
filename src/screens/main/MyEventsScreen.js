@@ -482,10 +482,7 @@ export default function MyEventsScreen({ navigation, userInfo }) {
   }, []);
 
   const handleChargePress = () => {
-    showAlert({
-      title: "알림톡 크레딧 충전",
-      message: "충전 기능은 곧 제공될 예정입니다.",
-    });
+    navigation.navigate("Credit");
   };
 
   const getBalanceColor = (n) => {
