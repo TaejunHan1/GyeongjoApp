@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit, updateEvent, getEventDetail, getEventStorageImages,
+  consumeEventEditCredit, refundEventEditCredit, EVENT_EDIT_CREDIT_COST,
 } from '../../../lib/supabaseHelper';
 import DaumPostcode from '../../../components/DaumPostcode';
 import FuneralTemplatePreview from '../templates/FuneralTemplatePreview';
@@ -3192,6 +3193,8 @@ export default function CreateFuneralScreen({ navigation, route }) {
 
   const handleSave = async () => {
     setIsLoading(true);
+    let editCredit = null;
+    let editCreditSettled = false;
 
     try {
       const eventTitle = `故 ${eventData.deceasedName} 부고`;
@@ -3343,11 +3346,26 @@ export default function CreateFuneralScreen({ navigation, route }) {
       delete updatePayload.deceasedName;
       delete updatePayload.familyMembers;
 
+      if (isEditMode) {
+        editCredit = await consumeEventEditCredit({
+          eventId: editEventId,
+          eventType: 'funeral',
+        });
+
+        if (!editCredit.success) {
+          if (editCredit.error === 'insufficient_balance') {
+            throw new Error(`부고장 수정에는 ${editCredit.priceCredits || EVENT_EDIT_CREDIT_COST}크레딧이 필요합니다.\n현재 잔액: ${editCredit.balance || 0}크레딧`);
+          }
+          throw new Error(editCredit.error || '수정 크레딧 차감에 실패했습니다.');
+        }
+      }
+
       const result = isEditMode
         ? await updateEvent(editEventId, updatePayload)
         : await createEvent(formattedEventData);
 
       if (result.success) {
+        editCreditSettled = true;
         const nextEventId = isEditMode ? editEventId : result.data.id;
         console.log('✅ 부고 이벤트 저장 완료, ID:', nextEventId);
         const displayParams = {
@@ -3371,6 +3389,15 @@ export default function CreateFuneralScreen({ navigation, route }) {
 
     } catch (error) {
       console.error('🔍 [DEBUG] 부고 저장 오류:', error);
+      if (editCredit?.success && !editCreditSettled) {
+        await refundEventEditCredit({
+          userId: editCredit.userId,
+          eventId: editEventId,
+          eventType: 'funeral',
+          priceCredits: editCredit.priceCredits,
+          reason: `funeral_edit_failed:${String(error.message || 'unknown').slice(0, 100)}`,
+        });
+      }
       showTossModal('오류', error.message || (isEditMode ? '부고 수정 중 문제가 발생했어요' : '부고 생성 중 문제가 발생했어요'), () => {});
     } finally {
       setIsLoading(false);

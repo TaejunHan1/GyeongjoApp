@@ -2,8 +2,11 @@
 // 저장된 청첩장 미리보기 (layout JSON 그대로 적용)
 import React, { memo, useMemo, useState, useEffect } from "react";
 import { ActivityIndicator, View, Text, Image } from "react-native";
+import QRCode from "react-native-qrcode-svg";
 import Svg, { Defs, ClipPath, Path, Image as SvgImage } from "react-native-svg";
 import { A6_ASPECT_RATIO, MOBILE_TEMPLATES } from "./mobileTemplateConfigs";
+import { getStudioDecorationElement } from "./studioElements";
+import { normalizePublicWebUrl } from "../../../lib/webLinks";
 
 const SERIF_FONT = "NanumMyeongjo";
 const NUMERIC_FONT = "GowunDodum";
@@ -853,24 +856,98 @@ function SavedInvitationThumb({ invitation, width = 100, side = "front" }) {
   const layout = invitation.layout || {};
   // 저장 시점 canvas 너비 기준으로 스케일 (없으면 260 fallback)
   const refWidth = layout.canvas_w || 260;
+  const refHeight = layout.canvas_h || refWidth * A6_ASPECT_RATIO;
   const px = (val) => (val / refWidth) * width;
+  const py = (val) => (val / refHeight) * height;
+  const scaleXValue = (val, fallback = 0) => {
+    const raw = val ?? fallback;
+    return Math.abs(raw) <= 100 ? (raw / 100) * width : px(raw);
+  };
+  const scaleYValue = (val, fallback = 0) => {
+    const raw = val ?? fallback;
+    return Math.abs(raw) <= 100 ? (raw / 100) * height : py(raw);
+  };
+  const scaleWidthValue = (val, fallback = 100) => {
+    const raw = val ?? fallback;
+    return Math.abs(raw) <= 100 ? (raw / 100) * width : px(raw);
+  };
+  const scaleHeightValue = (val, fallback = 0) => {
+    const raw = val ?? fallback;
+    return Math.abs(raw) <= 100 ? (raw / 100) * height : py(raw);
+  };
   const scaledSize = (el, fallback) => {
     if (el?.size_pct != null) return (el.size_pct / 100) * width;
     return px(el?.size ?? fallback);
   };
   const scaledBoxWidth = (el, fallback = 100, minWidth = 0) =>
-    Math.max(((el?.w ?? fallback) / 100) * width, minWidth);
+    Math.max(scaleWidthValue(el?.w, fallback), minWidth);
   const back = layout.back || {};
   const frontData = layout.frontData || {};
   const backData = layout.backData || {};
   const templateBack = template.back || {};
+  const renderDecoration = (item) => {
+    if (!item || item.hidden) return null;
+    const element = getStudioDecorationElement(item.elementId);
+    if (!element) return null;
+    return (
+      <Image
+        key={item.id || `${item.elementId}-${item.x}-${item.y}`}
+        pointerEvents="none"
+        source={element.source}
+        style={{
+          position: "absolute",
+          left: scaleXValue(item.x),
+          top: scaleYValue(item.y),
+          width: scaleWidthValue(item.w, 24),
+          height: scaleHeightValue(item.h, 24),
+          resizeMode: "contain",
+          transform: [{ rotate: `${item.rotation || 0}deg` }],
+        }}
+      />
+    );
+  };
+  const renderMobileQr = () => {
+    const item = layout.mobileQr;
+    if (!item || item.hidden || !item.qrValue) return null;
+    const size = scaleWidthValue(item.w, 18);
+    const qrSize = Math.max(18, size);
+
+    return (
+      <View
+        key="mobile-qr"
+        style={{
+          position: "absolute",
+          left: scaleXValue(item.x),
+          top: scaleYValue(item.y),
+          width: size,
+          height: size,
+          backgroundColor: "transparent",
+          alignItems: "center",
+          justifyContent: "center",
+          transform: [{ rotate: `${item.rotation || 0}deg` }],
+        }}
+      >
+        <QRCode
+          value={normalizePublicWebUrl(item.qrValue)}
+          size={qrSize}
+          color={item.color || "#111827"}
+          backgroundColor="transparent"
+        />
+      </View>
+    );
+  };
   const renderPositionedText = (el, value, options = {}) => {
     if (!el || el.hidden || !value) return null;
     const sizePx = scaledSize(el, options.fallbackSize || 10);
     const manualLines = options.preserveManualLines
       ? splitManualLines(value)
       : null;
-    const letterSpacing = el.letterSpacing ?? options.letterSpacing ?? 0;
+    const letterSpacing =
+      el.letterSpacing != null
+        ? px(el.letterSpacing)
+        : options.letterSpacing != null
+          ? px(options.letterSpacing)
+          : 0;
     const manualWidth = manualLines
       ? estimateManualTextWidth(manualLines, sizePx, letterSpacing)
       : 0;
@@ -896,13 +973,16 @@ function SavedInvitationThumb({ invitation, width = 100, side = "front" }) {
       : manualLines
         ? sizePx * 1.55 * lineCount
         : sizePx * (lineCount === 1 ? 2.2 : lineCount * 1.45);
-
+    const visualTopCorrection =
+      typeof options.visualTopCorrection === "function"
+        ? options.visualTopCorrection(sizePx, lineCount)
+        : options.visualTopCorrection || 0;
     return (
       <View
         style={{
           position: "absolute",
-          left: (el.x / 100) * width,
-          top: (el.y / 100) * height,
+          left: scaleXValue(el.x),
+          top: scaleYValue(el.y) - visualTopCorrection,
           width: boxWidth,
           height: boxHeight,
           transform: [{ rotate: `${el.rotation || 0}deg` }],
@@ -965,7 +1045,11 @@ function SavedInvitationThumb({ invitation, width = 100, side = "front" }) {
 
     const renderBackText = (key, value, options = {}) => {
       const el = back[key] || templateBack[key];
-      return renderPositionedText(el, value, { ...options, keyPrefix: key });
+      return renderPositionedText(el, value, {
+        visualTopCorrection: (sizePx) => sizePx * 0.58,
+        ...options,
+        keyPrefix: key,
+      });
     };
 
     return (
@@ -995,6 +1079,8 @@ function SavedInvitationThumb({ invitation, width = 100, side = "front" }) {
           />
         )}
 
+        {(layout.backDecorations || []).map(renderDecoration)}
+
         {renderBackText("title", "INVITATION", {
           weight: "400",
           letterSpacing: 0,
@@ -1015,9 +1101,6 @@ function SavedInvitationThumb({ invitation, width = 100, side = "front" }) {
           {
             align: "left",
             weight: "400",
-            baselineOffset:
-              scaledSize(back.groomParents || templateBack.groomParents, 10) *
-              0.42,
           },
         )}
         {renderBackText(
@@ -1030,20 +1113,13 @@ function SavedInvitationThumb({ invitation, width = 100, side = "front" }) {
           {
             align: "left",
             weight: "400",
-            baselineOffset:
-              scaledSize(back.brideParents || templateBack.brideParents, 10) *
-              0.42,
           },
         )}
         {renderBackText("groomName", invitation.groom, {
           letterSpacing: 2,
-          baselineOffset:
-            scaledSize(back.groomName || templateBack.groomName, 10) * 0.42,
         })}
         {renderBackText("brideName", invitation.bride, {
           letterSpacing: 2,
-          baselineOffset:
-            scaledSize(back.brideName || templateBack.brideName, 10) * 0.42,
         })}
         {renderBackText("dateLabel", "일  시  |", {
           align: "left",
@@ -1072,10 +1148,10 @@ function SavedInvitationThumb({ invitation, width = 100, side = "front" }) {
               key={key}
               style={{
                 position: "absolute",
-                left: (el.x / 100) * width,
-                top: (el.y / 100) * height,
-                width: ((el.w ?? 50) / 100) * width,
-                height: Math.max(1, (el.h / 100) * height),
+                left: scaleXValue(el.x),
+                top: scaleYValue(el.y),
+                width: scaleWidthValue(el.w, 50),
+                height: Math.max(1, scaleHeightValue(el.h, 0)),
                 backgroundColor: el.color || "#B6B2AD",
                 transform: [{ rotate: `${el.rotation || 0}deg` }],
               }}
@@ -1092,17 +1168,17 @@ function SavedInvitationThumb({ invitation, width = 100, side = "front" }) {
                 pointerEvents="none"
                 style={{
                   position: "absolute",
-                  left: (calendarEl.x / 100) * width,
-                  top: (calendarEl.y / 100) * height,
-                  width: ((calendarEl.w ?? 58) / 100) * width,
-                  height: ((calendarEl.h ?? 25) / 100) * height,
+                  left: scaleXValue(calendarEl.x),
+                  top: scaleYValue(calendarEl.y),
+                  width: scaleWidthValue(calendarEl.w, 58),
+                  height: scaleHeightValue(calendarEl.h, 25),
                   transform: [{ rotate: `${calendarEl.rotation || 0}deg` }],
                 }}
               >
                 <MiniCalendarThumb
                   dateStr={invitation.date_str}
-                  width={((calendarEl.w ?? 58) / 100) * width}
-                  height={((calendarEl.h ?? 25) / 100) * height}
+                  width={scaleWidthValue(calendarEl.w, 58)}
+                  height={scaleHeightValue(calendarEl.h, 25)}
                   styleId={calendarEl.calendarStyle}
                 />
               </View>
@@ -1122,6 +1198,8 @@ function SavedInvitationThumb({ invitation, width = 100, side = "front" }) {
         position: "relative",
       }}
     >
+      {(layout.frontDecorations || []).map(renderDecoration)}
+
       {/* 사진 — blank.png 아래 layer (cutout 템플릿이면 사진이 구멍으로 비침) */}
       {layout.photo &&
         !layout.photo.hidden &&
@@ -1347,7 +1425,7 @@ function SavedInvitationThumb({ invitation, width = 100, side = "front" }) {
             fontFallback: NUMERIC_FONT,
             color: "#6B5B44",
             weight: "600",
-            letterSpacing: px(1.2),
+            letterSpacing: 1.2,
             height: (size) => size * 2.2,
           },
         )}
@@ -1432,6 +1510,7 @@ function SavedInvitationThumb({ invitation, width = 100, side = "front" }) {
               0,
           },
         )}
+      {renderMobileQr()}
     </View>
   );
 }

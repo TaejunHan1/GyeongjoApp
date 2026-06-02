@@ -10,16 +10,20 @@ import {
   StyleSheet,
   SafeAreaView,
   Image,
+  ActivityIndicator,
+  FlatList,
   Platform,
   PanResponder,
   Animated,
   Alert,
   Dimensions,
+  Modal,
   Pressable,
   ScrollView,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
+import QRCode from "react-native-qrcode-svg";
 import Svg, { Defs, ClipPath, Path, Image as SvgImage } from "react-native-svg";
 import { TC } from "../guides/tossStyle";
 import {
@@ -27,6 +31,22 @@ import {
   updatePaperInvitation,
   uploadInvitationPhoto,
 } from "../../../lib/paperInvitationHelper";
+import { getUserEvents } from "../../../lib/supabaseHelper";
+import {
+  getPublicInvitationUrl,
+  normalizePublicWebUrl,
+} from "../../../lib/webLinks";
+import {
+  getStudioDecorationElement,
+  STUDIO_DECORATION_ELEMENTS,
+} from "./studioElements";
+
+const MOBILE_QR_CARD_IMAGES = [
+  require("../../../../assets/studio/icons/mobile-qr-cards/mobile-qr-card-ivory.png"),
+  require("../../../../assets/studio/icons/mobile-qr-cards/mobile-qr-card-blue.png"),
+  require("../../../../assets/studio/icons/mobile-qr-cards/mobile-qr-card-pink.png"),
+  require("../../../../assets/studio/icons/mobile-qr-cards/mobile-qr-card-navy.png"),
+];
 
 // 계란 모양 path — 위가 좁고 아래가 넓은 비대칭 oval (vintage 템플릿 프레임 매칭)
 const buildEggPath = (w, h) =>
@@ -54,6 +74,10 @@ const BACK_DIVIDER_IDS = [
   "backThanksDivider",
 ];
 const isBackDivider = (id) => BACK_DIVIDER_IDS.includes(id);
+const DECORATION_PREFIX = "decoration:";
+const isDecorationElement = (id) =>
+  typeof id === "string" && id.startsWith(DECORATION_PREFIX);
+const MOBILE_QR_ID = "mobileQr";
 const FRONT_ELEMENT_LABELS = {
   photo: "사진",
   groom: "신랑",
@@ -63,6 +87,7 @@ const FRONT_ELEMENT_LABELS = {
   venue: "장소",
   dateBig: "큰 날짜",
   greeting: "인사말",
+  [MOBILE_QR_ID]: "모바일 QR",
 };
 const BACK_ELEMENT_LABELS = {
   backTitle: "타이틀",
@@ -1383,11 +1408,20 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       out.letterSpacing = savedEl.letterSpacing;
     if (savedEl.align) out.align = savedEl.align;
     if (savedEl.calendarStyle) out.calendarStyle = savedEl.calendarStyle;
+    if (savedEl.elementId) out.elementId = savedEl.elementId;
+    if (savedEl.sourceW != null) out.sourceW = savedEl.sourceW;
+    if (savedEl.sourceH != null) out.sourceH = savedEl.sourceH;
     if (savedEl.locked) out.locked = true;
     if (savedEl.hidden) out.hidden = true;
     if (savedEl.rotation != null) out.rotation = savedEl.rotation;
     if (savedEl.color) out.color = savedEl.color;
     if (savedEl.bold) out.bold = true;
+    if (savedEl.qrValue) out.qrValue = savedEl.qrValue;
+    if (savedEl.mobileEventId) out.mobileEventId = savedEl.mobileEventId;
+    if (savedEl.mobileEventName) out.mobileEventName = savedEl.mobileEventName;
+    if (savedEl.mobileTemplateStyle)
+      out.mobileTemplateStyle = savedEl.mobileTemplateStyle;
+    if (savedEl.backgroundColor) out.backgroundColor = savedEl.backgroundColor;
     return out;
   };
 
@@ -1520,6 +1554,19 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     color: text.greeting?.color,
     align: text.greeting?.align,
     letterSpacing: text.greeting?.letterSpacing,
+  };
+  const initMobileQr = {
+    x: CANVAS_W * 0.68,
+    y: CANVAS_H * 0.74,
+    w: CANVAS_W * 0.18,
+    h: CANVAS_W * 0.18,
+    qrValue: null,
+    mobileEventId: null,
+    mobileEventName: null,
+    color: "#111827",
+    backgroundColor: "#FFFFFF",
+    rotation: 0,
+    hidden: true,
   };
   const backConf = template.back || {};
   const hasBackTitle = !!backConf.title;
@@ -1662,7 +1709,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         : null;
       return restored ? { ...defaultEl, ...restored } : defaultEl;
     };
-    return {
+    const initialLayout = {
       photo: merge(initPhoto, "photo"),
       groom: merge(initGroom, "groom"),
       connector: merge(initConnector, "connector"),
@@ -1671,6 +1718,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       venue: merge(initVenue, "venue"),
       dateBig: merge(initDateBig, "dateBig"),
       greeting: merge(initGreeting, "greeting"),
+      mobileQr: merge(initMobileQr, "mobileQr"),
       backTitle: mergeBack(initBackTitle, "title"),
       backInvitation: mergeBack(initBackInvitation, "invitation"),
       backGroomParents: mergeBack(initBackGroomParents, "groomParents"),
@@ -1688,7 +1736,34 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         "infoBottomDivider",
       ),
       backThanksDivider: mergeBack(initBackThanksDivider, "thanksDivider"),
+      frontDecorations: Array.isArray(saved?.frontDecorations)
+        ? saved.frontDecorations
+            .map((item, index) => {
+              const restored = restoreFromSaved(item);
+              return restored
+                ? {
+                    id: `${DECORATION_PREFIX}front:${item.id || index}`,
+                    ...restored,
+                  }
+                : null;
+            })
+            .filter(Boolean)
+        : [],
+      backDecorations: Array.isArray(saved?.backDecorations)
+        ? saved.backDecorations
+            .map((item, index) => {
+              const restored = restoreFromSaved(item);
+              return restored
+                ? {
+                    id: `${DECORATION_PREFIX}back:${item.id || index}`,
+                    ...restored,
+                  }
+                : null;
+            })
+            .filter(Boolean)
+        : [],
     };
+    return initialLayout;
   });
   const layoutRef = useRef(layoutState);
   const setLayout = useCallback((updater) => {
@@ -1715,6 +1790,44 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   // 슬라이더 카드 안 카테고리 탭 — 한 번에 한 영역만 표시 (미리보기 잘 보이게)
   const [editTab, setEditTab] = useState("size"); // 'style' | 'size' | 'position' | 'rotation'
   const [showCompactPositionPad, setShowCompactPositionPad] = useState(false);
+  const [showDecorationPicker, setShowDecorationPicker] = useState(false);
+  const [showMobileQrPicker, setShowMobileQrPicker] = useState(false);
+  const [pickerSheetMounted, setPickerSheetMounted] = useState(false);
+  const pickerSheetAnim = useRef(new Animated.Value(0)).current;
+  const [mobileQrOptions, setMobileQrOptions] = useState([]);
+  const [loadingMobileQrOptions, setLoadingMobileQrOptions] = useState(false);
+  const [loadedDecorationImages, setLoadedDecorationImages] = useState({});
+
+  const closePickerSheet = useCallback(() => {
+    Animated.timing(pickerSheetAnim, {
+      toValue: 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => {
+      setPickerSheetMounted(false);
+      setShowDecorationPicker(false);
+      setShowMobileQrPicker(false);
+    });
+  }, [pickerSheetAnim]);
+
+  useEffect(() => {
+    if (!showDecorationPicker && !showMobileQrPicker) return;
+    setPickerSheetMounted(true);
+    pickerSheetAnim.setValue(0);
+    Animated.timing(pickerSheetAnim, {
+      toValue: 1,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [pickerSheetAnim, showDecorationPicker, showMobileQrPicker]);
+
+  useEffect(() => {
+    if (!showDecorationPicker) return;
+    STUDIO_DECORATION_ELEMENTS.slice(0, 12).forEach((item) => {
+      const resolved = Image.resolveAssetSource(item.thumbSource || item.source);
+      if (resolved?.uri) Image.prefetch(resolved.uri).catch(() => {});
+    });
+  }, [showDecorationPicker]);
 
   // 요소 변경 시 기본 탭으로 (사진은 style 없음)
   useEffect(() => {
@@ -1756,6 +1869,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     if (sideId === activeSide) return;
     flushLayoutState();
     clearSelected();
+    closePickerSheet();
     requestAnimationFrame(() => {
       setActiveSide(sideId);
     });
@@ -1770,11 +1884,222 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     });
   };
 
+  const getActiveDecorationKey = (side = activeSide) =>
+    side === "front" ? "frontDecorations" : "backDecorations";
+
+  const getDecorationById = (state, id) => {
+    const decorations = [
+      ...(state.frontDecorations || []),
+      ...(state.backDecorations || []),
+    ];
+    return decorations.find((item) => item.id === id);
+  };
+
+  const updateDecorationById = (state, id, updater) => {
+    const key = id.includes(":back:") ? "backDecorations" : "frontDecorations";
+    const list = state[key] || [];
+    return {
+      ...state,
+      [key]: list.map((item) =>
+        item.id === id ? { ...item, ...updater(item) } : item,
+      ),
+    };
+  };
+
+  const addDecoration = (element) => {
+    if (!element) return;
+    const source = Image.resolveAssetSource(element.source) || {};
+    const sourceW = source.width || 240;
+    const sourceH = source.height || 160;
+    const maxW = CANVAS_W * 0.42;
+    const maxH = CANVAS_H * 0.22;
+    const ratio = sourceH / sourceW;
+    let w = Math.min(maxW, sourceW);
+    let h = w * ratio;
+    if (h > maxH) {
+      h = maxH;
+      w = h / ratio;
+    }
+    const key = getActiveDecorationKey();
+    const side = activeSide;
+    const id = `${DECORATION_PREFIX}${side}:${Date.now()}`;
+    const next = {
+      id,
+      elementId: element.id,
+      x: (CANVAS_W - w) / 2,
+      y: CANVAS_H * 0.12,
+      w,
+      h,
+      sourceW,
+      sourceH,
+      rotation: 0,
+    };
+    updateLayout((prev) => ({
+      ...prev,
+      [key]: [...(prev[key] || []), next],
+    }));
+    closePickerSheet();
+    selectElement(id);
+  };
+
+  const renderDecorationPickerItem = ({ item }) => {
+    const isLoaded = !!loadedDecorationImages[item.id];
+    return (
+      <TouchableOpacity
+        style={s.sheetDecorationItem}
+        onPress={() => addDecoration(item)}
+        activeOpacity={0.75}
+      >
+        {!isLoaded && (
+          <View style={s.sheetDecorationLoader}>
+            <ActivityIndicator size="small" color={TC.blue} />
+          </View>
+        )}
+        <Image
+          source={item.thumbSource || item.source}
+          style={[
+            s.sheetDecorationImage,
+            !isLoaded && s.sheetDecorationImageLoading,
+          ]}
+          resizeMethod="resize"
+          fadeDuration={80}
+          onLoadEnd={() => {
+            setLoadedDecorationImages((prev) =>
+              prev[item.id] ? prev : { ...prev, [item.id]: true },
+            );
+          }}
+          onError={() => {
+            setLoadedDecorationImages((prev) =>
+              prev[item.id] ? prev : { ...prev, [item.id]: true },
+            );
+          }}
+        />
+        <Text style={s.sheetDecorationLabel} numberOfLines={1}>
+          {item.label}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const loadMobileQrOptions = async () => {
+    if (activeSide !== "front") {
+      setActiveSide("front");
+    }
+    setShowDecorationPicker(false);
+
+    if (showMobileQrPicker) {
+      closePickerSheet();
+      return;
+    }
+
+    setLoadingMobileQrOptions(true);
+    try {
+      const result = await getUserEvents();
+      if (!result.success) {
+        Alert.alert("불러오기 실패", result.error || "모바일 청첩장을 불러오지 못했습니다.");
+        return;
+      }
+
+      const groomName = String(formData.groom || "").trim();
+      const brideName = String(formData.bride || "").trim();
+      const getEventPreviewImage = (event) => {
+        const info = event.additional_info || {};
+        const categorized = info.categorized_images || {};
+        const imageUrls = Array.isArray(event.image_urls) ? event.image_urls : [];
+        const candidates = [
+          event.cover_image_url,
+          event.thumbnail_url,
+          event.main_image_url,
+          event.photo_url,
+          info.cover_image_url,
+          info.thumbnail_url,
+          info.main_image_url,
+          categorized.main?.[0]?.url,
+          categorized.main?.[0]?.uri,
+          imageUrls.find((img) => img?.category === "main")?.url,
+          imageUrls.find((img) => img?.category === "main")?.uri,
+          imageUrls[0]?.url,
+          imageUrls[0]?.uri,
+        ];
+        return candidates.find((value) => typeof value === "string" && value);
+      };
+      const options = (result.data || [])
+        .filter((event) => event?.event_type === "wedding" && event.public_slug)
+        .map((event) => {
+          const title =
+            event.event_name ||
+            [event.groom_name, event.bride_name].filter(Boolean).join(" ♥ ") ||
+            "모바일 청첩장";
+          const score =
+            (groomName && String(title).includes(groomName) ? 2 : 0) +
+            (brideName && String(title).includes(brideName) ? 2 : 0);
+          return {
+            id: event.id,
+            title,
+            date: event.event_date || "",
+            templateStyle: event.template_style || "기본 템플릿",
+            imageUrl: getEventPreviewImage(event),
+            url: getPublicInvitationUrl(event),
+            score,
+          };
+        })
+        .filter((item) => item.url)
+        .sort((a, b) => b.score - a.score || String(b.date).localeCompare(String(a.date)))
+        .slice(0, 12);
+
+      if (options.length === 0) {
+        Alert.alert(
+          "모바일 청첩장 없음",
+          "QR로 연결할 모바일 청첩장이 없습니다. 먼저 모바일 청첩장을 만들고 다시 불러와주세요.",
+        );
+        return;
+      }
+
+      setMobileQrOptions(options);
+      setShowMobileQrPicker(true);
+    } catch (error) {
+      Alert.alert("불러오기 실패", error.message || "모바일 청첩장을 불러오지 못했습니다.");
+    } finally {
+      setLoadingMobileQrOptions(false);
+    }
+  };
+
+  const addMobileInvitationQr = (item) => {
+    if (!item?.url) return;
+    const size = Math.max(54, CANVAS_W * 0.2);
+    updateLayout((prev) => ({
+      ...prev,
+      mobileQr: {
+        ...(prev.mobileQr || {}),
+        x: CANVAS_W - size - CANVAS_W * 0.08,
+        y: CANVAS_H - size - CANVAS_H * 0.08,
+        w: size,
+        h: size,
+        qrValue: normalizePublicWebUrl(item.url),
+        mobileEventId: item.id,
+        mobileEventName: item.title,
+        mobileTemplateStyle: item.templateStyle,
+        color: "#111827",
+        backgroundColor: "transparent",
+        hidden: false,
+      },
+    }));
+    closePickerSheet();
+    selectElement(MOBILE_QR_ID);
+  };
+
   const handleMoveLive = (id, x, y) => {
     lastElementTouchAtRef.current = Date.now();
     selectedRef.current = id;
     setLayout((prev) => {
       const current = layoutRef.current || prev;
+      if (isDecorationElement(id)) {
+        const el = getDecorationById(current, id);
+        if (!el || el.locked) return prev;
+        const next = updateDecorationById(current, id, () => ({ x, y }));
+        layoutRef.current = next;
+        return next;
+      }
       const el = current[id] || prev[id];
       if (!el || el.locked) return prev;
       const next = {
@@ -1789,6 +2114,11 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   const handleMoveEnd = (id, x, y) => {
     selectElement(id);
     updateLayout((prev) => {
+      if (isDecorationElement(id)) {
+        const el = getDecorationById(prev, id);
+        if (!el || el.locked) return prev;
+        return updateDecorationById(prev, id, () => ({ x, y }));
+      }
       const el = prev[id];
       if (!el || el.locked) return prev;
       return { ...prev, [id]: { ...el, x, y } };
@@ -1801,6 +2131,14 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     if (!target) return;
     updateLayout((prev) => {
       const currentLayout = layoutRef.current || prev;
+      if (isDecorationElement(target)) {
+        const el = getDecorationById(currentLayout, target);
+        if (!el || el.locked) return prev;
+        return updateDecorationById(currentLayout, target, () => ({
+          x: el.x + dx,
+          y: el.y + dy,
+        }));
+      }
       const el = currentLayout[target] || prev[target];
       if (!el || el.locked) return prev;
       return {
@@ -1831,7 +2169,9 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   const alignSelected = (mode) => {
     if (!selected) return;
     updateLayout((prev) => {
-      const el = prev[selected];
+      const el = isDecorationElement(selected)
+        ? getDecorationById(prev, selected)
+        : prev[selected];
       if (!el || el.locked) return prev;
       const box = getElementBox(el);
       const safeX = CANVAS_W * 0.08;
@@ -1845,13 +2185,18 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       if (mode === "safeTop") next.y = safeY;
       if (mode === "safeBottom") next.y = CANVAS_H - safeY - box.h;
 
+      if (isDecorationElement(selected)) {
+        return updateDecorationById(prev, selected, () => next);
+      }
       return { ...prev, [selected]: next };
     });
   };
 
   const selectedMetrics = (() => {
     if (!selected) return null;
-    const el = layout[selected];
+    const el = isDecorationElement(selected)
+      ? getDecorationById(layout, selected)
+      : layout[selected];
     if (!el) return null;
     const box = getElementBox(el);
     const centerDeltaX = Math.round(el.x + box.w / 2 - CANVAS_W / 2);
@@ -1880,6 +2225,13 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   const toggleLock = () => {
     if (!selected) return;
     updateLayout((prev) => {
+      if (isDecorationElement(selected)) {
+        const el = getDecorationById(prev, selected);
+        if (!el) return prev;
+        return updateDecorationById(prev, selected, () => ({
+          locked: !el.locked,
+        }));
+      }
       const el = prev[selected];
       if (!el) return prev;
       return { ...prev, [selected]: { ...el, locked: !el.locked } };
@@ -1890,6 +2242,17 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     if (!selected) return;
     const id = selected;
     updateLayout((prev) => {
+      if (isDecorationElement(id)) {
+        return {
+          ...prev,
+          frontDecorations: (prev.frontDecorations || []).filter(
+            (item) => item.id !== id,
+          ),
+          backDecorations: (prev.backDecorations || []).filter(
+            (item) => item.id !== id,
+          ),
+        };
+      }
       const el = prev[id];
       if (!el) return prev;
       return { ...prev, [id]: { ...el, hidden: true } };
@@ -1901,6 +2264,14 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   const setRotation = (deg) => {
     if (!selected) return;
     updateLayout((prev) => {
+      if (isDecorationElement(selected)) {
+        const el = getDecorationById(prev, selected);
+        if (!el || el.locked) return prev;
+        let v = Math.round(deg);
+        if (v > 180) v = 180;
+        if (v < -180) v = -180;
+        return updateDecorationById(prev, selected, () => ({ rotation: v }));
+      }
       const el = prev[selected];
       if (!el || el.locked) return prev;
       // -180 ~ 180 범위로 정규화
@@ -1915,6 +2286,14 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   const adjustRotation = (delta) => {
     if (!selected) return;
     updateLayout((prev) => {
+      if (isDecorationElement(selected)) {
+        const el = getDecorationById(prev, selected);
+        if (!el || el.locked) return prev;
+        let v = (el.rotation || 0) + delta;
+        if (v > 180) v = 180;
+        if (v < -180) v = -180;
+        return updateDecorationById(prev, selected, () => ({ rotation: v }));
+      }
       const el = prev[selected];
       if (!el || el.locked) return prev;
       const cur = el.rotation || 0;
@@ -1929,6 +2308,11 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   const resetRotation = () => {
     if (!selected) return;
     updateLayout((prev) => {
+      if (isDecorationElement(selected)) {
+        const el = getDecorationById(prev, selected);
+        if (!el || el.locked) return prev;
+        return updateDecorationById(prev, selected, () => ({ rotation: 0 }));
+      }
       const el = prev[selected];
       if (!el || el.locked) return prev;
       return { ...prev, [selected]: { ...el, rotation: 0 } };
@@ -1937,6 +2321,16 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
 
   const adjustSize = (delta) => {
     updateLayout((prev) => {
+      if (isDecorationElement(selected)) {
+        const el = getDecorationById(prev, selected);
+        if (!el || el.locked) return prev;
+        const ratio = el.h / el.w;
+        const newW = Math.max(24, Math.min(CANVAS_W * 1.2, el.w + delta * 6));
+        return updateDecorationById(prev, selected, () => ({
+          w: newW,
+          h: newW * ratio,
+        }));
+      }
       const el = prev[selected];
       if (!el || el.locked) return prev;
 
@@ -1955,6 +2349,12 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         const ratio = el.h / el.w;
         const newW = Math.max(120, Math.min(CANVAS_W, el.w + step));
         return { ...prev, backCalendar: { ...el, w: newW, h: newW * ratio } };
+      }
+
+      if (selected === MOBILE_QR_ID) {
+        const step = delta * 6;
+        const newW = Math.max(42, Math.min(CANVAS_W * 0.5, el.w + step));
+        return { ...prev, mobileQr: { ...el, w: newW, h: newW } };
       }
 
       if (selected === "photo") {
@@ -2027,6 +2427,16 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   // 슬라이더로 절대값 설정 (잠금 시 차단)
   const setSizeAbsolute = (value) => {
     updateLayout((prev) => {
+      if (isDecorationElement(selected)) {
+        const el = getDecorationById(prev, selected);
+        if (!el || el.locked) return prev;
+        const ratio = el.h / el.w;
+        const newW = Math.max(24, Math.min(CANVAS_W * 1.2, value));
+        return updateDecorationById(prev, selected, () => ({
+          w: newW,
+          h: newW * ratio,
+        }));
+      }
       const el = prev[selected];
       if (!el || el.locked) return prev;
 
@@ -2061,6 +2471,11 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         return { ...prev, backCalendar: { ...el, w: newW, h: newW * ratio } };
       }
 
+      if (selected === MOBILE_QR_ID) {
+        const newW = Math.max(42, Math.min(CANVAS_W * 0.5, value));
+        return { ...prev, mobileQr: { ...el, w: newW, h: newW } };
+      }
+
       const newSize = Math.round(
         Math.max(TEXT_SIZE_MIN, Math.min(TEXT_SIZE_MAX, value)),
       );
@@ -2071,8 +2486,17 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   // 현재 슬라이더 값/범위 계산
   const sliderConfig = (() => {
     if (!selected) return null;
-    const el = layout[selected];
+    const el = isDecorationElement(selected)
+      ? getDecorationById(layout, selected)
+      : layout[selected];
     if (!el) return null;
+    if (isDecorationElement(selected)) {
+      return {
+        value: Math.round(el.w),
+        min: 24,
+        max: Math.round(CANVAS_W * 1.2),
+      };
+    }
     if (selected === "photo") {
       if (resizeMode === "h") {
         return { value: Math.round(el.h), min: 40, max: PHOTO_MAX };
@@ -2087,6 +2511,13 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     if (selected === "backCalendar") {
       return { value: Math.round(el.w), min: 120, max: CANVAS_W };
     }
+    if (selected === MOBILE_QR_ID) {
+      return {
+        value: Math.round(el.w),
+        min: 42,
+        max: Math.round(CANVAS_W * 0.5),
+      };
+    }
     return {
       value: Math.round(el.size),
       min: TEXT_SIZE_MIN,
@@ -2095,7 +2526,12 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   })();
 
   // 잠금 여부 — 잠금 시 컨트롤 영역 시각적 비활성
-  const isLocked = !!(selected && layout[selected]?.locked);
+  const selectedElement = selected
+    ? isDecorationElement(selected)
+      ? getDecorationById(layout, selected)
+      : layout[selected]
+    : null;
+  const isLocked = !!selectedElement?.locked;
   const lockedDimStyle = isLocked ? { opacity: 0.4 } : null;
   const lockedPointer = isLocked ? "none" : "auto";
   const useCompactTouchEditor = template.category === "minimal";
@@ -2115,6 +2551,9 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       : []),
     ...(hasGreeting
       ? [{ id: "greeting", label: "인사말", icon: "chatbox-outline" }]
+      : []),
+    ...(layout.mobileQr && !layout.mobileQr.hidden
+      ? [{ id: MOBILE_QR_ID, label: "QR", icon: "qr-code-outline" }]
       : []),
   ];
   const backElementTabs = [
@@ -2147,17 +2586,25 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     (tab) => !layout[tab.id]?.hidden,
   );
   const selectedLabel =
+    (isDecorationElement(selected) &&
+      getStudioDecorationElement(selectedElement?.elementId)?.label) ||
     FRONT_ELEMENT_LABELS[selected] ||
     backElementTabs.find((tab) => tab.id === selected)?.label ||
     "요소";
   const selectedIsText =
     !!selected &&
+    !isDecorationElement(selected) &&
     selected !== "photo" &&
+    selected !== MOBILE_QR_ID &&
     selected !== "backCalendar" &&
     !isBackDivider(selected);
   const selectedSizeLabel =
-    selected === "photo"
+    isDecorationElement(selected)
+      ? "장식 크기"
+      : selected === "photo"
       ? "사진 크기"
+      : selected === MOBILE_QR_ID
+        ? "QR 크기"
       : selected === "backCalendar"
         ? "달력 크기"
         : isBackDivider(selected)
@@ -2207,6 +2654,10 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         ...(el.shape ? { shape: el.shape } : {}),
         ...(el.radius != null ? { radius: el.radius } : {}),
         ...(el.fontFamily ? { fontFamily: el.fontFamily } : {}),
+        ...(el.id ? { id: String(el.id).split(":").pop() } : {}),
+        ...(el.elementId ? { elementId: el.elementId } : {}),
+        ...(el.sourceW != null ? { sourceW: el.sourceW } : {}),
+        ...(el.sourceH != null ? { sourceH: el.sourceH } : {}),
         ...(el.letterSpacing != null
           ? { letterSpacing: el.letterSpacing }
           : {}),
@@ -2217,14 +2668,27 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         ...(el.rotation ? { rotation: el.rotation } : {}),
         ...(el.color ? { color: el.color } : {}),
         ...(el.bold ? { bold: true } : {}),
+        ...(el.qrValue
+          ? { qrValue: normalizePublicWebUrl(el.qrValue) }
+          : {}),
+        ...(el.mobileEventId ? { mobileEventId: el.mobileEventId } : {}),
+        ...(el.mobileEventName ? { mobileEventName: el.mobileEventName } : {}),
+        ...(el.mobileTemplateStyle
+          ? { mobileTemplateStyle: el.mobileTemplateStyle }
+          : {}),
+        ...(el.backgroundColor ? { backgroundColor: el.backgroundColor } : {}),
       });
       const normalizedLayout = {
         canvas_w: CANVAS_W, // 저장 시점 캔버스 너비 (px) — 스케일 기준
+        canvas_h: CANVAS_H,
         photo: norm(latestLayout.photo),
         groom: norm(latestLayout.groom),
         bride: norm(latestLayout.bride),
         date: norm(latestLayout.date),
         venue: norm(latestLayout.venue),
+        frontDecorations: (latestLayout.frontDecorations || [])
+          .filter((item) => !item.hidden)
+          .map((item) => norm(item)),
         ...(hideConnector ? {} : { connector: norm(latestLayout.connector) }),
         ...(hasDateBig ? { dateBig: norm(latestLayout.dateBig) } : {}),
         ...(hasGreeting
@@ -2235,9 +2699,17 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               greeting: norm(latestLayout.greeting),
             }
           : {}),
+        ...(latestLayout.mobileQr &&
+        !latestLayout.mobileQr.hidden &&
+        latestLayout.mobileQr.qrValue
+          ? { mobileQr: norm(latestLayout.mobileQr) }
+          : {}),
         ...(hasBackSide
           ? {
               backData,
+              backDecorations: (latestLayout.backDecorations || [])
+                .filter((item) => !item.hidden)
+                .map((item) => norm(item)),
               back: {
                 ...(hasBackTitle
                   ? { title: norm(latestLayout.backTitle) }
@@ -2297,7 +2769,14 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               if (navigation.canGoBack()) {
                 navigation.popToTop();
               }
-              setTimeout(() => navigation.navigate("SavedInvitations"), 100);
+              setTimeout(
+                () =>
+                  navigation.navigate("SavedInvitations", {
+                    updatedInvitation: result.data,
+                    refreshAt: Date.now(),
+                  }),
+                100,
+              );
             },
           },
           {
@@ -2306,6 +2785,14 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             onPress: () => {
               if (navigation.canGoBack()) {
                 navigation.popToTop();
+                setTimeout(
+                  () =>
+                    navigation.navigate("SavedInvitations", {
+                      updatedInvitation: result.data,
+                      refreshAt: Date.now(),
+                    }),
+                  100,
+                );
               }
             },
           },
@@ -2391,6 +2878,82 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             {value}
           </Text>
         )}
+      </DraggableElement>
+    );
+  };
+
+  const renderDecorationElement = (item) => {
+    if (!item || item.hidden) return null;
+    const element = getStudioDecorationElement(item.elementId);
+    if (!element) return null;
+    return (
+      <DraggableElement
+        key={item.id}
+        id={item.id}
+        selected={selected === item.id}
+        onSelect={selectElement}
+        initialX={item.x}
+        initialY={item.y}
+        width={item.w}
+        height={item.h}
+        onMoveEnd={handleMoveEnd}
+        onMoveLive={handleMoveLive}
+        onDragStart={() => setDragging(true)}
+        onDragEnd={() => setDragging(false)}
+        locked={item.locked}
+        rotation={item.rotation}
+        zIndex={3}
+        raiseOnSelect
+      >
+        <Image
+          pointerEvents="none"
+          source={element.source}
+          style={{ width: "100%", height: "100%", resizeMode: "contain" }}
+        />
+      </DraggableElement>
+    );
+  };
+
+  const renderMobileQrElement = () => {
+    const item = layout.mobileQr;
+    if (!item || item.hidden || !item.qrValue) return null;
+    const qrSize = Math.max(24, Math.min(item.w, item.h || item.w));
+
+    return (
+      <DraggableElement
+        id={MOBILE_QR_ID}
+        selected={selected === MOBILE_QR_ID}
+        onSelect={selectElement}
+        initialX={item.x}
+        initialY={item.y}
+        width={item.w}
+        height={item.h}
+        onMoveEnd={handleMoveEnd}
+        onMoveLive={handleMoveLive}
+        onDragStart={() => setDragging(true)}
+        onDragEnd={() => setDragging(false)}
+        locked={item.locked}
+        rotation={item.rotation}
+        zIndex={5}
+        raiseOnSelect
+      >
+        <View
+          pointerEvents="none"
+          style={{
+            width: "100%",
+            height: "100%",
+            backgroundColor: "transparent",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <QRCode
+            value={normalizePublicWebUrl(item.qrValue)}
+            size={qrSize}
+            color={item.color || "#111827"}
+            backgroundColor="transparent"
+          />
+        </View>
       </DraggableElement>
     );
   };
@@ -2487,6 +3050,212 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
           })}
         </View>
       )}
+      <View style={s.decorationToolbar}>
+        <TouchableOpacity
+          style={[
+            s.decorationAddButton,
+            showDecorationPicker && s.decorationAddButtonActive,
+          ]}
+          onPress={() => {
+            if (showDecorationPicker) {
+              closePickerSheet();
+              return;
+            }
+            setPickerSheetMounted(true);
+            setShowMobileQrPicker(false);
+            setShowDecorationPicker(true);
+          }}
+          activeOpacity={0.75}
+        >
+          <Ionicons
+            name="sparkles-outline"
+            size={16}
+            color={showDecorationPicker ? "#FFFFFF" : TC.blue}
+          />
+          <Text
+            style={[
+              s.decorationAddText,
+              showDecorationPicker && s.decorationAddTextActive,
+            ]}
+          >
+            {activeSide === "front" ? "앞면 장식 추가" : "뒷면 장식 추가"}
+          </Text>
+        </TouchableOpacity>
+        {activeSide === "front" && (
+          <TouchableOpacity
+            style={[
+              s.decorationAddButton,
+              showMobileQrPicker && s.decorationAddButtonActive,
+            ]}
+            onPress={loadMobileQrOptions}
+            activeOpacity={0.75}
+            disabled={loadingMobileQrOptions}
+          >
+            <Ionicons
+              name="qr-code-outline"
+              size={16}
+              color={showMobileQrPicker ? "#FFFFFF" : TC.blue}
+            />
+            <Text
+              style={[
+                s.decorationAddText,
+                showMobileQrPicker && s.decorationAddTextActive,
+                loadingMobileQrOptions && { opacity: 0.55 },
+              ]}
+            >
+              {loadingMobileQrOptions ? "QR 불러오는 중" : "모바일 QR 불러오기"}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      <Modal
+        visible={pickerSheetMounted || showDecorationPicker || showMobileQrPicker}
+        transparent
+        animationType="none"
+        onRequestClose={closePickerSheet}
+      >
+        <View style={s.pickerSheetOverlay}>
+          <Animated.View
+            style={[s.pickerSheetScrim, { opacity: pickerSheetAnim }]}
+          >
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={closePickerSheet}
+            />
+          </Animated.View>
+          <Animated.View
+            style={[
+              s.pickerSheet,
+              {
+                opacity: pickerSheetAnim,
+                transform: [
+                  {
+                    translateY: pickerSheetAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [36, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={s.pickerSheetHandle} />
+            <View style={s.pickerSheetHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.pickerSheetTitle}>
+                  {showMobileQrPicker
+                    ? "모바일 청첩장 QR 불러오기"
+                    : activeSide === "front"
+                      ? "앞면 장식 추가"
+                      : "뒷면 장식 추가"}
+                </Text>
+                <Text style={s.pickerSheetSub}>
+                  {showMobileQrPicker
+                    ? "선택한 모바일 청첩장을 종이 청첩장 앞면에 QR로 연결해요."
+                    : "장식은 사진과 글자 뒤에 배치되고, 캔버스에서 크기를 조정할 수 있어요."}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={s.pickerSheetClose}
+                onPress={closePickerSheet}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="close" size={20} color={TC.ink} />
+              </TouchableOpacity>
+            </View>
+
+            {showDecorationPicker ? (
+              <FlatList
+                data={STUDIO_DECORATION_ELEMENTS}
+                keyExtractor={(item) => item.id}
+                renderItem={renderDecorationPickerItem}
+                numColumns={3}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={s.sheetDecorationGrid}
+                columnWrapperStyle={s.sheetDecorationRow}
+                initialNumToRender={12}
+                maxToRenderPerBatch={9}
+                updateCellsBatchingPeriod={32}
+                windowSize={5}
+                removeClippedSubviews={Platform.OS === "android"}
+              />
+            ) : (
+              <>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={s.sheetQrList}
+              >
+                {mobileQrOptions.length > 0 ? (
+                  mobileQrOptions.map((item, index) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={s.sheetQrItem}
+                      onPress={() => addMobileInvitationQr(item)}
+                      activeOpacity={0.75}
+                    >
+                      <View style={s.sheetQrVisual}>
+                        <Image
+                          source={
+                            MOBILE_QR_CARD_IMAGES[
+                              index % MOBILE_QR_CARD_IMAGES.length
+                            ]
+                          }
+                          style={s.sheetQrVisualImage}
+                        />
+                        <View style={s.sheetQrFloatingQr}>
+                          <Ionicons
+                            name="qr-code-outline"
+                            size={22}
+                            color={TC.blue}
+                          />
+                        </View>
+                      </View>
+                      <View style={s.sheetQrBody}>
+                        <View style={s.sheetQrContent}>
+                          <Text style={s.sheetQrLabel}>모바일 청첩장</Text>
+                          <Text style={s.sheetQrTitle} numberOfLines={1}>
+                            {item.title}
+                          </Text>
+                          <Text style={s.sheetQrMeta} numberOfLines={1}>
+                            {item.date || "날짜 미정"}
+                          </Text>
+                        </View>
+                      <View style={s.sheetQrAction}>
+                        <Ionicons
+                          name="scan-outline"
+                          size={16}
+                          color="#FFFFFF"
+                        />
+                        <Text style={s.sheetQrActionText}>
+                          QR 불러오기
+                        </Text>
+                        <Ionicons
+                          name="chevron-forward"
+                          size={15}
+                          color="#FFFFFF"
+                        />
+                      </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={s.sheetEmptyBox}>
+                    <Ionicons
+                      name="qr-code-outline"
+                      size={28}
+                      color={TC.inkDim}
+                    />
+                    <Text style={s.sheetEmptyText}>
+                      불러올 모바일 청첩장이 없어요.
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+              </>
+            )}
+          </Animated.View>
+        </View>
+      </Modal>
 
       {/* 캔버스 — 토스 스타일 흰색 카드, 가운데 정렬, 필요시만 스크롤 */}
       <ScrollView
@@ -2509,6 +3278,10 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
           >
             {activeSide === "front" ? (
               <>
+                {(layout.frontDecorations || [])
+                  .filter((item) => !item.hidden)
+                  .map(renderDecorationElement)}
+
                 {/* 사진 — blank.png 아래 layer (cutout 템플릿이면 사진이 구멍으로 비침) */}
                 {!layout.photo.hidden && (
                   <DraggableElement
@@ -2921,6 +3694,8 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                     </Text>
                   </DraggableElement>
                 )}
+
+                {renderMobileQrElement()}
               </>
             ) : (
               <>
@@ -2944,6 +3719,10 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                     }}
                   />
                 )}
+
+                {(layout.backDecorations || [])
+                  .filter((item) => !item.hidden)
+                  .map(renderDecorationElement)}
 
                 {hasBackTitle &&
                   renderBackTextElement("backTitle", "INVITATION", {
@@ -3110,9 +3889,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                 직접 드래그해서 위치를 옮겨요
               </Text>
             </View>
-            {selected !== "photo" &&
-              selected !== "backCalendar" &&
-              !isBackDivider(selected) && (
+            {selectedIsText && (
                 <TouchableOpacity
                   onPress={() =>
                     setEditTab(editTab === "style" ? "size" : "style")
@@ -3163,16 +3940,18 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               onPress={toggleLock}
               style={[
                 s.compactIconButton,
-                layout[selected]?.locked && s.compactIconButtonActive,
+                selectedElement?.locked && s.compactIconButtonActive,
               ]}
               activeOpacity={0.75}
             >
               <Ionicons
                 name={
-                  layout[selected]?.locked ? "lock-closed" : "lock-open-outline"
+                  selectedElement?.locked
+                    ? "lock-closed"
+                    : "lock-open-outline"
                 }
                 size={17}
-                color={layout[selected]?.locked ? "#FFFFFF" : TC.inkMuted}
+                color={selectedElement?.locked ? "#FFFFFF" : TC.inkMuted}
               />
             </TouchableOpacity>
           </View>
@@ -3334,7 +4113,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                   activeOpacity={0.75}
                 >
                   <Text style={s.compactInlineValue} numberOfLines={1}>
-                    {layout[selected]?.rotation || 0}°
+                    {selectedElement?.rotation || 0}°
                   </Text>
                 </TouchableOpacity>
                 <HoldButton
@@ -3395,9 +4174,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
             </View>
           )}
           {editTab === "style" &&
-            selected !== "photo" &&
-            selected !== "backCalendar" &&
-            !isBackDivider(selected) && (
+            selectedIsText && (
               <View
                 style={[s.compactStylePanel, lockedDimStyle]}
                 pointerEvents={lockedPointer}
@@ -3407,7 +4184,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                   <TouchableOpacity
                     style={[
                       s.compactBoldButton,
-                      layout[selected]?.bold && s.compactBoldButtonActive,
+                      selectedElement?.bold && s.compactBoldButtonActive,
                     ]}
                     onPress={toggleBold}
                     activeOpacity={0.75}
@@ -3415,7 +4192,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                     <Text
                       style={[
                         s.compactBoldText,
-                        layout[selected]?.bold && s.compactBoldTextActive,
+                        selectedElement?.bold && s.compactBoldTextActive,
                       ]}
                     >
                       B
@@ -3428,8 +4205,8 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                   contentContainerStyle={s.compactFontRow}
                 >
                   {FONT_OPTIONS.map((f) => {
-                    const currentFamily =
-                      layout[selected]?.fontFamily || SERIF_FONT;
+                      const currentFamily =
+                        selectedElement?.fontFamily || SERIF_FONT;
                     const active = currentFamily === f.family;
                     return (
                       <TouchableOpacity
@@ -3468,7 +4245,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                   contentContainerStyle={s.compactFontRow}
                 >
                   {COLOR_OPTIONS.map((c) => {
-                    const active = layout[selected]?.color === c.value;
+                    const active = selectedElement?.color === c.value;
                     return (
                       <TouchableOpacity
                         key={c.id}
@@ -3592,7 +4369,10 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
         !useCompactTouchEditor &&
         (() => {
           const selectedIsShapeOnly =
-            selected === "photo" || selected === "backCalendar";
+            selected === "photo" ||
+            selected === "backCalendar" ||
+            selected === MOBILE_QR_ID ||
+            isDecorationElement(selected);
           const selectedHasStyle =
             selected === "backCalendar" ||
             (!selectedIsShapeOnly && !isBackDivider(selected));
@@ -3644,12 +4424,12 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                 >
                   <Ionicons
                     name={
-                      layout[selected]?.locked
+                      selectedElement?.locked
                         ? "lock-closed"
                         : "lock-open-outline"
                     }
                     size={18}
-                    color={layout[selected]?.locked ? TC.blue : TC.inkMuted}
+                    color={selectedElement?.locked ? TC.blue : TC.inkMuted}
                   />
                 </TouchableOpacity>
               </View>
@@ -3726,7 +4506,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                         <TouchableOpacity
                           style={[
                             s.boldBtn,
-                            layout[selected]?.bold && s.boldBtnActive,
+                            selectedElement?.bold && s.boldBtnActive,
                           ]}
                           onPress={toggleBold}
                           activeOpacity={0.7}
@@ -3734,7 +4514,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                           <Text
                             style={[
                               s.boldBtnText,
-                              layout[selected]?.bold && { color: "#FFFFFF" },
+                              selectedElement?.bold && { color: "#FFFFFF" },
                             ]}
                           >
                             B
@@ -3748,7 +4528,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                       >
                         {FONT_OPTIONS.map((f) => {
                           const currentFamily =
-                            layout[selected]?.fontFamily || SERIF_FONT;
+                            selectedElement?.fontFamily || SERIF_FONT;
                           const active = currentFamily === f.family;
                           return (
                             <TouchableOpacity
@@ -3791,7 +4571,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                       contentContainerStyle={s.fontRow}
                     >
                       {COLOR_OPTIONS.map((c) => {
-                        const active = layout[selected]?.color === c.value;
+                        const active = selectedElement?.color === c.value;
                         return (
                           <TouchableOpacity
                             key={c.id}
@@ -4052,7 +4832,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                       }}
                     >
                       <Text style={s.sliderValue}>
-                        {layout[selected]?.rotation || 0}°
+                        {selectedElement?.rotation || 0}°
                       </Text>
                       <TouchableOpacity
                         onPress={resetRotation}
@@ -4080,7 +4860,7 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
                       />
                     </HoldButton>
                     <Slider
-                      value={layout[selected]?.rotation || 0}
+                      value={selectedElement?.rotation || 0}
                       min={-180}
                       max={180}
                       onChange={setRotation}
@@ -4171,6 +4951,285 @@ const s = StyleSheet.create({
   },
   sideSwitchTextActive: {
     color: TC.ink,
+  },
+  decorationToolbar: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  decorationAddButton: {
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D8E8FF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  decorationAddButtonActive: {
+    backgroundColor: TC.blue,
+    borderColor: TC.blue,
+  },
+  decorationAddText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: TC.blue,
+    letterSpacing: -0.2,
+  },
+  decorationAddTextActive: {
+    color: "#FFFFFF",
+  },
+  pickerSheetOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  pickerSheetScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(25,31,40,0.34)",
+  },
+  pickerSheet: {
+    maxHeight: "72%",
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 10,
+    paddingHorizontal: 18,
+    paddingBottom: Platform.OS === "ios" ? 30 : 22,
+    shadowColor: "#000",
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 12,
+  },
+  pickerSheetHandle: {
+    alignSelf: "center",
+    width: 42,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: "#D8DEE6",
+    marginBottom: 14,
+  },
+  pickerSheetHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 14,
+  },
+  pickerSheetTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: TC.ink,
+    letterSpacing: -0.2,
+  },
+  pickerSheetSub: {
+    marginTop: 5,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+    color: TC.inkMuted,
+    letterSpacing: -0.1,
+  },
+  pickerSheetClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#F2F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetDecorationGrid: {
+    gap: 10,
+    paddingBottom: 4,
+  },
+  sheetDecorationRow: {
+    gap: 9,
+  },
+  sheetDecorationItem: {
+    width: "31.6%",
+    height: 104,
+    borderRadius: 14,
+    backgroundColor: "#F7F8FA",
+    borderWidth: 1,
+    borderColor: "#EEF1F4",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 8,
+  },
+  sheetDecorationLoader: {
+    position: "absolute",
+    top: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#EEF5FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetDecorationImage: {
+    width: "86%",
+    height: 58,
+    resizeMode: "contain",
+  },
+  sheetDecorationImageLoading: {
+    opacity: 0,
+  },
+  sheetDecorationLabel: {
+    marginTop: 7,
+    fontSize: 11,
+    fontWeight: "800",
+    color: TC.inkSoft,
+    letterSpacing: -0.15,
+  },
+  sheetQrHero: {
+    minHeight: 92,
+    borderRadius: 20,
+    backgroundColor: "#F7FAFF",
+    borderWidth: 1,
+    borderColor: "#E4F0FF",
+    marginBottom: 12,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  sheetQrHeroImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
+    resizeMode: "cover",
+  },
+  sheetQrHeroText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sheetQrHeroTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: TC.ink,
+    letterSpacing: -0.2,
+  },
+  sheetQrHeroSub: {
+    marginTop: 5,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 17,
+    color: TC.inkMuted,
+    letterSpacing: -0.1,
+  },
+  sheetQrList: {
+    gap: 14,
+    paddingBottom: 4,
+  },
+  sheetQrItem: {
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5EAF0",
+    padding: 10,
+    shadowColor: "#111827",
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  sheetQrVisual: {
+    height: 156,
+    borderRadius: 18,
+    overflow: "visible",
+    backgroundColor: "#F6F8FC",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetQrVisualImage: {
+    width: "90%",
+    height: "104%",
+    resizeMode: "contain",
+  },
+  sheetQrFloatingQr: {
+    position: "absolute",
+    right: 12,
+    bottom: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  sheetQrBody: {
+    paddingTop: 12,
+    paddingHorizontal: 2,
+  },
+  sheetQrContent: {
+    minWidth: 0,
+  },
+  sheetQrLabel: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: TC.inkMuted,
+    letterSpacing: -0.1,
+    marginBottom: 5,
+  },
+  sheetQrDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: TC.inkDim,
+  },
+  sheetQrTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: TC.ink,
+    letterSpacing: -0.2,
+  },
+  sheetQrMeta: {
+    marginTop: 5,
+    fontSize: 12,
+    fontWeight: "800",
+    color: TC.inkSoft,
+    letterSpacing: -0.1,
+  },
+  sheetQrAction: {
+    height: 42,
+    borderRadius: 15,
+    marginTop: 12,
+    backgroundColor: TC.blue,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  sheetQrActionText: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: -0.1,
+  },
+  sheetEmptyBox: {
+    minHeight: 130,
+    borderRadius: 16,
+    backgroundColor: "#F7F8FA",
+    borderWidth: 1,
+    borderColor: "#EEF1F4",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  sheetEmptyText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: TC.inkMuted,
+    letterSpacing: -0.1,
   },
 
   // 캔버스 wrap — 배경/그림자 없이 템플릿 PNG만 보이도록

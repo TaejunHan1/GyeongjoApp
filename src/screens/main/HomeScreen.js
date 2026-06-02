@@ -43,6 +43,7 @@ import {
   markEventCreationWelcomeSeen,
   EVENT_CREATION_CREDIT_COST,
   EVENT_CREATION_FREE_LIMIT,
+  EVENT_EDIT_CREDIT_COST,
 } from "../../lib/supabaseHelper";
 import * as Notifications from "expo-notifications";
 import NotificationPermissionModal from "../../components/NotificationPermissionModal";
@@ -61,15 +62,6 @@ const RECIPROCITY_EVENT_ICONS = {
   funeral: require("../../../assets/icons/reciprocity/funeral.png"),
 };
 const JEONGDAM_LOGO = require("../../../assets/images/jeongdamlogo.png");
-const HOSTED_EVENT_EDIT_ALLOWED_PHONE = "01058359358";
-
-const normalizeLocalPhoneDigits = (phone) => {
-  const digits = String(phone || "").replace(/[^0-9]/g, "");
-  if (!digits) return "";
-  if (digits.startsWith("0082")) return `0${digits.slice(4)}`;
-  if (digits.startsWith("82")) return `0${digits.slice(2)}`;
-  return digits;
-};
 
 // 🔥 이벤트 역할 구분
 const EVENT_ROLES = {
@@ -1812,10 +1804,6 @@ export default function HomeScreen({
 
   const userName = getUserName();
   const currentUserId = user?.id || userInfo?.userId;
-  const canEditHostedEvents =
-    normalizeLocalPhoneDigits(
-      userInfo?.phone || userInfo?.userPhone || user?.phone,
-    ) === HOSTED_EVENT_EDIT_ALLOWED_PHONE;
 
   const formatPhoneNumber = (phone) => {
     const digits = String(phone || "").replace(/[^0-9]/g, "");
@@ -1836,14 +1824,21 @@ export default function HomeScreen({
   };
 
   const openHostedEventEdit = (event) => {
-    if (!canEditHostedEvents || !event || event.status !== "active") return;
+    if (!event || event.status !== "active") return;
     const targetScreen =
       event.event_type === "funeral" ? "CreateFuneral" : "CreateWedding";
-    navigation.navigate(targetScreen, {
-      editMode: true,
-      editEventId: event.id,
-      editEvent: event,
-    });
+    Alert.alert("수정 안내", `수정 내용을 저장하면 ${EVENT_EDIT_CREDIT_COST}크레딧이 차감됩니다.`, [
+      { text: "취소", style: "cancel" },
+      {
+        text: "수정하기",
+        onPress: () =>
+          navigation.navigate(targetScreen, {
+            editMode: true,
+            editEventId: event.id,
+            editEvent: event,
+          }),
+      },
+    ]);
   };
 
   const getReciprocityEventIcon = (eventType) =>
@@ -3194,8 +3189,7 @@ export default function HomeScreen({
                       </View>
                     </TouchableOpacity>
 
-                    {canEditHostedEvents &&
-                      selectedTab === "active" &&
+                    {selectedTab === "active" &&
                       event.status === "active" && (
                         <TouchableOpacity
                           style={styles.hostedEditButton}

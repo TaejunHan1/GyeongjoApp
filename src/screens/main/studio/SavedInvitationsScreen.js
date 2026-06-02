@@ -55,7 +55,7 @@ const formatDisplayTime = (timeStr) => {
   return `${period} ${Number(englishMatch[1])}:${englishMatch[2]}`;
 };
 
-export default function SavedInvitationsScreen({ navigation }) {
+export default function SavedInvitationsScreen({ navigation, route }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -64,12 +64,38 @@ export default function SavedInvitationsScreen({ navigation }) {
   const [loadError, setLoadError] = useState('');
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [exportPicker, setExportPicker] = useState(null);
   const hasLoadedCacheRef = useRef(false);
   const itemsCountRef = useRef(0);
 
   useEffect(() => {
     itemsCountRef.current = items.length;
   }, [items.length]);
+
+  useEffect(() => {
+    const updated = route?.params?.updatedInvitation;
+    if (!updated?.id) return;
+
+    hasLoadedCacheRef.current = true;
+    setItems((prev) => {
+      const withoutUpdated = prev.filter((item) => item.id !== updated.id);
+      const nextItems = [updated, ...withoutUpdated].slice(
+        0,
+        SAVED_INVITATIONS_LIST_LIMIT,
+      );
+      AsyncStorage.setItem(
+        SAVED_INVITATIONS_CACHE_KEY,
+        JSON.stringify(nextItems),
+      ).catch((error) => {
+        console.warn(
+          "[SavedInvitationsScreen] updated cache write failed:",
+          error?.message,
+        );
+      });
+      return nextItems;
+    });
+    setDetail((current) => (current?.id === updated.id ? updated : current));
+  }, [route?.params?.refreshAt, route?.params?.updatedInvitation]);
 
   const hydrateCachedItems = useCallback(async () => {
     if (hasLoadedCacheRef.current) return false;
@@ -179,34 +205,58 @@ export default function SavedInvitationsScreen({ navigation }) {
     }, 200);
   };
 
-  // PDF 내보내기 — 큰 사이즈 캡처 → PDF → 공유 시트
+  // 내보내기 — 큰 사이즈 캡처 후 PDF 또는 PNG로 공유
   const [exporting, setExporting] = useState(false);
   const [exportSide, setExportSide] = useState('front');
   const exportRef = useRef(null);
 
-  const handleExportPDF = async (item, side = 'front') => {
-    if (!item) return;
+  const captureInvitationPng = async (item, side, result = 'base64') => {
+    if (item.photo_url) {
+      try {
+        await RNImage.prefetch(item.photo_url);
+      } catch (e) {
+        console.warn('[captureInvitationPng] prefetch fail:', e?.message);
+      }
+    }
+
     setExportSide(side);
+    await new Promise((r) => setTimeout(r, 900));
+
+    return captureRef(exportRef, {
+      format: 'png',
+      quality: 1.0,
+      result,
+    });
+  };
+
+  const handleExportPNG = async (item, side = 'front') => {
+    if (!item) return;
     setExporting(true);
     try {
-      // 0) 사진 미리 다운로드 — SavedInvitationThumb의 photoReady 가 true 되도록
-      if (item.photo_url) {
-        try {
-          await RNImage.prefetch(item.photo_url);
-        } catch (e) {
-          console.warn('[handleExportPDF] prefetch fail:', e?.message);
-        }
+      const pngUri = await captureInvitationPng(item, side, 'tmpfile');
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(pngUri, {
+          mimeType: 'image/png',
+          dialogTitle: `${item.groom || ''} & ${item.bride || ''} 청첩장 ${side === 'back' ? '뒷면' : '앞면'} PNG`,
+          UTI: 'public.png',
+        });
+      } else {
+        Alert.alert('내보내기 완료', `PNG 파일: ${pngUri}`);
       }
+    } catch (e) {
+      console.error('[handleExportPNG]', e);
+      Alert.alert('PNG 내보내기 실패', e?.message || '오류가 발생했습니다.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
-      // 1) ViewShot 마운트 + 사진/템플릿 렌더링 시간 대기
-      await new Promise((r) => setTimeout(r, 900));
-
-      // 2) 큰 사이즈 청첩장을 base64 PNG 로 직접 캡처 (file system 거치지 않음)
-      const base64 = await captureRef(exportRef, {
-        format: 'png',
-        quality: 1.0,
-        result: 'base64',
-      });
+  const handleExportPDF = async (item, side = 'front') => {
+    if (!item) return;
+    setExporting(true);
+    try {
+      const base64 = await captureInvitationPng(item, side, 'base64');
       const dataUri = `data:image/png;base64,${base64}`;
 
       // 4) HTML — A6 사이즈 페이지에 이미지 비율 정확히 유지(contain)
@@ -267,6 +317,24 @@ export default function SavedInvitationsScreen({ navigation }) {
     } finally {
       setExporting(false);
     }
+  };
+
+  const openExportOptions = (item, side = 'front') => {
+    if (!item || exporting) return;
+    setExportPicker({ item, side });
+  };
+
+  const selectExportFormat = (format) => {
+    const target = exportPicker;
+    if (!target?.item) return;
+    setExportPicker(null);
+    setTimeout(() => {
+      if (format === 'png') {
+        handleExportPNG(target.item, target.side);
+      } else {
+        handleExportPDF(target.item, target.side);
+      }
+    }, 120);
   };
 
   const handleDelete = (item) => {
@@ -502,8 +570,8 @@ export default function SavedInvitationsScreen({ navigation }) {
                     <Text style={s.editBtnText}>수정</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={s.pdfBtn}
-                    onPress={() => handleExportPDF(detail, detailSide)}
+                    style={s.exportBtn}
+                    onPress={() => openExportOptions(detail, detailSide)}
                     activeOpacity={0.85}
                     disabled={exporting}
                   >
@@ -512,7 +580,7 @@ export default function SavedInvitationsScreen({ navigation }) {
                     ) : (
                       <>
                         <Ionicons name="download-outline" size={16} color="#fff" />
-                        <Text style={s.pdfBtnText}>PDF</Text>
+                        <Text style={s.exportBtnText}>내보내기</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -528,10 +596,62 @@ export default function SavedInvitationsScreen({ navigation }) {
               </>
             )}
           </View>
+
+          {!!exportPicker && (
+            <View style={s.exportBackdrop} pointerEvents="auto">
+              <Pressable
+                style={{ ...StyleSheet.absoluteFillObject }}
+                onPress={() => setExportPicker(null)}
+              />
+              <View style={s.exportSheet}>
+                <View style={s.exportSheetHeader}>
+                  <Text style={s.exportSheetTitle}>내보내기</Text>
+                  <Text style={s.exportSheetSub}>
+                    {exportPicker?.side === 'back' ? '뒷면' : '앞면'} 형식을 선택하세요
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={s.exportOption}
+                  onPress={() => selectExportFormat('png')}
+                  activeOpacity={0.8}
+                >
+                  <View style={s.exportOptionIcon}>
+                    <Ionicons name="image-outline" size={20} color={TC.blue} />
+                  </View>
+                  <View style={s.exportOptionTextWrap}>
+                    <Text style={s.exportOptionTitle}>PNG 이미지</Text>
+                    <Text style={s.exportOptionSub}>휴대폰에 저장하거나 바로 공유하기 좋아요</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={TC.inkDim} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.exportOption}
+                  onPress={() => selectExportFormat('pdf')}
+                  activeOpacity={0.8}
+                >
+                  <View style={s.exportOptionIcon}>
+                    <Ionicons name="document-text-outline" size={20} color={TC.blue} />
+                  </View>
+                  <View style={s.exportOptionTextWrap}>
+                    <Text style={s.exportOptionTitle}>PDF 문서</Text>
+                    <Text style={s.exportOptionSub}>인쇄소 전달이나 문서 공유에 적합해요</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={TC.inkDim} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.exportCancelBtn}
+                  onPress={() => setExportPicker(null)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={s.exportCancelText}>취소</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
       </Modal>
 
-      {/* 오프스크린 캡처용 — PDF 내보내기 시에만 큰 사이즈로 마운트.
+      {/* 오프스크린 캡처용 — PDF/PNG 내보내기 시에만 큰 사이즈로 마운트.
           opacity 0 / display:none 등은 캡처 누락의 원인이라 화면 밖 위치만 사용. */}
       {exporting && detail && (
         <View
@@ -764,7 +884,7 @@ const s = StyleSheet.create({
     color: '#fff',
     letterSpacing: -0.3,
   },
-  pdfBtn: {
+  exportBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -774,11 +894,97 @@ const s = StyleSheet.create({
     backgroundColor: TC.blue,
     borderRadius: 12,
   },
-  pdfBtnText: {
+  exportBtnText: {
     fontSize: 14,
     fontWeight: '800',
     color: '#fff',
     letterSpacing: -0.3,
+  },
+  exportBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    justifyContent: 'flex-end',
+    zIndex: 50,
+    elevation: 50,
+  },
+  exportSheet: {
+    marginHorizontal: 16,
+    marginBottom: Platform.OS === 'ios' ? 28 : 16,
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  exportSheetHeader: {
+    paddingHorizontal: 4,
+    paddingTop: 4,
+    paddingBottom: 10,
+  },
+  exportSheetTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: TC.ink,
+    letterSpacing: -0.4,
+  },
+  exportSheetSub: {
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: '600',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
+  },
+  exportOption: {
+    minHeight: 68,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#F7F9FC',
+    marginTop: 8,
+  },
+  exportOptionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#EAF3FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  exportOptionTextWrap: {
+    flex: 1,
+  },
+  exportOptionTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: TC.ink,
+    letterSpacing: -0.2,
+  },
+  exportOptionSub: {
+    marginTop: 3,
+    fontSize: 11,
+    fontWeight: '600',
+    color: TC.inkMuted,
+    letterSpacing: -0.1,
+  },
+  exportCancelBtn: {
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    borderRadius: 14,
+    backgroundColor: '#F1F3F5',
+  },
+  exportCancelText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: TC.inkMuted,
+    letterSpacing: -0.2,
   },
   deleteBtn: {
     width: 56,

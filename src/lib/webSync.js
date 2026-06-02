@@ -2,6 +2,7 @@
 import {
   getContributionUrl as buildContributionUrl,
   getInvitationUrl,
+  getPublicInvitationUrl,
 } from './webLinks';
 
 /**
@@ -43,7 +44,7 @@ export const generateQRWithSync = async (eventData) => {
 
     // 2. QR 코드 URL 생성
     const templateType = eventData.template_style || eventData.templateStyle || 'modern';
-    const qrUrl = getInvitationUrl(eventData, templateType);
+    const qrUrl = getPublicInvitationUrl(eventData, templateType);
 
     console.log('🔗 QR 코드 URL 생성:', qrUrl);
 

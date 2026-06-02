@@ -6,18 +6,7 @@ import { buildEventSlugBase, buildSlugCandidate } from "./slugUtils";
 
 export const EVENT_CREATION_FREE_LIMIT = 2;
 export const EVENT_CREATION_CREDIT_COST = 60;
-const HOSTED_EVENT_EDIT_ADMIN_PHONE = "01058359358";
-
-const normalizeLocalPhoneDigits = (phone) => {
-  const digits = String(phone || "").replace(/[^0-9]/g, "");
-  if (!digits) return "";
-  if (digits.startsWith("0082")) return `0${digits.slice(4)}`;
-  if (digits.startsWith("82")) return `0${digits.slice(2)}`;
-  return digits;
-};
-
-const canAdminEditHostedEvents = (user) =>
-  normalizeLocalPhoneDigits(user?.phone) === HOSTED_EVENT_EDIT_ADMIN_PHONE;
+export const EVENT_EDIT_CREDIT_COST = EVENT_CREATION_CREDIT_COST;
 
 const parseJsonObject = (value) => {
   if (!value) return {};
@@ -414,6 +403,163 @@ export const refundEventCreationCredit = async ({
     };
   } catch (error) {
     return { success: false, error: "크레딧 복구에 실패했습니다." };
+  }
+};
+
+const resolveCreditUserId = async (userId = null) => {
+  if (userId) return userId;
+  const userInfo = await getCurrentUserInfo();
+  if (!userInfo.success) return null;
+  return userInfo.user?.id || null;
+};
+
+const insertAlimtalkTransaction = async ({
+  userId,
+  type,
+  creditsChange,
+  balanceAfter,
+  memo,
+}) => {
+  try {
+    await supabase.from("alimtalk_transactions").insert([
+      {
+        user_id: userId,
+        type,
+        credits_change: creditsChange,
+        balance_after: balanceAfter,
+        memo,
+      },
+    ]);
+  } catch {
+    // 거래 기록 실패가 크레딧 처리 자체를 막지는 않도록 둔다.
+  }
+};
+
+export const consumeEventEditCredit = async ({
+  eventId,
+  eventType,
+  userId = null,
+  priceCredits = EVENT_EDIT_CREDIT_COST,
+} = {}) => {
+  try {
+    const targetUserId = await resolveCreditUserId(userId);
+    if (!targetUserId) {
+      return { success: false, error: "사용자 인증이 필요합니다.", balance: 0 };
+    }
+
+    const cost = Number(priceCredits || EVENT_EDIT_CREDIT_COST);
+    const { data: userRow, error: balanceError } = await supabase
+      .from("users")
+      .select("alimtalk_balance")
+      .eq("id", targetUserId)
+      .single();
+
+    if (balanceError) {
+      return { success: false, error: balanceError.message, balance: 0 };
+    }
+
+    const balance = Number(userRow?.alimtalk_balance || 0);
+    if (balance < cost) {
+      return {
+        success: false,
+        error: "insufficient_balance",
+        balance,
+        priceCredits: cost,
+      };
+    }
+
+    const nextBalance = balance - cost;
+    const { data: updatedUser, error: updateError } = await supabase
+      .from("users")
+      .update({ alimtalk_balance: nextBalance })
+      .eq("id", targetUserId)
+      .gte("alimtalk_balance", cost)
+      .select("alimtalk_balance")
+      .maybeSingle();
+
+    if (updateError || !updatedUser) {
+      return {
+        success: false,
+        error: updateError?.message || "크레딧 차감에 실패했습니다.",
+        balance,
+        priceCredits: cost,
+      };
+    }
+
+    const finalBalance = Number(updatedUser?.alimtalk_balance ?? nextBalance);
+    await insertAlimtalkTransaction({
+      userId: targetUserId,
+      type: "adjust",
+      creditsChange: -cost,
+      balanceAfter: finalBalance,
+      memo: `event_edit:${eventType || "event"}:${eventId || "unknown"}`,
+    });
+
+    return {
+      success: true,
+      paymentMethod: "credits",
+      balance: finalBalance,
+      priceCredits: cost,
+      userId: targetUserId,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "크레딧 차감에 실패했습니다.",
+      balance: 0,
+      priceCredits: EVENT_EDIT_CREDIT_COST,
+    };
+  }
+};
+
+export const refundEventEditCredit = async ({
+  userId,
+  eventId,
+  eventType,
+  priceCredits = EVENT_EDIT_CREDIT_COST,
+  reason = "event_edit_failed",
+} = {}) => {
+  try {
+    const targetUserId = await resolveCreditUserId(userId);
+    if (!targetUserId) {
+      return { success: false, error: "사용자 인증이 필요합니다." };
+    }
+
+    const amount = Number(priceCredits || EVENT_EDIT_CREDIT_COST);
+    const { data: userRow, error: balanceError } = await supabase
+      .from("users")
+      .select("alimtalk_balance")
+      .eq("id", targetUserId)
+      .single();
+
+    if (balanceError) {
+      return { success: false, error: balanceError.message };
+    }
+
+    const nextBalance = Number(userRow?.alimtalk_balance || 0) + amount;
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({ alimtalk_balance: nextBalance })
+      .eq("id", targetUserId);
+
+    if (updateError) {
+      return { success: false, error: updateError.message };
+    }
+
+    await insertAlimtalkTransaction({
+      userId: targetUserId,
+      type: "adjust",
+      creditsChange: amount,
+      balanceAfter: nextBalance,
+      memo: `event_edit_refund:${eventType || "event"}:${eventId || "unknown"}:${reason}`,
+    });
+
+    return { success: true, balance: nextBalance };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "크레딧 복구에 실패했습니다.",
+    };
   }
 };
 
@@ -1761,11 +1907,8 @@ export const updateEvent = async (eventId, updates) => {
     let updateQuery = supabase
       .from("events")
       .update(processedUpdates)
-      .eq("id", eventId);
-
-    if (!canAdminEditHostedEvents(currentUser)) {
-      updateQuery = updateQuery.eq("user_id", currentUser.id);
-    }
+      .eq("id", eventId)
+      .eq("user_id", currentUser.id);
 
     const { data, error } = await updateQuery.select().single();
 

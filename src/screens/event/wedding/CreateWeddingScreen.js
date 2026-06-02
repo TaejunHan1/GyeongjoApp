@@ -13,6 +13,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import {
   createEvent, uploadImageToStorage, deleteImageFromStorage,
   getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit, updateEvent, getEventDetail, getEventStorageImages,
+  consumeEventEditCredit, refundEventEditCredit, EVENT_EDIT_CREDIT_COST,
 } from '../../../lib/supabaseHelper';
 import DaumPostcode from '../../../components/DaumPostcode';
 import WeddingTemplatePreview from '../templates/WeddingTemplatePreview';
@@ -2017,6 +2018,8 @@ export default function CreateWeddingScreen({ navigation, route }) {
   // ── 저장 ──
   const handleSave = async () => {
     setIsLoading(true);
+    let editCredit = null;
+    let editCreditSettled = false;
     try {
       const eventTitle = `${eventData.groomName} ♥ ${eventData.brideName} 결혼식`;
       const uniqueEventImages = dedupeImages(eventData.images);
@@ -2117,10 +2120,25 @@ export default function CreateWeddingScreen({ navigation, route }) {
       const updatePayload = { ...formattedEventData };
       delete updatePayload.event_creation_credit_reservation;
 
+      if (isEditMode) {
+        editCredit = await consumeEventEditCredit({
+          eventId: editEventId,
+          eventType: 'wedding',
+        });
+
+        if (!editCredit.success) {
+          if (editCredit.error === 'insufficient_balance') {
+            throw new Error(`청첩장 수정에는 ${editCredit.priceCredits || EVENT_EDIT_CREDIT_COST}크레딧이 필요합니다.\n현재 잔액: ${editCredit.balance || 0}크레딧`);
+          }
+          throw new Error(editCredit.error || '수정 크레딧 차감에 실패했습니다.');
+        }
+      }
+
       const result = isEditMode
         ? await updateEvent(editEventId, updatePayload)
         : await createEvent(formattedEventData);
       if (result.success) {
+        editCreditSettled = true;
         const nextEventId = isEditMode ? editEventId : result.data.id;
         const displayParams = {
           eventId: nextEventId,
@@ -2141,6 +2159,15 @@ export default function CreateWeddingScreen({ navigation, route }) {
         throw new Error(result.error);
       }
     } catch (error) {
+      if (editCredit?.success && !editCreditSettled) {
+        await refundEventEditCredit({
+          userId: editCredit.userId,
+          eventId: editEventId,
+          eventType: 'wedding',
+          priceCredits: editCredit.priceCredits,
+          reason: `wedding_edit_failed:${String(error.message || 'unknown').slice(0, 100)}`,
+        });
+      }
       showAlert('오류', error.message || (isEditMode ? '결혼식 청첩장 수정 중 문제가 발생했어요' : '결혼식 청첩장 생성 중 문제가 발생했어요'));
     } finally {
       setIsLoading(false);
