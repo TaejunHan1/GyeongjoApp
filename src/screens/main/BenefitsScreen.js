@@ -11,7 +11,6 @@ import {
   Platform,
   Animated,
   Easing,
-  Share,
   Image,
   ImageBackground,
   Modal,
@@ -21,8 +20,7 @@ import {
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { TC, PressableCard, StaggerItem } from './guides/tossStyle';
-import { getAiStatus } from '../../lib/aiCredit';
+import { TC, StaggerItem } from './guides/tossStyle';
 import { A6_ASPECT_RATIO, MOBILE_TEMPLATES, TEMPLATE_CATEGORIES } from './studio/mobileTemplateConfigs';
 
 const { width } = Dimensions.get('window');
@@ -129,7 +127,6 @@ function TemplatePreviewCard({ template, selectedSide, onSelectSide, onOpen }) {
 }
 
 export default function BenefitsScreen({ navigation, userInfo, session, isAuthenticated }) {
-  const [aiStatus, setAiStatus] = useState({ balance: 0 });
   const [heroFloat] = useState(new Animated.Value(0));
   const [activeCategory, setActiveCategory] = useState('minimal');
   const [zoomTemplate, setZoomTemplate] = useState(null); // 바텀 시트 모달
@@ -163,13 +160,6 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
     ]).start(() => setZoomTemplate(null));
   };
 
-  // 크레딧 잔액 로드
-  useEffect(() => {
-    getAiStatus().then((s) => {
-      if (s?.success) setAiStatus({ balance: s.balance });
-    });
-  }, []);
-
   // 히어로 카드 위아래 미세 플로팅 (토스식 subtle motion)
   useEffect(() => {
     Animated.loop(
@@ -195,15 +185,6 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
     outputRange: [0, -6],
   });
 
-  const handleShareReferral = async () => {
-    try {
-      await Share.share({
-        message:
-          '정담 — 경조사 관리 앱, 이 링크로 가입하면 3 크레딧 받아요 🎁\nhttps://jeongdam.app/invite/xxxxx',
-      });
-    } catch (e) {}
-  };
-
   return (
     <SafeAreaView style={s.root}>
       <StatusBar style="dark" />
@@ -219,14 +200,6 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
           hitSlop={8}
         >
           <Ionicons name="bookmark-outline" size={20} color={TC.ink} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={s.creditPill}
-          onPress={() => navigation.navigate('Credit')}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="diamond-outline" size={14} color={TC.blue} />
-          <Text style={s.creditPillText}>{aiStatus.balance}</Text>
         </TouchableOpacity>
       </View>
 
@@ -427,42 +400,6 @@ export default function BenefitsScreen({ navigation, userInfo, session, isAuthen
           </View>
         </StaggerItem>
 
-        {/* ═══ 그 외 혜택 (작게) ═══ */}
-        <StaggerItem delay={360}>
-          <Text style={[s.sectionLabel, { marginTop: 28 }]}>그 외 혜택</Text>
-        </StaggerItem>
-
-        <StaggerItem delay={420}>
-          <PressableCard
-            style={s.miniCard}
-            onPress={() => navigation.navigate('Credit')}
-          >
-            <View style={[s.miniBubble, { backgroundColor: TC.blueSoft }]}>
-              <Ionicons name="diamond" size={18} color={TC.blue} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.miniTitle}>AI 크레딧 번들</Text>
-              <Text style={s.miniSub}>10 크레딧 + 보너스 3 크레딧</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={TC.inkDim} />
-          </PressableCard>
-        </StaggerItem>
-
-        <StaggerItem delay={470}>
-          <PressableCard
-            style={s.miniCard}
-            onPress={handleShareReferral}
-          >
-            <View style={[s.miniBubble, { backgroundColor: TC.orangeSoft }]}>
-              <Ionicons name="gift" size={18} color={TC.orange} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.miniTitle}>친구 초대하기</Text>
-              <Text style={s.miniSub}>1명 초대당 3 크레딧 적립</Text>
-            </View>
-            <Ionicons name="share-outline" size={16} color={TC.inkDim} />
-          </PressableCard>
-        </StaggerItem>
       </ScrollView>
 
       {/* 템플릿 확대 보기 — 바텀 시트 */}
@@ -586,16 +523,6 @@ const s = StyleSheet.create({
     color: TC.ink,
     letterSpacing: -0.5,
   },
-  creditPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: TC.blueSoft,
-    borderRadius: 14,
-  },
-  creditPillText: { fontSize: 13, fontWeight: '700', color: TC.blue },
   headerIconBtn: {
     width: 36,
     height: 36,
@@ -1073,37 +1000,6 @@ const s = StyleSheet.create({
     marginBottom: 2,
   },
   stepDesc: {
-    fontSize: 12,
-    color: TC.inkMuted,
-    letterSpacing: -0.2,
-  },
-
-  // 미니 카드 (그 외 혜택)
-  miniCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 20,
-    marginBottom: 8,
-    backgroundColor: TC.card,
-    borderRadius: 14,
-    padding: 14,
-    gap: 12,
-  },
-  miniBubble: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  miniTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: TC.ink,
-    letterSpacing: -0.2,
-    marginBottom: 2,
-  },
-  miniSub: {
     fontSize: 12,
     color: TC.inkMuted,
     letterSpacing: -0.2,

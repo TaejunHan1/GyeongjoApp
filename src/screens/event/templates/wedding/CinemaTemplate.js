@@ -11,6 +11,7 @@ import {
   useCountdown,
   formatKoreanDate,
   formatKoreanTime,
+  resolveWeddingMapCoord,
 } from './WeddingUtils';
 import { PhotoFrameOverlay } from './WeddingCommonComponents';
 
@@ -185,7 +186,7 @@ const sec = StyleSheet.create({
 // ======================================================================
 // 메인
 // ======================================================================
-export default function CinemaTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
+export default function CinemaTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust, isPreviewMode = false }) {
   const insets = useSafeAreaInsets();
   const safeImages = getCategorizedImagesSafe(categorizedImages);
 
@@ -343,6 +344,10 @@ export default function CinemaTemplate({ eventData = {}, categorizedImages = {},
     ]).start(() => setToast({ visible: false, message: '' }));
   };
 
+  const blockPreviewAction = () => {
+    showToast('미리보기에서는 사용할 수 없습니다');
+  };
+
   const copyAccount = async (text) => {
     try {
       await Clipboard.setStringAsync((text || '').replace(/-/g, ''));
@@ -376,15 +381,9 @@ export default function CinemaTemplate({ eventData = {}, categorizedImages = {},
   const KAKAO_KEY = '8389c9b97fc151fcf5b0f7d994e16f7a';
   const [mapCoord, setMapCoord] = useState(null);
   useEffect(() => {
-    const query = locAddr || locName;
-    if (!query) return;
-    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        const doc = data.documents?.[0];
-        if (doc) setMapCoord({ lat: doc.y, lng: doc.x });
+    resolveWeddingMapCoord({ locName, locAddr, kakaoKey: KAKAO_KEY })
+      .then(coord => {
+        if (coord) setMapCoord(coord);
       })
       .catch(() => {});
   }, [locAddr, locName]);
@@ -425,6 +424,11 @@ export default function CinemaTemplate({ eventData = {}, categorizedImages = {},
 
   // ── 공유 / 링크 복사 ──
   const handleShareLink = async () => {
+    if (isPreviewMode) {
+      showToast('미리보기에서는 공유할 수 없습니다');
+      return;
+    }
+
     try {
       await Clipboard.setStringAsync(`${groomName || '신랑'} ❤ ${brideName || '신부'} 결혼식 초대장`);
       showToast('초대장 내용이 복사되었습니다');
@@ -699,18 +703,30 @@ export default function CinemaTemplate({ eventData = {}, categorizedImages = {},
 
               <View style={s.navRow}>
                 <TouchableOpacity style={s.navBtn} activeOpacity={0.8} onPress={() => {
+                  if (isPreviewMode) {
+                    blockPreviewAction();
+                    return;
+                  }
                   if (mapCoord) Linking.openURL(`nmap://place?lat=${mapCoord.lat}&lng=${mapCoord.lng}&name=${encodeURIComponent(locName)}&appname=wedding`);
                   else showToast('좌표 정보가 없습니다');
                 }}>
                   <Text style={s.navBtnText}>🧭 네이버지도</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={s.navBtn} activeOpacity={0.8} onPress={() => {
+                  if (isPreviewMode) {
+                    blockPreviewAction();
+                    return;
+                  }
                   if (mapCoord) Linking.openURL(`kakaomap://look?p=${mapCoord.lat},${mapCoord.lng}`);
                   else showToast('좌표 정보가 없습니다');
                 }}>
                   <Text style={s.navBtnText}>🧭 카카오맵</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={s.navBtn} activeOpacity={0.8} onPress={() => {
+                  if (isPreviewMode) {
+                    blockPreviewAction();
+                    return;
+                  }
                   if (mapCoord) Linking.openURL(`tmap://route?goalx=${mapCoord.lng}&goaly=${mapCoord.lat}&goalname=${encodeURIComponent(locName)}`);
                   else showToast('좌표 정보가 없습니다');
                 }}>
@@ -830,7 +846,7 @@ export default function CinemaTemplate({ eventData = {}, categorizedImages = {},
             <Text style={s.footerThankYou}>Thank You</Text>
             <Text style={s.footerNames}>{groomName || 'Groom'} & {brideName || 'Bride'}</Text>
             <View style={s.footerBtns}>
-              <TouchableOpacity style={s.footerBtn} activeOpacity={0.85} onPress={() => showToast('카카오톡 공유 준비 중입니다')}>
+              <TouchableOpacity style={s.footerBtn} activeOpacity={0.85} onPress={() => showToast(isPreviewMode ? '미리보기에서는 공유할 수 없습니다' : '카카오톡 공유 준비 중입니다')}>
                 <Text style={s.footerBtnText}>카카오톡 공유</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.footerBtn, s.footerBtnPrimary]} activeOpacity={0.85} onPress={handleShareLink}>

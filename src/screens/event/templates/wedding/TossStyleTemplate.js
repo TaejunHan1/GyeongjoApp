@@ -13,6 +13,7 @@ import {
   useCountdown,
   formatKoreanDate,
   formatKoreanTime,
+  resolveWeddingMapCoord,
 } from './WeddingUtils';
 import { PhotoFrameOverlay } from './WeddingCommonComponents';
 
@@ -94,7 +95,7 @@ function ActionBtn({ icon, text, onPress }) {
 }
 
 // ======================================================================
-export default function TossStyleTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
+export default function TossStyleTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust, isPreviewMode = false }) {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState({ visible: false, message: '' });
   const [selectedImage, setSelectedImage] = useState(null);
@@ -133,27 +134,9 @@ export default function TossStyleTemplate({ eventData = {}, categorizedImages = 
   const [mapCoord, setMapCoord] = useState(null);
 
   useEffect(() => {
-    const query = locAddr || locName;
-    if (!query) return;
-
-    // 1차: 키워드 검색
-    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        const doc = data.documents?.[0];
-        if (doc) {
-          setMapCoord({ lat: doc.y, lng: doc.x });
-        } else if (locAddr) {
-          // 2차: 주소 검색
-          return fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(locAddr)}`, {
-            headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-          }).then(r => r.json()).then(d2 => {
-            const doc2 = d2.documents?.[0];
-            if (doc2) setMapCoord({ lat: doc2.y, lng: doc2.x });
-          });
-        }
+    resolveWeddingMapCoord({ locName, locAddr, kakaoKey: KAKAO_KEY })
+      .then(coord => {
+        if (coord) setMapCoord(coord);
       })
       .catch(() => {});
   }, [locAddr, locName]);
@@ -219,6 +202,10 @@ export default function TossStyleTemplate({ eventData = {}, categorizedImages = 
       Animated.delay(1500),
       Animated.timing(toastAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
     ]).start(() => setToast({ visible: false, message: '' }));
+  };
+
+  const blockPreviewAction = () => {
+    showToast('미리보기에서는 사용할 수 없습니다');
   };
 
   const copyToClipboard = async (text) => {
@@ -402,12 +389,20 @@ export default function TossStyleTemplate({ eventData = {}, categorizedImages = 
             ) : null}
             <View style={ts.navBtns}>
               <ActionBtn icon={<Ic.NaverIcon />} text="네이버지도" onPress={() => {
+                if (isPreviewMode) {
+                  blockPreviewAction();
+                  return;
+                }
                 const query = encodeURIComponent(locAddr || locName);
                 Linking.openURL(`nmap://search?query=${query}&appname=com.gyeongjo`).catch(() =>
                   Linking.openURL(`https://map.naver.com/v5/search/${query}`)
                 );
               }} />
               <ActionBtn icon={<Ic.TmapIcon />} text="티맵" onPress={() => {
+                if (isPreviewMode) {
+                  blockPreviewAction();
+                  return;
+                }
                 const query = encodeURIComponent(locAddr || locName);
                 Linking.openURL(`tmap://search?searchKeyword=${query}`).catch(() =>
                   Linking.openURL(`https://tmap.life/search?query=${query}`)
@@ -683,7 +678,7 @@ export default function TossStyleTemplate({ eventData = {}, categorizedImages = 
 
       {/* ── 하단 바 ── */}
       <View style={[ts.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
-        <TouchableOpacity style={ts.shareBtn} onPress={() => showToast('공유 기능 준비 중입니다')} activeOpacity={0.85}>
+        <TouchableOpacity style={ts.shareBtn} onPress={() => showToast(isPreviewMode ? '미리보기에서는 공유할 수 없습니다' : '공유 기능 준비 중입니다')} activeOpacity={0.85}>
           <Ic.Share />
         </TouchableOpacity>
         <TouchableOpacity style={ts.msgBtn} onPress={() => showToast('축하 메시지 기능 준비 중입니다')} activeOpacity={0.88}>

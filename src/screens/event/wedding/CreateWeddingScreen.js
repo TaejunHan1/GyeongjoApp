@@ -560,13 +560,52 @@ const TEST_WEDDING_EVENT_DATA = {
   brideFatherAccountNumber: '267-910123-45678',
   brideMotherBankName: '카카오뱅크',
   brideMotherAccountNumber: '3333-12-3456789',
-  date: '2026-05-14',
+  date: '2030-05-14',
   ceremonyTime: '13:00',
   location: '신라호텔 다이너스티홀 3층',
   detailedAddress: '서울 중구 동호로 249',
   customMessage: '서로가 마주보며 다져온 사랑을\n이제 함께 한 곳을 바라보며\n걸어갈 수 있는 큰 사랑으로 키우고자 합니다.\n\n저희 두 사람이 사랑의 이름으로\n지켜나갈 수 있게 앞날을\n축복해 주시면 감사하겠습니다.',
   parkingInfo: '지하 주차장 2시간 무료',
 };
+
+const WEDDING_GREETING_TEMPLATES = [
+  {
+    id: 'warm-classic',
+    title: '따뜻한 기본형',
+    tag: '정중',
+    message: '서로가 마주보며 다져온 사랑을\n이제 함께 한 곳을 바라보며 걸어가려 합니다.\n\n저희 두 사람이 사랑의 이름으로\n아름다운 시작을 할 수 있도록\n귀한 걸음으로 축복해 주시면 감사하겠습니다.',
+  },
+  {
+    id: 'short-modern',
+    title: '짧고 깔끔하게',
+    tag: '심플',
+    message: '저희 두 사람이 새로운 시작을 함께하려 합니다.\n\n소중한 분들을 모시고 기쁨을 나누고 싶습니다.\n바쁘시더라도 함께해 주셔서\n따뜻한 축복을 전해주시면 감사하겠습니다.',
+  },
+  {
+    id: 'romantic',
+    title: '로맨틱 감성형',
+    tag: '감성',
+    message: '함께 웃고, 함께 기대며\n서로의 하루가 되어준 두 사람이\n이제 부부라는 이름으로 새로운 길을 걷습니다.\n\n저희의 첫걸음에 함께해 주셔서\n따뜻한 마음으로 축복해 주세요.',
+  },
+  {
+    id: 'parents',
+    title: '부모님께 감사',
+    tag: '감사',
+    message: '오늘의 저희가 있기까지\n아낌없는 사랑으로 길러주신 부모님과\n늘 곁에서 응원해 주신 모든 분들께 감사드립니다.\n\n그 고마운 마음을 품고\n저희 두 사람이 하나의 가정을 이루려 합니다.\n귀한 걸음으로 축복해 주세요.',
+  },
+  {
+    id: 'formal',
+    title: '격식 있는 문구',
+    tag: '격식',
+    message: '평생을 함께하고 싶은 사람을 만나\n부부의 연을 맺고자 합니다.\n\n소중한 분들을 모시고 혼인의 예를 올리오니\n부디 참석하시어 저희의 앞날을\n축복해 주시면 더없는 기쁨이겠습니다.',
+  },
+  {
+    id: 'casual',
+    title: '친근한 문구',
+    tag: '친근',
+    message: '서로에게 가장 편안한 사람이 되어준 저희가\n이제 같은 방향을 바라보며 함께 걸어가려 합니다.\n\n좋은 날, 좋은 분들과 함께 웃고 싶습니다.\n오셔서 저희의 시작을 따뜻하게 축하해 주세요.',
+  },
+];
 
 // ── 템플릿 목록 ──
 const TEMPLATES = [
@@ -2047,9 +2086,8 @@ export default function CreateWeddingScreen({ navigation, route }) {
         categorizedImages.main = [placeholderEntry];
         categorizedImages.all = [placeholderEntry, ...categorizedImages.all];
       }
-      const fullLocation = eventData.detailedAddress
-        ? `${eventData.location} ${eventData.detailedAddress}`.trim()
-        : eventData.location.trim();
+      const baseLocation = eventData.location.trim();
+      const detailedLocation = eventData.detailedAddress.trim();
 
       const formattedEventData = {
         event_type: 'wedding',
@@ -2059,14 +2097,12 @@ export default function CreateWeddingScreen({ navigation, route }) {
         preset_amounts: eventData.presetAmounts,
         status: 'active',
         is_finalized: false,
-        image_urls: persistableEventImages
-          .map(img => getPersistedImageUri(img))
-          .filter(Boolean),
+        image_urls: persistableEventImages,
         allow_messages: eventData.allowMessages,
         message_placeholder: eventData.messageSettings.placeholder,
         event_date: formatLocalDateKey(eventData.date),
-        location: fullLocation || null,
-        detailed_address: eventData.detailedAddress.trim() || null,
+        location: baseLocation || null,
+        detailed_address: detailedLocation || null,
         main_person_name: `${eventData.groomName}, ${eventData.brideName}`,
         bride_name: eventData.brideName.trim(),
         groom_name: eventData.groomName.trim(),
@@ -2502,6 +2538,36 @@ export default function CreateWeddingScreen({ navigation, route }) {
                     <Text style={s.infoNoteText}>인사말을 비워두시면 템플릿 기본 문구가 들어갑니다.</Text>
                   </View>
                 )}
+                <View style={s.greetingTemplateHeader}>
+                  <Text style={s.greetingTemplateTitle}>인사말 템플릿</Text>
+                  <Text style={s.greetingTemplateHint}>선택하면 문구가 바로 적용돼요</Text>
+                </View>
+                <View style={s.greetingTemplateGrid}>
+                  {WEDDING_GREETING_TEMPLATES.map((template) => {
+                    const isSelected = eventData.customMessage === template.message;
+                    return (
+                      <TouchableOpacity
+                        key={template.id}
+                        style={[s.greetingTemplateCard, isSelected && s.greetingTemplateCardSelected]}
+                        onPress={() => updateForm('customMessage', template.message)}
+                        activeOpacity={0.88}
+                      >
+                        <View style={s.greetingTemplateTop}>
+                          <View style={[s.greetingTemplateTag, isSelected && s.greetingTemplateTagSelected]}>
+                            <Text style={[s.greetingTemplateTagText, isSelected && s.greetingTemplateTagTextSelected]}>
+                              {template.tag}
+                            </Text>
+                          </View>
+                          {isSelected && <Ionicons name="checkmark-circle" size={18} color={C.primary} />}
+                        </View>
+                        <Text style={s.greetingTemplateName}>{template.title}</Text>
+                        <Text style={s.greetingTemplatePreview} numberOfLines={3}>
+                          {template.message}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </SectionCard>
 
               {/* 주차 안내 */}
@@ -3239,6 +3305,71 @@ const s = StyleSheet.create({
   input: {
     flex: 1, backgroundColor: 'transparent', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
     fontSize: 15, fontWeight: '500', color: C.text,
+  },
+  greetingTemplateHeader: {
+    marginTop: 16,
+    marginBottom: 10,
+  },
+  greetingTemplateTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: C.text,
+  },
+  greetingTemplateHint: {
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.textSub,
+  },
+  greetingTemplateGrid: {
+    gap: 9,
+  },
+  greetingTemplateCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E7EDF5',
+    borderRadius: 14,
+    padding: 14,
+  },
+  greetingTemplateCardSelected: {
+    backgroundColor: '#F3F8FF',
+    borderColor: '#BBD7FF',
+  },
+  greetingTemplateTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 9,
+  },
+  greetingTemplateTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#EEF2F7',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  greetingTemplateTagSelected: {
+    backgroundColor: '#DCEBFF',
+  },
+  greetingTemplateTagText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: C.textSub,
+  },
+  greetingTemplateTagTextSelected: {
+    color: C.primary,
+  },
+  greetingTemplateName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: C.text,
+    marginBottom: 5,
+  },
+  greetingTemplatePreview: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+    color: '#6B7280',
   },
   phoneInputRow: {
     flexDirection: 'row', alignItems: 'center',

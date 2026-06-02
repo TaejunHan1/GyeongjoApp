@@ -27,6 +27,7 @@ import {
   getCategorizedImagesSafe,
   formatKoreanDate,
   formatKoreanTime,
+  resolveWeddingMapCoord,
   width,
   height,
 } from './WeddingUtils';
@@ -283,7 +284,7 @@ const AnimatedSvgText = ({ text, style, fontSize = 48, color = 'white' }) => {
 };
 
 
-const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {}, isPlaying = false, onTogglePlay, playbackProgress = 0, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) => {
+const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {}, isPlaying = false, onTogglePlay, playbackProgress = 0, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust, isPreviewMode = false }) => {
   const insets = useSafeAreaInsets();
   // additional_info가 문자열인지 객체인지 확인 및 파싱
   if (typeof eventData.additional_info === 'string') {
@@ -451,6 +452,11 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
   };
 
   const handleShare = async () => {
+    if (isPreviewMode) {
+      Alert.alert('', '미리보기에서는 공유할 수 없습니다.');
+      return;
+    }
+
     try {
       const groomName = eventData.groomName || eventData.groom_name || '이민호';
       const brideName = eventData.brideName || eventData.bride_name || '배하윤';
@@ -515,30 +521,19 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
   const locAddr = eventData.detailedAddress || eventData.detailed_address || eventData.address || '';
 
   useEffect(() => {
-    const query = locAddr || locName;
-    if (!query) return;
-
-    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        const doc = data.documents?.[0];
-        if (doc) {
-          setMapCoord({ lat: doc.y, lng: doc.x });
-        } else if (locAddr) {
-          return fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(locAddr)}`, {
-            headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-          }).then(r => r.json()).then(d2 => {
-            const doc2 = d2.documents?.[0];
-            if (doc2) setMapCoord({ lat: doc2.y, lng: doc2.x });
-          });
-        }
+    resolveWeddingMapCoord({ locName, locAddr, kakaoKey: KAKAO_KEY })
+      .then(coord => {
+        if (coord) setMapCoord(coord);
       })
       .catch(() => {});
   }, [locAddr, locName]);
 
   const handleNavigation = () => {
+    if (isPreviewMode) {
+      Alert.alert('', '미리보기에서는 사용할 수 없습니다.');
+      return;
+    }
+
     const address = eventData.detailedAddress || eventData.detailed_address || '서울시 중구 소공로 119';
     const url = Platform.select({
       ios: `maps:0,0?q=${address}`,

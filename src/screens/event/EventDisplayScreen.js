@@ -1057,6 +1057,7 @@ export default function EventDisplayScreen({ navigation, route }) {
             onTogglePlay={togglePlayPause}
             playbackProgress={playbackProgress}
             selectedPhotoFrame={selectedPhotoFrame}
+            isPreviewMode={isPreviewMode}
           />
         )}
       </Animated.View>

@@ -11,6 +11,7 @@ import {
   useCountdown,
   formatKoreanDate,
   formatKoreanTime,
+  resolveWeddingMapCoord,
 } from './WeddingUtils';
 import { PhotoFrameOverlay } from './WeddingCommonComponents';
 
@@ -67,24 +68,9 @@ export default function EditorialMagazineTemplate({ eventData = {}, categorizedI
   const [mapCoord, setMapCoord] = useState(null);
 
   useEffect(() => {
-    const query = locAddr || locName;
-    if (!query) return;
-    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        const doc = data.documents?.[0];
-        if (doc) {
-          setMapCoord({ lat: doc.y, lng: doc.x });
-        } else if (locAddr) {
-          return fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(locAddr)}`, {
-            headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-          }).then(r2 => r2.json()).then(d2 => {
-            const doc2 = d2.documents?.[0];
-            if (doc2) setMapCoord({ lat: doc2.y, lng: doc2.x });
-          });
-        }
+    resolveWeddingMapCoord({ locName, locAddr, kakaoKey: KAKAO_KEY })
+      .then(coord => {
+        if (coord) setMapCoord(coord);
       })
       .catch(() => {});
   }, [locAddr, locName]);

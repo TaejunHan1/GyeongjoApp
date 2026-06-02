@@ -15,6 +15,7 @@ import {
   useCountdown,
   formatKoreanDate,
   formatKoreanTime,
+  resolveWeddingMapCoord,
 } from './WeddingUtils';
 import { GuestBookMessages, PhotoFrameOverlay } from './WeddingCommonComponents';
 
@@ -83,7 +84,7 @@ const FallingFlowers = () => {
 const WEDDING_ICON = require('../../../../../assets/icons/wedding2.png');
 
 // ======================================================================
-export default function ElegantGardenTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
+export default function ElegantGardenTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust, isPreviewMode = false }) {
   const insets = useSafeAreaInsets();
 
   // ── Intro state ──
@@ -313,6 +314,11 @@ export default function ElegantGardenTemplate({ eventData = {}, categorizedImage
 
   // ── Share ──
   const handleShare = async () => {
+    if (isPreviewMode) {
+      showToast('미리보기에서는 공유할 수 없습니다');
+      return;
+    }
+
     try {
       await Share.share({
         message: `${groomName} & ${brideName}의 결혼식에 초대합니다!\n${dateStr} ${timeStr}\n${locName}`,
@@ -327,24 +333,9 @@ export default function ElegantGardenTemplate({ eventData = {}, categorizedImage
   const [mapCoord, setMapCoord] = useState(null);
 
   useEffect(() => {
-    const query = locAddr || locName;
-    if (!query) return;
-    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        const doc = data.documents?.[0];
-        if (doc) {
-          setMapCoord({ lat: doc.y, lng: doc.x });
-        } else if (locAddr) {
-          return fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(locAddr)}`, {
-            headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-          }).then(r => r.json()).then(d2 => {
-            const doc2 = d2.documents?.[0];
-            if (doc2) setMapCoord({ lat: doc2.y, lng: doc2.x });
-          });
-        }
+    resolveWeddingMapCoord({ locName, locAddr, kakaoKey: KAKAO_KEY })
+      .then(coord => {
+        if (coord) setMapCoord(coord);
       })
       .catch(() => {});
   }, [locAddr, locName]);

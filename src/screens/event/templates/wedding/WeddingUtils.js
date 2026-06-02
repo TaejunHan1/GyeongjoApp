@@ -5,6 +5,51 @@ import { toImageSource } from '../../../../lib/imageUri';
 
 const { width, height } = Dimensions.get('window');
 
+const compactMapQuery = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+
+const getUniqueMapQueries = (...values) => {
+  const seen = new Set();
+  return values
+    .map(compactMapQuery)
+    .filter(Boolean)
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+export const resolveWeddingMapCoord = async ({ locName, locAddr, kakaoKey }) => {
+  if (!kakaoKey) return null;
+
+  const queries = getUniqueMapQueries(
+    locName,
+    locAddr,
+    locName && locAddr ? `${locName} ${locAddr}` : '',
+  );
+
+  for (const query of queries) {
+    for (const type of ['keyword', 'address']) {
+      try {
+        const response = await fetch(
+          `https://dapi.kakao.com/v2/local/search/${type}.json?query=${encodeURIComponent(query)}`,
+          { headers: { Authorization: `KakaoAK ${kakaoKey}` } },
+        );
+        const data = await response.json();
+        const doc = data.documents?.[0];
+        if (doc?.x && doc?.y) {
+          return { lat: Number(doc.y), lng: Number(doc.x) };
+        }
+      } catch {
+        // 다음 후보로 계속 시도
+      }
+    }
+  }
+
+  return null;
+};
+
 // 기본 이미지들
 export const defaultImages = [
   require('../../../../../assets/images/aa1.png'),
@@ -294,12 +339,28 @@ export const getCategorizedImagesSafe = (categorizedImages, userImages = []) => 
     if (categorizedImages.all && categorizedImages.all.length > 0) {
     }
     
+    const rawMain = Array.isArray(categorizedImages.main) ? categorizedImages.main : [];
+    const rawGallery = Array.isArray(categorizedImages.gallery) ? categorizedImages.gallery : [];
+    const rawAll = Array.isArray(categorizedImages.all) ? categorizedImages.all : [];
+    const fallbackMain =
+      rawMain.length > 0
+        ? rawMain
+        : rawAll.length > 0
+          ? rawAll.slice(0, 1)
+          : rawGallery.slice(0, 1);
+    const fallbackGallery =
+      rawGallery.length > 0
+        ? rawGallery
+        : rawAll.length > 1
+          ? rawAll.slice(1)
+          : rawAll;
+
     const safe = {
-      main: processImageArray(categorizedImages.main, defaultImages.slice(0, 5)),
-      gallery: processImageArray(categorizedImages.gallery, defaultImages.slice(5, 15)),
+      main: processImageArray(fallbackMain, defaultImages.slice(0, 5)),
+      gallery: processImageArray(fallbackGallery, defaultImages.slice(5, 15)),
       groom: processImageArray(categorizedImages.groom, [defaultImages[0]]),
       bride: processImageArray(categorizedImages.bride, [defaultImages[1]]),
-      all: processImageArray(categorizedImages.all || userImages, defaultImages)
+      all: processImageArray(rawAll.length > 0 ? rawAll : userImages, defaultImages)
     };
     
     
@@ -313,11 +374,18 @@ export const getCategorizedImagesSafe = (categorizedImages, userImages = []) => 
     const galleryImages = userImages.filter(img => img.category === 'gallery');
     const groomImages = userImages.filter(img => img.category === 'groom');
     const brideImages = userImages.filter(img => img.category === 'bride');
+    const fallbackMain = mainImages.length > 0 ? mainImages : userImages.slice(0, 1);
+    const fallbackGallery =
+      galleryImages.length > 0
+        ? galleryImages
+        : userImages.length > 1
+          ? userImages.slice(1)
+          : userImages;
     
     
     return {
-      main: processImageArray(mainImages, defaultImages.slice(0, 5)),
-      gallery: processImageArray(galleryImages, defaultImages.slice(5, 15)),
+      main: processImageArray(fallbackMain, defaultImages.slice(0, 5)),
+      gallery: processImageArray(fallbackGallery, defaultImages.slice(5, 15)),
       groom: processImageArray(groomImages, [defaultImages[0]]),
       bride: processImageArray(brideImages, [defaultImages[1]]),
       all: processImageArray(userImages, defaultImages)

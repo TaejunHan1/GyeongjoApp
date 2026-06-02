@@ -13,6 +13,7 @@ import {
   useCountdown,
   formatKoreanDate,
   formatKoreanTime,
+  resolveWeddingMapCoord,
 } from './WeddingUtils';
 import { GuestBookMessages, PhotoFrameOverlay } from './WeddingCommonComponents';
 
@@ -263,27 +264,9 @@ export default function VintageAppTemplate({ eventData = {}, categorizedImages =
   const [mapCoord, setMapCoord] = useState(null);
 
   useEffect(() => {
-    const query = locAddr || locName;
-    if (!query) return;
-
-    // 1차: 키워드 검색
-    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        const doc = data.documents?.[0];
-        if (doc) {
-          setMapCoord({ lat: doc.y, lng: doc.x });
-        } else if (locAddr) {
-          // 2차: 주소 검색
-          return fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(locAddr)}`, {
-            headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-          }).then(r => r.json()).then(d2 => {
-            const doc2 = d2.documents?.[0];
-            if (doc2) setMapCoord({ lat: doc2.y, lng: doc2.x });
-          });
-        }
+    resolveWeddingMapCoord({ locName, locAddr, kakaoKey: KAKAO_KEY })
+      .then(coord => {
+        if (coord) setMapCoord(coord);
       })
       .catch(() => {});
   }, [locAddr, locName]);
@@ -634,28 +617,21 @@ export default function VintageAppTemplate({ eventData = {}, categorizedImages =
             {locAddr ? <Text style={s.locAddr}>{locAddr}</Text> : null}
             <Text style={s.locDate}>{dateStr} {timeStr}</Text>
 
-            {/* 지도 - OpenStreetMap 임베드 (iframe 방식, 외부 스크립트 X) */}
+            {/* 지도 */}
             {mapCoord ? (
               <View style={s.mapContainer}>
-                {(() => {
-                  const lat = Number(mapCoord.lat);
-                  const lng = Number(mapCoord.lng);
-                  const d = 0.003;
-                  const bbox = `${lng - d},${lat - d},${lng + d},${lat + d}`;
-                  const uri = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
-                  return (
-                    <WebView
-                      source={{ uri }}
-                      style={{ flex: 1, backgroundColor: 'transparent' }}
-                      scrollEnabled={false}
-                      javaScriptEnabled
-                      domStorageEnabled
-                      originWhitelist={['*']}
-                      mixedContentMode="always"
-                      androidLayerType="hardware"
-                    />
-                  );
-                })()}
+                <WebView
+                  source={{
+                    html: `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><style>*{margin:0;padding:0}html,body,#map{width:100%;height:100%;background:#FFF1E8}</style></head><body><div id="map"></div><script>var map=L.map('map',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,tap:false}).setView([${Number(mapCoord.lat)},${Number(mapCoord.lng)}],17);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);L.marker([${Number(mapCoord.lat)},${Number(mapCoord.lng)}]).addTo(map);</script></body></html>`,
+                  }}
+                  style={{ flex: 1, backgroundColor: 'transparent' }}
+                  scrollEnabled={false}
+                  javaScriptEnabled
+                  domStorageEnabled
+                  originWhitelist={['*']}
+                  mixedContentMode="always"
+                  androidLayerType="hardware"
+                />
               </View>
             ) : (locAddr || locName) ? (
               <View style={s.mapMock}>

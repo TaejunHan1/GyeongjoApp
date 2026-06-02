@@ -24,6 +24,7 @@ import {
   getCategorizedImagesSafe,
   formatKoreanDate,
   formatKoreanTime,
+  resolveWeddingMapCoord,
   width,
   height,
 } from './WeddingUtils';
@@ -292,7 +293,7 @@ const MinimalCalendar = ({ targetDate, style }) => {
   );
 };
 
-const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {}, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) => {
+const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMessages = false, messageSettings = {}, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust, isPreviewMode = false }) => {
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [activeAccountToggle, setActiveAccountToggle] = useState('groom');
@@ -361,25 +362,9 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
   const locAddr = eventData.detailedAddress || eventData.detailed_address || eventData.address || '';
 
   useEffect(() => {
-    const query = locAddr || locName;
-    if (!query) return;
-
-    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        const doc = data.documents?.[0];
-        if (doc) {
-          setMapCoord({ lat: doc.y, lng: doc.x });
-        } else if (locAddr) {
-          return fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(locAddr)}`, {
-            headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-          }).then(r => r.json()).then(d2 => {
-            const doc2 = d2.documents?.[0];
-            if (doc2) setMapCoord({ lat: doc2.y, lng: doc2.x });
-          });
-        }
+    resolveWeddingMapCoord({ locName, locAddr, kakaoKey: KAKAO_KEY })
+      .then(coord => {
+        if (coord) setMapCoord(coord);
       })
       .catch(() => {});
   }, [locAddr, locName]);
@@ -388,8 +373,17 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
     setCurrentImageIndex(index);
     setShowImageViewer(true);
   };
+
+  const blockPreviewAction = () => {
+    Alert.alert('', '미리보기에서는 사용할 수 없습니다.');
+  };
   
   const handleShare = async () => {
+    if (isPreviewMode) {
+      Alert.alert('', '미리보기에서는 공유할 수 없습니다.');
+      return;
+    }
+
     try {
       const groomName = eventData.groomName || '현';
       const brideName = eventData.brideName || '아름';
@@ -895,7 +889,13 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
                     gap: 8, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.08)',
                     borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
                   }}
-                  onPress={() => Linking.openURL(`nmap://search?query=${encodeURIComponent(locAddr || locName)}&appname=com.gyeongjo.app`)}
+                  onPress={() => {
+                    if (isPreviewMode) {
+                      blockPreviewAction();
+                      return;
+                    }
+                    Linking.openURL(`nmap://search?query=${encodeURIComponent(locAddr || locName)}&appname=com.gyeongjo.app`);
+                  }}
                 >
                   <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: '600' }}>네이버지도</Text>
                 </TouchableOpacity>
@@ -905,7 +905,13 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
                     gap: 8, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.08)',
                     borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
                   }}
-                  onPress={() => Linking.openURL(`tmap://search?name=${encodeURIComponent(locAddr || locName)}`)}
+                  onPress={() => {
+                    if (isPreviewMode) {
+                      blockPreviewAction();
+                      return;
+                    }
+                    Linking.openURL(`tmap://search?name=${encodeURIComponent(locAddr || locName)}`);
+                  }}
                 >
                   <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: '600' }}>T맵</Text>
                 </TouchableOpacity>

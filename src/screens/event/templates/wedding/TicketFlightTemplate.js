@@ -11,7 +11,7 @@ import { WebView } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
-import { getCategorizedImagesSafe, formatKoreanDate, formatKoreanTime } from './WeddingUtils';
+import { getCategorizedImagesSafe, formatKoreanDate, formatKoreanTime, resolveWeddingMapCoord } from './WeddingUtils';
 import { PhotoFrameOverlay } from './WeddingCommonComponents';
 
 // 이륙 비행기 SVG (assets/images/airplane_takeoff.svg)
@@ -501,7 +501,7 @@ const tk = StyleSheet.create({
 // ══════════════════════════════════════════════════════
 // 메인
 // ══════════════════════════════════════════════════════
-export default function TicketFlightTemplate({ eventData = {}, categorizedImages = {}, allowMessages = true, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
+export default function TicketFlightTemplate({ eventData = {}, categorizedImages = {}, allowMessages = true, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust, isPreviewMode = false }) {
   const insets = useSafeAreaInsets();
   const confetti = useConfetti();
   const safeImages = getCategorizedImagesSafe(categorizedImages);
@@ -622,23 +622,10 @@ export default function TicketFlightTemplate({ eventData = {}, categorizedImages
   const KAKAO_KEY = '8389c9b97fc151fcf5b0f7d994e16f7a';
   const [mapCoord, setMapCoord] = useState(null);
   useEffect(() => {
-    const query = locAddr || locName;
-    if (!query || !isBoarded) return;
-    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        const doc = data.documents?.[0];
-        if (doc) setMapCoord({ lat: Number(doc.y), lng: Number(doc.x) });
-        else if (locAddr) {
-          return fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(locAddr)}`, {
-            headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-          }).then(r => r.json()).then(d2 => {
-            const doc2 = d2.documents?.[0];
-            if (doc2) setMapCoord({ lat: Number(doc2.y), lng: Number(doc2.x) });
-          });
-        }
+    if (!isBoarded) return;
+    resolveWeddingMapCoord({ locName, locAddr, kakaoKey: KAKAO_KEY })
+      .then(coord => {
+        if (coord) setMapCoord(coord);
       })
       .catch(() => {});
   }, [isBoarded, locAddr, locName]);
@@ -764,7 +751,7 @@ export default function TicketFlightTemplate({ eventData = {}, categorizedImages
                 <View style={mc.mapContainer}>
                   <WebView
                     source={{
-                      uri: `https://www.openstreetmap.org/export/embed.html?bbox=${mapCoord.lng - 0.003},${mapCoord.lat - 0.003},${mapCoord.lng + 0.003},${mapCoord.lat + 0.003}&layer=mapnik&marker=${mapCoord.lat},${mapCoord.lng}`
+                      html: `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><style>*{margin:0;padding:0}html,body,#map{width:100%;height:100%;background:#F3F7FF}</style></head><body><div id="map"></div><script>var lat=${Number(mapCoord.lat)};var lng=${Number(mapCoord.lng)};var map=L.map('map',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,tap:false}).setView([lat,lng],17);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);L.marker([lat,lng]).addTo(map);</script></body></html>`
                     }}
                     style={{ flex: 1, backgroundColor: 'transparent' }}
                     scrollEnabled={false}
@@ -784,6 +771,10 @@ export default function TicketFlightTemplate({ eventData = {}, categorizedImages
                   style={mc.navBtn}
                   activeOpacity={0.7}
                   onPress={() => {
+                    if (isPreviewMode) {
+                      Alert.alert('', '미리보기에서는 사용할 수 없습니다.');
+                      return;
+                    }
                     const q = encodeURIComponent(locAddr || locName);
                     Linking.openURL(`nmap://search?query=${q}&appname=com.gyeongjo`)
                       .catch(() => Linking.openURL(`https://map.naver.com/v5/search/${q}`));
@@ -795,6 +786,10 @@ export default function TicketFlightTemplate({ eventData = {}, categorizedImages
                   style={mc.navBtn}
                   activeOpacity={0.7}
                   onPress={() => {
+                    if (isPreviewMode) {
+                      Alert.alert('', '미리보기에서는 사용할 수 없습니다.');
+                      return;
+                    }
                     if (mapCoord) {
                       Linking.openURL(`kakaomap://look?p=${mapCoord.lat},${mapCoord.lng}`)
                         .catch(() => Linking.openURL(`https://map.kakao.com/link/map/${encodeURIComponent(locName)},${mapCoord.lat},${mapCoord.lng}`));
@@ -810,6 +805,10 @@ export default function TicketFlightTemplate({ eventData = {}, categorizedImages
                   style={mc.navBtn}
                   activeOpacity={0.7}
                   onPress={() => {
+                    if (isPreviewMode) {
+                      Alert.alert('', '미리보기에서는 사용할 수 없습니다.');
+                      return;
+                    }
                     if (mapCoord) {
                       Linking.openURL(`tmap://route?goalx=${mapCoord.lng}&goaly=${mapCoord.lat}&goalname=${encodeURIComponent(locName)}`)
                         .catch(() => Linking.openURL(`https://tmap.life/search?query=${encodeURIComponent(locAddr || locName)}`));

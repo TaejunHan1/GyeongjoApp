@@ -31,6 +31,7 @@ export default function WeddingTemplatePreview({
   selectedPhotoFrame,
   frameAdjusting,
   onPhotoFrameAdjust,
+  isPreviewMode,
 }) {
 
   // template이 undefined인 경우 대비
@@ -54,6 +55,7 @@ export default function WeddingTemplatePreview({
     selectedPhotoFrame: selectedPhotoFrame || null,
     frameAdjusting: !!frameAdjusting,
     onPhotoFrameAdjust: onPhotoFrameAdjust,
+    isPreviewMode: !!isPreviewMode,
   };
 
   // 템플릿 스타일에 따라 해당하는 컴포넌트 렌더링

@@ -20,6 +20,7 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { TC } from "../guides/tossStyle";
 import { A6_ASPECT_RATIO, MOBILE_TEMPLATES } from "./mobileTemplateConfigs";
@@ -65,6 +66,8 @@ const parseSavedDateTime = (date_str, time_str) => {
 
 const GROOM_RELATION_OPTIONS = ["아들", "장남", "차남", "삼남"];
 const BRIDE_RELATION_OPTIONS = ["딸", "장녀", "차녀", "삼녀"];
+const PHOTO_TARGET_ASPECT = 3 / 4;
+const PHOTO_MAX_WIDTH = 1400;
 const TEST_PHOTO = require("../../../../assets/images/photo-book-preview.png");
 const INVITATION_TEXT_SAMPLES = {
   short: [
@@ -98,6 +101,57 @@ const getTestPhotoInfo = () => {
       resolved?.width && resolved?.height
         ? resolved.width / resolved.height
         : null,
+  };
+};
+
+const getCenteredAspectCrop = (width, height, targetAspect = PHOTO_TARGET_ASPECT) => {
+  if (!width || !height) return null;
+
+  const sourceAspect = width / height;
+  if (Math.abs(sourceAspect - targetAspect) < 0.002) {
+    return { originX: 0, originY: 0, width, height };
+  }
+
+  if (sourceAspect > targetAspect) {
+    const cropWidth = Math.round(height * targetAspect);
+    return {
+      originX: Math.max(0, Math.round((width - cropWidth) / 2)),
+      originY: 0,
+      width: cropWidth,
+      height,
+    };
+  }
+
+  const cropHeight = Math.round(width / targetAspect);
+  return {
+    originX: 0,
+    originY: Math.max(0, Math.round((height - cropHeight) / 2)),
+    width,
+    height: cropHeight,
+  };
+};
+
+const cropPhotoToThreeFour = async (asset) => {
+  if (!asset?.uri || !asset.width || !asset.height) return asset;
+
+  const crop = getCenteredAspectCrop(asset.width, asset.height);
+  if (!crop) return asset;
+
+  const actions = [{ crop }];
+  if (crop.width > PHOTO_MAX_WIDTH) {
+    actions.push({ resize: { width: PHOTO_MAX_WIDTH } });
+  }
+
+  const result = await ImageManipulator.manipulateAsync(asset.uri, actions, {
+    compress: 0.95,
+    format: ImageManipulator.SaveFormat.JPEG,
+  });
+
+  return {
+    ...asset,
+    uri: result.uri,
+    width: result.width,
+    height: result.height,
   };
 };
 
@@ -214,12 +268,22 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
     });
     if (!result.canceled && result.assets?.[0]) {
       const asset = result.assets[0];
-      setPhotoUri(asset.uri);
-      // 원본 비율 저장 (가로 / 세로) — 다음 화면에서 영역 비율 자동 맞춤
-      if (asset.width && asset.height) {
-        setPhotoAspect(asset.width / asset.height);
-      } else {
-        setPhotoAspect(null);
+      try {
+        const croppedAsset = await cropPhotoToThreeFour(asset);
+        setPhotoUri(croppedAsset.uri);
+        setPhotoAspect(PHOTO_TARGET_ASPECT);
+      } catch (error) {
+        console.warn("[PaperInvitation] photo 3:4 crop failed", error);
+        setPhotoUri(asset.uri);
+        if (asset.width && asset.height) {
+          setPhotoAspect(asset.width / asset.height);
+        } else {
+          setPhotoAspect(null);
+        }
+        Alert.alert(
+          "사진 자동 맞춤 실패",
+          "사진은 선택됐지만 3:4 자동 자르기에 실패해 원본 비율로 진행합니다.",
+        );
       }
     }
   };
@@ -486,7 +550,7 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.photoTitle}>사진 추가하기</Text>
-                      <Text style={s.photoSub}>갤러리에서 선택 (3:4 권장)</Text>
+                      <Text style={s.photoSub}>갤러리에서 선택하면 3:4로 자동 맞춤</Text>
                     </View>
                     <Ionicons
                       name="chevron-forward"

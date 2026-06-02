@@ -11,6 +11,7 @@ import {
   useCountdown,
   formatKoreanDate,
   formatKoreanTime,
+  resolveWeddingMapCoord,
 } from './WeddingUtils';
 import { PhotoFrameOverlay } from './WeddingCommonComponents';
 
@@ -82,7 +83,7 @@ function FallingFlowers() {
 }
 
 // ======================================================================
-export default function ClassicElegantTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
+export default function ClassicElegantTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust, isPreviewMode = false }) {
   const insets = useSafeAreaInsets();
   const safeImages = getCategorizedImagesSafe(categorizedImages);
 
@@ -235,6 +236,10 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
     ]).start(() => setToast({ visible: false, message: '' }));
   };
 
+  const blockPreviewAction = () => {
+    showToast('미리보기에서는 사용할 수 없습니다');
+  };
+
   const copyToClipboard = async (text) => {
     try {
       await Clipboard.setStringAsync(text);
@@ -269,24 +274,9 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
   const [mapCoord, setMapCoord] = useState(null);
 
   useEffect(() => {
-    const query = locAddr || locName;
-    if (!query) return;
-    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        const doc = data.documents?.[0];
-        if (doc) {
-          setMapCoord({ lat: doc.y, lng: doc.x });
-        } else if (locAddr) {
-          return fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(locAddr)}`, {
-            headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-          }).then(r => r.json()).then(d2 => {
-            const doc2 = d2.documents?.[0];
-            if (doc2) setMapCoord({ lat: doc2.y, lng: doc2.x });
-          });
-        }
+    resolveWeddingMapCoord({ locName, locAddr, kakaoKey: KAKAO_KEY })
+      .then(coord => {
+        if (coord) setMapCoord(coord);
       })
       .catch(() => {});
   }, [locAddr, locName]);
@@ -514,18 +504,30 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
             {/* 내비 버튼 */}
             <View style={s.navBtns}>
               <TouchableOpacity style={s.navBtn} activeOpacity={0.8} onPress={() => {
+                if (isPreviewMode) {
+                  blockPreviewAction();
+                  return;
+                }
                 if (mapCoord) Linking.openURL(`nmap://place?lat=${mapCoord.lat}&lng=${mapCoord.lng}&name=${encodeURIComponent(locName)}&appname=wedding`);
                 else showToast('좌표 정보가 없습니다');
               }}>
                 <Text style={s.navBtnText}>🧭 네이버지도</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.navBtn} activeOpacity={0.8} onPress={() => {
+                if (isPreviewMode) {
+                  blockPreviewAction();
+                  return;
+                }
                 if (mapCoord) Linking.openURL(`kakaomap://look?p=${mapCoord.lat},${mapCoord.lng}`);
                 else showToast('좌표 정보가 없습니다');
               }}>
                 <Text style={s.navBtnText}>🧭 카카오내비</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.navBtn} activeOpacity={0.8} onPress={() => {
+                if (isPreviewMode) {
+                  blockPreviewAction();
+                  return;
+                }
                 if (mapCoord) Linking.openURL(`tmap://route?goalx=${mapCoord.lng}&goaly=${mapCoord.lat}&goalname=${encodeURIComponent(locName)}`);
                 else showToast('좌표 정보가 없습니다');
               }}>
@@ -649,10 +651,14 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
           <Text style={s.footerThankYou}>Thank You</Text>
           <Text style={s.footerNames}>{groomName} & {brideName}</Text>
           <View style={s.footerBtns}>
-            <TouchableOpacity style={s.footerBtn} activeOpacity={0.8} onPress={() => showToast('카카오톡 공유 준비 중입니다')}>
+            <TouchableOpacity style={s.footerBtn} activeOpacity={0.8} onPress={() => showToast(isPreviewMode ? '미리보기에서는 공유할 수 없습니다' : '카카오톡 공유 준비 중입니다')}>
               <Text style={s.footerBtnText}>카카오톡 공유</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.footerBtn} activeOpacity={0.8} onPress={async () => {
+              if (isPreviewMode) {
+                showToast('미리보기에서는 공유할 수 없습니다');
+                return;
+              }
               try {
                 await Clipboard.setStringAsync(`${groomName} & ${brideName} 결혼식 초대장`);
                 showToast('링크가 복사되었습니다');

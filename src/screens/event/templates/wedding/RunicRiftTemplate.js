@@ -25,6 +25,7 @@ import {
   formatKoreanDate,
   formatKoreanTime,
   getCategorizedImagesSafe,
+  resolveWeddingMapCoord,
 } from './WeddingUtils';
 import { PhotoFrameOverlay } from './WeddingCommonComponents';
 import { toImageSource } from '../../../../lib/imageUri';
@@ -95,7 +96,7 @@ function ClientChrome({ children }) {
   );
 }
 
-export default function RunicRiftTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust }) {
+export default function RunicRiftTemplate({ eventData = {}, categorizedImages = {}, allowMessages, messageSettings, selectedPhotoFrame, frameAdjusting = false, onPhotoFrameAdjust, isPreviewMode = false }) {
   const insets = useSafeAreaInsets();
   const safeImages = getCategorizedImagesSafe(categorizedImages);
 
@@ -222,16 +223,10 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
   const hasAnyAccount = accounts.groom.length > 0 || accounts.bride.length > 0;
 
   useEffect(() => {
-    const query = locAddr || locName;
-    if (!query) return;
     const KAKAO_KEY = '8389c9b97fc151fcf5b0f7d994e16f7a';
-    fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        const doc = data.documents?.[0];
-        if (doc) setMapCoord({ lat: doc.y, lng: doc.x });
+    resolveWeddingMapCoord({ locName, locAddr, kakaoKey: KAKAO_KEY })
+      .then(coord => {
+        if (coord) setMapCoord(coord);
       })
       .catch(() => {});
   }, [locAddr, locName]);
@@ -239,6 +234,10 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
   const showToast = (message) => {
     setToast(message);
     setTimeout(() => setToast(''), 1600);
+  };
+
+  const blockPreviewAction = () => {
+    showToast('미리보기에서는 사용할 수 없습니다');
   };
 
   const copyAccount = async (number) => {
@@ -376,10 +375,22 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
                 )}
               </View>
               <View style={s.navRow}>
-                <TouchableOpacity style={s.navButton} onPress={() => mapCoord ? Linking.openURL(`nmap://place?lat=${mapCoord.lat}&lng=${mapCoord.lng}&name=${encodeURIComponent(locName)}&appname=wedding`) : showToast('좌표 정보가 없습니다')}>
+                <TouchableOpacity style={s.navButton} onPress={() => {
+                  if (isPreviewMode) {
+                    blockPreviewAction();
+                    return;
+                  }
+                  mapCoord ? Linking.openURL(`nmap://place?lat=${mapCoord.lat}&lng=${mapCoord.lng}&name=${encodeURIComponent(locName)}&appname=wedding`) : showToast('좌표 정보가 없습니다');
+                }}>
                   <Text style={s.navButtonText}>네이버 지도</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={s.navButton} onPress={() => mapCoord ? Linking.openURL(`kakaomap://look?p=${mapCoord.lat},${mapCoord.lng}`) : showToast('좌표 정보가 없습니다')}>
+                <TouchableOpacity style={s.navButton} onPress={() => {
+                  if (isPreviewMode) {
+                    blockPreviewAction();
+                    return;
+                  }
+                  mapCoord ? Linking.openURL(`kakaomap://look?p=${mapCoord.lat},${mapCoord.lng}`) : showToast('좌표 정보가 없습니다');
+                }}>
                   <Text style={s.navButtonText}>카카오맵</Text>
                 </TouchableOpacity>
               </View>
