@@ -2,7 +2,7 @@
   "expo": {
     "name": "정담",
     "slug": "gyeongjoapp",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/jeongdamlogo.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.jeongdam.gyeongjoapp",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "infoPlist": {
         "CFBundleDisplayName": "정담",
         "CFBundleURLTypes": [
