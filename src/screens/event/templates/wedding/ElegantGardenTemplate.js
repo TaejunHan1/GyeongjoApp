@@ -10,6 +10,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { WebView } from 'react-native-webview';
+import LottieLoading from '../../../../components/LottieLoading';
 import {
   getCategorizedImagesSafe,
   useCountdown,
@@ -502,7 +503,7 @@ export default function ElegantGardenTemplate({ eventData = {}, categorizedImage
                   </View>
                 ) : (locAddr || locName) ? (
                   <View style={ap.mapPlaceholder}>
-                    <Text style={{ fontSize: 14, color: C.sub }}>지도를 불러오는 중...</Text>
+                    <LottieLoading text="지도를 불러오는 중..." size={54} color={C.sub} />
                   </View>
                 ) : null}
 

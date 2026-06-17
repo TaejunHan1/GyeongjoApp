@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
   Animated,
   Keyboard,
   KeyboardAvoidingView,
@@ -27,6 +26,7 @@ import { getSharedEventsForCurrentUser } from "../../lib/eventSharing";
 import { normalizePhone } from "../../lib/phoneUtils";
 import { Colors } from "../../styles/constants";
 import SimpleModal from "../../components/SimpleModal";
+import LottieLoading from "../../components/LottieLoading";
 import { useSimpleAlert } from "../../hooks/useSimpleAlert";
 
 const EVENT_TYPE_IMAGES = {
@@ -683,8 +683,7 @@ export default function ThankYouMessagesScreen({ navigation }) {
 
         {loading ? (
           <View style={styles.loadingBox}>
-            <ActivityIndicator color={Colors.primary} />
-            <Text style={styles.loadingText}>대상을 불러오는 중이에요</Text>
+            <LottieLoading text="대상을 불러오는 중이에요" size={76} />
           </View>
         ) : guests.length === 0 ? (
           <View style={styles.emptyBox}>

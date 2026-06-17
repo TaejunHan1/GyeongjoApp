@@ -42,6 +42,7 @@ import {
 } from "../../lib/phoneUtils";
 import SimpleModal from "../../components/SimpleModal";
 import ReceiptModal from "../../components/ReceiptModal";
+import LottieLoading from "../../components/LottieLoading";
 import { useSimpleAlert } from "../../hooks/useSimpleAlert";
 import { useTutorial } from "../../contexts/TutorialContext";
 
@@ -1148,8 +1149,7 @@ export default function MyEventsScreen({ navigation, userInfo }) {
 
         {loading ? (
           <View style={styles.loadingBox}>
-            <Ionicons name="refresh" size={28} color="#C5CCD5" />
-            <Text style={styles.loadingText}>불러오는 중...</Text>
+            <LottieLoading size={76} />
           </View>
         ) : activeTab === "hosted" ? (
           <>

@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
+import LottieLoading from '../../../../components/LottieLoading';
 import {
   getCategorizedImagesSafe,
   useCountdown,
@@ -384,7 +385,7 @@ export default function TossStyleTemplate({ eventData = {}, categorizedImages = 
               </View>
             ) : (locAddr || locName) ? (
               <View style={ts.mapMock}>
-                <Text style={{ fontSize: 14, color: '#8B95A1' }}>지도를 불러오는 중...</Text>
+                <LottieLoading text="지도를 불러오는 중..." size={54} color="#8B95A1" />
               </View>
             ) : null}
             <View style={ts.navBtns}>

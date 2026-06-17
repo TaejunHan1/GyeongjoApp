@@ -3,10 +3,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, KeyboardAvoidingView, Platform, Image,
-  Dimensions, Modal, Animated, Easing, FlatList, DeviceEventEmitter, ActivityIndicator, BackHandler,
+  Dimensions, Modal, Animated, Easing, FlatList, DeviceEventEmitter, BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import LottieView from 'lottie-react-native';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -14,16 +15,19 @@ import {
   createEvent, uploadImageToStorage, deleteImageFromStorage,
   getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit, updateEvent, getEventDetail, getEventStorageImages,
   consumeEventEditCredit, refundEventEditCredit, EVENT_EDIT_CREDIT_COST,
+  normalizeEventCreationCreditReservation,
 } from '../../../lib/supabaseHelper';
 import DaumPostcode from '../../../components/DaumPostcode';
 import WeddingTemplatePreview from '../templates/WeddingTemplatePreview';
 import { GlobalFallingEffect } from '../templates/wedding/WeddingCommonComponents';
 import WeddingIntroSelectModal, { INTRO_OVERLAYS, INTRO_LIST } from './WeddingIntroSelectModal';
+import LottieLoading from '../../../components/LottieLoading';
 import { useTutorial } from '../../../contexts/TutorialContext';
 import TutorialOverlay from '../../../components/TutorialOverlay';
 import { prepareImagesForRender, resolveImageUri, toImageSource, unwrapImageValue } from '../../../lib/imageUri';
 
 const { width } = Dimensions.get('window');
+const WEDDING_COMPLETE_LOTTIE = require('../../../../assets/lottie/wedding-complete-check.json');
 
 const formatLocalDateKey = (value) => {
   if (!value) return null;
@@ -673,6 +677,20 @@ const TEMPLATES = [
     features: ['아카이브 카드', '앨범 페이지', '블루 그레이 톤'],
   },
   {
+    id: 'blush-editorial', name: '블러쉬 에디토리얼',
+    description: '스냅 화보처럼 길게 이어지는 요즘 모바일 청첩장',
+    preview: require('../../../../assets/images/aa2.png'),
+    style: 'blush-editorial',
+    features: ['화보형 스크롤', '블러쉬 핑크', '3열 갤러리'],
+  },
+  {
+    id: 'yozm-style', name: '요즈 스타일',
+    description: '강한 포토 커버와 핑크 다이어리 무드의 요즘식 청첩장',
+    preview: require('../../../../assets/images/aa1.png'),
+    style: 'yozm-style',
+    features: ['다크 포토 커버', '핑크 편지', '풀스크린 갤러리'],
+  },
+  {
     id: 'elegant-garden', name: '오로라 블랙',
     description: '준비중입니다',
     preview: require('../../../../assets/images/aa1.png'),
@@ -1100,7 +1118,14 @@ export default function CreateWeddingScreen({ navigation, route }) {
   const editEvent = route?.params?.editEvent || null;
   const editEventId = route?.params?.editEventId || editEvent?.id || null;
   const editHydratedRef = useRef(false);
-  const creationCreditReservationRef = useRef(isEditMode ? null : (route?.params?.eventCreationCreditReservation || null));
+  const creationCreditReservationRef = useRef(
+    isEditMode
+      ? null
+      : normalizeEventCreationCreditReservation(
+          route?.params?.eventCreationCreditReservation || null,
+          'wedding',
+        ),
+  );
   const creationCreditSettledRef = useRef(false);
   // 튜토리얼 타겟 ref
   const namesSectionRef = useRef(null);
@@ -1127,19 +1152,43 @@ export default function CreateWeddingScreen({ navigation, route }) {
   const sectionPositions = useRef({});
 
   useEffect(() => {
-    return () => {
+    if (isEditMode) return;
+    const reservation = creationCreditReservationRef.current;
+    if (!reservation?.success) return;
+
+    if (
+      route?.params?.eventCreationCreditReservation?.reservationId !==
+      reservation.reservationId
+    ) {
+      navigation.setParams?.({ eventCreationCreditReservation: reservation });
+    }
+  }, [isEditMode, navigation]);
+
+  useEffect(() => {
+    const refundReservation = () => {
       const reservation = creationCreditReservationRef.current;
       if (!reservation?.success || creationCreditSettledRef.current) return;
       refundEventCreationCredit({
         userId: reservation.userId,
         paymentMethod: reservation.paymentMethod,
         priceCredits: reservation.priceCredits,
+        reservationId: reservation.reservationId,
+        reservedAt: reservation.reservedAt,
+        eventType: reservation.eventType || 'wedding',
         reason: 'event_create_abandoned:wedding',
       })
-        .then(() => DeviceEventEmitter.emit('event-creation-credit-refunded'))
+        .then(() => {
+          creationCreditSettledRef.current = true;
+          DeviceEventEmitter.emit('event-creation-credit-refunded');
+        })
         .catch(() => {});
     };
-  }, []);
+
+    const unsubscribe = navigation.addListener?.('beforeRemove', refundReservation);
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [navigation]);
 
   // 튜토리얼 — 타겟 반복 측정
   useEffect(() => {
@@ -1293,7 +1342,6 @@ export default function CreateWeddingScreen({ navigation, route }) {
   const completionNavTimeoutRef = useRef(null);
   const [bankPicker, setBankPicker] = useState({ visible: false, field: '' });
   const [isLoading, setIsLoading] = useState(false);
-  const [createdDisplayParams, setCreatedDisplayParams] = useState(null);
   const [alertInfo, setAlertInfo] = useState({ visible: false, title: '', message: '' });
   const [imageUploadState, setImageUploadState] = useState({
     isUploading: false, currentIndex: 0, totalCount: 0, uploadingCategory: null,
@@ -1455,21 +1503,6 @@ export default function CreateWeddingScreen({ navigation, route }) {
       completionNavTimeoutRef.current = null;
     }
   }, []);
-
-  const goToHome = () => {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'MainTabs', params: { screen: 'Home' } }],
-    });
-  };
-
-  const goToCreatedInvitation = () => {
-    if (!createdDisplayParams) {
-      goToHome();
-      return;
-    }
-    navigation.navigate('EventDisplay', createdDisplayParams);
-  };
 
   // ── 헬퍼 함수들 ──
   const updateForm = (key, value) => setEventData(prev => ({ ...prev, [key]: value }));
@@ -2184,13 +2217,12 @@ export default function CreateWeddingScreen({ navigation, route }) {
           messageSettings: eventData.messageSettings,
           closeToHome: true,
         };
-        setCreatedDisplayParams(displayParams);
         setStep(3);
         if (completionNavTimeoutRef.current) clearTimeout(completionNavTimeoutRef.current);
         completionNavTimeoutRef.current = setTimeout(() => {
           completionNavTimeoutRef.current = null;
           navigation.navigate('EventDisplay', displayParams);
-        }, 2000);
+        }, 3200);
       } else {
         throw new Error(result.error);
       }
@@ -2685,27 +2717,13 @@ export default function CreateWeddingScreen({ navigation, route }) {
           {/* ===== STEP 3: 완료 ===== */}
           {step === 3 && (
             <View style={s.completionWrap}>
-              <Text style={{ fontSize: 60, marginBottom: 24 }}>🎉</Text>
-              <Text style={s.completionTitle}>{isEditMode ? '결혼식 청첩장이\n수정되었어요!' : '결혼식 청첩장이\n완성되었어요!'}</Text>
-              <View style={s.completionPill}>
-                <Text style={s.completionPillText}>잠시 후 청첩장 화면으로 이동할게요</Text>
-              </View>
-              <TouchableOpacity
-                style={s.completionPrimaryButton}
-                onPress={goToCreatedInvitation}
-                activeOpacity={0.88}
-              >
-                <Text style={s.completionPrimaryButtonText}>청첩장 바로 보기</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.completionHomeButton}
-                onPress={goToHome}
-                activeOpacity={0.88}
-              >
-                <Ionicons name="home-outline" size={17} color={C.primary} />
-                <Text style={s.completionHomeButtonText}>메인 화면으로 가기</Text>
-              </TouchableOpacity>
-              <View style={s.spinner} />
+              <LottieView
+                source={WEDDING_COMPLETE_LOTTIE}
+                autoPlay
+                loop={false}
+                resizeMode="contain"
+                style={s.completionLottie}
+              />
             </View>
           )}
         </ScrollView>
@@ -2957,7 +2975,14 @@ export default function CreateWeddingScreen({ navigation, route }) {
             {showIntroOverlay && INTRO_OVERLAYS[currentPreviewIntroId] && (() => {
               const IntroComp = INTRO_OVERLAYS[currentPreviewIntroId];
               return (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }} pointerEvents={currentPreviewTapToOpen ? 'box-none' : 'none'}>
+                <View
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }}
+                  pointerEvents="auto"
+                  {...(!currentPreviewTapToOpen ? {
+                    onStartShouldSetResponder: () => true,
+                    onMoveShouldSetResponder: () => true,
+                  } : {})}
+                >
                   <IntroComp
                     containerW={width}
                     containerH={Dimensions.get('window').height}
@@ -3233,8 +3258,11 @@ export default function CreateWeddingScreen({ navigation, route }) {
                 )}
                 {!frameThumbsReady && (
                   <View style={s.frameLoadingOverlay}>
-                    <ActivityIndicator size="small" color="#fff" />
-                    <Text style={s.frameLoadingText}>프레임을 불러오는 중</Text>
+                    <LottieLoading
+                      text="프레임을 불러오는 중"
+                      size={54}
+                      color="rgba(255,255,255,0.82)"
+                    />
                   </View>
                 )}
               </View>
@@ -3592,7 +3620,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
   },
-  frameLoadingText: { color: 'rgba(255,255,255,0.72)', fontSize: 13, fontWeight: '700' },
   framePreloadLayer: {
     position: 'absolute',
     width: 1,
@@ -3732,54 +3759,16 @@ const s = StyleSheet.create({
   pApplyBtnText: { fontSize: 17, fontWeight: '400', color: '#fff', letterSpacing: -0.374 },
 
   // STEP 3 완료
-  completionWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
-  completionTitle: { fontSize: 24, fontWeight: '800', color: C.text, textAlign: 'center', marginBottom: 16, lineHeight: 32 },
-  completionPill: {
-    backgroundColor: C.white, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 20,
-    borderWidth: 1, borderColor: C.bg,
-  },
-  completionPillText: { color: C.textSub, fontWeight: '500', textAlign: 'center' },
-  completionPrimaryButton: {
-    marginTop: 22,
-    minWidth: 210,
-    backgroundColor: C.primary,
-    paddingHorizontal: 22,
-    paddingVertical: 15,
-    borderRadius: 14,
-    alignItems: 'center',
-    shadowColor: C.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  completionPrimaryButtonText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: C.white,
-  },
-  completionHomeButton: {
-    marginTop: 10,
-    minWidth: 210,
-    flexDirection: 'row',
+  completionWrap: {
+    minHeight: Math.max(520, width * 1.15),
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7,
-    backgroundColor: C.white,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: C.border,
+    paddingHorizontal: 24,
+    paddingVertical: 48,
   },
-  completionHomeButtonText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: C.primary,
-  },
-  spinner: {
-    width: 44, height: 44, borderRadius: 22, borderWidth: 4,
-    borderColor: C.bg, borderTopColor: C.primary, marginTop: 48,
+  completionLottie: {
+    width: Math.min(width * 0.82, 360),
+    height: Math.min(width * 0.82, 360),
   },
 
   // 하단 버튼

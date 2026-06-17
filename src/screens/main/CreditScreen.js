@@ -16,6 +16,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../styles/constants';
+import LottieLoading from '../../components/LottieLoading';
 import { supabase } from '../../lib/supabase';
 import { getAlimtalkBalance } from '../../lib/alimtalkCredit';
 import {
@@ -188,7 +189,7 @@ export default function CreditScreen({ navigation, userInfo }) {
 
       {loading ? (
         <View style={styles.loadingWrap}>
-          <ActivityIndicator color={Colors.primary} />
+          <LottieLoading size={82} />
         </View>
       ) : (
         <ScrollView

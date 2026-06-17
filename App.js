@@ -198,6 +198,7 @@ export default function App() {
       'DancingScript': require('./assets/fonts/DancingScript-Regular.ttf'),
       'Tangerine': require('./assets/fonts/Tangerine-Regular.ttf'),
       'NanumBrushScript': require('./assets/fonts/NanumBrushScript-Regular.ttf'),
+      'AAutoSignature': require('./assets/fonts/AAutoSignature.ttf'),
     }).catch(() => {});
   }, []);
   

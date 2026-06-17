@@ -17,6 +17,7 @@ import * as Clipboard from 'expo-clipboard';
 import Toast from 'react-native-toast-message';
 import QRCode from 'react-native-qrcode-svg';
 import { Colors } from '../../styles/constants';
+import LottieLoading from '../../components/LottieLoading';
 import { getEventDetail } from '../../lib/supabaseHelper';
 import { getContributionUrl } from '../../lib/webLinks';
 
@@ -149,8 +150,7 @@ export default function QRCodeScreen({ navigation, route }) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Ionicons name="qr-code" size={48} color={Colors.gray400} />
-          <Text style={styles.loadingText}>QR 코드 생성 중...</Text>
+          <LottieLoading text="QR 코드 생성 중..." size={82} />
         </View>
       </SafeAreaView>
     );

@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Image,
   Modal,
   Platform,
@@ -14,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import LottieLoading from '../../components/LottieLoading';
 import { supabase } from '../../lib/supabase';
 import {
   getReciprocityNotifications,
@@ -220,7 +220,7 @@ export default function ReciprocityScreen({ navigation, userInfo, session }) {
 
       {loading && groups.length === 0 ? (
         <View style={styles.loadingBox}>
-          <ActivityIndicator color="#3182F6" />
+          <LottieLoading size={82} />
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>

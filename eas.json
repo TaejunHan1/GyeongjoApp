@@ -45,6 +45,14 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6771705756"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./gyeongjoapp-406f0d866d94.json",
+        "track": "alpha"
+      }
+    }
   }
 }

@@ -31,6 +31,7 @@ import {
   deletePaperInvitation,
   getPaperInvitation,
 } from '../../../lib/paperInvitationHelper';
+import LottieLoading from '../../../components/LottieLoading';
 import SavedInvitationThumb, { getOptimizedInvitationPhotoUrl } from './SavedInvitationThumb';
 
 // 인쇄 권장 해상도 — A6(105×148mm) @ 300 DPI = 1240×1748 픽셀
@@ -415,7 +416,7 @@ export default function SavedInvitationsScreen({ navigation, route }) {
 
       {loading ? (
         <View style={s.center}>
-          <ActivityIndicator color={TC.blue} />
+          <LottieLoading size={82} />
         </View>
       ) : items.length === 0 ? (
         <View style={s.empty}>

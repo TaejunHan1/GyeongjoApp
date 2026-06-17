@@ -22,11 +22,15 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import JSZip from 'jszip';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../styles/constants';
-import { getCurrentUserInfo, getEventDetail, getEventContributions, getEventStatistics, getEventMessages, addGuestBookEntry, updateGuestBookEntry, deleteGuestBookEntry, deleteEventMessage, toggleGuestBookVerification, updateEvent } from '../../lib/supabaseHelper';
+import LottieLoading from '../../components/LottieLoading';
+import { getCurrentUserInfo, getEventDetail, getEventContributions, getEventStatistics, getEventMessages, addGuestBookEntry, updateGuestBookEntry, deleteGuestBookEntry, deleteEventMessage, toggleGuestBookVerification, updateEvent, EVENT_EXCEL_EXPORT_CREDIT_COST, consumeEventExcelExportCredit, refundEventExcelExportCredit } from '../../lib/supabaseHelper';
 import { supabase } from '../../lib/supabase';
 import { sendAlimtalkWithCredit, getAlimtalkBalance } from '../../lib/alimtalkCredit';
 import {
@@ -336,6 +340,7 @@ export default function EventDetailScreen({ navigation, route }) {
 
   // 알림톡 재발송 — 로딩 중 UI 블로킹용
   const [resendingId, setResendingId] = useState(null);
+  const [exportingExcel, setExportingExcel] = useState(false);
   // 현재 유저 알림톡 크레딧 잔액
   const [alimtalkBalance, setAlimtalkBalance] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
@@ -1602,6 +1607,288 @@ export default function EventDetailScreen({ navigation, route }) {
     return new Intl.NumberFormat('ko-KR').format(roundedAmount) + '원';
   };
 
+  const formatExportDateTime = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+  };
+
+  const formatExportFileTime = () => {
+    const date = new Date();
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${yyyy}${mm}${dd}_${hh}${min}`;
+  };
+
+  const escapeXml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+  const getExcelColumnName = (index) => {
+    let column = '';
+    let number = index + 1;
+    while (number > 0) {
+      const remainder = (number - 1) % 26;
+      column = String.fromCharCode(65 + remainder) + column;
+      number = Math.floor((number - 1) / 26);
+    }
+    return column;
+  };
+
+  const buildExcelCellXml = (value, rowIndex, columnIndex) => {
+    const ref = `${getExcelColumnName(columnIndex)}${rowIndex}`;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return `<c r="${ref}"><v>${value}</v></c>`;
+    }
+    return `<c r="${ref}" t="inlineStr"><is><t>${escapeXml(value)}</t></is></c>`;
+  };
+
+  const buildExcelRowsXml = (rows) => rows.map((row, rowIndex) => {
+    const excelRowIndex = rowIndex + 1;
+    const cells = row.map((value, columnIndex) => buildExcelCellXml(value, excelRowIndex, columnIndex)).join('');
+    return `<row r="${excelRowIndex}">${cells}</row>`;
+  }).join('');
+
+  const buildWorksheetXml = (rows, columnWidths = []) => {
+    const columnXml = columnWidths.length > 0
+      ? `<cols>${columnWidths.map((width, index) => (
+        `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`
+      )).join('')}</cols>`
+      : '';
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  ${columnXml}
+  <sheetData>${buildExcelRowsXml(rows)}</sheetData>
+</worksheet>`;
+  };
+
+  const getEventTypeLabel = () => {
+    switch (event?.event_type) {
+      case 'wedding': return '결혼식';
+      case 'funeral': return '장례식';
+      default: return '경조사';
+    }
+  };
+
+  const getInputMethodLabel = (method) => {
+    switch (String(method || '').toLowerCase()) {
+      case 'web':
+      case 'web_guestbook':
+        return '모바일 접수';
+      case 'manual':
+      case 'admin':
+        return '직접 입력';
+      default:
+        return method || '기록';
+    }
+  };
+
+  const buildExcelWorkbookBase64 = async () => {
+    const additionalInfo = parseAdditionalInfo(event?.additional_info);
+    const eventDate = event?.event_date || event?.wedding_date || event?.funeral_start_date || additionalInfo.event_date || '';
+    const eventLocation = event?.location || event?.venue_name || event?.funeral_home || additionalInfo.location || additionalInfo.venue_name || '';
+    const totalAmount = contributions.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const verifiedCount = contributions.filter((item) => item.is_verified).length;
+    const exportedAt = formatExportDateTime(new Date().toISOString());
+    const rows = contributions.map((item, index) => {
+      const { displayCategory, displayDetail } = getRelationDisplay(
+        item.relation_category || item.side,
+        item.relation_detail,
+      );
+      return {
+        index: index + 1,
+        name: item.guest_name || '',
+        phone: item.guest_phone || '',
+        amount: Number(item.amount || 0),
+        side: displayCategory,
+        relation: displayDetail,
+        ticketCount: Number(item.ticket_count || 0),
+        verified: item.is_verified ? '확정' : '미확정',
+        alimtalk: item.alimtalk_sent ? '발송' : '미발송',
+        inputMethod: getInputMethodLabel(item.input_method),
+        message: item.message || '',
+        createdAt: formatExportDateTime(item.created_at),
+      };
+    });
+
+    const summaryRows = [
+      ['행사명', event?.event_name || ''],
+      ['행사 구분', getEventTypeLabel()],
+      ['행사 일시', eventDate ? formatExportDateTime(eventDate) : ''],
+      ['장소', eventLocation],
+      ['전체 건수', `${contributions.length}건`],
+      ['확정 건수', `${verifiedCount}건`],
+      ['총 부조금', totalAmount],
+      ['내보낸 시간', exportedAt],
+    ];
+
+    const detailRows = [
+      ['번호', '이름', '연락처', '금액', '구분', '관계', '식권', '확정', '알림톡', '입력 방식', '메시지', '등록일'],
+      ...rows.map((row) => [
+        row.index,
+        row.name,
+        row.phone,
+        row.amount,
+        row.side,
+        row.relation,
+        row.ticketCount,
+        row.verified,
+        row.alimtalk,
+        row.inputMethod,
+        row.message,
+        row.createdAt,
+      ]),
+    ];
+
+    const zip = new JSZip();
+    zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>`);
+    zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`);
+    zip.file('docProps/core.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${escapeXml(event?.event_name || '경조사')} 부조 내역</dc:title>
+  <dc:creator>GyeongjoApp</dc:creator>
+  <cp:lastModifiedBy>GyeongjoApp</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified>
+</cp:coreProperties>`);
+    zip.file('docProps/app.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>GyeongjoApp</Application>
+</Properties>`);
+    zip.file('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="요약" sheetId="1" r:id="rId1"/>
+    <sheet name="부조내역" sheetId="2" r:id="rId2"/>
+  </sheets>
+</workbook>`);
+    zip.file('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+</Relationships>`);
+    zip.file('xl/worksheets/sheet1.xml', buildWorksheetXml(summaryRows, [14, 36]));
+    zip.file('xl/worksheets/sheet2.xml', buildWorksheetXml(detailRows, [8, 14, 18, 14, 12, 12, 8, 10, 10, 12, 32, 18]));
+
+    return zip.generateAsync({
+      type: 'base64',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+    });
+  };
+
+  const createAndShareExcelFile = async () => {
+    const canShare = await Sharing.isAvailableAsync();
+    if (!canShare) {
+      throw new Error('이 기기에서는 파일 공유를 사용할 수 없습니다.');
+    }
+
+    const baseName = `${event?.event_name || '경조사'}_부조내역_${formatExportFileTime()}`
+      .replace(/[^0-9A-Za-z가-힣ㄱ-ㅎㅏ-ㅣ._-]+/g, '_')
+      .slice(0, 80);
+    const fileUri = `${FileSystem.documentDirectory || FileSystem.cacheDirectory}${baseName}.xlsx`;
+    const workbookBase64 = await buildExcelWorkbookBase64();
+    await FileSystem.writeAsStringAsync(fileUri, workbookBase64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    await Sharing.shareAsync(fileUri, {
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      dialogTitle: '내보내기',
+      UTI: 'org.openxmlformats.spreadsheetml.sheet',
+    });
+  };
+
+  const runExcelExport = async () => {
+    setExportingExcel(true);
+    let creditResult = null;
+    try {
+      creditResult = await consumeEventExcelExportCredit({
+        eventId,
+        eventType: event?.event_type,
+        userId: currentUserId,
+      });
+
+      if (!creditResult.success) {
+        if (creditResult.error === 'insufficient_balance') {
+          Alert.alert(
+            '크레딧 부족',
+            `내보내기는 ${EVENT_EXCEL_EXPORT_CREDIT_COST}크레딧이 필요해요.\n현재 잔액은 ${creditResult.balance || 0}크레딧입니다.`,
+            [
+              { text: '취소', style: 'cancel' },
+              { text: '충전하기', onPress: () => navigation.navigate('Credit') },
+            ],
+          );
+          return;
+        }
+        showAlert({ title: '내보내기 실패', message: creditResult.error || '크레딧 차감에 실패했습니다.' });
+        return;
+      }
+
+      setAlimtalkBalance(creditResult.balance);
+      await createAndShareExcelFile();
+    } catch (error) {
+      if (creditResult?.success) {
+        const refundResult = await refundEventExcelExportCredit({
+          userId: creditResult.userId,
+          eventId,
+          eventType: event?.event_type,
+          priceCredits: creditResult.priceCredits,
+        });
+        if (refundResult.success) setAlimtalkBalance(refundResult.balance);
+      }
+      showAlert({ title: '내보내기 실패', message: error.message || '파일을 만드는 중 오류가 발생했습니다.' });
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  const handleExcelExportPress = () => {
+    if (exportingExcel) return;
+    if (!canManageEvent) {
+      showAlert({ title: '보기 전용', message: '내보내기는 편집 권한이 있는 멤버만 사용할 수 있어요.' });
+      return;
+    }
+    if (contributions.length === 0) {
+      showAlert({ title: '내보낼 내역 없음', message: '아직 등록된 부조 내역이 없습니다.' });
+      return;
+    }
+
+    Alert.alert(
+      '내보내기',
+      `전체 부조 내역 ${contributions.length}건을 파일로 내보냅니다.\n${EVENT_EXCEL_EXPORT_CREDIT_COST}크레딧이 사용돼요.`,
+      [
+        { text: '취소', style: 'cancel' },
+        { text: '내보내기', onPress: runExcelExport },
+      ],
+    );
+  };
+
   const getEventIcon = () => {
     if (!event) return 'calendar';
     switch (event.event_type) {
@@ -1626,8 +1913,7 @@ export default function EventDetailScreen({ navigation, route }) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Ionicons name="refresh" size={32} color={Colors.gray400} />
-          <Text style={styles.loadingText}>불러오는 중...</Text>
+          <LottieLoading size={82} />
         </View>
       </SafeAreaView>
     );
@@ -1677,9 +1963,8 @@ export default function EventDetailScreen({ navigation, route }) {
         {/* ── 히어로 섹션 ── */}
         <View style={styles.heroSection}>
 
-          {/* 이벤트명 + 통계 버튼 */}
+          {/* 상단 액션 버튼 */}
           <View style={styles.heroTopRow}>
-            <Text style={styles.heroEventName}>{event.event_name}</Text>
             <View style={styles.heroTopActions}>
               {isEventOwner && (
                 <TouchableOpacity
@@ -1689,6 +1974,23 @@ export default function EventDetailScreen({ navigation, route }) {
                 >
                   <Ionicons name="people-outline" size={15} color="#4E5968" />
                   <Text style={styles.heroStatBtnText}>공유 멤버</Text>
+                </TouchableOpacity>
+              )}
+              {canManageEvent && (
+                <TouchableOpacity
+                  style={[styles.heroStatBtn, exportingExcel && styles.heroStatBtnDisabled]}
+                  onPress={handleExcelExportPress}
+                  activeOpacity={0.7}
+                  disabled={exportingExcel}
+                >
+                  <Ionicons
+                    name={exportingExcel ? 'hourglass-outline' : 'share-outline'}
+                    size={15}
+                    color={exportingExcel ? '#8B95A1' : '#4E5968'}
+                  />
+                  <Text style={[styles.heroStatBtnText, exportingExcel && styles.heroStatBtnTextDisabled]}>
+                    {exportingExcel ? '준비중' : '내보내기'}
+                  </Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -3677,7 +3979,11 @@ export default function EventDetailScreen({ navigation, route }) {
 
             <ScrollView style={styles.shareMemberList} showsVerticalScrollIndicator={false}>
               {shareModal.loading ? (
-                <Text style={styles.shareEmptyText}>불러오는 중...</Text>
+                <LottieLoading
+                  text="불러오는 중..."
+                  size={56}
+                  style={styles.shareLoadingBox}
+                />
               ) : shareModal.members.length > 0 ? (
                 shareModal.members.map(member => (
                   <View key={member.id} style={styles.shareMemberRow}>
@@ -3883,22 +4189,18 @@ const styles = StyleSheet.create({
   },
   heroTopRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
+    flexWrap: 'wrap',
     marginBottom: 10,
     gap: 10,
   },
   heroTopActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
     gap: 8,
-  },
-  heroEventName: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#8B95A1',
-    textDecorationLine: 'underline',
   },
   heroStatBtn: {
     flexDirection: 'row',
@@ -3911,10 +4213,17 @@ const styles = StyleSheet.create({
     borderColor: '#E5E8EB',
     backgroundColor: '#FFFFFF',
   },
+  heroStatBtnDisabled: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#EEF2F7',
+  },
   heroStatBtnText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#4E5968',
+  },
+  heroStatBtnTextDisabled: {
+    color: '#8B95A1',
   },
   heroAmount: {
     fontSize: 36,
@@ -4182,6 +4491,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#8B95A1',
+  },
+  shareLoadingBox: {
+    paddingVertical: 18,
   },
   unverifiedBanner: {
     flexDirection: 'row',

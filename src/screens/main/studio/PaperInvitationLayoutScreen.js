@@ -26,6 +26,7 @@ import { Ionicons } from "@expo/vector-icons";
 import QRCode from "react-native-qrcode-svg";
 import Svg, { Defs, ClipPath, Path, Image as SvgImage } from "react-native-svg";
 import { TC } from "../guides/tossStyle";
+import LottieLoading from "../../../components/LottieLoading";
 import {
   createPaperInvitation,
   updatePaperInvitation,
@@ -1441,13 +1442,17 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
   const photoCenterY_px = (photoConf.y / 100) * CANVAS_H;
   const baseWPx = (photoConf.w / 100) * CANVAS_W;
   const baseHPx = (photoConf.h / 100) * CANVAS_H;
+  const shouldUseTemplatePhotoBox = photoConf.fit === "cover";
 
   // 사진 원본 비율(가로/세로) — 사용자가 업로드한 사진을 자르지 않고
   // 그 비율 그대로 사진 영역 크기를 맞춤. circle은 정사각 강제 유지.
   const aspect = formData.photoAspect;
   let photoWPx, photoHPx;
 
-  if (photoConf.shape === "circle") {
+  if (shouldUseTemplatePhotoBox) {
+    photoWPx = baseWPx;
+    photoHPx = baseHPx;
+  } else if (photoConf.shape === "circle") {
     photoWPx = baseWPx;
     photoHPx = baseWPx;
   } else if (aspect && aspect > 0) {
@@ -1483,6 +1488,27 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
     y: photoCenterY_px - photoHPx / 2,
     shape: photoConf.shape,
     radius: photoConf.radius,
+  };
+  const isLegacyMinimal1PhotoLayout = (savedPhoto) => {
+    if (template.id !== "minimal-1" || !savedPhoto) return false;
+    const x = Number(savedPhoto.x);
+    const y = Number(savedPhoto.y);
+    const w = Number(savedPhoto.w);
+    const h = Number(savedPhoto.h);
+    return (
+      Number.isFinite(x) &&
+      Number.isFinite(y) &&
+      Number.isFinite(w) &&
+      Number.isFinite(h) &&
+      x >= 10 &&
+      x <= 20 &&
+      y >= 8 &&
+      y <= 14 &&
+      w >= 65 &&
+      w <= 75 &&
+      h >= 50 &&
+      h <= 60
+    );
   };
 
   // 신랑·신부 각각 분리. 템플릿에 베이크인 "&" 있으면 connector 안 그림
@@ -1710,7 +1736,10 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
       return restored ? { ...defaultEl, ...restored } : defaultEl;
     };
     const initialLayout = {
-      photo: merge(initPhoto, "photo"),
+      photo:
+        saved && isLegacyMinimal1PhotoLayout(saved.photo)
+          ? initPhoto
+          : merge(initPhoto, "photo"),
       groom: merge(initGroom, "groom"),
       connector: merge(initConnector, "connector"),
       bride: merge(initBride, "bride"),
@@ -3096,15 +3125,28 @@ export default function PaperInvitationLayoutScreen({ navigation, route }) {
               size={16}
               color={showMobileQrPicker ? "#FFFFFF" : TC.blue}
             />
-            <Text
-              style={[
-                s.decorationAddText,
-                showMobileQrPicker && s.decorationAddTextActive,
-                loadingMobileQrOptions && { opacity: 0.55 },
-              ]}
-            >
-              {loadingMobileQrOptions ? "QR 불러오는 중" : "모바일 QR 불러오기"}
-            </Text>
+            {loadingMobileQrOptions ? (
+              <LottieLoading
+                text="QR 불러오는 중"
+                size={24}
+                color={showMobileQrPicker ? "#FFFFFF" : TC.blue}
+                horizontal
+                textStyle={[
+                  s.decorationAddText,
+                  showMobileQrPicker && s.decorationAddTextActive,
+                  { opacity: 0.72 },
+                ]}
+              />
+            ) : (
+              <Text
+                style={[
+                  s.decorationAddText,
+                  showMobileQrPicker && s.decorationAddTextActive,
+                ]}
+              >
+                모바일 QR 불러오기
+              </Text>
+            )}
           </TouchableOpacity>
         )}
       </View>

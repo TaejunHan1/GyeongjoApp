@@ -16,11 +16,11 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as FileSystem from 'expo-file-system/legacy';
+import LottieLoading from '../../../../components/LottieLoading';
 
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mc2hxdnJsZGNlc3ZqdHJlZHhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkwNDI1MTQsImV4cCI6MjA2NDYxODUxNH0.uIfuqMP7SFvQfQXSESS9xKHWlBYeWmZwf1j_4eveZ6Q';
 
@@ -1663,10 +1663,7 @@ export const GuestBookMessages = ({
       {/* 메시지 목록 */}
       {loadingMessages ? (
         <View style={{ padding: 40, alignItems: 'center' }}>
-          <ActivityIndicator size="small" color="#666" />
-          <Text style={{ marginTop: 10, fontSize: 14, color: '#666' }}>
-            메시지를 불러오는 중...
-          </Text>
+          <LottieLoading text="메시지를 불러오는 중..." size={56} color="#666" />
         </View>
       ) : messages.length > 0 ? (
         messages.map((message, index) => (

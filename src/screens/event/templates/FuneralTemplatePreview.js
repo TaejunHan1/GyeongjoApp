@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
+import LottieLoading from '../../../components/LottieLoading';
 
 const { width, height } = Dimensions.get('window');
 const FUNERAL_PREVIEW_FRAME_WIDTH = Math.min(width - 40, 360);
@@ -2116,8 +2117,7 @@ const ModernCardTemplate = ({ eventData, categorizedImages, userImages, allowMes
                 />
               ) : (
                 <View style={styles.modernMapPlaceholder}>
-                  <Ionicons name="map-outline" size={24} color="#8B95A1" />
-                  <Text style={styles.modernMapPlaceholderText}>지도를 불러오는 중...</Text>
+                  <LottieLoading text="지도를 불러오는 중..." size={54} color="#8B95A1" />
                 </View>
               )}
             </View>
@@ -2480,8 +2480,7 @@ const EditorialTimelineTemplate = ({ eventData, categorizedImages, userImages, a
                 />
               ) : (
                 <View style={styles.timelineMapPlaceholder}>
-                  <Ionicons name="map-outline" size={24} color="#777068" />
-                  <Text style={styles.timelineMapPlaceholderText}>지도를 불러오는 중...</Text>
+                  <LottieLoading text="지도를 불러오는 중..." size={54} color="#777068" />
                 </View>
               )}
             </View>
@@ -2840,8 +2839,7 @@ const PaperLetterTemplate = ({ eventData, categorizedImages, userImages, allowMe
                       />
                     ) : (
                       <View style={styles.paperLetterMapPlaceholder}>
-                        <Ionicons name="map-outline" size={24} color="#8A7A65" />
-                        <Text style={styles.paperLetterMapPlaceholderText}>지도를 불러오는 중...</Text>
+                        <LottieLoading text="지도를 불러오는 중..." size={54} color="#8A7A65" />
                       </View>
                     )}
                   </View>

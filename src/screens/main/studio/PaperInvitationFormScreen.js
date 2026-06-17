@@ -69,6 +69,7 @@ const BRIDE_RELATION_OPTIONS = ["딸", "장녀", "차녀", "삼녀"];
 const PHOTO_TARGET_ASPECT = 3 / 4;
 const PHOTO_MAX_WIDTH = 1400;
 const TEST_PHOTO = require("../../../../assets/images/photo-book-preview.png");
+const MINIMAL1_TEST_PHOTO = require("../../../../assets/studio/samples/minimal1-test-couple.png");
 const INVITATION_TEXT_SAMPLES = {
   short: [
     "서로의 오늘을 약속하는 날,\n소중한 분들을 초대합니다.\n따뜻한 마음으로 함께해 주세요.",
@@ -93,8 +94,10 @@ const INVITATION_TEXT_SAMPLES = {
   ],
 };
 
-const getTestPhotoInfo = () => {
-  const resolved = Image.resolveAssetSource(TEST_PHOTO);
+const getTestPhotoInfo = (templateId) => {
+  const testPhoto =
+    templateId === "minimal-1" ? MINIMAL1_TEST_PHOTO : TEST_PHOTO;
+  const resolved = Image.resolveAssetSource(testPhoto);
   return {
     uri: resolved?.uri || null,
     aspect:
@@ -220,7 +223,7 @@ export default function PaperInvitationFormScreen({ navigation, route }) {
 
   const fillTestData = () => {
     const testDate = new Date(2026, 4, 14, 13, 0);
-    const samplePhoto = getTestPhotoInfo();
+    const samplePhoto = getTestPhotoInfo(template?.id);
 
     if (samplePhoto.uri) {
       setPhotoUri(samplePhoto.uri);

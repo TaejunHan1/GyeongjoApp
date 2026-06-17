@@ -7,6 +7,66 @@ import { buildEventSlugBase, buildSlugCandidate } from "./slugUtils";
 export const EVENT_CREATION_FREE_LIMIT = 2;
 export const EVENT_CREATION_CREDIT_COST = 60;
 export const EVENT_EDIT_CREDIT_COST = EVENT_CREATION_CREDIT_COST;
+export const EVENT_EXCEL_EXPORT_CREDIT_COST = 60;
+
+const EVENT_CREATION_REFUND_KEY_PREFIX = "event_creation_credit_refunded:";
+const inFlightEventCreationRefunds = new Set();
+
+const createEventCreationReservationId = ({
+  userId,
+  eventType,
+  paymentMethod,
+  reservedAt,
+}) => {
+  const random =
+    Math.random().toString(36).slice(2, 10) +
+    Math.random().toString(36).slice(2, 6);
+  return [
+    "ecr",
+    userId || "unknown",
+    eventType || "event",
+    paymentMethod || "unknown",
+    reservedAt || Date.now(),
+    random,
+  ]
+    .join(":")
+    .replace(/\s+/g, "_");
+};
+
+export const normalizeEventCreationCreditReservation = (
+  reservation,
+  eventType = null,
+) => {
+  if (!reservation?.success) return reservation || null;
+
+  const reservedAt = reservation.reservedAt || new Date().toISOString();
+  const paymentMethod =
+    reservation.paymentMethod || reservation.payment_method || null;
+  const normalized = {
+    ...reservation,
+    eventType: reservation.eventType || eventType || reservation.event_type,
+    userId: reservation.userId || reservation.user_id,
+    paymentMethod,
+    priceCredits: Number(
+      reservation.priceCredits ||
+        reservation.price_credits ||
+        EVENT_CREATION_CREDIT_COST,
+    ),
+    reservedAt,
+  };
+
+  normalized.reservationId =
+    reservation.reservationId ||
+    reservation.reservation_id ||
+    createEventCreationReservationId({
+      userId: normalized.userId,
+      eventType: normalized.eventType,
+      paymentMethod: normalized.paymentMethod,
+      reservedAt,
+    });
+
+  return normalized;
+};
 
 const parseJsonObject = (value) => {
   if (!value) return {};
@@ -358,12 +418,21 @@ export const consumeEventCreationCredit = async (eventType, userId = null) => {
     }
 
     return {
-      success: true,
-      paymentMethod: result.payment_method,
-      balance: Number(result.new_balance || 0),
-      freeUsed: Number(result.free_used || 0),
-      freeRemaining: Number(result.free_remaining || 0),
-      priceCredits: Number(result.price_credits || EVENT_CREATION_CREDIT_COST),
+      ...normalizeEventCreationCreditReservation(
+        {
+          success: true,
+          userId: targetUserId,
+          eventType,
+          paymentMethod: result.payment_method,
+          balance: Number(result.new_balance || 0),
+          freeUsed: Number(result.free_used || 0),
+          freeRemaining: Number(result.free_remaining || 0),
+          priceCredits: Number(
+            result.price_credits || EVENT_CREATION_CREDIT_COST,
+          ),
+        },
+        eventType,
+      ),
     };
   } catch (error) {
     return { success: false, error: "크레딧 사용에 실패했습니다." };
@@ -378,12 +447,44 @@ export const refundEventCreationCredit = async ({
   paymentMethod,
   priceCredits = EVENT_CREATION_CREDIT_COST,
   reason = "event_create_failed",
+  reservationId = null,
+  reservedAt = null,
+  eventType = null,
 }) => {
   if (!userId || !paymentMethod) {
     return { success: false, error: "환불 정보가 부족합니다." };
   }
 
+  const reservation = normalizeEventCreationCreditReservation(
+    {
+      success: true,
+      userId,
+      paymentMethod,
+      priceCredits,
+      reservationId,
+      reservedAt,
+      eventType,
+    },
+    eventType,
+  );
+  const refundKey = reservation?.reservationId
+    ? `${EVENT_CREATION_REFUND_KEY_PREFIX}${reservation.reservationId}`
+    : null;
+
   try {
+    if (refundKey) {
+      if (inFlightEventCreationRefunds.has(refundKey)) {
+        return { success: true, duplicate: true };
+      }
+
+      const alreadyRefunded = await AsyncStorage.getItem(refundKey);
+      if (alreadyRefunded === "true") {
+        return { success: true, duplicate: true };
+      }
+
+      inFlightEventCreationRefunds.add(refundKey);
+    }
+
     const { data, error } = await supabase.rpc("refund_event_creation_credit", {
       p_user_id: userId,
       p_payment_method: paymentMethod,
@@ -396,6 +497,10 @@ export const refundEventCreationCredit = async ({
     }
 
     const result = Array.isArray(data) ? data[0] : data;
+    if (result?.success && refundKey) {
+      await AsyncStorage.setItem(refundKey, "true");
+    }
+
     return {
       success: !!result?.success,
       balance: Number(result?.new_balance || 0),
@@ -403,6 +508,10 @@ export const refundEventCreationCredit = async ({
     };
   } catch (error) {
     return { success: false, error: "크레딧 복구에 실패했습니다." };
+  } finally {
+    if (refundKey) {
+      inFlightEventCreationRefunds.delete(refundKey);
+    }
   }
 };
 
@@ -419,19 +528,150 @@ const insertAlimtalkTransaction = async ({
   creditsChange,
   balanceAfter,
   memo,
+  eventId = null,
 }) => {
   try {
-    await supabase.from("alimtalk_transactions").insert([
-      {
-        user_id: userId,
-        type,
-        credits_change: creditsChange,
-        balance_after: balanceAfter,
-        memo,
-      },
-    ]);
+    const row = {
+      user_id: userId,
+      type,
+      credits_change: creditsChange,
+      balance_after: balanceAfter,
+      memo,
+    };
+    if (eventId) row.event_id = eventId;
+    await supabase.from("alimtalk_transactions").insert([row]);
   } catch {
     // 거래 기록 실패가 크레딧 처리 자체를 막지는 않도록 둔다.
+  }
+};
+
+export const consumeEventExcelExportCredit = async ({
+  eventId,
+  eventType,
+  userId = null,
+  priceCredits = EVENT_EXCEL_EXPORT_CREDIT_COST,
+} = {}) => {
+  try {
+    const targetUserId = await resolveCreditUserId(userId);
+    if (!targetUserId) {
+      return { success: false, error: "사용자 인증이 필요합니다.", balance: 0 };
+    }
+
+    const cost = Number(priceCredits || EVENT_EXCEL_EXPORT_CREDIT_COST);
+    const { data: userRow, error: balanceError } = await supabase
+      .from("users")
+      .select("alimtalk_balance")
+      .eq("id", targetUserId)
+      .single();
+
+    if (balanceError) {
+      return { success: false, error: balanceError.message, balance: 0 };
+    }
+
+    const balance = Number(userRow?.alimtalk_balance || 0);
+    if (balance < cost) {
+      return {
+        success: false,
+        error: "insufficient_balance",
+        balance,
+        priceCredits: cost,
+      };
+    }
+
+    const nextBalance = balance - cost;
+    const { data: updatedUser, error: updateError } = await supabase
+      .from("users")
+      .update({ alimtalk_balance: nextBalance })
+      .eq("id", targetUserId)
+      .gte("alimtalk_balance", cost)
+      .select("alimtalk_balance")
+      .maybeSingle();
+
+    if (updateError || !updatedUser) {
+      return {
+        success: false,
+        error: updateError?.message || "크레딧 차감에 실패했습니다.",
+        balance,
+        priceCredits: cost,
+      };
+    }
+
+    const finalBalance = Number(updatedUser?.alimtalk_balance ?? nextBalance);
+    await insertAlimtalkTransaction({
+      userId: targetUserId,
+      type: "adjust",
+      creditsChange: -cost,
+      balanceAfter: finalBalance,
+      eventId,
+      memo: `event_excel_export:${eventType || "event"}:${eventId || "unknown"}`,
+    });
+
+    return {
+      success: true,
+      paymentMethod: "credits",
+      balance: finalBalance,
+      priceCredits: cost,
+      userId: targetUserId,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "크레딧 차감에 실패했습니다.",
+      balance: 0,
+      priceCredits: EVENT_EXCEL_EXPORT_CREDIT_COST,
+    };
+  }
+};
+
+export const refundEventExcelExportCredit = async ({
+  userId,
+  eventId,
+  eventType,
+  priceCredits = EVENT_EXCEL_EXPORT_CREDIT_COST,
+  reason = "event_excel_export_failed",
+} = {}) => {
+  try {
+    const targetUserId = await resolveCreditUserId(userId);
+    if (!targetUserId) {
+      return { success: false, error: "사용자 인증이 필요합니다." };
+    }
+
+    const amount = Number(priceCredits || EVENT_EXCEL_EXPORT_CREDIT_COST);
+    const { data: userRow, error: balanceError } = await supabase
+      .from("users")
+      .select("alimtalk_balance")
+      .eq("id", targetUserId)
+      .single();
+
+    if (balanceError) {
+      return { success: false, error: balanceError.message };
+    }
+
+    const nextBalance = Number(userRow?.alimtalk_balance || 0) + amount;
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({ alimtalk_balance: nextBalance })
+      .eq("id", targetUserId);
+
+    if (updateError) {
+      return { success: false, error: updateError.message };
+    }
+
+    await insertAlimtalkTransaction({
+      userId: targetUserId,
+      type: "adjust",
+      creditsChange: amount,
+      balanceAfter: nextBalance,
+      eventId,
+      memo: `event_excel_export_refund:${eventType || "event"}:${eventId || "unknown"}:${reason}`,
+    });
+
+    return { success: true, balance: nextBalance };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "크레딧 복구에 실패했습니다.",
+    };
   }
 };
 
@@ -492,6 +732,7 @@ export const consumeEventEditCredit = async ({
       type: "adjust",
       creditsChange: -cost,
       balanceAfter: finalBalance,
+      eventId,
       memo: `event_edit:${eventType || "event"}:${eventId || "unknown"}`,
     });
 
@@ -551,6 +792,7 @@ export const refundEventEditCredit = async ({
       type: "adjust",
       creditsChange: amount,
       balanceAfter: nextBalance,
+      eventId,
       memo: `event_edit_refund:${eventType || "event"}:${eventId || "unknown"}:${reason}`,
     });
 
@@ -1174,7 +1416,8 @@ export const getUserEvents = async (passedUserInfo = null) => {
       `,
       )
       .eq("user_id", currentUser.id)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(0, 999);
 
     if (error) {
       throw error;
@@ -1428,7 +1671,10 @@ export const getAllUserEvents = async (passedUserInfo = null) => {
  * 새 이벤트 생성 (메시지 기능 및 이미지 업로드 포함) - 화이트리스트 방식
  */
 export const createEvent = async (eventData) => {
-  let creationCredit = eventData.event_creation_credit_reservation || null;
+  let creationCredit = normalizeEventCreationCreditReservation(
+    eventData.event_creation_credit_reservation || null,
+    eventData.event_type,
+  );
   let currentUser = null;
 
   try {
@@ -1438,6 +1684,15 @@ export const createEvent = async (eventData) => {
     }
 
     currentUser = userResult.user;
+
+    if (creationCredit?.reservationId) {
+      const refunded = await AsyncStorage.getItem(
+        `${EVENT_CREATION_REFUND_KEY_PREFIX}${creationCredit.reservationId}`,
+      );
+      if (refunded === "true") {
+        creationCredit = null;
+      }
+    }
 
     // ✅ 허용된 컬럼들만 화이트리스트로 추출 (실제 DB 컬럼들만)
     const allowedColumns = [
@@ -1863,6 +2118,9 @@ export const createEvent = async (eventData) => {
         userId: currentUser.id,
         paymentMethod: creationCredit.paymentMethod,
         priceCredits: creationCredit.priceCredits,
+        reservationId: creationCredit.reservationId,
+        reservedAt: creationCredit.reservedAt,
+        eventType: creationCredit.eventType || eventData.event_type,
         reason: `event_create_failed:${String(error.message || "unknown").slice(0, 120)}`,
       });
     }

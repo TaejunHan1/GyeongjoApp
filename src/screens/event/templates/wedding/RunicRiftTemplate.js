@@ -20,6 +20,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import LottieLoading from '../../../../components/LottieLoading';
 import {
   defaultImages,
   formatKoreanDate,
@@ -371,7 +372,7 @@ export default function RunicRiftTemplate({ eventData = {}, categorizedImages = 
                     originWhitelist={['*']}
                   />
                 ) : (
-                  <Text style={s.mapLoading}>지도를 불러오는 중...</Text>
+                  <LottieLoading text="지도를 불러오는 중..." size={54} color={C.sub} />
                 )}
               </View>
               <View style={s.navRow}>

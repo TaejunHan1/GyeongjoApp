@@ -6,6 +6,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import LottieLoading from '../../../../components/LottieLoading';
 import {
   getCategorizedImagesSafe,
   useCountdown,
@@ -497,7 +498,7 @@ export default function ClassicElegantTemplate({ eventData = {}, categorizedImag
               </View>
             ) : (locAddr || locName) ? (
               <View style={s.mapPlaceholder}>
-                <Text style={{ fontSize: 14, color: C.sub }}>지도를 불러오는 중...</Text>
+                <LottieLoading text="지도를 불러오는 중..." size={54} color={C.sub} />
               </View>
             ) : null}
 

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="432" height="240" viewBox="0 0 432 240">
+  <rect width="432" height="240" fill="#f7f7f7"/>
+  <ellipse cx="216" cy="120" rx="119" ry="37" fill="#F8C2D2"/>
+  <ellipse cx="216" cy="120" rx="110" ry="28" fill="none" stroke="rgba(25,25,25,0.45)" stroke-width="1.5"/>
+  <text x="216" y="128" text-anchor="middle" font-family="Arial, sans-serif" font-size="21" font-weight="900" fill="#202020">오시는 길</text>
+</svg>

@@ -39,7 +39,6 @@ import {
   getEventStatistics,
   deleteGuestBookEntry,
   getEventCreationCreditState,
-  consumeEventCreationCredit,
   markEventCreationWelcomeSeen,
   EVENT_CREATION_CREDIT_COST,
   EVENT_CREATION_FREE_LIMIT,
@@ -47,6 +46,7 @@ import {
 } from "../../lib/supabaseHelper";
 import * as Notifications from "expo-notifications";
 import NotificationPermissionModal from "../../components/NotificationPermissionModal";
+import LottieLoading from "../../components/LottieLoading";
 import { useTutorial } from "../../contexts/TutorialContext";
 import TutorialPulseRing from "../../components/TutorialPulseRing";
 import {
@@ -57,11 +57,55 @@ import { getInvitationUrl } from "../../lib/webLinks";
 
 const { width } = Dimensions.get("window");
 const isTablet = width >= 768;
+const HOSTED_PHOTO_WIDTH = isTablet ? 140 : 102;
+const HOSTED_PHOTO_HEIGHT = isTablet ? 148 : 116;
 const RECIPROCITY_EVENT_ICONS = {
   wedding: require("../../../assets/icons/reciprocity/wedding.png"),
   funeral: require("../../../assets/icons/reciprocity/funeral.png"),
 };
 const JEONGDAM_LOGO = require("../../../assets/images/jeongdamlogo.png");
+const HOME_BANNERS = [
+  {
+    title: "스마트하게\n부조를 기록하세요",
+    mobileImage: require("../../../assets/home-banners/generated/mobile/smart-ledger-bg.png"),
+    tabletImage: require("../../../assets/home-banners/generated/tablet/smart-ledger-bg.png"),
+  },
+  {
+    title: "마음을 나누는\n가장 쉬운 방법",
+    mobileImage: require("../../../assets/home-banners/generated/mobile/easy-heart-bg.png"),
+    tabletImage: require("../../../assets/home-banners/generated/tablet/easy-heart-bg.png"),
+  },
+  {
+    title: "소중한 순간을\n함께 기록하세요",
+    mobileImage: require("../../../assets/home-banners/generated/mobile/memory-bg.png"),
+    tabletImage: require("../../../assets/home-banners/generated/tablet/memory-bg.png"),
+  },
+];
+const SHOW_HOME_PUMASI_SECTION = false;
+const FUNERAL_HOME_FRAME_SOURCES = {
+  "funeral-template-modern-card": require("../../../assets/funeral/templates/funeral-template-modern-card.png"),
+  "photo-frame-modern-card": require("../../../assets/funeral/templates/funeral-template-modern-card.png"),
+  "funeral-template-editorial-timeline": require("../../../assets/funeral/templates/funeral-template-editorial-timeline.png"),
+  "photo-frame-editorial-timeline": require("../../../assets/funeral/templates/funeral-template-editorial-timeline.png"),
+  "funeral-template-paper-letter": require("../../../assets/funeral/templates/funeral-template-paper-letter.png"),
+  "photo-frame-paper-letter": require("../../../assets/funeral/templates/funeral-template-paper-letter.png"),
+  "funeral-template-certificate": require("../../../assets/funeral/templates/funeral-template-certificate.png"),
+  "photo-frame-certificate": require("../../../assets/funeral/templates/funeral-template-certificate.png"),
+  "funeral-template-classic-flower": require("../../../assets/funeral/templates/funeral-template-classic-flower.png"),
+  "photo-frame-classic-flower": require("../../../assets/funeral/templates/funeral-template-classic-flower.png"),
+};
+const FUNERAL_HOME_FRAME_ASPECT_RATIOS = {
+  "funeral-template-modern-card": 1024 / 1535,
+  "photo-frame-modern-card": 1024 / 1535,
+  "funeral-template-editorial-timeline": 941 / 1672,
+  "photo-frame-editorial-timeline": 941 / 1672,
+  "funeral-template-paper-letter": 941 / 1672,
+  "photo-frame-paper-letter": 941 / 1672,
+  "funeral-template-certificate": 941 / 1672,
+  "photo-frame-certificate": 941 / 1672,
+  "funeral-template-classic-flower": 1024 / 1535,
+  "photo-frame-classic-flower": 1024 / 1535,
+};
 
 // 🔥 이벤트 역할 구분
 const EVENT_ROLES = {
@@ -478,6 +522,9 @@ export default function HomeScreen({
   const [selectedTab, setSelectedTab] = useState("active"); // 'active' or 'completed'
   const [hostedSortBy, setHostedSortBy] = useState("eventDate"); // 'eventDate' or 'createdAt'
   const [hostedSortOrder, setHostedSortOrder] = useState("desc"); // 'desc' or 'asc'
+  const [hostedPhotoPageByEventIds, setHostedPhotoPageByEventIds] = useState(
+    {},
+  );
 
   // 🚀 캐싱을 위한 상태들 - 성능 최적화
   const [lastLoadTime, setLastLoadTime] = useState(0);
@@ -541,12 +588,16 @@ export default function HomeScreen({
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const bannerScrollRef = useRef(null);
-  const bannerWidth = Dimensions.get("window").width;
+  const bannerWidth = Dimensions.get("window").width - 40;
+  const currentSlideRef = useRef(0);
+  const isHomeScrollingRef = useRef(false);
+  const scrollIdleTimerRef = useRef(null);
   const eventIdsRef = useRef([]);
   const hostedEventMetaRef = useRef(new Map());
   const reciprocityRealtimeSeenRef = useRef(new Set());
   const reciprocityKnownIdsRef = useRef(new Set());
   const reciprocityNotifyAfterRef = useRef(new Date().toISOString());
+  const reciprocitySignatureRef = useRef("");
 
   // 토스 모달 애니메이션 값들
   const confirmModalSlideAnim = useRef(new Animated.Value(0)).current;
@@ -567,23 +618,7 @@ export default function HomeScreen({
   }, [userInfo, session, isAuthenticated]);
 
   // 배너 데이터 - 이미지 카드 스타일
-  const banners = [
-    {
-      title: "스마트하게\n부조를 기록하세요",
-      mobileImage: require("../../../assets/home-banners/mobile/smart-ledger-bg.png"),
-      tabletImage: require("../../../assets/home-banners/tablet/smart-ledger-bg.png"),
-    },
-    {
-      title: "마음을 나누는\n가장 쉬운 방법",
-      mobileImage: require("../../../assets/home-banners/mobile/easy-heart-bg.png"),
-      tabletImage: require("../../../assets/home-banners/tablet/easy-heart-bg.png"),
-    },
-    {
-      title: "소중한 순간을\n함께 기록하세요",
-      mobileImage: require("../../../assets/home-banners/mobile/memory-bg.png"),
-      tabletImage: require("../../../assets/home-banners/tablet/memory-bg.png"),
-    },
-  ];
+  const banners = HOME_BANNERS;
 
   // 화면 포커스 시 데이터 새로고침 - 캐싱과 병렬 로딩으로 성능 최적화
   useFocusEffect(
@@ -638,6 +673,35 @@ export default function HomeScreen({
         ]),
     );
   }, [events]);
+
+  useEffect(() => {
+    currentSlideRef.current = currentSlide;
+  }, [currentSlide]);
+
+  useEffect(
+    () => () => {
+      if (scrollIdleTimerRef.current) {
+        clearTimeout(scrollIdleTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const markHomeScrollActive = () => {
+    isHomeScrollingRef.current = true;
+    if (scrollIdleTimerRef.current) {
+      clearTimeout(scrollIdleTimerRef.current);
+    }
+  };
+
+  const markHomeScrollIdleSoon = () => {
+    if (scrollIdleTimerRef.current) {
+      clearTimeout(scrollIdleTimerRef.current);
+    }
+    scrollIdleTimerRef.current = setTimeout(() => {
+      isHomeScrollingRef.current = false;
+    }, 220);
+  };
 
   // 홈 튜토리얼 자동 시작 — 로그인 후 첫 진입 시 1회
   useEffect(() => {
@@ -815,7 +879,9 @@ export default function HomeScreen({
   // 자동 배너 슬라이드
   useEffect(() => {
     const interval = setInterval(() => {
-      const nextIndex = (currentSlide + 1) % banners.length;
+      if (isHomeScrollingRef.current) return;
+
+      const nextIndex = (currentSlideRef.current + 1) % banners.length;
       bannerScrollRef.current?.scrollTo({
         x: nextIndex * bannerWidth,
         animated: true,
@@ -823,7 +889,7 @@ export default function HomeScreen({
       setCurrentSlide(nextIndex);
     }, 3500);
     return () => clearInterval(interval);
-  }, [currentSlide, bannerWidth]);
+  }, [bannerWidth, banners.length]);
 
   // 📱 알림 권한 체크 및 설정
   useEffect(() => {
@@ -1354,14 +1420,14 @@ export default function HomeScreen({
       return {
         isPaid: false,
         text: `무료 생성 ${freeRemaining}회 남음`,
-        detail: `이번 생성은 무료 생성 횟수 1회가 사용됩니다.`,
+        detail: `청첩장/부고장 만들기를 완료할 때 무료 생성 횟수 1회가 사용됩니다.`,
       };
     }
 
     return {
       isPaid: true,
       text: `${priceCredits}크레딧 차감`,
-      detail: `무료 생성 횟수를 모두 사용해서 이번 생성에는 ${priceCredits}크레딧이 차감됩니다. 현재 잔액은 ${balance}크레딧입니다.`,
+      detail: `무료 생성 횟수를 모두 사용해서 만들기를 완료할 때 ${priceCredits}크레딧이 차감됩니다. 현재 잔액은 ${balance}크레딧입니다.`,
     };
   };
 
@@ -1386,47 +1452,12 @@ export default function HomeScreen({
     const state = latestState || eventCreationCreditState;
     const notice = getCreationCreditNotice(state);
 
-    const proceedWithCredit = async () => {
-      const creditResult = await consumeEventCreationCredit(eventType, user.id);
-      if (!creditResult.success) {
-        if (creditResult.error === "insufficient_balance") {
-          showCreditShortageModal(eventType, {
-            ...state,
-            balance: creditResult.balance ?? state?.balance ?? 0,
-            priceCredits:
-              creditResult.priceCredits ??
-              state?.priceCredits ??
-              EVENT_CREATION_CREDIT_COST,
-          });
-          return;
-        }
-        Alert.alert(
-          "크레딧 사용 실패",
-          creditResult.error || "크레딧을 사용하는 중 문제가 발생했습니다.",
-        );
-        return;
-      }
-
-      setEventCreationCreditState((prev) => ({
-        ...prev,
-        balance: creditResult.balance,
-        freeUsed: creditResult.freeUsed,
-        freeRemaining: creditResult.freeRemaining,
-        priceCredits: creditResult.priceCredits,
-      }));
-
-      handleQuickStart(eventType, {
-        eventCreationCreditReservation: {
-          ...creditResult,
-          success: true,
-          userId: user.id,
-          eventType,
-        },
-      });
+    const proceedToCreateScreen = () => {
+      handleQuickStart(eventType);
     };
 
     if (!notice.isPaid) {
-      await proceedWithCredit();
+      proceedToCreateScreen();
       return;
     }
 
@@ -1439,11 +1470,11 @@ export default function HomeScreen({
     }
 
     Alert.alert(
-      `${state?.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 차감됩니다`,
+      `완료 시 ${state?.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 차감됩니다`,
       `${eventType === "funeral" ? "부고장" : "청첩장"} 만들기를 완료하면 ${state?.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 사용됩니다.\n계속 진행할까요?`,
       [
         { text: "취소", style: "cancel" },
-        { text: "진행하기", onPress: proceedWithCredit },
+        { text: "진행하기", onPress: proceedToCreateScreen },
       ],
     );
   };
@@ -1847,32 +1878,37 @@ export default function HomeScreen({
       : RECIPROCITY_EVENT_ICONS.wedding;
 
   // 🔥 나의 경조사 관리는 주최한 경조사만 사용 (개인 일정 완전 제외)
-  const hostedEvents = events.filter((event, index, self) => {
-    // 중복 제거
-    const isUnique = index === self.findIndex((e) => e.id === event.id);
-    // 개인 일정 제외 (source가 'personal'이거나 is_personal_schedule이 true인 항목 제외)
-    const isNotPersonalSchedule = !(
-      event.source === "personal" || event.is_personal_schedule
-    );
-    // 실제 경조사 이벤트만 포함 (created_by나 user_id가 있는 주최한 경조사)
-    const isHostedEvent =
-      event.created_by || (event.user_id && !event.is_personal_schedule);
+  const hostedEvents = useMemo(
+    () =>
+      events.filter((event, index, self) => {
+        // 중복 제거
+        const isUnique = index === self.findIndex((e) => e.id === event.id);
+        // 개인 일정 제외 (source가 'personal'이거나 is_personal_schedule이 true인 항목 제외)
+        const isNotPersonalSchedule = !(
+          event.source === "personal" || event.is_personal_schedule
+        );
+        // 실제 경조사 이벤트만 포함 (created_by나 user_id가 있는 주최한 경조사)
+        const isHostedEvent =
+          event.created_by || (event.user_id && !event.is_personal_schedule);
 
-    return isUnique && isNotPersonalSchedule && isHostedEvent;
-  });
+        return isUnique && isNotPersonalSchedule && isHostedEvent;
+      }),
+    [events],
+  );
 
   // 🔥 서울 시간 기준으로 진행중/완료 분류 - 주최한 경조사만
-  const activeEventsFiltered = hostedEvents.filter((event) => {
-    const isCompleted = isEventCompleted(event);
-    return !isCompleted;
-  });
+  const activeEventsFiltered = useMemo(
+    () => hostedEvents.filter((event) => !isEventCompleted(event)),
+    [hostedEvents],
+  );
 
-  const completedEventsFiltered = hostedEvents.filter((event) => {
-    const isCompleted = isEventCompleted(event);
-    return isCompleted;
-  });
-  const thankYouReadyEvents = hostedEvents.filter(
-    (event) => event.is_finalized === true,
+  const completedEventsFiltered = useMemo(
+    () => hostedEvents.filter((event) => isEventCompleted(event)),
+    [hostedEvents],
+  );
+  const thankYouReadyEvents = useMemo(
+    () => hostedEvents.filter((event) => event.is_finalized === true),
+    [hostedEvents],
   );
 
   const getHostedEventSortTime = (event) => {
@@ -1884,8 +1920,10 @@ export default function HomeScreen({
     return Number.isFinite(time) ? time : null;
   };
 
-  const sortHostedEvents = (eventList) =>
-    [...eventList].sort((a, b) => {
+  const sortedDisplayedEvents = useMemo(() => {
+    const eventList =
+      selectedTab === "active" ? activeEventsFiltered : completedEventsFiltered;
+    return [...eventList].sort((a, b) => {
       const aTime = getHostedEventSortTime(a);
       const bTime = getHostedEventSortTime(b);
 
@@ -1900,6 +1938,13 @@ export default function HomeScreen({
 
       return hostedSortOrder === "asc" ? aTime - bTime : bTime - aTime;
     });
+  }, [
+    activeEventsFiltered,
+    completedEventsFiltered,
+    hostedSortBy,
+    hostedSortOrder,
+    selectedTab,
+  ]);
 
   const handleHostedSortByPress = (sortBy) => {
     setHostedSortBy(sortBy);
@@ -1912,15 +1957,27 @@ export default function HomeScreen({
   };
 
   // 🔥 페이지네이션으로 표시
-  const displayedEvents = sortHostedEvents(
-    selectedTab === "active" ? activeEventsFiltered : completedEventsFiltered,
-  );
+  const displayedEvents = sortedDisplayedEvents;
   const totalCount = displayedEvents.length;
-  const hostedTotalPages = Math.ceil(totalCount / eventsPerPage);
-  const currentEvents = displayedEvents.slice(
-    hostedEventPage * eventsPerPage,
-    (hostedEventPage + 1) * eventsPerPage,
+  const hostedTotalPages = Math.max(1, Math.ceil(totalCount / eventsPerPage));
+  const safeHostedEventPage = Math.min(
+    Math.max(0, hostedEventPage),
+    hostedTotalPages - 1,
   );
+  const currentEvents = useMemo(
+    () =>
+      displayedEvents.slice(
+        safeHostedEventPage * eventsPerPage,
+        (safeHostedEventPage + 1) * eventsPerPage,
+      ),
+    [displayedEvents, safeHostedEventPage],
+  );
+
+  useEffect(() => {
+    if (hostedEventPage !== safeHostedEventPage) {
+      setHostedEventPage(safeHostedEventPage);
+    }
+  }, [hostedEventPage, safeHostedEventPage]);
 
   // 🔥 금액 포맷팅 함수
   const formatAmount = (amount) => {
@@ -1973,8 +2030,9 @@ export default function HomeScreen({
   const EVENT_GUESTBOOK_PER_PAGE = 3;
 
   // 줬음 기록된 guest_book id 세트
-  const gaveLinkedIds = new Set(
-    pumasiGave.map((g) => g.linked_guest_id).filter(Boolean),
+  const gaveLinkedIds = useMemo(
+    () => new Set(pumasiGave.map((g) => g.linked_guest_id).filter(Boolean)),
+    [pumasiGave],
   );
 
   // 영어 DB 값 → 한글 변환 (표시용)
@@ -2010,58 +2068,72 @@ export default function HomeScreen({
   };
 
   // 요약 금액용: 줬음 제외 없이 필터 조건만 적용 (한글 기준 비교)
-  const filteredPumasiReceivedAll = pumasiReceived.filter((item) => {
-    if (pumasiFilterEvent && item.event_id !== pumasiFilterEvent.id)
-      return false;
-    if (
-      pumasiFilterSide &&
-      koreanCat(item.relation_category) !== pumasiFilterSide
-    )
-      return false;
-    if (
-      pumasiFilterRelation &&
-      koreanDet(item.relation_detail) !== pumasiFilterRelation
-    )
-      return false;
-    return true;
-  });
+  const filteredPumasiReceivedAll = useMemo(
+    () =>
+      pumasiReceived.filter((item) => {
+        if (pumasiFilterEvent && item.event_id !== pumasiFilterEvent.id)
+          return false;
+        if (
+          pumasiFilterSide &&
+          koreanCat(item.relation_category) !== pumasiFilterSide
+        )
+          return false;
+        if (
+          pumasiFilterRelation &&
+          koreanDet(item.relation_detail) !== pumasiFilterRelation
+        )
+          return false;
+        return true;
+      }),
+    [pumasiFilterEvent, pumasiFilterRelation, pumasiFilterSide, pumasiReceived],
+  );
 
   // 목록용: 이미 줬음 기록된 항목 추가 제외
-  const filteredPumasiReceived = filteredPumasiReceivedAll.filter(
-    (item) => !gaveLinkedIds.has(item.id),
+  const filteredPumasiReceived = useMemo(
+    () =>
+      filteredPumasiReceivedAll.filter((item) => !gaveLinkedIds.has(item.id)),
+    [filteredPumasiReceivedAll, gaveLinkedIds],
   );
 
   // 선택된 경조사의 측 목록 — 한글로 변환 후 중복 제거 (groom/신랑측 통합)
-  const availableSides = pumasiFilterEvent
-    ? [
-        ...new Set(
-          pumasiReceived
-            .filter((g) => g.event_id === pumasiFilterEvent.id)
-            .map((g) => koreanCat(g.relation_category))
-            .filter(Boolean),
-        ),
-      ]
-    : [];
+  const availableSides = useMemo(
+    () =>
+      pumasiFilterEvent
+        ? [
+            ...new Set(
+              pumasiReceived
+                .filter((g) => g.event_id === pumasiFilterEvent.id)
+                .map((g) => koreanCat(g.relation_category))
+                .filter(Boolean),
+            ),
+          ]
+        : [],
+    [pumasiFilterEvent, pumasiReceived],
+  );
 
   // 선택된 경조사 + 측의 관계 목록 — 한글로 변환 후 중복 제거
-  const availableRelations = pumasiFilterEvent
-    ? [
-        ...new Set(
-          pumasiReceived
-            .filter((g) => {
-              if (g.event_id !== pumasiFilterEvent.id) return false;
-              if (
-                pumasiFilterSide &&
-                koreanCat(g.relation_category) !== pumasiFilterSide
-              )
-                return false;
-              return true;
-            })
-            .map((g) => koreanDet(g.relation_detail))
-            .filter(Boolean),
-        ),
-      ]
-    : [];
+  const availableRelations = useMemo(
+    () =>
+      pumasiFilterEvent
+        ? [
+            ...new Set(
+              pumasiReceived
+                .filter((g) => {
+                  if (g.event_id !== pumasiFilterEvent.id) return false;
+                  if (
+                    pumasiFilterSide &&
+                    koreanCat(g.relation_category) !== pumasiFilterSide
+                  )
+                    return false;
+                  return true;
+                })
+                .map((g) => koreanDet(g.relation_detail))
+                .filter(Boolean),
+            ),
+          ]
+        : [],
+    [pumasiFilterEvent, pumasiFilterSide, pumasiReceived],
+  );
 
   const parseGuestAdditionalInfo = (value) => {
     if (!value) return {};
@@ -2109,8 +2181,20 @@ export default function HomeScreen({
     }
   };
 
+  const recentGuestbookByEventId = useMemo(() => {
+    const grouped = new Map();
+    recentGuestbookMessages.forEach((item) => {
+      const eventId = item.event_id;
+      if (!eventId) return;
+      const list = grouped.get(eventId) || [];
+      list.push(item);
+      grouped.set(eventId, list);
+    });
+    return grouped;
+  }, [recentGuestbookMessages]);
+
   const getRecentGuestbookForEvent = (eventId) =>
-    recentGuestbookMessages.filter((item) => item.event_id === eventId);
+    recentGuestbookByEventId.get(eventId) || [];
 
   const toggleGuestbookForEvent = (eventId) => {
     setExpandedGuestbookEventIds((prev) => ({
@@ -2554,12 +2638,26 @@ export default function HomeScreen({
     await showReciprocityLocalNotification(newItems[0], { showAlert: true });
   };
 
-  const loadReciprocityNotifications = async ({ notifyNew = false } = {}) => {
-    setReciprocityLoading(true);
+  const getReciprocitySignature = (items = []) =>
+    items
+      .map(
+        (item) =>
+          `${item.id || ""}:${item.status || ""}:${item.created_at || ""}:${item.updated_at || ""}`,
+      )
+      .join("|");
+
+  const loadReciprocityNotifications = async ({
+    notifyNew = false,
+    silent = false,
+    skipIfScrolling = false,
+  } = {}) => {
+    if (skipIfScrolling && isHomeScrollingRef.current) return;
+    if (!silent) setReciprocityLoading(true);
     try {
       const res = await getReciprocityNotifications(currentUserId);
       if (res?.success) {
         const nextItems = res.data || [];
+        const nextSignature = getReciprocitySignature(nextItems);
         if (notifyNew) {
           await notifyNewReciprocityItems(nextItems);
         } else {
@@ -2567,12 +2665,15 @@ export default function HomeScreen({
             nextItems.map((item) => item.id).filter(Boolean),
           );
         }
-        setReciprocityNotifications(nextItems);
+        if (nextSignature !== reciprocitySignatureRef.current) {
+          reciprocitySignatureRef.current = nextSignature;
+          setReciprocityNotifications(nextItems);
+        }
       }
     } catch (e) {
       console.error("loadReciprocityNotifications error:", e);
     } finally {
-      setReciprocityLoading(false);
+      if (!silent) setReciprocityLoading(false);
     }
   };
 
@@ -2664,12 +2765,18 @@ export default function HomeScreen({
     }
   }, [groupedReciprocityNotifications.length, reciprocityPage]);
 
-  const actionableReciprocityNotifications =
-    groupedReciprocityNotifications.filter((item) => item.status !== "read");
-  const visibleReciprocityNotifications =
-    groupedReciprocityNotifications.filter(
-      (item) => item.status !== "dismissed",
-    );
+  const actionableReciprocityNotifications = useMemo(
+    () =>
+      groupedReciprocityNotifications.filter((item) => item.status !== "read"),
+    [groupedReciprocityNotifications],
+  );
+  const visibleReciprocityNotifications = useMemo(
+    () =>
+      groupedReciprocityNotifications.filter(
+        (item) => item.status !== "dismissed",
+      ),
+    [groupedReciprocityNotifications],
+  );
   const reciprocityUnreadCount = actionableReciprocityNotifications.filter(
     (item) => item.status === "unread",
   ).length;
@@ -2724,10 +2831,13 @@ export default function HomeScreen({
   useEffect(() => {
     if (!currentUserId) return;
 
-    loadReciprocityNotifications();
+    loadReciprocityNotifications({ silent: true });
     const intervalId = setInterval(() => {
-      loadReciprocityNotifications();
-    }, 8000);
+      loadReciprocityNotifications({
+        silent: true,
+        skipIfScrolling: true,
+      });
+    }, 30000);
 
     return () => clearInterval(intervalId);
   }, [currentUserId]);
@@ -2744,12 +2854,195 @@ export default function HomeScreen({
   // 품앗이 데이터 로드 (events 로드 완료 후)
   useEffect(() => {
     if ((user?.id || userInfo?.userId) && events.length > 0) {
-      loadPumasiReceived();
-      loadPumasiGave();
+      if (SHOW_HOME_PUMASI_SECTION) {
+        loadPumasiReceived();
+        loadPumasiGave();
+      }
       loadRecentGuestbookMessages();
-      loadReciprocityNotifications();
+      loadReciprocityNotifications({ silent: true });
     }
   }, [user?.id, userInfo?.userId, events.length]);
+
+  const getImageUrlFromValue = (value) => {
+    if (!value) return null;
+    if (typeof value === "string") return value;
+    if (typeof value !== "object") return null;
+    return (
+      value.publicUrl ||
+      value.public_url ||
+      value.signedUrl ||
+      value.signed_url ||
+      value.url ||
+      value.uri ||
+      value.image_url ||
+      value.photo_url ||
+      null
+    );
+  };
+
+  const isRenderableHostedImageUri = (uri) => {
+    if (typeof uri !== "string") return false;
+    const value = uri.trim();
+    if (!value) return false;
+    return /^(https?:\/\/|file:\/\/|content:\/\/|data:image\/|asset:\/\/|ph:\/\/)/i.test(
+      value,
+    );
+  };
+
+  const getHostedImageIdentity = (uri) => {
+    if (typeof uri !== "string") return "";
+    const trimmed = uri.trim();
+    if (!trimmed) return "";
+    return trimmed.split("?")[0].replace(/\/+$/, "");
+  };
+
+  const normalizeHostedImageList = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          return [trimmed];
+        }
+      }
+      return trimmed.includes(",")
+        ? trimmed.split(",").map((item) => item.trim())
+        : [trimmed];
+    }
+    if (typeof value === "object") return [value];
+    return [];
+  };
+
+  const getHostedEventAdditionalInfo = (event) => {
+    if (!event?.additional_info) return {};
+    if (typeof event.additional_info === "object") return event.additional_info;
+    try {
+      return JSON.parse(event.additional_info);
+    } catch {
+      return {};
+    }
+  };
+
+  const getHostedEventPhotos = (event) => {
+    const additionalInfo = getHostedEventAdditionalInfo(event);
+    const categorized = additionalInfo?.categorized_images || {};
+    const orderedCandidates = [
+      ...normalizeHostedImageList(categorized.main),
+      ...normalizeHostedImageList(
+        event?.image_urls?.filter?.((img) => img?.category === "main"),
+      ),
+      ...normalizeHostedImageList(categorized.gallery),
+      ...normalizeHostedImageList(
+        event?.image_urls?.filter?.((img) => img?.category === "gallery"),
+      ),
+      ...normalizeHostedImageList(categorized.all),
+      ...normalizeHostedImageList(event?.image_urls),
+      event?.main_image_url,
+      event?.main_photo_url,
+      event?.cover_image_url,
+      event?.thumbnail_url,
+      event?.photo_url,
+      event?.image_url,
+    ];
+
+    const seen = new Set();
+    return orderedCandidates
+      .map(getImageUrlFromValue)
+      .filter((url) => typeof url === "string")
+      .map((url) => url.trim())
+      .filter(isRenderableHostedImageUri)
+      .filter((url) => {
+        const identity = getHostedImageIdentity(url);
+        if (seen.has(identity)) return false;
+        seen.add(identity);
+        return true;
+      })
+      .slice(0, 3);
+  };
+
+  const getHostedFuneralPhotoStyle = (event) => {
+    if (event?.event_type !== "funeral") return null;
+    const additionalInfo = getHostedEventAdditionalInfo(event);
+    const rawLayout =
+      event?.mainPhotoLayout ||
+      event?.main_photo_layout ||
+      additionalInfo.main_photo_layout ||
+      additionalInfo.mainPhotoLayout ||
+      {};
+    const scale = Number(rawLayout.scale);
+    const translateX = Number(rawLayout.translateX);
+    const translateY = Number(rawLayout.translateY);
+    const baseWidth = Number(rawLayout.baseWidth);
+    const renderScale =
+      HOSTED_PHOTO_WIDTH /
+      (Number.isFinite(baseWidth) && baseWidth > 0 ? baseWidth : width * 0.88);
+
+    return {
+      transform: [
+        {
+          translateX: Number.isFinite(translateX)
+            ? translateX * renderScale
+            : 0,
+        },
+        {
+          translateY: Number.isFinite(translateY)
+            ? translateY * renderScale
+            : 0,
+        },
+        {
+          scale: Number.isFinite(scale) ? Math.min(3, Math.max(0.25, scale)) : 1,
+        },
+      ],
+    };
+  };
+
+  const getHostedFuneralFrameKey = (event) => {
+    if (event?.event_type !== "funeral") return null;
+    const additionalInfo = getHostedEventAdditionalInfo(event);
+    const frame =
+      additionalInfo.photo_frame ||
+      additionalInfo.photoFrame ||
+      event?.photo_frame ||
+      event?.photoFrame ||
+      {};
+    return frame.key || frame.id || event?.photoFrameKey || null;
+  };
+
+  const getHostedFuneralFrameSource = (event) => {
+    if (event?.event_type !== "funeral") return null;
+    const frameKey = getHostedFuneralFrameKey(event);
+    return (
+      FUNERAL_HOME_FRAME_SOURCES[frameKey] ||
+      FUNERAL_HOME_FRAME_SOURCES["funeral-template-modern-card"]
+    );
+  };
+
+  const getHostedPhotoFrameHeight = (event) => {
+    if (event?.event_type !== "funeral") return HOSTED_PHOTO_HEIGHT;
+    const frameKey = getHostedFuneralFrameKey(event);
+    const aspectRatio =
+      FUNERAL_HOME_FRAME_ASPECT_RATIOS[frameKey] ||
+      FUNERAL_HOME_FRAME_ASPECT_RATIOS["funeral-template-modern-card"];
+    return Math.round(HOSTED_PHOTO_WIDTH / aspectRatio);
+  };
+
+  const handleHostedPhotoScroll = (eventId, nativeEvent) => {
+    const nextIndex = Math.round(
+      nativeEvent.contentOffset.x / HOSTED_PHOTO_WIDTH,
+    );
+    setHostedPhotoPageByEventIds((prev) => {
+      if (prev[eventId] === nextIndex) return prev;
+      return {
+        ...prev,
+        [eventId]: nextIndex,
+      };
+    });
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -2762,6 +3055,7 @@ export default function HomeScreen({
             source={JEONGDAM_LOGO}
             style={styles.headerLogoLarge}
             resizeMode="contain"
+            fadeDuration={0}
           />
         </View>
         <View style={styles.headerLeft}>
@@ -2773,7 +3067,7 @@ export default function HomeScreen({
           </View>
           <View style={styles.headerCreditRow}>
             <View style={styles.headerCreditChip}>
-              <Ionicons name="diamond-outline" size={13} color="#0F766E" />
+              <Ionicons name="diamond" size={15} color="#2F80ED" />
               <Text style={styles.headerCreditText} numberOfLines={1}>
                 {eventCreationCreditState.balance} 크레딧
               </Text>
@@ -2781,7 +3075,7 @@ export default function HomeScreen({
             <View
               style={[styles.headerCreditChip, styles.headerCreditChipWarm]}
             >
-              <Ionicons name="gift-outline" size={13} color="#B45309" />
+              <Ionicons name="gift" size={15} color="#7C3AED" />
               <Text
                 style={[styles.headerCreditText, styles.headerCreditTextWarm]}
                 numberOfLines={1}
@@ -2804,7 +3098,16 @@ export default function HomeScreen({
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={32}
+        removeClippedSubviews={Platform.OS === "android"}
+        onScrollBeginDrag={markHomeScrollActive}
+        onScrollEndDrag={markHomeScrollIdleSoon}
+        onMomentumScrollBegin={markHomeScrollActive}
+        onMomentumScrollEnd={markHomeScrollIdleSoon}
+      >
         {/* 배너 캐러셀 */}
         <View style={styles.welcomeSection}>
           <ScrollView
@@ -2812,9 +3115,8 @@ export default function HomeScreen({
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
-            scrollEventThrottle={16}
-            style={{ marginHorizontal: -20 }}
-            onScroll={(e) => {
+            scrollEventThrottle={32}
+            onMomentumScrollEnd={(e) => {
               const idx = Math.round(
                 e.nativeEvent.contentOffset.x / bannerWidth,
               );
@@ -2834,6 +3136,7 @@ export default function HomeScreen({
                   ]}
                   imageStyle={styles.welcomeCardBackgroundImage}
                   resizeMode="cover"
+                  fadeDuration={0}
                 >
                   <View style={styles.welcomeTextLayer}>
                     <Text style={styles.welcomeTitle}>{banner.title}</Text>
@@ -2877,6 +3180,7 @@ export default function HomeScreen({
                 source={RECIPROCITY_EVENT_ICONS.wedding}
                 style={{ width: 120, height: 120 }}
                 resizeMode="contain"
+                fadeDuration={0}
               />
               <Text style={styles.quickTitle}>청첩장</Text>
               <Text style={styles.quickSubtitle}>
@@ -2905,6 +3209,7 @@ export default function HomeScreen({
                 source={RECIPROCITY_EVENT_ICONS.funeral}
                 style={{ width: 120, height: 120 }}
                 resizeMode="contain"
+                fadeDuration={0}
               />
               <Text style={styles.quickTitle}>부고장</Text>
               <Text style={styles.quickSubtitle}>
@@ -3049,8 +3354,7 @@ export default function HomeScreen({
           {/* 이벤트 리스트 */}
           {loading ? (
             <View style={styles.loadingContainer}>
-              <Ionicons name="refresh" size={24} color={Colors.gray400} />
-              <Text style={styles.loadingText}>불러오는 중...</Text>
+              <LottieLoading size={72} />
             </View>
           ) : currentEvents.length > 0 ? (
             <View style={styles.eventsList}>
@@ -3074,120 +3378,210 @@ export default function HomeScreen({
                   guestbookPage * EVENT_GUESTBOOK_PER_PAGE +
                     EVENT_GUESTBOOK_PER_PAGE,
                 );
+                const hostedPhotos = getHostedEventPhotos(event);
+                const hostedPhotoPage = Math.min(
+                  hostedPhotoPageByEventIds[event.id] || 0,
+                  Math.max(0, hostedPhotos.length - 1),
+                );
+                const hostedPhotoFrameHeight = getHostedPhotoFrameHeight(event);
+                const hostedFuneralPhotoStyle =
+                  getHostedFuneralPhotoStyle(event);
+                const hostedFuneralFrameSource =
+                  getHostedFuneralFrameSource(event);
 
                 return (
                   <View key={event.id} style={styles.eventCardNew}>
-                    <TouchableOpacity
-                      onPress={() => handleActiveEventPress(event)}
-                      activeOpacity={0.8}
-                    >
-                      {/* 상단: 배지 + D-day + 날짜 */}
-                      <View style={styles.eventCardHeader}>
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            gap: 6,
-                          }}
-                        >
+                    <View style={styles.eventCardShowcase}>
+                      <View style={styles.eventPhotoColumn}>
+                        <View style={styles.eventPhotoBadgeRow}>
                           <View
                             style={[
-                              styles.eventTypeBadgeNew,
-                              {
-                                backgroundColor:
-                                  event.event_type === "funeral"
-                                    ? "#F1F5F9"
-                                    : "#FFF1F2",
-                              },
+                              styles.eventPhotoTypeBadge,
+                              event.event_type === "funeral" &&
+                                styles.eventPhotoTypeBadgeFuneral,
                             ]}
                           >
-                            <Text
-                              style={[
-                                styles.eventTypeBadgeTextNew,
-                                {
-                                  color: getEventStatusColor(event.event_type),
-                                },
-                              ]}
-                            >
+                            <Text style={styles.eventPhotoTypeText}>
                               {getEventTypeText(event.event_type)}
                             </Text>
                           </View>
                           {getDDay(getEventDisplayDate(event)) && (
-                            <View
-                              style={[
-                                styles.eventTypeBadgeNew,
-                                {
-                                  backgroundColor:
-                                    event.event_type === "funeral"
-                                      ? "#F1F5F9"
-                                      : "#FFF1F2",
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.eventTypeBadgeTextNew,
-                                  {
-                                    color: getEventStatusColor(
-                                      event.event_type,
-                                    ),
-                                  },
-                                ]}
-                              >
+                            <View style={styles.eventPhotoDdayBadge}>
+                              <Text style={styles.eventPhotoDdayText}>
                                 {getDDay(getEventDisplayDate(event))}
                               </Text>
                             </View>
                           )}
                         </View>
-                        <View style={styles.eventDateBadge}>
-                          <Text style={styles.eventDateBadgeText}>
+
+                        <View
+                          style={[
+                            styles.eventPhotoStage,
+                            { height: hostedPhotoFrameHeight },
+                          ]}
+                        >
+                          {hostedPhotos.length > 0 ? (
+                            <ScrollView
+                              horizontal
+                              pagingEnabled
+                              nestedScrollEnabled
+                              directionalLockEnabled
+                              disableIntervalMomentum
+                              showsHorizontalScrollIndicator={false}
+                              scrollEventThrottle={32}
+                              onMomentumScrollEnd={(scrollEvent) =>
+                                handleHostedPhotoScroll(
+                                  event.id,
+                                  scrollEvent.nativeEvent,
+                                )
+                              }
+                            >
+                              {hostedPhotos.map((photoUrl, photoIndex) => (
+                                event.event_type === "funeral" ? (
+                                  <View
+                                    key={`${event.id}-photo-${photoIndex}`}
+                                    style={[
+                                      styles.eventHeroPhotoFrame,
+                                      { height: hostedPhotoFrameHeight },
+                                    ]}
+                                  >
+                                    <Image
+                                      source={{ uri: photoUrl }}
+                                      style={[
+                                        styles.eventHeroPhoto,
+                                        { height: hostedPhotoFrameHeight },
+                                        hostedFuneralPhotoStyle,
+                                      ]}
+                                      resizeMode="cover"
+                                      resizeMethod="resize"
+                                      progressiveRenderingEnabled
+                                      fadeDuration={0}
+                                    />
+                                    <Image
+                                      source={hostedFuneralFrameSource}
+                                      style={[
+                                        styles.eventFuneralFrameImage,
+                                        { height: hostedPhotoFrameHeight },
+                                      ]}
+                                      resizeMode="cover"
+                                      fadeDuration={0}
+                                    />
+                                  </View>
+                                ) : (
+                                  <Image
+                                    key={`${event.id}-photo-${photoIndex}`}
+                                    source={{ uri: photoUrl }}
+                                    style={[
+                                      styles.eventHeroPhoto,
+                                      { height: hostedPhotoFrameHeight },
+                                    ]}
+                                    resizeMode="cover"
+                                    resizeMethod="resize"
+                                    progressiveRenderingEnabled
+                                    fadeDuration={0}
+                                  />
+                                )
+                              ))}
+                            </ScrollView>
+                          ) : (
+                            <View
+                              style={[
+                                styles.eventHeroPlaceholder,
+                                { height: hostedPhotoFrameHeight },
+                              ]}
+                            >
+                              <Image
+                                source={
+                                  event.event_type === "funeral"
+                                    ? RECIPROCITY_EVENT_ICONS.funeral
+                                    : RECIPROCITY_EVENT_ICONS.wedding
+                                }
+                                style={styles.eventHeroPlaceholderIcon}
+                                resizeMode="contain"
+                                fadeDuration={0}
+                              />
+                            </View>
+                          )}
+
+                          {hostedPhotos.length > 1 && (
+                            <View style={styles.eventPhotoDots}>
+                              {hostedPhotos.map((_, photoIndex) => (
+                                <View
+                                  key={`${event.id}-photo-dot-${photoIndex}`}
+                                  style={[
+                                    styles.eventPhotoDot,
+                                    photoIndex === hostedPhotoPage &&
+                                      styles.eventPhotoDotActive,
+                                  ]}
+                                />
+                              ))}
+                            </View>
+                          )}
+                        </View>
+                      </View>
+
+                      <TouchableOpacity
+                        style={styles.eventCardInfo}
+                        onPress={() => handleActiveEventPress(event)}
+                        activeOpacity={0.82}
+                      >
+                        <View style={styles.eventDatePill}>
+                          <Ionicons
+                            name="calendar-outline"
+                            size={13}
+                            color="#2F80ED"
+                          />
+                          <Text
+                            style={styles.eventDatePillText}
+                            numberOfLines={1}
+                          >
                             {formatDateWithTime(
                               getEventDisplayDate(event),
                               getEventDisplayTime(event),
                             )}
                           </Text>
                         </View>
-                      </View>
 
-                      {/* 중간: 이벤트명 + 장소 */}
-                      <Text style={styles.eventCardTitle} numberOfLines={1}>
-                        {event.event_name || event.title}
-                      </Text>
-                      <View style={styles.eventCardLocationRow}>
-                        <Ionicons
-                          name="location-outline"
-                          size={15}
-                          color={Colors.gray400}
-                        />
-                        <Text
-                          style={styles.eventCardLocation}
-                          numberOfLines={1}
-                        >
-                          {getEventDisplayLocation(event)}
+                        <Text style={styles.eventCardTitle} numberOfLines={2}>
+                          {event.event_name || event.title}
                         </Text>
-                      </View>
-
-                      {/* 하단: 참여 통계 */}
-                      <View style={styles.eventCardStatsBar}>
-                        <View style={styles.eventCardStatItem}>
+                        <View style={styles.eventCardLocationRow}>
                           <Ionicons
-                            name="people-outline"
-                            size={16}
-                            color={Colors.gray500}
+                            name="location-outline"
+                            size={14}
+                            color="#8B95A1"
                           />
-                          <Text style={styles.eventCardStatText}>
-                            {event.total_contributions || 0}명 참여
+                          <Text
+                            style={styles.eventCardLocation}
+                            numberOfLines={1}
+                          >
+                            {getEventDisplayLocation(event)}
                           </Text>
                         </View>
-                        <Text style={styles.eventCardStatAmount}>
-                          {event.total_amount
-                            ? event.total_amount >= 10000
-                              ? `${Math.floor(event.total_amount / 10000).toLocaleString()}만원`
-                              : `${event.total_amount.toLocaleString()}원`
-                            : "0원"}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
+
+                        <View style={styles.eventCardStatsBar}>
+                          <View style={styles.eventCardStatBlock}>
+                            <Text style={styles.eventCardStatValue}>
+                              {event.total_contributions || 0}명
+                            </Text>
+                            <Text style={styles.eventCardStatLabel}>참여</Text>
+                          </View>
+                          <View style={styles.eventCardStatDivider} />
+                          <View style={styles.eventCardStatBlock}>
+                            <Text style={styles.eventCardStatValue}>
+                              {event.total_amount
+                                ? event.total_amount >= 10000
+                                  ? `${Math.floor(event.total_amount / 10000).toLocaleString()}만원`
+                                  : `${event.total_amount.toLocaleString()}원`
+                                : "0원"}
+                            </Text>
+                            <Text style={styles.eventCardStatLabel}>
+                              총 부조금
+                            </Text>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    </View>
 
                     {selectedTab === "active" &&
                       event.status === "active" && (
@@ -3199,7 +3593,7 @@ export default function HomeScreen({
                           <Ionicons
                             name="create-outline"
                             size={16}
-                            color="#0F766E"
+                            color="#2F80ED"
                           />
                           <Text style={styles.hostedEditButtonText}>
                             {event.event_type === "funeral"
@@ -3222,11 +3616,13 @@ export default function HomeScreen({
                           activeOpacity={0.78}
                         >
                           <View style={styles.eventGuestbookToggleLeft}>
-                            <Ionicons
-                              name="chatbubble-ellipses-outline"
-                              size={17}
-                              color="#8B5CF6"
-                            />
+                            <View style={styles.eventGuestbookToggleIcon}>
+                              <Ionicons
+                                name="chatbubble-ellipses"
+                                size={17}
+                                color="#3182F6"
+                              />
+                            </View>
                             <Text style={styles.eventGuestbookToggleText}>
                               새 방명록 {eventGuestbookMessages.length}개
                             </Text>
@@ -3358,54 +3754,52 @@ export default function HomeScreen({
                   <TouchableOpacity
                     style={[
                       styles.paginationButton,
-                      hostedEventPage === 0 && styles.paginationButtonDisabled,
+                      safeHostedEventPage === 0 &&
+                        styles.paginationButtonDisabled,
                     ]}
                     onPress={() => {
-                      if (hostedEventPage > 0)
-                        setHostedEventPage(hostedEventPage - 1);
+                      setHostedEventPage((page) => Math.max(0, page - 1));
                     }}
-                    disabled={hostedEventPage === 0}
+                    disabled={safeHostedEventPage === 0}
                   >
                     <Ionicons
                       name="chevron-back"
                       size={20}
                       color={
-                        hostedEventPage === 0 ? Colors.gray300 : Colors.primary
+                        safeHostedEventPage === 0
+                          ? Colors.gray300
+                          : Colors.primary
                       }
                     />
                   </TouchableOpacity>
 
-                  <View style={styles.paginationDots}>
-                    {[...Array(hostedTotalPages)].map((_, index) => (
-                      <TouchableOpacity
-                        key={index}
-                        style={[
-                          styles.paginationDot,
-                          index === hostedEventPage &&
-                            styles.paginationDotActive,
-                        ]}
-                        onPress={() => setHostedEventPage(index)}
-                      />
-                    ))}
+                  <View style={styles.paginationInfo}>
+                    <Text style={styles.paginationInfoText}>
+                      {safeHostedEventPage + 1} / {hostedTotalPages}
+                    </Text>
+                    <Text style={styles.paginationInfoSubText}>
+                      총 {totalCount}개
+                    </Text>
                   </View>
 
                   <TouchableOpacity
                     style={[
                       styles.paginationButton,
-                      hostedEventPage === hostedTotalPages - 1 &&
+                      safeHostedEventPage === hostedTotalPages - 1 &&
                         styles.paginationButtonDisabled,
                     ]}
                     onPress={() => {
-                      if (hostedEventPage < hostedTotalPages - 1)
-                        setHostedEventPage(hostedEventPage + 1);
+                      setHostedEventPage((page) =>
+                        Math.min(hostedTotalPages - 1, page + 1),
+                      );
                     }}
-                    disabled={hostedEventPage === hostedTotalPages - 1}
+                    disabled={safeHostedEventPage === hostedTotalPages - 1}
                   >
                     <Ionicons
                       name="chevron-forward"
                       size={20}
                       color={
-                        hostedEventPage === hostedTotalPages - 1
+                        safeHostedEventPage === hostedTotalPages - 1
                           ? Colors.gray300
                           : Colors.primary
                       }
@@ -3652,7 +4046,8 @@ export default function HomeScreen({
         )}
 
         {/* ━━━━━━━━━━━━━━━━ 품앗이 장부 ━━━━━━━━━━━━━━━━ */}
-        <View style={[styles.pmSection, styles.pmSectionHidden]}>
+        {SHOW_HOME_PUMASI_SECTION && (
+        <View style={styles.pmSection}>
           {/* 헤더 */}
           <View style={styles.pmHeader}>
             <Text style={styles.pmHeaderTitle}>품앗이 장부</Text>
@@ -4145,10 +4540,12 @@ export default function HomeScreen({
             </View>
           )}
         </View>
+        )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
+      {showNotificationCenter && (
       <Modal
         visible={showNotificationCenter}
         animationType="slide"
@@ -4279,7 +4676,9 @@ export default function HomeScreen({
           </ScrollView>
         </SafeAreaView>
       </Modal>
+      )}
 
+      {!!selectedReciprocityGroup && (
       <Modal
         visible={!!selectedReciprocityGroup}
         transparent
@@ -4485,8 +4884,10 @@ export default function HomeScreen({
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+      )}
 
       {/* 🔥 일정 추가 모달 */}
+      {showEventModal && (
       <EventAddModal
         visible={showEventModal}
         onClose={() => setShowEventModal(false)}
@@ -4552,6 +4953,7 @@ export default function HomeScreen({
           }
         }}
       />
+      )}
 
       {/* 🔥 일정 목록 모달 */}
       <Modal
@@ -5600,50 +6002,50 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === "ios" ? 18 : 58,
-    paddingBottom: 15,
+    paddingTop: Platform.OS === "ios" ? 16 : 56,
+    paddingBottom: 16,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "#F2F4F6",
-    gap: 12,
+    gap: 14,
   },
   headerLeft: {
     flex: 1,
     minWidth: 0,
-    height: 58,
+    height: 68,
     justifyContent: "center",
   },
   headerLogoSpot: {
-    width: 58,
-    height: 58,
-    borderRadius: 20,
+    width: 68,
+    height: 68,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F8FAF9",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#E6EEEB",
-    shadowColor: "#0F766E",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
+    borderColor: "#E5EAF0",
+    shadowColor: "#191F28",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.09,
+    shadowRadius: 16,
+    elevation: 4,
   },
   headerLogoLarge: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 56,
+    height: 56,
+    borderRadius: 18,
   },
   headerTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 24,
+    minHeight: 26,
     minWidth: 0,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: "800",
+    fontSize: 22,
+    fontWeight: "900",
     color: "#191F28",
-    lineHeight: 22,
+    lineHeight: 25,
   },
   headerGreeting: {
     flex: 1,
@@ -5657,34 +6059,43 @@ const styles = StyleSheet.create({
   headerCreditRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
     marginTop: 8,
   },
   headerCreditChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    height: 24,
-    paddingHorizontal: 9,
-    borderRadius: 12,
-    backgroundColor: "#EAF7F5",
+    justifyContent: "center",
+    gap: 6,
+    height: 28,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E8EC",
+    shadowColor: "#191F28",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 1,
   },
   headerCreditChipWarm: {
-    backgroundColor: "#FFF5E1",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E5E8EC",
   },
   headerCreditText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#0F766E",
-    lineHeight: 14,
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#191F28",
+    lineHeight: 16,
   },
   headerCreditTextWarm: {
-    color: "#B45309",
+    color: "#191F28",
   },
   headerNotificationButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#F7F8FA",
@@ -5880,7 +6291,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   welcomeSlide: {
-    width,
+    width: width - 40,
     paddingHorizontal: 0,
     paddingBottom: 4,
   },
@@ -5906,8 +6317,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 0,
     backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "#FFFFFF",
+    borderWidth: 0,
     shadowOpacity: 0,
     elevation: 0,
   },
@@ -6185,14 +6595,12 @@ const styles = StyleSheet.create({
   eventCardNew: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 16,
+    padding: 12,
     position: "relative",
     ...Platform.select({
       ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: "#EEF1F4",
       },
       android: {
         elevation: 0,
@@ -6207,113 +6615,219 @@ const styles = StyleSheet.create({
     }),
   },
   hostedEditButton: {
-    marginTop: 12,
-    height: 42,
+    marginTop: 13,
+    height: 38,
     borderRadius: 12,
-    backgroundColor: "#ECFDF5",
+    backgroundColor: "#F7FBFF",
     borderWidth: 1,
-    borderColor: "#CCFBF1",
+    borderColor: "#BFD8FF",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 7,
   },
   hostedEditButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "800",
-    color: "#0F766E",
+    color: "#2F80ED",
   },
 
-  // 카드 상단: 배지 + 날짜
-  eventCardHeader: {
+  eventCardShowcase: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 22,
+  },
+  eventPhotoColumn: {
+    width: HOSTED_PHOTO_WIDTH,
+  },
+  eventPhotoBadgeRow: {
+    height: 26,
+    marginBottom: 6,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
+    gap: 4,
   },
-  eventTypeBadgeNew: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
+  eventPhotoStage: {
+    width: HOSTED_PHOTO_WIDTH,
+    height: HOSTED_PHOTO_HEIGHT,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#F2F4F6",
+    position: "relative",
   },
-  eventTypeBadgeTextNew: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.2,
+  eventHeroPhoto: {
+    width: HOSTED_PHOTO_WIDTH,
+    height: HOSTED_PHOTO_HEIGHT,
   },
-  eventDateBadge: {
-    paddingHorizontal: 0,
-    paddingVertical: 0,
+  eventHeroPhotoFrame: {
+    width: HOSTED_PHOTO_WIDTH,
+    height: HOSTED_PHOTO_HEIGHT,
+    position: "relative",
+    overflow: "hidden",
+    backgroundColor: "#F8FAFC",
   },
-  eventDateBadgeText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#8B95A1",
+  eventFuneralFrameImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: HOSTED_PHOTO_WIDTH,
+    height: HOSTED_PHOTO_HEIGHT,
+  },
+  eventHeroPlaceholder: {
+    width: HOSTED_PHOTO_WIDTH,
+    height: HOSTED_PHOTO_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F8FAFC",
+  },
+  eventHeroPlaceholderIcon: {
+    width: HOSTED_PHOTO_WIDTH * 0.58,
+    height: HOSTED_PHOTO_WIDTH * 0.58,
+    opacity: 0.92,
+  },
+  eventPhotoTypeBadge: {
+    width: 44,
+    paddingHorizontal: 8,
+    height: 24,
+    borderRadius: 8,
+    backgroundColor: "#F765A3",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  eventPhotoTypeBadgeFuneral: {
+    backgroundColor: "#64748B",
+  },
+  eventPhotoTypeText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#FFFFFF",
+  },
+  eventPhotoDdayBadge: {
+    flex: 1,
+    minWidth: 54,
+    height: 24,
+    paddingHorizontal: 5,
+    borderRadius: 8,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#EEF1F4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  eventPhotoDdayText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#191F28",
+  },
+  eventPhotoDots: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  eventPhotoDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "rgba(255,255,255,0.58)",
+  },
+  eventPhotoDotActive: {
+    width: 12,
+    backgroundColor: "#FFFFFF",
+  },
+  eventCardInfo: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 2,
+    paddingLeft: 2,
+  },
+  eventDatePill: {
+    alignSelf: "flex-start",
+    maxWidth: "100%",
+    height: 28,
+    paddingHorizontal: 9,
+    borderRadius: 14,
+    backgroundColor: "#EAF3FF",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 8,
+  },
+  eventDatePillText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#3666A8",
+    flexShrink: 1,
   },
 
   // 카드 중간: 이벤트명 + 장소
   eventCardTitle: {
-    fontSize: 17,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "900",
     color: "#191F28",
-    lineHeight: 24,
+    lineHeight: 21,
     marginBottom: 6,
-    letterSpacing: -0.2,
   },
   eventCardLocationRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginBottom: 14,
+    marginBottom: 11,
   },
   eventCardLocation: {
-    fontSize: 13,
+    fontSize: 12,
     color: "#8B95A1",
     lineHeight: 18,
-    fontWeight: "400",
+    fontWeight: "700",
+    flex: 1,
   },
 
   // 카드 하단: 통계 바
   eventCardStatsBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#F2F4F6",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    backgroundColor: "#F7F8FA",
+    borderRadius: 12,
+    paddingVertical: 8,
+    minHeight: 52,
     overflow: "hidden",
   },
-  eventCardStatItem: {
-    flexDirection: "row",
+  eventCardStatBlock: {
+    flex: 1,
     alignItems: "center",
-    gap: 6,
+    justifyContent: "center",
   },
-  eventCardStatText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#4E5968",
-  },
-  eventCardStatAmount: {
+  eventCardStatValue: {
     fontSize: 15,
-    fontWeight: "700",
-    color: "#3182F6",
+    fontWeight: "900",
+    color: "#191F28",
+  },
+  eventCardStatLabel: {
+    marginTop: 2,
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#8B95A1",
+  },
+  eventCardStatDivider: {
+    width: 1,
+    height: 26,
+    backgroundColor: "#E5E8EC",
   },
   eventGuestbookPanel: {
-    marginTop: 12,
-    borderRadius: 12,
-    backgroundColor: "#FAF7FF",
-    borderWidth: 1,
-    borderColor: "#EFE7FF",
-    overflow: "hidden",
+    marginTop: 5,
+    paddingTop: 5,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E8EC",
+    borderStyle: "dashed",
   },
   eventGuestbookPanelOpen: {
     backgroundColor: "#FFFFFF",
   },
   eventGuestbookToggle: {
     minHeight: 44,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 2,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -6321,54 +6835,68 @@ const styles = StyleSheet.create({
   eventGuestbookToggleLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: 9,
+  },
+  eventGuestbookToggleIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#EAF3FF",
+    alignItems: "center",
+    justifyContent: "center",
   },
   eventGuestbookToggleText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "800",
-    color: "#6D28D9",
+    color: "#191F28",
   },
   eventGuestbookMessages: {
-    borderTopWidth: 1,
-    borderTopColor: "#EFE7FF",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 10,
+    marginTop: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#EEF1F4",
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
   },
   eventGuestbookMessageRow: {
-    paddingBottom: 10,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3EFFD",
+    borderBottomColor: "#F2F4F6",
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 8,
   },
   eventGuestbookMessageBody: {
     flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   eventGuestbookMessageName: {
     fontSize: 13,
     fontWeight: "900",
     color: "#191F28",
+    width: 58,
   },
   eventGuestbookMessageText: {
-    marginTop: 4,
     fontSize: 13,
     fontWeight: "600",
     lineHeight: 18,
     color: "#4E5968",
+    flex: 1,
   },
   eventGuestbookMessageDate: {
-    marginTop: 4,
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#8B95A1",
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#B0B8C1",
   },
   eventGuestbookDeleteButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#FEF2F2",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#F8FAFC",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -6806,6 +7334,30 @@ const styles = StyleSheet.create({
 
   paginationButtonDisabled: {
     opacity: 0.3,
+  },
+
+  paginationInfo: {
+    minWidth: 92,
+    minHeight: 38,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: "#F7F8FA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  paginationInfoText: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#191F28",
+    lineHeight: 18,
+  },
+  paginationInfoSubText: {
+    marginTop: 1,
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#8B95A1",
+    lineHeight: 14,
   },
 
   paginationDots: {

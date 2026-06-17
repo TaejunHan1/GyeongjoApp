@@ -19,6 +19,7 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
+import LottieLoading from '../../../../components/LottieLoading';
 import {
   useCountdown,
   getCategorizedImagesSafe,
@@ -876,7 +877,7 @@ const ModernMinimalTemplate = ({ eventData = {}, categorizedImages = {}, allowMe
               </View>
             ) : (locAddr || locName) ? (
               <View style={styles.mapLoading}>
-                <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)' }}>지도를 불러오는 중...</Text>
+                <LottieLoading text="지도를 불러오는 중..." size={54} color="rgba(255,255,255,0.68)" />
               </View>
             ) : null}
             

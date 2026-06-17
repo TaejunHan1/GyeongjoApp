@@ -22,6 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Svg, { Path, Rect, Text as SvgText } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import LottieLoading from '../../../../components/LottieLoading';
 import {
   useCountdown,
   getCategorizedImagesSafe,
@@ -1110,7 +1111,7 @@ const RomanticPinkTemplate = ({ eventData = {}, categorizedImages = {}, allowMes
             </View>
           ) : (locAddr || locName) ? (
             <View style={styles.romantic_mapContainer}>
-              <Text style={{ fontSize: 14, color: '#999' }}>지도를 불러오는 중...</Text>
+              <LottieLoading text="지도를 불러오는 중..." size={54} color="#999" />
             </View>
           ) : null}
           

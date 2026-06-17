@@ -178,13 +178,6 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
 
 // 메인 스택 네비게이터
 export default function AppNavigator({ session, userInfo, isAuthenticated, onLogout }) {
-  console.log('🏗️ AppNavigator props:', { 
-    hasSession: !!session, 
-    hasUserInfo: !!userInfo, 
-    isAuthenticated,
-    userInfo: userInfo ? { userId: userInfo.userId, userName: userInfo.userName } : null
-  });
-
   return (
     <NavigationContainer ref={navigationRef}>
       <Stack.Navigator

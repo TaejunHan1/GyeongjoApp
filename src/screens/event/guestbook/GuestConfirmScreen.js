@@ -35,6 +35,29 @@ import { useTutorial } from "../../../contexts/TutorialContext";
 
 const DEFAULT_AMOUNTS = [30000, 50000, 70000, 100000, 150000, 200000];
 
+const parseAdditionalInfo = (value) => {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+};
+
+const isWebGuestbookOnlyEntry = (entry) => {
+  const amount = Number(entry?.amount || 0);
+  const info = parseAdditionalInfo(entry?.additional_info);
+  const inputMethod = String(entry?.input_method || "").toLowerCase();
+  const createdVia = String(info.created_via || info.source_type || "").toLowerCase();
+
+  if (amount > 0) return false;
+  if (inputMethod === "web_guestbook" || createdVia === "web_guestbook") {
+    return true;
+  }
+  return createdVia === "web" && !!entry?.message;
+};
+
 export default function GuestConfirmScreen({ navigation, route }) {
   const {
     event,
@@ -288,12 +311,16 @@ export default function GuestConfirmScreen({ navigation, route }) {
       try {
         const { data, error } = await supabase
           .from("guest_book")
-          .select("guest_name, guest_phone")
-          .eq("event_id", event.id);
+          .select(
+            "id, guest_name, guest_phone, amount, message, input_method, additional_info, created_at",
+          )
+          .eq("event_id", event.id)
+          .order("created_at", { ascending: false });
         if (error) throw error;
-        const dup = (data || []).find((c) =>
+        const samePhoneEntries = (data || []).filter((c) =>
           samePhone(c.guest_phone, normalized),
         );
+        const dup = samePhoneEntries.find((c) => !isWebGuestbookOnlyEntry(c));
         if (dup) {
           setDuplicateGuestName(dup.guest_name || "");
           setPhoneCheckStatus("duplicate");
@@ -420,11 +447,64 @@ export default function GuestConfirmScreen({ navigation, route }) {
         },
       };
 
-      const { data: insertedData, error } = await supabase
-        .from("guest_book")
-        .insert(insertPayload)
-        .select()
-        .single();
+      let existingWebGuestbookEntry = null;
+      if (cleanPhone) {
+        const { data: phoneEntries, error: phoneLookupError } = await supabase
+          .from("guest_book")
+          .select(
+            "id, guest_name, guest_phone, amount, message, input_method, additional_info, created_at",
+          )
+          .eq("event_id", event.id)
+          .order("created_at", { ascending: false });
+
+        if (phoneLookupError) throw phoneLookupError;
+        const samePhoneEntries = (phoneEntries || []).filter((entry) =>
+          samePhone(entry.guest_phone, cleanPhone),
+        );
+        const blockingDuplicate = samePhoneEntries.find(
+          (entry) => !isWebGuestbookOnlyEntry(entry),
+        );
+        if (blockingDuplicate) {
+          setDuplicateGuestName(blockingDuplicate.guest_name || "");
+          setPhoneCheckStatus("duplicate");
+          showAlert({
+            title: "중복 번호",
+            message: `이미 ${blockingDuplicate.guest_name || "다른 분"}님이 같은 번호로 등록되어 있습니다.`,
+          });
+          setSaving(false);
+          return;
+        }
+        existingWebGuestbookEntry = (phoneEntries || []).find(
+          (entry) =>
+            samePhone(entry.guest_phone, cleanPhone) &&
+            isWebGuestbookOnlyEntry(entry),
+        );
+      }
+
+      const existingInfo = parseAdditionalInfo(
+        existingWebGuestbookEntry?.additional_info,
+      );
+      const savePayload = existingWebGuestbookEntry
+        ? {
+            ...insertPayload,
+            created_at: new Date().toISOString(),
+            input_method: "handwriting",
+            additional_info: {
+              ...existingInfo,
+              ...insertPayload.additional_info,
+              upgraded_from_web_guestbook: true,
+            },
+          }
+        : insertPayload;
+
+      const saveQuery = existingWebGuestbookEntry
+        ? supabase
+            .from("guest_book")
+            .update(savePayload)
+            .eq("id", existingWebGuestbookEntry.id)
+        : supabase.from("guest_book").insert(savePayload);
+
+      const { data: insertedData, error } = await saveQuery.select().single();
       if (error) throw error;
 
       if (cleanPhone && finalAmount && event?.user_id) {

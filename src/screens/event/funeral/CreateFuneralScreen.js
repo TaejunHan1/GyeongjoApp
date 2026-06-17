@@ -26,6 +26,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { createEvent, uploadImageToStorage, deleteImageFromStorage, getCurrentUserInfo, moveImagesToEventFolder, refundEventCreationCredit, updateEvent, getEventDetail, getEventStorageImages,
   consumeEventEditCredit, refundEventEditCredit, EVENT_EDIT_CREDIT_COST,
+  normalizeEventCreationCreditReservation,
 } from '../../../lib/supabaseHelper';
 import DaumPostcode from '../../../components/DaumPostcode';
 import FuneralTemplatePreview from '../templates/FuneralTemplatePreview';
@@ -1211,7 +1212,14 @@ export default function CreateFuneralScreen({ navigation, route }) {
   const editEvent = route?.params?.editEvent || null;
   const editEventId = route?.params?.editEventId || editEvent?.id || null;
   const editHydratedRef = useRef(false);
-  const creationCreditReservationRef = useRef(isEditMode ? null : (route?.params?.eventCreationCreditReservation || null));
+  const creationCreditReservationRef = useRef(
+    isEditMode
+      ? null
+      : normalizeEventCreationCreditReservation(
+          route?.params?.eventCreationCreditReservation || null,
+          'funeral',
+        ),
+  );
   const creationCreditSettledRef = useRef(false);
   const completionNavTimeoutRef = useRef(null);
   const [currentStep, setCurrentStep] = useState(1);
@@ -1285,21 +1293,50 @@ export default function CreateFuneralScreen({ navigation, route }) {
   const [composerFrameWidth, setComposerFrameWidth] = useState(null);
 
   React.useEffect(() => {
-    return () => {
-      if (completionNavTimeoutRef.current) {
-        clearTimeout(completionNavTimeoutRef.current);
-        completionNavTimeoutRef.current = null;
-      }
+    if (isEditMode) return;
+    const reservation = creationCreditReservationRef.current;
+    if (!reservation?.success) return;
+
+    if (
+      route?.params?.eventCreationCreditReservation?.reservationId !==
+      reservation.reservationId
+    ) {
+      navigation.setParams?.({ eventCreationCreditReservation: reservation });
+    }
+  }, [isEditMode, navigation]);
+
+  React.useEffect(() => {
+    const refundReservation = () => {
       const reservation = creationCreditReservationRef.current;
       if (!reservation?.success || creationCreditSettledRef.current) return;
       refundEventCreationCredit({
         userId: reservation.userId,
         paymentMethod: reservation.paymentMethod,
         priceCredits: reservation.priceCredits,
+        reservationId: reservation.reservationId,
+        reservedAt: reservation.reservedAt,
+        eventType: reservation.eventType || 'funeral',
         reason: 'event_create_abandoned:funeral',
       })
-        .then(() => DeviceEventEmitter.emit('event-creation-credit-refunded'))
+        .then(() => {
+          creationCreditSettledRef.current = true;
+          DeviceEventEmitter.emit('event-creation-credit-refunded');
+        })
         .catch(() => {});
+    };
+
+    const unsubscribe = navigation.addListener?.('beforeRemove', refundReservation);
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [navigation]);
+
+  React.useEffect(() => {
+    return () => {
+      if (completionNavTimeoutRef.current) {
+        clearTimeout(completionNavTimeoutRef.current);
+        completionNavTimeoutRef.current = null;
+      }
     };
   }, []);
 

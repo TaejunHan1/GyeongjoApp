@@ -11,6 +11,7 @@ import { WebView } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
+import LottieLoading from '../../../../components/LottieLoading';
 import { getCategorizedImagesSafe, formatKoreanDate, formatKoreanTime, resolveWeddingMapCoord } from './WeddingUtils';
 import { PhotoFrameOverlay } from './WeddingCommonComponents';
 
@@ -762,7 +763,7 @@ export default function TicketFlightTemplate({ eventData = {}, categorizedImages
                 </View>
               ) : (
                 <View style={mc.mapPlaceholder}>
-                  <Text style={{ fontSize: 14, color: C.sub }}>📍 지도를 불러오는 중...</Text>
+                  <LottieLoading text="지도를 불러오는 중..." size={54} color={C.sub} />
                 </View>
               )}
               {/* 내비 버튼 — 깔끔한 아웃라인 스타일 */}

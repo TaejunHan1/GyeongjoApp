@@ -2,26 +2,68 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, Modal,
-  Animated, StyleSheet, Dimensions, Switch, Platform,
+  Animated, StyleSheet, Dimensions, Switch, Platform, Easing,
 } from 'react-native';
+import Svg, { Defs, G, Mask, Path } from 'react-native-svg';
 const SERIF = Platform.OS === 'ios' ? 'Georgia' : 'serif';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import TutorialOverlay from '../../../components/TutorialOverlay';
 import { useTutorial } from '../../../contexts/TutorialContext';
+import {
+  KOREAN_MARRIAGE_FILL_PATHS,
+  KOREAN_MARRIAGE_FILL_TRANSLATE,
+  KOREAN_MARRIAGE_MASK_STROKE_GROUPS,
+  KOREAN_MARRIAGE_MASK_TRANSLATE,
+  KOREAN_MARRIAGE_SCRIPT_COLOR,
+  KOREAN_MARRIAGE_SCRIPT_VIEWBOX,
+} from './koreanMarriageScriptPaths';
+import {
+  WELCOME_WEDDING_DOT_COLOR,
+  WELCOME_WEDDING_DOT_FILL,
+  WELCOME_WEDDING_DOT_STROKE,
+  WELCOME_WEDDING_SCRIPT_COLOR,
+  WELCOME_WEDDING_SCRIPT_VIEWBOX,
+  WELCOME_WEDDING_STROKE_PATHS,
+} from './welcomeWeddingScriptPaths';
+import {
+  INVITE_GUESTS_FILL_PATHS,
+  INVITE_GUESTS_FILL_TRANSLATE,
+  INVITE_GUESTS_MASK_STROKE_GROUPS,
+  INVITE_GUESTS_MASK_TRANSLATE,
+  INVITE_GUESTS_SCRIPT_COLOR,
+  INVITE_GUESTS_SCRIPT_VIEWBOX,
+} from './inviteGuestsScriptPaths';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const PHONE_W = Math.min(SCREEN_W - 48, 270);
 const PHONE_H = PHONE_W * (16 / 9);
+const KOREAN_MARRIAGE_SCRIPT_RATIO = 385 / 92;
+const KOREAN_MARRIAGE_DASH_LENGTH = 900;
+const WELCOME_WEDDING_SCRIPT_RATIO = 680 / 330;
+const INVITE_GUESTS_SCRIPT_RATIO = 520 / 110;
+const INVITE_GUESTS_DASH_LENGTH = 900;
+const TEXT_INTRO_VERTICAL_OFFSET = -34;
+const blockIntroTouch = () => true;
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 export const INTRO_LIST = [
-  { id: 'none',    title: '인트로 없음',   desc: '청첩장이 바로 열립니다',                   emoji: '✕'  },
-  { id: 'grand',   title: '그랜드 오픈',   desc: '아이보리 도어 · 황금빛 W 씰',             emoji: '🚪' },
-  { id: 'classic', title: '클래식 누아르',  desc: '칠흑 더블프레임 도어 · 골드 링 씰',       emoji: '🚪' },
-  { id: 'arch',    title: '로맨틱 버건디',  desc: '와인빛 아치 도어 · 로즈골드 다이아 씰',   emoji: '🚪' },
-  { id: 'glass',   title: '딥 오션',        desc: '네이비 창문 도어 · 더블링 씰',            emoji: '🚪' },
-  { id: 'artdeco', title: '골드 럭셔리',    desc: '딥 퍼플 아르데코 도어 · 골드 다이아 씰',  emoji: '🚪' },
-  { id: 'garden',  title: '포레스트',       desc: '다크 그린 브라켓 도어 · 오벌 크리미 씰',  emoji: '🚪' },
-  { id: 'curtain', title: '화이트 커튼',    desc: '하늘하늘 시폰 커튼 · 부드러운 열림',      emoji: '🪟' },
+  { id: 'none',    type: 'common', title: '인트로 없음',   desc: '청첩장이 바로 열립니다',                   emoji: '✕'  },
+  { id: 'grand',   type: 'door',   title: '그랜드 오픈',   desc: '아이보리 도어 · 황금빛 W 씰',             emoji: '🚪' },
+  { id: 'classic', type: 'door',   title: '클래식 누아르',  desc: '칠흑 더블프레임 도어 · 골드 링 씰',       emoji: '🚪' },
+  { id: 'arch',    type: 'door',   title: '로맨틱 버건디',  desc: '와인빛 아치 도어 · 로즈골드 다이아 씰',   emoji: '🚪' },
+  { id: 'glass',   type: 'door',   title: '딥 오션',        desc: '네이비 창문 도어 · 더블링 씰',            emoji: '🚪' },
+  { id: 'artdeco', type: 'door',   title: '골드 럭셔리',    desc: '딥 퍼플 아르데코 도어 · 골드 다이아 씰',  emoji: '🚪' },
+  { id: 'garden',  type: 'door',   title: '포레스트',       desc: '다크 그린 브라켓 도어 · 오벌 크리미 씰',  emoji: '🚪' },
+  { id: 'curtain', type: 'door',   title: '화이트 커튼',    desc: '하늘하늘 시폰 커튼 · 부드러운 열림',      emoji: '🪟' },
+  { id: 'happily-script', type: 'text', title: 'Happily ever after', desc: '검은 페이드 · 핑크 영문 필기체 인트로', emoji: '✍️' },
+  { id: 'korean-marriage-script', type: 'text', title: '저희 둘 결혼합니다', desc: '검은 페이드 · 연두빛 한글 손글씨 인트로', emoji: '✍️' },
+  { id: 'welcome-wedding-script', type: 'text', title: 'Welcome to our wedding', desc: '검은 페이드 · 보라빛 웰컴 스크립트 인트로', emoji: '✍️' },
+  { id: 'invite-guests-script', type: 'text', title: '소중한 분들을 초대합니다', desc: '검은 페이드 · 베이지 한글 초대 스크립트 인트로', emoji: '✍️' },
+];
+
+const INTRO_TABS = [
+  { id: 'door', label: '도어' },
+  { id: 'text', label: '텍스트 인트로' },
 ];
 
 // ── 청첩장 배경 ──
@@ -179,7 +221,16 @@ function DoorWrapper({ tapToOpen, started, done, handleTap, hint, children }) {
       </TouchableOpacity>
     );
   }
-  return <View style={[StyleSheet.absoluteFill, DOOR_Z]} pointerEvents="none">{children}</View>;
+  return (
+    <View
+      style={[StyleSheet.absoluteFill, DOOR_Z]}
+      pointerEvents="auto"
+      onStartShouldSetResponder={blockIntroTouch}
+      onMoveShouldSetResponder={blockIntroTouch}
+    >
+      {children}
+    </View>
+  );
 }
 
 // ══════════════════════════════════════════════════════
@@ -571,6 +622,688 @@ function CurtainDoor({ containerW = PHONE_W, tapToOpen = false, onEnd, coupleNam
   );
 }
 
+function WritingLine({ text, progress, width, textStyle }) {
+  const revealWidth = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, width],
+  });
+  return (
+    <View style={[s.writeLineBox, { width, alignSelf: 'center' }]}>
+      <Animated.View style={{ width: revealWidth, overflow: 'hidden' }}>
+        <Text style={[textStyle, { width }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+          {text}
+        </Text>
+      </Animated.View>
+    </View>
+  );
+}
+
+function KoreanMarriageStrokeText({ dashGroups, width, height }) {
+  return (
+    <Svg
+      width={width}
+      height={height}
+      viewBox={KOREAN_MARRIAGE_SCRIPT_VIEWBOX}
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <Defs>
+        <Mask id="koreanMarriageStrokeMask" x="0" y="0" width="680" height="400" maskUnits="userSpaceOnUse">
+          <G transform={`translate(${KOREAN_MARRIAGE_MASK_TRANSLATE.x} ${KOREAN_MARRIAGE_MASK_TRANSLATE.y})`}>
+            {KOREAN_MARRIAGE_MASK_STROKE_GROUPS.map((group, groupIndex) => (
+              <G key={groupIndex}>
+                {group.map((d, strokeIndex) => (
+                  <AnimatedPath
+                    key={`${groupIndex}-${strokeIndex}`}
+                    d={d}
+                    fill="none"
+                    stroke="#fff"
+                    strokeWidth={6.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray={`${KOREAN_MARRIAGE_DASH_LENGTH} ${KOREAN_MARRIAGE_DASH_LENGTH}`}
+                    strokeDashoffset={dashGroups[groupIndex][strokeIndex]}
+                  />
+                ))}
+              </G>
+            ))}
+          </G>
+        </Mask>
+      </Defs>
+      <G mask="url(#koreanMarriageStrokeMask)">
+        <G transform={`translate(${KOREAN_MARRIAGE_FILL_TRANSLATE.x} ${KOREAN_MARRIAGE_FILL_TRANSLATE.y})`}>
+          {KOREAN_MARRIAGE_FILL_PATHS.map((d, index) => (
+            <Path
+              key={index}
+              d={d}
+              fill={KOREAN_MARRIAGE_SCRIPT_COLOR}
+              fillOpacity={1}
+            />
+          ))}
+        </G>
+      </G>
+    </Svg>
+  );
+}
+
+function InviteGuestsStrokeText({ dashGroups, width, height }) {
+  return (
+    <Svg
+      width={width}
+      height={height}
+      viewBox={INVITE_GUESTS_SCRIPT_VIEWBOX}
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <Defs>
+        <Mask id="inviteGuestsStrokeMask" x="0" y="0" width="680" height="400" maskUnits="userSpaceOnUse">
+          <G transform={`translate(${INVITE_GUESTS_MASK_TRANSLATE.x} ${INVITE_GUESTS_MASK_TRANSLATE.y})`}>
+            {INVITE_GUESTS_MASK_STROKE_GROUPS.map((group, groupIndex) => (
+              <G key={groupIndex}>
+                {group.map((d, strokeIndex) => (
+                  <AnimatedPath
+                    key={`${groupIndex}-${strokeIndex}`}
+                    d={d}
+                    fill="none"
+                    stroke="#fff"
+                    strokeWidth={7.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray={`${INVITE_GUESTS_DASH_LENGTH} ${INVITE_GUESTS_DASH_LENGTH}`}
+                    strokeDashoffset={dashGroups[groupIndex][strokeIndex]}
+                  />
+                ))}
+              </G>
+            ))}
+          </G>
+        </Mask>
+      </Defs>
+      <G mask="url(#inviteGuestsStrokeMask)">
+        <G transform={`translate(${INVITE_GUESTS_FILL_TRANSLATE.x} ${INVITE_GUESTS_FILL_TRANSLATE.y})`}>
+          {INVITE_GUESTS_FILL_PATHS.map((d, index) => (
+            <Path
+              key={index}
+              d={d}
+              fill={INVITE_GUESTS_SCRIPT_COLOR}
+              fillOpacity={1}
+            />
+          ))}
+        </G>
+      </G>
+    </Svg>
+  );
+}
+
+function TextIntroTapHint({ opacity }) {
+  return (
+    <Animated.View style={[s.textIntroHintWrap, { opacity }]} pointerEvents="none">
+      <View style={s.textIntroTapMark}>
+        <View style={s.textIntroTapRing} />
+        <View style={s.textIntroTapDot} />
+      </View>
+      <Text style={s.textIntroHintGuide}>화면을 터치해 주세요</Text>
+      <View style={s.textIntroHintPillInner}>
+        <Text style={s.textIntroHint}>초대장 열기</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+function TextFadeIntro({
+  containerW = PHONE_W,
+  containerH = PHONE_H,
+  tapToOpen = false,
+  onEnd,
+}) {
+  const dim = useRef(new Animated.Value(0)).current;
+  const content = useRef(new Animated.Value(0)).current;
+  const pinkOne = useRef(new Animated.Value(0)).current;
+  const pinkTwo = useRef(new Animated.Value(0)).current;
+  const hintOp = useRef(new Animated.Value(0)).current;
+  const [ready, setReady] = useState(false);
+  const [done, setDone] = useState(false);
+  const compact = containerW <= PHONE_W + 4;
+  const textW = compact
+    ? Math.max(containerW - 18, 220)
+    : Math.max(containerW - 24, 320);
+
+  const close = useCallback(() => {
+    if (done) return;
+    Animated.parallel([
+      Animated.timing(dim, { toValue: 0, duration: 520, useNativeDriver: true }),
+      Animated.timing(content, { toValue: 0, duration: 420, useNativeDriver: true }),
+    ]).start(() => {
+      setDone(true);
+      onEnd?.();
+    });
+  }, [content, dim, done, onEnd]);
+
+  useEffect(() => {
+    pinkOne.setValue(0);
+    pinkTwo.setValue(0);
+    const sequence = Animated.sequence([
+      Animated.parallel([
+        Animated.timing(dim, { toValue: 1, duration: 520, useNativeDriver: true }),
+        Animated.timing(content, { toValue: 1, duration: 680, useNativeDriver: true }),
+      ]),
+      Animated.timing(pinkOne, { toValue: 1, duration: 1700, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+      Animated.delay(90),
+      Animated.timing(pinkTwo, { toValue: 1, duration: 2100, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+    ]);
+
+    sequence.start(() => {
+      setReady(true);
+      if (tapToOpen) {
+        Animated.loop(Animated.sequence([
+          Animated.timing(hintOp, { toValue: 1, duration: 620, useNativeDriver: true }),
+          Animated.timing(hintOp, { toValue: 0.38, duration: 620, useNativeDriver: true }),
+        ])).start();
+      } else {
+        setTimeout(close, 1050);
+      }
+    });
+  }, []);
+
+  if (done) return null;
+
+  const body = (
+    <View
+      style={[StyleSheet.absoluteFill, DOOR_Z]}
+      {...(!tapToOpen ? {
+        onStartShouldSetResponder: blockIntroTouch,
+        onMoveShouldSetResponder: blockIntroTouch,
+      } : {})}
+    >
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: '#000',
+            opacity: dim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.58] }),
+          },
+        ]}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          s.textIntroStage,
+          {
+            justifyContent: 'center',
+            paddingTop: 0,
+            opacity: content,
+            transform: [{
+              translateY: content.interpolate({
+                inputRange: [0, 1],
+                outputRange: [TEXT_INTRO_VERTICAL_OFFSET + 10, TEXT_INTRO_VERTICAL_OFFSET],
+              }),
+            }],
+          },
+        ]}
+      >
+        <View style={{ width: textW, alignItems: 'center', transform: [{ rotate: '-2deg' }] }}>
+          <WritingLine
+            text="Happily"
+            progress={pinkOne}
+            width={textW}
+            textStyle={[s.textIntroPink, compact && s.textIntroPinkCompact]}
+          />
+          <View style={{ marginTop: compact ? -12 : -18 }}>
+            <WritingLine
+              text="ever after"
+              progress={pinkTwo}
+              width={textW}
+              textStyle={[s.textIntroPink, compact && s.textIntroPinkCompact]}
+            />
+          </View>
+        </View>
+      </Animated.View>
+      {tapToOpen && ready && <TextIntroTapHint opacity={hintOp} />}
+    </View>
+  );
+
+  if (tapToOpen) {
+    return (
+      <TouchableOpacity
+        style={[StyleSheet.absoluteFill, DOOR_Z]}
+        activeOpacity={0.98}
+        onPress={close}
+        disabled={!ready}
+      >
+        {body}
+      </TouchableOpacity>
+    );
+  }
+  return body;
+}
+
+function KoreanMarriageIntro({
+  containerW = PHONE_W,
+  tapToOpen = false,
+  onEnd,
+}) {
+  const dim = useRef(new Animated.Value(0)).current;
+  const content = useRef(new Animated.Value(0)).current;
+  const drawGroups = useRef(KOREAN_MARRIAGE_MASK_STROKE_GROUPS.map(group =>
+    group.map(() => new Animated.Value(KOREAN_MARRIAGE_DASH_LENGTH)),
+  )).current;
+  const hintOp = useRef(new Animated.Value(0)).current;
+  const [ready, setReady] = useState(false);
+  const [done, setDone] = useState(false);
+  const compact = containerW <= PHONE_W + 4;
+  const textW = compact
+    ? Math.min(Math.max(containerW - 44, 210), containerW - 20)
+    : Math.min(Math.max(containerW * 0.7, 300), containerW - 48);
+  const textH = textW / KOREAN_MARRIAGE_SCRIPT_RATIO;
+
+  const close = useCallback(() => {
+    if (done) return;
+    Animated.parallel([
+      Animated.timing(dim, { toValue: 0, duration: 520, useNativeDriver: true }),
+      Animated.timing(content, { toValue: 0, duration: 420, useNativeDriver: true }),
+    ]).start(() => {
+      setDone(true);
+      onEnd?.();
+    });
+  }, [content, dim, done, onEnd]);
+
+  useEffect(() => {
+    drawGroups.forEach(group => {
+      group.forEach(stroke => stroke.setValue(KOREAN_MARRIAGE_DASH_LENGTH));
+    });
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(dim, { toValue: 1, duration: 520, useNativeDriver: true }),
+        Animated.timing(content, { toValue: 1, duration: 680, useNativeDriver: true }),
+      ]),
+      Animated.sequence(drawGroups.flatMap((group, groupIndex) =>
+        group.map((stroke, strokeIndex) => Animated.timing(stroke, {
+          toValue: 0,
+          duration: Math.min(
+            56,
+            Math.max(20, KOREAN_MARRIAGE_MASK_STROKE_GROUPS[groupIndex][strokeIndex].length * 0.095),
+          ),
+          easing: Easing.linear,
+          useNativeDriver: false,
+        })),
+      )),
+    ]).start(() => {
+      setReady(true);
+      if (tapToOpen) {
+        Animated.loop(Animated.sequence([
+          Animated.timing(hintOp, { toValue: 1, duration: 620, useNativeDriver: true }),
+          Animated.timing(hintOp, { toValue: 0.38, duration: 620, useNativeDriver: true }),
+        ])).start();
+      } else {
+        setTimeout(close, 1050);
+      }
+    });
+  }, []);
+
+  if (done) return null;
+
+  const body = (
+    <View
+      style={[StyleSheet.absoluteFill, DOOR_Z]}
+      {...(!tapToOpen ? {
+        onStartShouldSetResponder: blockIntroTouch,
+        onMoveShouldSetResponder: blockIntroTouch,
+      } : {})}
+    >
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: '#000',
+            opacity: dim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.58] }),
+          },
+        ]}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          s.textIntroStage,
+          {
+            justifyContent: 'center',
+            paddingTop: 0,
+            opacity: content,
+            transform: [{
+              translateY: content.interpolate({
+                inputRange: [0, 1],
+                outputRange: [TEXT_INTRO_VERTICAL_OFFSET + 10, TEXT_INTRO_VERTICAL_OFFSET],
+              }),
+            }],
+          },
+        ]}
+      >
+        <View style={{ width: textW, height: textH, alignItems: 'center', justifyContent: 'center' }}>
+          <KoreanMarriageStrokeText
+            dashGroups={drawGroups}
+            width={textW}
+            height={textH}
+          />
+        </View>
+      </Animated.View>
+      {tapToOpen && ready && <TextIntroTapHint opacity={hintOp} />}
+    </View>
+  );
+
+  if (tapToOpen) {
+    return (
+      <TouchableOpacity
+        style={[StyleSheet.absoluteFill, DOOR_Z]}
+        activeOpacity={0.98}
+        onPress={close}
+        disabled={!ready}
+      >
+        {body}
+      </TouchableOpacity>
+    );
+  }
+  return body;
+}
+
+function WelcomeWeddingStrokeText({ dashValues, dotDash, dotOpacity, width, height }) {
+  return (
+    <Svg
+      width={width}
+      height={height}
+      viewBox={WELCOME_WEDDING_SCRIPT_VIEWBOX}
+      preserveAspectRatio="xMidYMid meet"
+    >
+      {WELCOME_WEDDING_STROKE_PATHS.map((item, index) => (
+        <AnimatedPath
+          key={index}
+          d={item.d}
+          transform={`translate(${item.tx} ${item.ty})`}
+          fill="none"
+          stroke={WELCOME_WEDDING_SCRIPT_COLOR}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={`${item.len} ${item.len}`}
+          strokeDashoffset={dashValues[index]}
+        />
+      ))}
+      <AnimatedPath
+        d={WELCOME_WEDDING_DOT_FILL.d}
+        transform={`translate(${WELCOME_WEDDING_DOT_FILL.tx} ${WELCOME_WEDDING_DOT_FILL.ty})`}
+        fill={WELCOME_WEDDING_DOT_COLOR}
+        fillOpacity={1}
+        opacity={dotOpacity}
+      />
+      <AnimatedPath
+        d={WELCOME_WEDDING_DOT_STROKE.d}
+        transform={`translate(${WELCOME_WEDDING_DOT_STROKE.tx} ${WELCOME_WEDDING_DOT_STROKE.ty})`}
+        fill="none"
+        stroke={WELCOME_WEDDING_SCRIPT_COLOR}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={`${WELCOME_WEDDING_DOT_STROKE.len} ${WELCOME_WEDDING_DOT_STROKE.len}`}
+        strokeDashoffset={dotDash}
+      />
+    </Svg>
+  );
+}
+
+function WelcomeWeddingIntro({
+  containerW = PHONE_W,
+  tapToOpen = false,
+  onEnd,
+}) {
+  const dim = useRef(new Animated.Value(0)).current;
+  const content = useRef(new Animated.Value(0)).current;
+  const dashValues = useRef(WELCOME_WEDDING_STROKE_PATHS.map(
+    item => new Animated.Value(item.len),
+  )).current;
+  const dotDash = useRef(new Animated.Value(WELCOME_WEDDING_DOT_STROKE.len)).current;
+  const dotOpacity = useRef(new Animated.Value(0)).current;
+  const hintOp = useRef(new Animated.Value(0)).current;
+  const [ready, setReady] = useState(false);
+  const [done, setDone] = useState(false);
+  const compact = containerW <= PHONE_W + 4;
+  const textW = compact
+    ? Math.min(Math.max(containerW - 24, 250), containerW - 12)
+    : Math.min(Math.max(containerW * 0.82, 360), containerW - 40);
+  const textH = textW / WELCOME_WEDDING_SCRIPT_RATIO;
+
+  const close = useCallback(() => {
+    if (done) return;
+    Animated.parallel([
+      Animated.timing(dim, { toValue: 0, duration: 520, useNativeDriver: true }),
+      Animated.timing(content, { toValue: 0, duration: 420, useNativeDriver: true }),
+    ]).start(() => {
+      setDone(true);
+      onEnd?.();
+    });
+  }, [content, dim, done, onEnd]);
+
+  useEffect(() => {
+    dashValues.forEach((value, index) => value.setValue(WELCOME_WEDDING_STROKE_PATHS[index].len));
+    dotDash.setValue(WELCOME_WEDDING_DOT_STROKE.len);
+    dotOpacity.setValue(0);
+
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(dim, { toValue: 1, duration: 520, useNativeDriver: true }),
+        Animated.timing(content, { toValue: 1, duration: 680, useNativeDriver: true }),
+      ]),
+      Animated.stagger(360, dashValues.map((value, index) => Animated.timing(value, {
+        toValue: 0,
+        duration: Math.min(
+          1500,
+          Math.max(640, WELCOME_WEDDING_STROKE_PATHS[index].len * 0.92),
+        ),
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: false,
+      }))),
+      Animated.parallel([
+        Animated.timing(dotDash, { toValue: 0, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+        Animated.timing(dotOpacity, { toValue: 1, duration: 160, useNativeDriver: false }),
+      ]),
+    ]).start(() => {
+      setReady(true);
+      if (tapToOpen) {
+        Animated.loop(Animated.sequence([
+          Animated.timing(hintOp, { toValue: 1, duration: 620, useNativeDriver: true }),
+          Animated.timing(hintOp, { toValue: 0.38, duration: 620, useNativeDriver: true }),
+        ])).start();
+      } else {
+        setTimeout(close, 1050);
+      }
+    });
+  }, []);
+
+  if (done) return null;
+
+  const body = (
+    <View
+      style={[StyleSheet.absoluteFill, DOOR_Z]}
+      {...(!tapToOpen ? {
+        onStartShouldSetResponder: blockIntroTouch,
+        onMoveShouldSetResponder: blockIntroTouch,
+      } : {})}
+    >
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: '#000',
+            opacity: dim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.58] }),
+          },
+        ]}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          s.textIntroStage,
+          {
+            justifyContent: 'center',
+            paddingTop: 0,
+            opacity: content,
+            transform: [{
+              translateY: content.interpolate({
+                inputRange: [0, 1],
+                outputRange: [TEXT_INTRO_VERTICAL_OFFSET + 10, TEXT_INTRO_VERTICAL_OFFSET],
+              }),
+            }],
+          },
+        ]}
+      >
+        <View style={{ width: textW, height: textH, alignItems: 'center', justifyContent: 'center' }}>
+          <WelcomeWeddingStrokeText
+            dashValues={dashValues}
+            dotDash={dotDash}
+            dotOpacity={dotOpacity}
+            width={textW}
+            height={textH}
+          />
+        </View>
+      </Animated.View>
+      {tapToOpen && ready && <TextIntroTapHint opacity={hintOp} />}
+    </View>
+  );
+
+  if (tapToOpen) {
+    return (
+      <TouchableOpacity
+        style={[StyleSheet.absoluteFill, DOOR_Z]}
+        activeOpacity={0.98}
+        onPress={close}
+        disabled={!ready}
+      >
+        {body}
+      </TouchableOpacity>
+    );
+  }
+  return body;
+}
+
+function InviteGuestsIntro({
+  containerW = PHONE_W,
+  tapToOpen = false,
+  onEnd,
+}) {
+  const dim = useRef(new Animated.Value(0)).current;
+  const content = useRef(new Animated.Value(0)).current;
+  const drawGroups = useRef(INVITE_GUESTS_MASK_STROKE_GROUPS.map(group =>
+    group.map(() => new Animated.Value(INVITE_GUESTS_DASH_LENGTH)),
+  )).current;
+  const hintOp = useRef(new Animated.Value(0)).current;
+  const [ready, setReady] = useState(false);
+  const [done, setDone] = useState(false);
+  const compact = containerW <= PHONE_W + 4;
+  const textW = compact
+    ? Math.min(Math.max(containerW - 34, 220), containerW - 18)
+    : Math.min(Math.max(containerW * 0.74, 330), containerW - 48);
+  const textH = textW / INVITE_GUESTS_SCRIPT_RATIO;
+
+  const close = useCallback(() => {
+    if (done) return;
+    Animated.parallel([
+      Animated.timing(dim, { toValue: 0, duration: 520, useNativeDriver: true }),
+      Animated.timing(content, { toValue: 0, duration: 420, useNativeDriver: true }),
+    ]).start(() => {
+      setDone(true);
+      onEnd?.();
+    });
+  }, [content, dim, done, onEnd]);
+
+  useEffect(() => {
+    drawGroups.forEach(group => {
+      group.forEach(stroke => stroke.setValue(INVITE_GUESTS_DASH_LENGTH));
+    });
+
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(dim, { toValue: 1, duration: 520, useNativeDriver: true }),
+        Animated.timing(content, { toValue: 1, duration: 680, useNativeDriver: true }),
+      ]),
+      Animated.sequence(drawGroups.flatMap((group, groupIndex) =>
+        group.map((stroke, strokeIndex) => Animated.timing(stroke, {
+          toValue: 0,
+          duration: Math.min(
+            46,
+            Math.max(16, INVITE_GUESTS_MASK_STROKE_GROUPS[groupIndex][strokeIndex].length * 0.07),
+          ),
+          easing: Easing.linear,
+          useNativeDriver: false,
+        })),
+      )),
+    ]).start(() => {
+      setReady(true);
+      if (tapToOpen) {
+        Animated.loop(Animated.sequence([
+          Animated.timing(hintOp, { toValue: 1, duration: 620, useNativeDriver: true }),
+          Animated.timing(hintOp, { toValue: 0.38, duration: 620, useNativeDriver: true }),
+        ])).start();
+      } else {
+        setTimeout(close, 1050);
+      }
+    });
+  }, []);
+
+  if (done) return null;
+
+  const body = (
+    <View
+      style={[StyleSheet.absoluteFill, DOOR_Z]}
+      {...(!tapToOpen ? {
+        onStartShouldSetResponder: blockIntroTouch,
+        onMoveShouldSetResponder: blockIntroTouch,
+      } : {})}
+    >
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: '#000',
+            opacity: dim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.58] }),
+          },
+        ]}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          s.textIntroStage,
+          {
+            justifyContent: 'center',
+            paddingTop: 0,
+            opacity: content,
+            transform: [{
+              translateY: content.interpolate({
+                inputRange: [0, 1],
+                outputRange: [TEXT_INTRO_VERTICAL_OFFSET + 10, TEXT_INTRO_VERTICAL_OFFSET],
+              }),
+            }],
+          },
+        ]}
+      >
+        <View style={{ width: textW, height: textH, alignItems: 'center', justifyContent: 'center' }}>
+          <InviteGuestsStrokeText
+            dashGroups={drawGroups}
+            width={textW}
+            height={textH}
+          />
+        </View>
+      </Animated.View>
+      {tapToOpen && ready && <TextIntroTapHint opacity={hintOp} />}
+    </View>
+  );
+
+  if (tapToOpen) {
+    return (
+      <TouchableOpacity
+        style={[StyleSheet.absoluteFill, DOOR_Z]}
+        activeOpacity={0.98}
+        onPress={close}
+        disabled={!ready}
+      >
+        {body}
+      </TouchableOpacity>
+    );
+  }
+  return body;
+}
+
 export const INTRO_OVERLAYS = {
   grand:   GrandOpenDoor,
   classic: ClassicDoor,
@@ -579,6 +1312,10 @@ export const INTRO_OVERLAYS = {
   artdeco: ArtDecoDoor,
   garden:  GardenDoor,
   curtain: CurtainDoor,
+  'happily-script': TextFadeIntro,
+  'korean-marriage-script': KoreanMarriageIntro,
+  'welcome-wedding-script': WelcomeWeddingIntro,
+  'invite-guests-script': InviteGuestsIntro,
 };
 
 // ══════════════════════════════════════════════════════
@@ -589,6 +1326,7 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
   const [selected,  setSelected]  = useState('none');
   const [tapToOpen, setTapToOpen] = useState(false);
   const [playKey,   setPlayKey]   = useState(0);
+  const [activeTab, setActiveTab] = useState('door');
   const selectedIntroId = typeof selectedId === 'string' ? selectedId : selectedId?.id || 'none';
   const selectedTapToOpen = typeof selectedId === 'object' && selectedId !== null
     ? !!selectedId.tapToOpen
@@ -636,6 +1374,8 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
     if (!visible) return;
     setSelected(selectedIntroId);
     setTapToOpen(selectedTapToOpen);
+    const introType = INTRO_LIST.find(item => item.id === selectedIntroId)?.type;
+    setActiveTab(introType === 'text' ? 'text' : 'door');
     setPlayKey(k => k + 1);
   }, [visible, selectedIntroId, selectedTapToOpen]);
 
@@ -645,6 +1385,10 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
   };
 
   const IntroComponent = INTRO_OVERLAYS[selected];
+  const activeIntros = INTRO_LIST.filter(item => item.id === 'none' || item.type === activeTab);
+  const activeIntroCount = activeIntros.filter(item => item.id !== 'none').length;
+  const isTextTab = activeTab === 'text';
+  const selectedIntroType = INTRO_LIST.find(item => item.id === selected)?.type;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
@@ -662,15 +1406,44 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
           contentContainerStyle={[s.scroll, { paddingBottom: (insets.bottom || 16) + 90 }]}
           showsVerticalScrollIndicator={false}>
           <View style={s.hero}>
-            <Text style={s.heroTitle}>{'어떤 문을 열고\n초대하시겠습니까?'}</Text>
-            <Text style={s.heroSub}>{'디자인 테마에 맞춘 프리미엄 도어.\n손끝에서 시작되는 웅장한 감동.'}</Text>
+            <Text style={s.heroTitle}>
+              {isTextTab ? '어떤 문장으로\n초대하시겠습니까?' : '어떤 문을 열고\n초대하시겠습니까?'}
+            </Text>
+            <Text style={s.heroSub}>
+              {isTextTab
+                ? '어두운 페이드 위로 필기체 문장이 천천히 써지는 감성 인트로.'
+                : '디자인 테마에 맞춘 프리미엄 도어.\n손끝에서 시작되는 웅장한 감동.'}
+            </Text>
+          </View>
+
+          <View style={s.tabWrap}>
+            {INTRO_TABS.map(tab => {
+              const tabActive = activeTab === tab.id;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  style={[s.tabBtn, tabActive && s.tabBtnActive]}
+                  onPress={() => {
+                    setActiveTab(tab.id);
+                    const currentType = INTRO_LIST.find(item => item.id === selected)?.type;
+                    if (selected !== 'none' && currentType !== tab.id) {
+                      setSelected(tab.id === 'text' ? 'happily-script' : 'grand');
+                    }
+                    setPlayKey(p => p + 1);
+                  }}
+                  activeOpacity={0.82}
+                >
+                  <Text style={[s.tabText, tabActive && s.tabTextActive]}>{tab.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <View style={s.previewWrap}>
             <View style={[s.phone, { width: PHONE_W, height: PHONE_H }]}>
               <MockInvitation />
               {IntroComponent && (
-                <IntroComponent key={playKey} containerW={PHONE_W} tapToOpen={tapToOpen} />
+                <IntroComponent key={playKey} containerW={PHONE_W} containerH={PHONE_H} tapToOpen={tapToOpen} />
               )}
               <View style={s.replayWrap} pointerEvents="box-none">
                 <TouchableOpacity style={s.replayBtn} onPress={() => setPlayKey(p => p + 1)} activeOpacity={0.85}>
@@ -686,7 +1459,7 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
               <View style={s.toggleRow}>
                 <View style={{ flex: 1, marginRight: 12 }}>
                   <Text style={s.toggleLabel}>눌러서 열기</Text>
-                  <Text style={s.toggleDesc}>하객이 화면을 직접 터치해서 문을 열 수 있어요</Text>
+                  <Text style={s.toggleDesc}>하객이 화면을 직접 터치해서 인트로를 지나갈 수 있어요</Text>
                 </View>
                 <Switch value={tapToOpen} onValueChange={handleTapToOpenChange}
                   trackColor={{ false: '#E5E5EA', true: '#34C759' }}
@@ -696,9 +1469,11 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
           )}
 
           <View style={s.listWrap}>
-            <Text style={s.listHeader}>도어 컬렉션 ({INTRO_LIST.filter(i => i.id !== 'none').length})</Text>
+            <Text style={s.listHeader}>
+              {isTextTab ? `텍스트 인트로 (${activeIntroCount})` : `도어 컬렉션 (${activeIntroCount})`}
+            </Text>
             <View style={s.listCard}>
-              {INTRO_LIST.map((intro, i) => {
+              {activeIntros.map((intro, i) => {
                 const isSel = selected === intro.id;
                 const isGrand = intro.id === 'grand';
                 return (
@@ -724,7 +1499,7 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
                       </View>
                       {isSel && <Text style={{ fontSize: 18, color: '#0071E3', fontWeight: '700' }}>✓</Text>}
                     </TouchableOpacity>
-                    {i < INTRO_LIST.length - 1 && <View style={s.sep} />}
+                    {i < activeIntros.length - 1 && <View style={s.sep} />}
                   </View>
                 );
               })}
@@ -747,7 +1522,11 @@ export default function WeddingIntroSelectModal({ visible, onClose, selectedId, 
             }}
           >
             <Text style={s.ctaBtnText}>
-              {selected === 'none' ? '인트로 없이 적용하기' : '이 도어로 적용하기'}
+              {selected === 'none'
+                ? '인트로 없이 적용하기'
+                : selectedIntroType === 'text'
+                  ? '이 인트로로 적용하기'
+                  : '이 도어로 적용하기'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -771,6 +1550,32 @@ const s = StyleSheet.create({
   hero:      { paddingHorizontal: 8, paddingTop: 20, paddingBottom: 24 },
   heroTitle: { fontSize: 24, fontWeight: '700', color: '#1d1d1f', lineHeight: 32, letterSpacing: -0.5, marginBottom: 10 },
   heroSub:   { fontSize: 14, color: '#86868b', lineHeight: 20 },
+
+  tabWrap: {
+    flexDirection: 'row',
+    backgroundColor: '#E8E8ED',
+    borderRadius: 999,
+    padding: 4,
+    marginHorizontal: 8,
+    marginBottom: 18,
+  },
+  tabBtn: {
+    flex: 1,
+    height: 38,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBtnActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  tabText: { fontSize: 14, color: '#6e6e73', fontWeight: '700', letterSpacing: -0.2 },
+  tabTextActive: { color: '#1d1d1f' },
 
   previewWrap: { alignItems: 'center', paddingBottom: 24 },
   phone:       { borderRadius: 32, overflow: 'hidden', borderWidth: 8, borderColor: '#F2F2F7',
@@ -804,6 +1609,110 @@ const s = StyleSheet.create({
   listTitleSel:{ color: '#0071E3', fontWeight: '600' },
   listDesc:    { fontSize: 12, color: '#86868b', letterSpacing: -0.1, lineHeight: 16 },
   sep:         { height: StyleSheet.hairlineWidth, backgroundColor: '#e5e5ea', marginLeft: 68 },
+
+  writeLineBox: {
+    overflow: 'hidden',
+    marginBottom: 1,
+  },
+  textIntroStage: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+  },
+  textIntroPink: {
+    color: '#d779d8',
+    fontFamily: 'AAutoSignature',
+    fontSize: 58,
+    lineHeight: 70,
+    fontWeight: '400',
+    textAlign: 'center',
+  },
+  textIntroPinkCompact: {
+    fontSize: 38,
+    lineHeight: 48,
+  },
+  textIntroKorean: {
+    color: '#b8d8a4',
+    fontFamily: 'NanumBrushScript',
+    fontSize: 43,
+    lineHeight: 58,
+    fontWeight: '900',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.16)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+  },
+  textIntroKoreanCompact: {
+    fontSize: 28,
+    lineHeight: 38,
+  },
+  textIntroHintWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 74,
+    alignItems: 'center',
+  },
+  textIntroTapMark: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  textIntroTapRing: {
+    position: 'absolute',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.72)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  textIntroTapDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#d779d8',
+    shadowColor: '#d779d8',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.95,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  textIntroHintGuide: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    marginBottom: 9,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  textIntroHintPillInner: {
+    overflow: 'hidden',
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.42)',
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  textIntroHint: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+  },
 
   cta:       { position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: 'rgba(255,255,255,0.95)',

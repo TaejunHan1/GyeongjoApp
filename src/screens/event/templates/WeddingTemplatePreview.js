@@ -16,6 +16,8 @@ import TicketFlightTemplate from './wedding/TicketFlightTemplate';
 import CinemaTemplate from './wedding/CinemaTemplate';
 import RunicRiftTemplate from './wedding/RunicRiftTemplate';
 import PhotoBookTemplate from './wedding/PhotoBookTemplate';
+import BlushEditorialTemplate from './wedding/BlushEditorialTemplate';
+import YozmStyleTemplate from './wedding/YozmStyleTemplate';
 
 // 메인 렌더링 컴포넌트
 export default function WeddingTemplatePreview({
@@ -80,6 +82,10 @@ export default function WeddingTemplatePreview({
       return <RunicRiftTemplate {...commonProps} />;
     case 'photo-book':
       return <PhotoBookTemplate {...commonProps} />;
+    case 'blush-editorial':
+      return <BlushEditorialTemplate {...commonProps} />;
+    case 'yozm-style':
+      return <YozmStyleTemplate {...commonProps} />;
     case 'romantic-arch':
       return <RomanticArchTemplate {...commonProps} />;
     case 'editorial-magazine':
