@@ -32,8 +32,10 @@ import {
 import SimpleModal from "../../../components/SimpleModal";
 import { useSimpleAlert } from "../../../hooks/useSimpleAlert";
 import { useTutorial } from "../../../contexts/TutorialContext";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const DEFAULT_AMOUNTS = [30000, 50000, 70000, 100000, 150000, 200000];
+const VISIT_AMOUNT_STEPS = [50000, 100000, 150000, 200000, 300000];
+const KAKAO_TALK_ICON = require("../../../../assets/guestbook/card/icon-kakaotalk.png");
 
 const parseAdditionalInfo = (value) => {
   if (!value) return {};
@@ -90,20 +92,14 @@ export default function GuestConfirmScreen({ navigation, route }) {
   const visitorLabel = isFuneralEvent ? "조문" : "하객";
   const relationOptions = isFuneralEvent
     ? ["가족", "친척", "친구", "동료", "지인", "기타"]
-    : ["친척", "친구", "직장", "기타"];
-  const relationRows = isFuneralEvent
-    ? [
-        ["가족", "친척", "친구"],
-        ["동료", "지인", "기타"],
-      ]
-    : [relationOptions];
-
+    : ["가족", "친척", "친구", "직장동료", "지인", "기타"];
   const [screenSize, setScreenSize] = useState(Dimensions.get("window"));
   const [recognizing, setRecognizing] = useState(true);
   const [candidates, setCandidates] = useState([]);
   const [selectedName, setSelectedName] = useState("");
   const [nameConfirmed, setNameConfirmed] = useState(false);
   const [selectedAmount, setSelectedAmount] = useState(0);
+  const [lastAmountStep, setLastAmountStep] = useState(null);
   const [relationDetail, setRelationDetail] = useState(null);
   const [ticketCount, setTicketCount] = useState(0);
   const [guestPhone, setGuestPhone] = useState("");
@@ -120,6 +116,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const scrollRef = useRef(null);
+  const insets = useSafeAreaInsets();
 
   // ── 튜토리얼 ──
   const {
@@ -336,11 +333,6 @@ export default function GuestConfirmScreen({ navigation, route }) {
     return () => clearTimeout(timer);
   }, [guestPhone, phoneVisible, event?.id]);
 
-  const amountPresets = (() => {
-    const p = event?.preset_amounts;
-    return Array.isArray(p) && p.length > 0 ? p : DEFAULT_AMOUNTS;
-  })();
-
   const fmt = (n) => {
     if (!n) return "";
     const v = Math.round(n),
@@ -380,6 +372,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
       return;
     }
     setSelectedAmount(Math.round(val / 10000) * 10000 || val);
+    setLastAmountStep(null);
     setCustomAmountVisible(false);
     setCustomAmountInput("");
   };
@@ -555,6 +548,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
         setSelectedName("");
         setNameConfirmed(false);
         setSelectedAmount(0);
+        setLastAmountStep(null);
         setRelationDetail(null);
         setTicketCount(0);
         setGuestPhone("");
@@ -585,6 +579,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
 
   const d = {
     ph: Math.round((nameConfirmed ? 28 : 32) * sc),
+    gap4: Math.round(4 * sc * dense),
     gap8: Math.round(8 * sc * dense),
     gap12: Math.round(12 * sc * dense),
     gap16: Math.round(16 * sc * dense),
@@ -624,6 +619,11 @@ export default function GuestConfirmScreen({ navigation, route }) {
     swH: Math.round((nameConfirmed ? 23 : 26) * sc),
     swThumb: Math.round((nameConfirmed ? 16 : 18) * sc),
   };
+  const safeTop = Math.max(insets.top || 0, Platform.OS === "ios" ? 44 : 32);
+  const safeBottom = Math.max(insets.bottom || 0, 0);
+  const safeLeft = Math.max(insets.left || 0, 0);
+  const safeRight = Math.max(insets.right || 0, 0);
+  const rightSafeLeft = nameConfirmed ? safeLeft : 0;
 
   // ── 인식 중 ──
   if (recognizing) {
@@ -667,8 +667,9 @@ export default function GuestConfirmScreen({ navigation, route }) {
     );
   }
 
-  const row1 = amountPresets.slice(0, 4);
-  const row2 = amountPresets.slice(4, 6);
+  const selectedInitial = selectedName.trim().slice(0, 1) || visitorLabel.slice(0, 1);
+  const visitAmountOptions = VISIT_AMOUNT_STEPS;
+  const visitRelationOptions = relationOptions;
 
   return (
     <View style={[s.root, { backgroundColor: "#F2F4F6" }]}>
@@ -684,7 +685,10 @@ export default function GuestConfirmScreen({ navigation, route }) {
                 s.sideBadge,
                 {
                   backgroundColor: sideBg,
-                  margin: d.gap20,
+                  marginTop: safeTop + d.gap16,
+                  marginLeft: safeLeft + d.gap20,
+                  marginRight: d.gap20,
+                  marginBottom: d.gap20,
                   alignSelf: "flex-start",
                   borderRadius: d.r12,
                 },
@@ -704,7 +708,11 @@ export default function GuestConfirmScreen({ navigation, route }) {
             <View
               style={[
                 s.sigCard,
-                { marginHorizontal: d.gap16, marginBottom: d.gap12 },
+                {
+                  marginLeft: safeLeft + d.gap16,
+                  marginRight: d.gap16,
+                  marginBottom: d.gap12,
+                },
               ]}
             >
               <Text
@@ -729,8 +737,9 @@ export default function GuestConfirmScreen({ navigation, route }) {
               style={[
                 s.rewriteBtn,
                 {
-                  marginHorizontal: d.gap16,
-                  marginBottom: d.gap24,
+                  marginLeft: safeLeft + d.gap16,
+                  marginRight: d.gap16,
+                  marginBottom: safeBottom + d.gap24,
                   height: d.btnH,
                   borderRadius: d.r16,
                 },
@@ -751,16 +760,24 @@ export default function GuestConfirmScreen({ navigation, route }) {
 
       {/* ── 우: 입력 패널 ── */}
       <View style={[s.rightPanel, { width: rightW }]}>
-        {/* 나가기 */}
-        <TouchableOpacity
-          style={[s.exitBtn, { top: d.gap20, right: d.gap20 }]}
-          onPress={handleExit}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={[s.exitBtnText, { fontSize: Math.round(14 * sc) }]}>
-            ✕ 나가기
-          </Text>
-        </TouchableOpacity>
+        {/* 나가기 — 방문 정보 단계에서만 표시 */}
+        {nameConfirmed && (
+          <TouchableOpacity
+            style={[
+              s.exitBtn,
+              {
+                top: safeTop + d.gap16,
+                right: safeRight + d.gap20,
+              },
+            ]}
+            onPress={handleExit}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={[s.exitBtnText, { fontSize: Math.round(14 * sc) }]}>
+              ✕ 나가기
+            </Text>
+          </TouchableOpacity>
+        )}
 
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -770,9 +787,10 @@ export default function GuestConfirmScreen({ navigation, route }) {
           <ScrollView
             ref={scrollRef}
             contentContainerStyle={{
-              paddingHorizontal: d.ph,
-              paddingTop: d.gap48,
-              paddingBottom: d.actionBarH + d.gap24,
+              paddingLeft: d.ph + rightSafeLeft,
+              paddingRight: d.ph + safeRight,
+              paddingTop: safeTop + d.gap24,
+              paddingBottom: d.actionBarH + safeBottom + d.gap24,
               flexGrow: 1,
               justifyContent: "center",
             }}
@@ -784,428 +802,504 @@ export default function GuestConfirmScreen({ navigation, route }) {
               <View
                 ref={nameAreaRef}
                 collapsable={false}
-                style={{ gap: d.gap16 }}
+                style={[s.nameConfirmShell, { gap: d.gap16 }]}
               >
-                <Text style={[s.secTitle, { fontSize: d.titleFs }]}>
-                  성함을 확인해주세요
-                </Text>
+                <View style={[s.nameStepHeader, { marginBottom: d.gap4 }]}>
+                  <View
+                    style={[
+                      s.nameStepBadge,
+                      { backgroundColor: sideBg, borderRadius: d.r12 },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        s.nameStepBadgeText,
+                        { color: sideColor, fontSize: Math.round(13 * sc) },
+                      ]}
+                    >
+                      {isFuneralEvent ? "조문 접수" : "하객 접수"}
+                    </Text>
+                  </View>
 
-                {candidates.length > 0 && (
-                  <View style={[s.candRow, { gap: d.gap8 }]}>
-                    {candidates.map((c, i) => (
-                      <TouchableOpacity
-                        key={i}
-                        style={[
-                          s.candChip,
-                          {
-                            paddingHorizontal: d.gap16,
-                            height: Math.round(44 * sc),
-                            borderRadius: 999,
-                          },
-                          selectedName === c && {
-                            backgroundColor: sideColor + "15",
-                            borderColor: sideColor,
-                          },
-                        ]}
-                        onPress={() => setSelectedName(c)}
-                      >
+                  <View style={[s.nameStepTrack, { gap: d.gap8 }]}>
+                    {[
+                      ["1", "이름 확인", true],
+                      ["2", "방문 정보", false],
+                      ["3", "접수 완료", false],
+                    ].map(([num, label, active]) => (
+                      <View key={num} style={[s.nameStepItem, { gap: Math.round(5 * sc) }]}>
+                        <View
+                          style={[
+                            s.nameStepDot,
+                            {
+                              width: Math.round(22 * sc),
+                              height: Math.round(22 * sc),
+                              borderRadius: 999,
+                            },
+                            active
+                              ? { backgroundColor: sideColor, borderColor: sideColor }
+                              : { backgroundColor: "#FFFFFF", borderColor: "#D1D6DB" },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              s.nameStepDotText,
+                              {
+                                color: active ? "#FFFFFF" : "#8B95A1",
+                                fontSize: Math.round(11 * sc),
+                              },
+                            ]}
+                          >
+                            {num}
+                          </Text>
+                        </View>
                         <Text
                           style={[
-                            s.candText,
-                            { fontSize: d.candFs },
-                            selectedName === c && {
-                              color: sideColor,
-                              fontWeight: "700",
+                            s.nameStepText,
+                            {
+                              color: active ? "#191F28" : "#8B95A1",
+                              fontSize: Math.round(12 * sc),
                             },
                           ]}
                         >
-                          {c}
+                          {label}
                         </Text>
-                      </TouchableOpacity>
+                      </View>
                     ))}
                   </View>
-                )}
+                </View>
 
                 <View
                   style={[
-                    s.inputWrap,
-                    { height: d.inputH, borderRadius: d.r16 },
-                    selectedName.trim() ? { borderColor: sideColor } : {},
+                    s.nameConfirmCard,
+                    { borderRadius: d.r20, padding: d.gap24, gap: d.gap16 },
                   ]}
                 >
-                  <TextInput
-                    style={[s.inputText, { fontSize: d.inputFs }]}
-                    value={selectedName}
-                    onChangeText={setSelectedName}
-                    placeholder="이름 직접 입력"
-                    placeholderTextColor="#D1D6DB"
-                    maxLength={20}
-                    autoFocus={candidates.length === 0}
-                  />
-                  {selectedName.length > 0 && (
-                    <TouchableOpacity
+                  <View style={{ gap: d.gap8 }}>
+                    <View style={[s.nameTitleIcon, { backgroundColor: sideBg }]}>
+                      <Ionicons name="checkmark-circle" size={Math.round(19 * sc)} color={sideColor} />
+                      <Text
+                        style={[
+                          s.nameTitleIconText,
+                          { color: sideColor, fontSize: Math.round(13 * sc) },
+                        ]}
+                      >
+                        확인되었습니다
+                      </Text>
+                    </View>
+                    <Text style={[s.nameConfirmTitle, { fontSize: d.titleFs }]}>
+                      성함을 확인해주세요
+                    </Text>
+                    <Text style={[s.nameConfirmSub, { fontSize: Math.round(14 * sc) }]}>
+                      방명록과 {amountLabel} 접수에 사용할 이름입니다
+                    </Text>
+                  </View>
+
+                  {candidates.length > 0 && (
+                    <View style={[s.nameCandidateBlock, { gap: d.gap8 }]}>
+                      <Text
+                        style={[
+                          s.nameCandidateLabel,
+                          { fontSize: Math.round(13 * sc) },
+                        ]}
+                      >
+                        인식된 이름 후보
+                      </Text>
+                      <View style={[s.candRow, { gap: d.gap8 }]}>
+                        {candidates.map((c, i) => (
+                          <TouchableOpacity
+                            key={i}
+                            style={[
+                              s.candChip,
+                              {
+                                paddingHorizontal: d.gap16,
+                                height: Math.round(40 * sc),
+                                borderRadius: 999,
+                              },
+                              selectedName === c && {
+                                backgroundColor: sideColor + "15",
+                                borderColor: sideColor,
+                              },
+                            ]}
+                            onPress={() => setSelectedName(c)}
+                            activeOpacity={0.75}
+                          >
+                            <Text
+                              style={[
+                                s.candText,
+                                { fontSize: d.candFs },
+                                selectedName === c && {
+                                  color: sideColor,
+                                  fontWeight: "800",
+                                },
+                              ]}
+                            >
+                              {c}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  <View
+                    style={[
+                      s.nameInputCard,
+                      { borderRadius: d.r16, padding: d.gap16, gap: d.gap8 },
+                      selectedName.trim() ? { borderColor: sideColor } : {},
+                    ]}
+                  >
+                    <View style={s.nameInputLabelRow}>
+                      <Text
+                        style={[
+                          s.nameInputLabel,
+                          { fontSize: Math.round(13 * sc) },
+                        ]}
+                      >
+                        성함
+                      </Text>
+                      {!!selectedName.trim() && (
+                        <View style={s.nameInputValid}>
+                          <Ionicons name="checkmark" size={Math.round(14 * sc)} color="#0CA678" />
+                          <Text
+                            style={[
+                              s.nameInputValidText,
+                              { fontSize: Math.round(12 * sc) },
+                            ]}
+                          >
+                            확인되었습니다
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={s.nameInputRow}>
+                      <TextInput
+                        style={[s.nameInputText, { fontSize: d.inputFs }]}
+                        value={selectedName}
+                        onChangeText={setSelectedName}
+                        placeholder="이름 직접 입력"
+                        placeholderTextColor="#D1D6DB"
+                        maxLength={20}
+                        autoFocus={candidates.length === 0}
+                      />
+                      {selectedName.length > 0 && (
+                        <TouchableOpacity
+                          style={[
+                            s.clearBtn,
+                            {
+                              width: Math.round(30 * sc),
+                              height: Math.round(30 * sc),
+                              borderRadius: 999,
+                            },
+                          ]}
+                          onPress={() => setSelectedName("")}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          <Ionicons name="close" size={Math.round(16 * sc)} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      s.namePreviewCard,
+                      { borderRadius: d.r16, padding: d.gap16, gap: d.gap12 },
+                    ]}
+                  >
+                    <View
                       style={[
-                        s.clearBtn,
+                        s.nameAvatar,
                         {
-                          width: Math.round(28 * sc),
-                          height: Math.round(28 * sc),
+                          width: Math.round(46 * sc),
+                          height: Math.round(46 * sc),
                           borderRadius: 999,
+                          backgroundColor: sideColor,
                         },
                       ]}
-                      onPress={() => setSelectedName("")}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Text
-                        style={{
-                          color: "#FFFFFF",
-                          fontSize: Math.round(12 * sc),
-                          fontWeight: "700",
-                        }}
+                        style={[
+                          s.nameAvatarText,
+                          {
+                            fontSize: Math.round(19 * sc),
+                          },
+                        ]}
                       >
-                        ✕
+                        {selectedInitial}
                       </Text>
-                    </TouchableOpacity>
-                  )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          s.namePreviewTitle,
+                          { fontSize: Math.round(18 * sc) },
+                        ]}
+                      >
+                        {selectedName.trim() || "성함"}님으로 접수할까요?
+                      </Text>
+                      <Text
+                        style={[
+                          s.namePreviewSub,
+                          { fontSize: Math.round(13 * sc), marginTop: Math.round(3 * sc) },
+                        ]}
+                      >
+                        이름은 접수 완료 전까지 수정할 수 있어요
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={Math.round(20 * sc)} color="#B0B8C1" />
+                  </View>
                 </View>
               </View>
             ) : (
               /* ── Step 2: 금액 / 관계 / 영수증 ── */
-              <View style={{ gap: d.gap16 }}>
-                {/* 인사 */}
-                <Text style={[s.greetText, { fontSize: Math.round(17 * sc) }]}>
-                  <Text style={{ color: sideColor, fontWeight: "800" }}>
-                    {selectedName}
-                  </Text>{" "}
-                  님, {amountLabel}을 기록해주세요 👋
-                </Text>
+              <View style={[s.visitShell, { gap: d.gap16 }]}>
+                <View style={s.visitPageHead}>
+                  <TouchableOpacity
+                    style={s.visitHeadSide}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setNameConfirmed(false);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Ionicons
+                      name="arrow-back"
+                      size={Math.round(26 * sc)}
+                      color="#0B1F3A"
+                    />
+                  </TouchableOpacity>
+                  <Text style={[s.visitPageTitle, { fontSize: Math.round(22 * sc) }]}>
+                    {isFuneralEvent ? "조문 접수" : "하객 접수"}
+                  </Text>
+                  <View style={s.visitHeadSide} />
+                </View>
 
-                <View style={s.confirmGrid}>
-                  {/* 튜토리얼 타겟: 금액 + 관계 영역 */}
+                <View style={[s.visitProgress, { gap: d.gap12 }]}>
+                  {[
+                    ["1", "이름 확인"],
+                    ["2", `${amountLabel} 선택`],
+                    ["3", "접수 완료"],
+                  ].map(([num, label], index) => {
+                    const active = num === "2";
+                    const done = num === "1";
+                    return (
+                      <React.Fragment key={num}>
+                        {index > 0 && <View style={s.visitProgressLine} />}
+                        <View style={[s.visitProgressItem, { gap: d.gap8 }]}>
+                          <View
+                            style={[
+                              s.visitProgressDot,
+                              {
+                                width: Math.round(30 * sc),
+                                height: Math.round(30 * sc),
+                                borderRadius: 999,
+                                backgroundColor:
+                                  active || done ? "#082344" : "#F7E9E4",
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                s.visitProgressDotText,
+                                {
+                                  color: active || done ? "#FFFFFF" : "#0B1F3A",
+                                  fontSize: Math.round(13 * sc),
+                                },
+                              ]}
+                            >
+                              {num}
+                            </Text>
+                          </View>
+                          <Text
+                            style={[
+                              s.visitProgressText,
+                              {
+                                color: active ? "#0B1F3A" : "#6B7684",
+                                fontSize: Math.round(13 * sc),
+                              },
+                            ]}
+                          >
+                            {label}
+                          </Text>
+                        </View>
+                      </React.Fragment>
+                    );
+                  })}
+                </View>
+
+                <View
+                  style={[
+                    s.visitInfoCard,
+                    {
+                      borderRadius: d.r20,
+                      paddingHorizontal: d.gap24,
+                      paddingVertical: d.gap20,
+                    },
+                  ]}
+                >
                   <View
                     ref={amountRelationRef}
                     collapsable={false}
-                    style={[
-                      s.confirmGridColLeft,
-                      { gap: d.gap16, paddingRight: d.gap16 },
-                    ]}
+                    style={s.visitRows}
                   >
-                    <View style={s.confirmColumnHeader}>
-                      <Text
-                        style={[
-                          s.confirmColumnTitle,
-                          { fontSize: Math.round(15 * sc) },
-                        ]}
-                      >
-                        {amountLabel} 정보
-                      </Text>
-                      <Text
-                        style={[
-                          s.confirmColumnSub,
-                          { fontSize: Math.round(11 * sc) },
-                        ]}
-                      >
-                        금액과 {visitorLabel} 구분을 확인해요
-                      </Text>
-                    </View>
-
-                    {/* 섹션: 부조금 */}
-                    <View style={{ gap: d.gap12 }}>
-                      <Text style={[s.secTitle, { fontSize: d.titleFs }]}>
-                        금액을 선택해주세요
-                      </Text>
-
-                      {/* 선택 금액 바 */}
-                      <View
-                        style={[
-                          s.amountBar,
-                          {
-                            borderRadius: d.r16,
-                            paddingHorizontal: d.gap16,
-                            paddingVertical: d.gap12,
-                          },
-                        ]}
-                      >
+                    <View
+                      style={[
+                        s.visitInfoRow,
+                        { minHeight: Math.round(62 * sc), gap: d.gap16 },
+                      ]}
+                    >
+                      <View style={s.visitRowNumber}>
+                        <Text style={[s.visitRowNumberText, { fontSize: Math.round(14 * sc) }]}>
+                          1
+                        </Text>
+                      </View>
+                      <View style={s.visitRowLabel}>
+                        <Text style={[s.visitRowTitle, { fontSize: Math.round(14 * sc) }]}>
+                          {amountLabel} 금액
+                        </Text>
                         <View
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            gap: d.gap8,
-                            flex: 1,
-                          }}
+                          style={[
+                            s.visitAmountSummary,
+                            { marginTop: Math.round(5 * sc), gap: d.gap8 },
+                          ]}
                         >
                           <Text
                             style={[
-                              s.amountBarLbl,
-                              { fontSize: d.amountLblFs },
+                              s.visitAmountSummaryLabel,
+                              { fontSize: Math.round(11 * sc) },
                             ]}
                           >
-                            선택 금액
+                            현재
                           </Text>
                           <Text
                             style={[
-                              s.amountBarVal,
-                              { fontSize: d.amountBigFs },
+                              s.visitAmountSummaryValue,
+                              { fontSize: Math.round(19 * sc) },
                             ]}
                           >
-                            {fmtComma(selectedAmount)}
-                            <Text
-                              style={[
-                                s.amountBarUnit,
-                                { fontSize: d.amountUnitFs },
-                              ]}
-                            >
-                              원
-                            </Text>
+                            {fmtComma(selectedAmount)}원
                           </Text>
                         </View>
+                      </View>
+                      <View style={[s.visitAmountControls, { gap: d.gap8 }]}>
                         {selectedAmount > 0 && (
                           <TouchableOpacity
                             style={[
-                              s.resetBtn,
+                              s.visitAmountReset,
                               {
-                                paddingHorizontal: d.gap12,
-                                paddingVertical: Math.round(6 * sc),
+                                height: Math.round(44 * sc),
                                 borderRadius: Math.round(8 * sc),
                               },
                             ]}
-                            onPress={() => setSelectedAmount(0)}
+                            onPress={() => {
+                              setSelectedAmount(0);
+                              setLastAmountStep(null);
+                            }}
+                            activeOpacity={0.75}
                           >
                             <Text
-                              style={[s.resetBtnText, { fontSize: d.resetFs }]}
+                              style={[
+                                s.visitAmountResetText,
+                                { fontSize: Math.round(13 * sc) },
+                              ]}
                             >
-                              초기화 ✕
+                              초기화
                             </Text>
                           </TouchableOpacity>
                         )}
-                      </View>
-
-                      {/* 증액 칩 */}
-                      <View style={[s.row, { gap: d.gap8 }]}>
-                        {[10000, 30000, 50000, 100000].map((add) => (
-                          <TouchableOpacity
-                            key={add}
-                            style={[
-                              s.addChip,
-                              { flex: 1, height: d.chipH, borderRadius: d.r14 },
-                            ]}
-                            onPress={() => setSelectedAmount((p) => p + add)}
-                            activeOpacity={0.7}
-                          >
-                            <Text
-                              style={[s.addChipText, { fontSize: d.chipFs }]}
-                            >
-                              +{add / 10000}만
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-
-                      {/* 빠른 선택 row1 */}
-                      <View style={[s.row, { gap: d.gap8 }]}>
-                        {row1.map((val) => (
+                        <View style={[s.visitAmountButtons, { gap: d.gap8 }]}>
+                        {visitAmountOptions.map((val) => (
                           <TouchableOpacity
                             key={val}
                             style={[
-                              s.presetBtn,
+                              s.visitChoiceBtn,
                               {
-                                flex: 1,
-                                height: d.presetH,
-                                borderRadius: d.r14,
+                                height: Math.round(44 * sc),
+                                borderRadius: Math.round(8 * sc),
                               },
-                              selectedAmount === val
-                                ? s.presetSel
-                                : s.presetDef,
+                              lastAmountStep === val && s.visitChoiceBtnSoftSelected,
                             ]}
-                            onPress={() => setSelectedAmount(val)}
-                            activeOpacity={0.7}
+                            onPress={() => {
+                              setSelectedAmount((prev) => prev + val);
+                              setLastAmountStep(val);
+                            }}
+                            activeOpacity={0.75}
                           >
                             <Text
                               style={[
-                                s.presetText,
-                                { fontSize: d.presetFs },
-                                selectedAmount === val && { color: "#FFFFFF" },
+                                s.visitChoiceText,
+                                { fontSize: Math.round(14 * sc) },
+                                lastAmountStep === val && s.visitChoiceTextSoftSelected,
                               ]}
                             >
-                              {fmtShort(val)}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-
-                      {/* 빠른 선택 row2 + 직접입력 */}
-                      <View style={[s.row, { gap: d.gap8 }]}>
-                        {row2.map((val) => (
-                          <TouchableOpacity
-                            key={val}
-                            style={[
-                              s.presetBtn,
-                              {
-                                flex: 1,
-                                height: d.presetH,
-                                borderRadius: d.r14,
-                              },
-                              selectedAmount === val
-                                ? s.presetSel
-                                : s.presetDef,
-                            ]}
-                            onPress={() => setSelectedAmount(val)}
-                            activeOpacity={0.7}
-                          >
-                            <Text
-                              style={[
-                                s.presetText,
-                                { fontSize: d.presetFs },
-                                selectedAmount === val && { color: "#FFFFFF" },
-                              ]}
-                            >
-                              {fmtShort(val)}
+                              +{fmt(val)}
                             </Text>
                           </TouchableOpacity>
                         ))}
                         <TouchableOpacity
                           style={[
-                            s.presetBtn,
-                            s.presetDef,
-                            { flex: 2, height: d.presetH, borderRadius: d.r14 },
+                            s.visitChoiceBtn,
+                            {
+                              height: Math.round(44 * sc),
+                              borderRadius: Math.round(8 * sc),
+                            },
                           ]}
                           onPress={() => setCustomAmountVisible(true)}
-                          activeOpacity={0.7}
+                          activeOpacity={0.75}
                         >
                           <Text
                             style={[
-                              s.presetText,
-                              { fontSize: d.presetFs, color: "#4E5968" },
+                              s.visitChoiceText,
+                              { fontSize: Math.round(14 * sc) },
                             ]}
                           >
-                            직접 입력하기 ›
+                            직접 입력
                           </Text>
                         </TouchableOpacity>
                       </View>
-                    </View>
-
-                    {/* 섹션: 관계 */}
-                    {!isFuneralEvent && (
-                      <View style={{ gap: d.gap12 }}>
-                        <Text style={[s.secTitle, { fontSize: d.titleFs }]}>
-                          어떤 분으로 오셨나요?
-                        </Text>
-                        <View style={{ gap: d.gap8 }}>
-                          {relationRows.map((row, rowIndex) => (
-                            <View
-                              key={rowIndex}
-                              style={[s.row, { gap: d.gap8 }]}
-                            >
-                              {row.map((rel) => (
-                                <TouchableOpacity
-                                  key={rel}
-                                  style={[
-                                    s.relBtn,
-                                    {
-                                      flex: 1,
-                                      height: d.relationH,
-                                      borderRadius: d.r16,
-                                    },
-                                    relationDetail === rel
-                                      ? s.relSel
-                                      : s.relDef,
-                                  ]}
-                                  onPress={() =>
-                                    setRelationDetail((p) =>
-                                      p === rel ? null : rel,
-                                    )
-                                  }
-                                  activeOpacity={0.7}
-                                >
-                                  <Text
-                                    style={[
-                                      s.relText,
-                                      { fontSize: d.relationFs },
-                                      relationDetail === rel && {
-                                        color: "#FFFFFF",
-                                      },
-                                    ]}
-                                  >
-                                    {rel}
-                                  </Text>
-                                </TouchableOpacity>
-                              ))}
-                            </View>
-                          ))}
-                        </View>
                       </View>
-                    )}
-                  </View>
-
-                  <View style={s.confirmGridDivider} />
-
-                  <View
-                    style={[
-                      s.confirmGridColRight,
-                      { gap: d.gap16, paddingLeft: d.gap16 },
-                    ]}
-                  >
-                    <View style={s.confirmColumnHeader}>
-                      <Text
-                        style={[
-                          s.confirmColumnTitle,
-                          { fontSize: Math.round(15 * sc) },
-                        ]}
-                      >
-                        접수 옵션
-                      </Text>
-                      <Text
-                        style={[
-                          s.confirmColumnSub,
-                          { fontSize: Math.round(11 * sc) },
-                        ]}
-                      >
-                        {isFuneralEvent
-                          ? "영수증 발송을 선택해요"
-                          : "식권과 영수증 발송을 선택해요"}
-                      </Text>
                     </View>
-                    {/* 섹션: 식권 */}
+
                     {!isFuneralEvent && (
-                      <View style={{ gap: d.gap12 }}>
-                        <Text style={[s.secTitle, { fontSize: d.titleFs }]}>
-                          식권은 몇 장 필요하신가요?
-                        </Text>
+                      <>
+                        <View style={s.visitDivider} />
                         <View
                           style={[
-                            s.ticketBox,
-                            {
-                              borderRadius: d.r16,
-                              paddingHorizontal: d.gap16,
-                              paddingVertical: d.gap12,
-                            },
+                            s.visitInfoRow,
+                            { minHeight: Math.round(62 * sc), gap: d.gap16 },
                           ]}
                         >
-                          <View style={{ flex: 1 }}>
-                            <Text
-                              style={[
-                                s.ticketBoxTitle,
-                                { fontSize: Math.round(13 * sc) },
-                              ]}
-                            >
-                              필요 식권
+                          <View style={s.visitRowNumber}>
+                            <Text style={[s.visitRowNumberText, { fontSize: Math.round(14 * sc) }]}>
+                              2
+                            </Text>
+                          </View>
+                          <View style={s.visitRowLabel}>
+                            <Text style={[s.visitRowTitle, { fontSize: Math.round(15 * sc) }]}>
+                              식권이 몇 장 필요하신가요?
                             </Text>
                             <Text
                               style={[
-                                s.ticketBoxValue,
-                                { fontSize: Math.round(22 * sc) },
+                                s.visitRowSub,
+                                { fontSize: Math.round(11 * sc), marginTop: 2 },
                               ]}
                             >
-                              {ticketCount === 0 ? "없음" : `${ticketCount}장`}
+                              본인을 포함한 인원 수만큼 선택해주세요.
                             </Text>
                           </View>
                           <View
                             style={[
-                              s.ticketStepper,
-                              { height: d.chipH, borderRadius: d.r14 },
+                              s.visitTicketStepper,
+                              {
+                                width: Math.round(180 * sc),
+                                height: Math.round(44 * sc),
+                                borderRadius: Math.round(8 * sc),
+                              },
                             ]}
                           >
                             <TouchableOpacity
-                              style={s.ticketStepBtn}
+                              style={s.visitTicketBtn}
                               onPress={() =>
                                 setTicketCount((prev) => Math.max(0, prev - 1))
                               }
@@ -1213,22 +1307,20 @@ export default function GuestConfirmScreen({ navigation, route }) {
                             >
                               <Ionicons
                                 name="remove"
-                                size={Math.round(22 * sc)}
-                                color={
-                                  ticketCount === 0 ? "#C5CCD5" : "#4E5968"
-                                }
+                                size={Math.round(19 * sc)}
+                                color={ticketCount === 0 ? "#B0B8C1" : "#0B1F3A"}
                               />
                             </TouchableOpacity>
                             <Text
                               style={[
-                                s.ticketStepText,
-                                { fontSize: Math.round(17 * sc) },
+                                s.visitTicketCount,
+                                { fontSize: Math.round(20 * sc) },
                               ]}
                             >
                               {ticketCount}
                             </Text>
                             <TouchableOpacity
-                              style={s.ticketStepBtn}
+                              style={s.visitTicketBtn}
                               onPress={() =>
                                 setTicketCount((prev) => Math.min(10, prev + 1))
                               }
@@ -1236,365 +1328,294 @@ export default function GuestConfirmScreen({ navigation, route }) {
                             >
                               <Ionicons
                                 name="add"
-                                size={Math.round(22 * sc)}
-                                color="#4E5968"
+                                size={Math.round(19 * sc)}
+                                color="#0B1F3A"
                               />
                             </TouchableOpacity>
                           </View>
                         </View>
-                        <View style={[s.row, { gap: d.gap8 }]}>
-                          {[0, 1, 2, 3, 4].map((count) => (
-                            <TouchableOpacity
-                              key={count}
-                              style={[
-                                s.ticketChip,
-                                {
-                                  flex: 1,
-                                  height: d.chipH,
-                                  borderRadius: d.r14,
-                                },
-                                ticketCount === count
-                                  ? s.ticketChipSel
-                                  : s.ticketChipDef,
-                              ]}
-                              onPress={() => setTicketCount(count)}
-                              activeOpacity={0.75}
-                            >
-                              <Text
-                                style={[
-                                  s.ticketChipText,
-                                  { fontSize: d.chipFs },
-                                  ticketCount === count && { color: "#FFFFFF" },
-                                ]}
-                              >
-                                {count === 0 ? "없음" : `${count}장`}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </View>
+                      </>
                     )}
 
-                    {/* 섹션: 카카오 영수증 */}
-                    <View style={{ gap: d.gap8 }}>
-                      <Text style={[s.secTitle, { fontSize: d.titleFs }]}>
-                        영수증 안내
-                      </Text>
-                      {(() => {
-                        const noCredit =
-                          alimtalkBalance != null && alimtalkBalance <= 0;
-                        return (
-                          <TouchableOpacity
-                            ref={kakaoToggleRef}
-                            collapsable={false}
-                            style={[
-                              s.kakaoToggle,
-                              {
-                                borderRadius: d.r16,
-                                paddingHorizontal: d.gap16,
-                                paddingVertical: d.gap12,
-                              },
-                              phoneVisible ? s.kakaoOn : s.kakaoOff,
-                              noCredit && s.kakaoDisabled,
-                            ]}
-                            onPress={() => {
-                              if (noCredit) {
-                                showAlert({
-                                  title: "크레딧 부족",
-                                  message:
-                                    "카카오 알림톡 크레딧이 소진되어 영수증을 보낼 수 없습니다.\n주최자에게 충전을 요청해주세요.",
-                                });
-                                return;
-                              }
-                              const next = !phoneVisible;
-                              setPhoneVisible(next);
-                              if (!next) setGuestPhone("");
-                              else {
-                                setGuestPhone("010-");
-                                setTimeout(
-                                  () =>
-                                    scrollRef.current?.scrollToEnd({
-                                      animated: true,
-                                    }),
-                                  150,
-                                );
-                              }
-                              // 튜토리얼: 토글 탭 스텝이면 다음으로
-                              if (
-                                tutorialStep?.id === "me_guest_kakao_toggle" &&
-                                !phoneVisible
-                              ) {
-                                tutorialAdvance();
-                              }
-                            }}
-                            activeOpacity={noCredit ? 1 : 0.8}
-                          >
-                            <View
-                              style={[
-                                s.kakaoIcon,
-                                {
-                                  width: Math.round(32 * sc),
-                                  height: Math.round(32 * sc),
-                                  borderRadius: 999,
-                                },
-                                noCredit && { backgroundColor: "#E5E8EB" },
-                              ]}
-                            >
-                              <Text
-                                style={{
-                                  fontSize: Math.round(15 * sc),
-                                  opacity: noCredit ? 0.4 : 1,
-                                }}
-                              >
-                                📱
-                              </Text>
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text
-                                style={[
-                                  s.kakaoText,
-                                  { fontSize: d.toggleFs },
-                                  noCredit && { color: "#8B95A1" },
-                                ]}
-                              >
-                                카카오톡으로 영수증 받기
-                                {!noCredit && (
-                                  <Text
-                                    style={[
-                                      s.kakaoOpt,
-                                      { fontSize: d.optionalFs },
-                                    ]}
-                                  >
-                                    {" "}
-                                    (선택)
-                                  </Text>
-                                )}
-                              </Text>
-                              {noCredit && (
-                                <Text
-                                  style={[
-                                    s.kakaoOpt,
-                                    {
-                                      fontSize: d.optionalFs,
-                                      color: "#EF4444",
-                                      marginTop: 2,
-                                    },
-                                  ]}
-                                >
-                                  크레딧 부족으로 이용할 수 없습니다
-                                </Text>
-                              )}
-                            </View>
-                            <View
-                              style={[
-                                s.sw,
-                                {
-                                  width: d.swW,
-                                  height: d.swH,
-                                  borderRadius: 999,
-                                },
-                                noCredit
-                                  ? { backgroundColor: "#E5E8EB" }
-                                  : phoneVisible
-                                    ? { backgroundColor: "#3182F6" }
-                                    : { backgroundColor: "#D1D6DB" },
-                              ]}
-                            >
-                              <View
-                                style={[
-                                  s.swThumb,
-                                  {
-                                    width: d.swThumb,
-                                    height: d.swThumb,
-                                    borderRadius: 999,
-                                  },
-                                  phoneVisible && !noCredit
-                                    ? { alignSelf: "flex-end" }
-                                    : { alignSelf: "flex-start" },
-                                ]}
-                              />
-                            </View>
-                          </TouchableOpacity>
-                        );
-                      })()}
-
-                      {phoneVisible && (
-                        <View
-                          ref={phoneAreaRef}
-                          collapsable={false}
-                          style={[
-                            s.phoneArea,
-                            { borderRadius: d.r16, padding: d.gap16 },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              s.phoneLbl,
-                              { fontSize: d.phoneLblFs, marginBottom: d.gap8 },
-                            ]}
-                          >
-                            휴대폰 번호
-                          </Text>
-                          <View
-                            style={[
-                              s.inputWrap,
-                              { height: d.inputH, borderRadius: d.r12 },
-                              guestPhone ? { borderColor: "#FEE500" } : {},
-                              phoneCheckStatus === "duplicate" ||
-                              phoneCheckStatus === "invalid"
-                                ? { borderColor: "#EF4444" }
-                                : {},
-                              phoneCheckStatus === "available"
-                                ? { borderColor: "#22C55E" }
-                                : {},
-                            ]}
-                          >
-                            <TextInput
-                              style={[
-                                s.inputText,
-                                { fontSize: d.phoneFs, letterSpacing: 1 },
-                              ]}
-                              value={guestPhone}
-                              onChangeText={(t) =>
-                                setGuestPhone(formatPhone(t))
-                              }
-                              placeholder="010-0000-0000"
-                              placeholderTextColor="#D1D6DB"
-                              keyboardType="phone-pad"
-                              maxLength={13}
-                              autoFocus
-                            />
-                            {phoneCheckStatus === "checking" && (
-                              <ActivityIndicator
-                                size="small"
-                                color="#8B95A1"
-                                style={{ marginLeft: 8 }}
-                              />
-                            )}
-                            {phoneCheckStatus === "available" && (
-                              <Ionicons
-                                name="checkmark-circle"
-                                size={Math.round(22 * sc)}
-                                color="#22C55E"
-                                style={{ marginLeft: 8 }}
-                              />
-                            )}
-                            {(phoneCheckStatus === "duplicate" ||
-                              phoneCheckStatus === "invalid") && (
-                              <Ionicons
-                                name="close-circle"
-                                size={Math.round(22 * sc)}
-                                color="#EF4444"
-                                style={{ marginLeft: 8 }}
-                              />
-                            )}
-                          </View>
-                          {phoneCheckStatus === "duplicate" ? (
-                            <Text
-                              style={[
-                                s.phoneHint,
-                                {
-                                  fontSize: d.hintFs,
-                                  marginTop: d.gap8,
-                                  color: "#EF4444",
-                                },
-                              ]}
-                            >
-                              ✗ 이미 {duplicateGuestName || "다른 분"}님이 같은
-                              번호로 등록되어 있어요.
-                            </Text>
-                          ) : phoneCheckStatus === "invalid" ? (
-                            <Text
-                              style={[
-                                s.phoneHint,
-                                {
-                                  fontSize: d.hintFs,
-                                  marginTop: d.gap8,
-                                  color: "#EF4444",
-                                },
-                              ]}
-                            >
-                              ✗ 올바른 휴대폰 번호를 입력해주세요.
-                            </Text>
-                          ) : phoneCheckStatus === "available" ? (
-                            <Text
-                              style={[
-                                s.phoneHint,
-                                {
-                                  fontSize: d.hintFs,
-                                  marginTop: d.gap8,
-                                  color: "#22C55E",
-                                },
-                              ]}
-                            >
-                              ✓ 등록 가능한 번호입니다.
-                            </Text>
-                          ) : (
-                            <Text
-                              style={[
-                                s.phoneHint,
-                                { fontSize: d.hintFs, marginTop: d.gap8 },
-                              ]}
-                            >
-                              ✓ 기록 완료 시 카카오 알림톡으로 부조 내역이
-                              발송됩니다.
-                            </Text>
-                          )}
-                        </View>
-                      )}
-                    </View>
-
-                    {isFuneralEvent && (
-                      <View style={{ gap: d.gap12 }}>
-                        <Text style={[s.secTitle, { fontSize: d.titleFs }]}>
+                    <View style={s.visitDivider} />
+                    <View
+                      style={[
+                        s.visitInfoRow,
+                        { minHeight: Math.round(62 * sc), gap: d.gap16 },
+                      ]}
+                    >
+                      <View style={s.visitRowNumber}>
+                        <Text style={[s.visitRowNumberText, { fontSize: Math.round(14 * sc) }]}>
+                          {isFuneralEvent ? "2" : "3"}
+                        </Text>
+                      </View>
+                      <View style={s.visitRowLabel}>
+                        <Text style={[s.visitRowTitle, { fontSize: Math.round(15 * sc) }]}>
                           어떤 분으로 오셨나요?
                         </Text>
-                        <View style={{ gap: d.gap8 }}>
-                          {relationRows.map((row, rowIndex) => (
-                            <View
-                              key={rowIndex}
-                              style={[s.row, { gap: d.gap8 }]}
-                            >
-                              {row.map((rel) => (
-                                <TouchableOpacity
-                                  key={rel}
-                                  style={[
-                                    s.relBtn,
-                                    {
-                                      flex: 1,
-                                      height: d.relationH,
-                                      borderRadius: d.r16,
-                                    },
-                                    relationDetail === rel
-                                      ? s.relSel
-                                      : s.relDef,
-                                  ]}
-                                  onPress={() =>
-                                    setRelationDetail((p) =>
-                                      p === rel ? null : rel,
-                                    )
-                                  }
-                                  activeOpacity={0.7}
-                                >
-                                  <Text
-                                    style={[
-                                      s.relText,
-                                      { fontSize: d.relationFs },
-                                      relationDetail === rel && {
-                                        color: "#FFFFFF",
-                                      },
-                                    ]}
-                                  >
-                                    {rel}
-                                  </Text>
-                                </TouchableOpacity>
-                              ))}
-                            </View>
-                          ))}
-                        </View>
                       </View>
-                    )}
+                      <View style={[s.visitRelationButtons, { gap: d.gap8 }]}>
+                        {visitRelationOptions.map((rel) => (
+                          <TouchableOpacity
+                            key={rel}
+                            style={[
+                              s.visitChoiceBtn,
+                              {
+                                height: Math.round(44 * sc),
+                                borderRadius: Math.round(8 * sc),
+                              },
+                              relationDetail === rel && s.visitChoiceBtnSelected,
+                            ]}
+                            onPress={() =>
+                              setRelationDetail((prev) =>
+                                prev === rel ? null : rel,
+                              )
+                            }
+                            activeOpacity={0.75}
+                          >
+                            <Text
+                              style={[
+                                s.visitChoiceText,
+                                { fontSize: Math.round(13 * sc) },
+                                relationDetail === rel && s.visitChoiceTextSelected,
+                              ]}
+                            >
+                              {rel}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
                   </View>
+
+                  <View style={s.visitDivider} />
+                  <View
+                    style={[
+                      s.visitInfoRow,
+                      { minHeight: Math.round(62 * sc), gap: d.gap16 },
+                    ]}
+                  >
+                    <View style={s.visitRowNumber}>
+                      <Text style={[s.visitRowNumberText, { fontSize: Math.round(14 * sc) }]}>
+                        {isFuneralEvent ? "3" : "4"}
+                      </Text>
+                    </View>
+                    <View style={s.visitKakaoIconBox}>
+                      <Image
+                        source={KAKAO_TALK_ICON}
+                        style={{
+                          width: Math.round(32 * sc),
+                          height: Math.round(32 * sc),
+                        }}
+                        resizeMode="contain"
+                      />
+                    </View>
+                    <View style={s.visitRowLabel}>
+                      <Text style={[s.visitRowTitle, { fontSize: Math.round(15 * sc) }]}>
+                        카카오톡으로 영수증 받기
+                      </Text>
+                      <Text
+                        style={[
+                          s.visitRowSub,
+                          { fontSize: Math.round(11 * sc), marginTop: 2 },
+                        ]}
+                      >
+                        접수 완료 후 알림톡으로 보내드려요
+                      </Text>
+                    </View>
+                    {(() => {
+                      const noCredit =
+                        alimtalkBalance != null && alimtalkBalance <= 0;
+                      return (
+                        <TouchableOpacity
+                          ref={kakaoToggleRef}
+                          collapsable={false}
+                          style={[
+                            s.visitSwitch,
+                            {
+                              width: d.swW + Math.round(10 * sc),
+                              height: d.swH + Math.round(5 * sc),
+                              borderRadius: 999,
+                            },
+                            noCredit
+                              ? { backgroundColor: "#E5E8EB" }
+                              : phoneVisible
+                                ? { backgroundColor: "#082344" }
+                                : { backgroundColor: "#D1D6DB" },
+                          ]}
+                          onPress={() => {
+                            if (noCredit) {
+                              showAlert({
+                                title: "크레딧 부족",
+                                message:
+                                  "카카오 알림톡 크레딧이 소진되어 영수증을 보낼 수 없습니다.\n주최자에게 충전을 요청해주세요.",
+                              });
+                              return;
+                            }
+                            const next = !phoneVisible;
+                            setPhoneVisible(next);
+                            if (!next) setGuestPhone("");
+                            else {
+                              setGuestPhone("010-");
+                              setTimeout(
+                                () =>
+                                  scrollRef.current?.scrollToEnd({
+                                    animated: true,
+                                  }),
+                                150,
+                              );
+                            }
+                            if (
+                              tutorialStep?.id === "me_guest_kakao_toggle" &&
+                              !phoneVisible
+                            ) {
+                              tutorialAdvance();
+                            }
+                          }}
+                          activeOpacity={noCredit ? 1 : 0.8}
+                        >
+                          <View
+                            style={[
+                              s.visitSwitchThumb,
+                              {
+                                width: d.swThumb + Math.round(6 * sc),
+                                height: d.swThumb + Math.round(6 * sc),
+                                borderRadius: 999,
+                              },
+                              phoneVisible && !noCredit
+                                ? { alignSelf: "flex-end" }
+                                : { alignSelf: "flex-start" },
+                            ]}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })()}
+                  </View>
+
+                  {phoneVisible && (
+                    <View
+                      ref={phoneAreaRef}
+                      collapsable={false}
+                      style={[
+                        s.phoneArea,
+                        {
+                          borderRadius: d.r16,
+                          padding: d.gap16,
+                          marginTop: d.gap12,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          s.phoneLbl,
+                          { fontSize: d.phoneLblFs, marginBottom: d.gap8 },
+                        ]}
+                      >
+                        휴대폰 번호
+                      </Text>
+                      <View
+                        style={[
+                          s.inputWrap,
+                          { height: d.inputH, borderRadius: d.r12 },
+                          guestPhone ? { borderColor: "#FEE500" } : {},
+                          phoneCheckStatus === "duplicate" ||
+                          phoneCheckStatus === "invalid"
+                            ? { borderColor: "#EF4444" }
+                            : {},
+                          phoneCheckStatus === "available"
+                            ? { borderColor: "#22C55E" }
+                            : {},
+                        ]}
+                      >
+                        <TextInput
+                          style={[
+                            s.inputText,
+                            { fontSize: d.phoneFs, letterSpacing: 1 },
+                          ]}
+                          value={guestPhone}
+                          onChangeText={(t) => setGuestPhone(formatPhone(t))}
+                          placeholder="010-0000-0000"
+                          placeholderTextColor="#D1D6DB"
+                          keyboardType="phone-pad"
+                          maxLength={13}
+                          autoFocus
+                        />
+                        {phoneCheckStatus === "checking" && (
+                          <ActivityIndicator
+                            size="small"
+                            color="#8B95A1"
+                            style={{ marginLeft: 8 }}
+                          />
+                        )}
+                        {phoneCheckStatus === "available" && (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={Math.round(22 * sc)}
+                            color="#22C55E"
+                            style={{ marginLeft: 8 }}
+                          />
+                        )}
+                        {(phoneCheckStatus === "duplicate" ||
+                          phoneCheckStatus === "invalid") && (
+                          <Ionicons
+                            name="close-circle"
+                            size={Math.round(22 * sc)}
+                            color="#EF4444"
+                            style={{ marginLeft: 8 }}
+                          />
+                        )}
+                      </View>
+                      {phoneCheckStatus === "duplicate" ? (
+                        <Text
+                          style={[
+                            s.phoneHint,
+                            {
+                              fontSize: d.hintFs,
+                              marginTop: d.gap8,
+                              color: "#EF4444",
+                            },
+                          ]}
+                        >
+                          ✕ 이미 {duplicateGuestName || "다른 분"}님이 같은 번호로 등록되어 있어요.
+                        </Text>
+                      ) : phoneCheckStatus === "invalid" ? (
+                        <Text
+                          style={[
+                            s.phoneHint,
+                            {
+                              fontSize: d.hintFs,
+                              marginTop: d.gap8,
+                              color: "#EF4444",
+                            },
+                          ]}
+                        >
+                          ✕ 올바른 휴대폰 번호를 입력해주세요.
+                        </Text>
+                      ) : phoneCheckStatus === "available" ? (
+                        <Text
+                          style={[
+                            s.phoneHint,
+                            {
+                              fontSize: d.hintFs,
+                              marginTop: d.gap8,
+                              color: "#22C55E",
+                            },
+                          ]}
+                        >
+                          ✓ 등록 가능한 번호입니다.
+                        </Text>
+                      ) : (
+                        <Text
+                          style={[
+                            s.phoneHint,
+                            { fontSize: d.hintFs, marginTop: d.gap8 },
+                          ]}
+                        >
+                          ✓ 기록 완료 시 카카오 알림톡으로 부조 내역이 발송됩니다.
+                        </Text>
+                      )}
+                    </View>
+                  )}
                 </View>
               </View>
             )}
@@ -1602,7 +1623,18 @@ export default function GuestConfirmScreen({ navigation, route }) {
         </KeyboardAvoidingView>
 
         {/* ── 고정 하단 버튼 바 ── */}
-        <View style={[s.actionBar, { padding: d.gap20, gap: d.gap12 }]}>
+        <View
+          style={[
+            s.actionBar,
+            {
+              paddingTop: d.gap20,
+              paddingLeft: d.gap20 + rightSafeLeft,
+              paddingRight: d.gap20 + safeRight,
+              paddingBottom: d.gap20 + safeBottom,
+              gap: d.gap12,
+            },
+          ]}
+        >
           {!nameConfirmed ? (
             // Step 1: 이름 확인 버튼
             <TouchableOpacity
@@ -1623,7 +1655,7 @@ export default function GuestConfirmScreen({ navigation, route }) {
               activeOpacity={0.85}
             >
               <Text style={[s.saveBtnText, { fontSize: d.saveBtnFs }]}>
-                네, 맞습니다 ✓
+                다음
               </Text>
             </TouchableOpacity>
           ) : (
@@ -1939,22 +1971,26 @@ const s = StyleSheet.create({
   exitBtnText: { color: "#8B95A1", fontWeight: "700" },
 
   row: { flexDirection: "row" },
-  confirmGrid: { flexDirection: "row", alignItems: "stretch" },
+  confirmGrid: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 16,
+  },
   confirmGridColLeft: {
-    width: "50%",
+    flex: 1,
     minWidth: 0,
   },
   confirmGridColRight: {
-    width: "50%",
+    flex: 1,
     minWidth: 0,
   },
   confirmGridDivider: {
-    width: 1,
+    width: 0,
     alignSelf: "stretch",
-    backgroundColor: "#EEF2F7",
+    backgroundColor: "transparent",
   },
   confirmColumnHeader: {
-    paddingBottom: 2,
+    paddingBottom: 4,
   },
   confirmColumnTitle: {
     fontWeight: "900",
@@ -1968,6 +2004,399 @@ const s = StyleSheet.create({
   },
   secTitle: { fontWeight: "800", color: "#191F28", letterSpacing: -0.3 },
   greetText: { color: "#4E5968", fontWeight: "600" },
+
+  // Step 2 reference: 방문 정보 선택
+  visitShell: {
+    width: "100%",
+    maxWidth: 1080,
+    alignSelf: "center",
+  },
+  visitPageHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 2,
+  },
+  visitHeadSide: {
+    width: 92,
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  visitPageTitle: {
+    color: "#0B1F3A",
+    fontWeight: "900",
+    letterSpacing: -0.4,
+  },
+  visitProgress: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+  },
+  visitProgressItem: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  visitProgressLine: {
+    width: 100,
+    height: 1,
+    backgroundColor: "#CBD2DA",
+  },
+  visitProgressDot: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  visitProgressDotText: {
+    fontWeight: "900",
+  },
+  visitProgressText: {
+    fontWeight: "900",
+  },
+  visitInfoCard: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#EEF2F7",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 5,
+  },
+  visitRows: {
+    width: "100%",
+  },
+  visitInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    paddingVertical: 12,
+  },
+  visitRowNumber: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: "#F7E3DC",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  visitRowNumberText: {
+    color: "#0B1F3A",
+    fontWeight: "900",
+  },
+  visitRowLabel: {
+    flex: 1,
+    minWidth: 0,
+  },
+  visitRowTitle: {
+    color: "#0B1F3A",
+    fontWeight: "900",
+    letterSpacing: -0.2,
+  },
+  visitRowSub: {
+    color: "#6B7684",
+    fontWeight: "700",
+  },
+  visitAmountSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "#F7F9FC",
+    borderWidth: 1,
+    borderColor: "#E1E8F0",
+  },
+  visitAmountSummaryLabel: {
+    color: "#6B7684",
+    fontWeight: "800",
+  },
+  visitAmountSummaryValue: {
+    color: "#082344",
+    fontWeight: "900",
+    letterSpacing: -0.2,
+  },
+  visitAmountReset: {
+    minWidth: 72,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFF7F7",
+    borderWidth: 1.5,
+    borderColor: "#F4B4B4",
+  },
+  visitAmountResetText: {
+    color: "#D14343",
+    fontWeight: "900",
+  },
+  visitDivider: {
+    height: 1,
+    backgroundColor: "#EEF2F7",
+    width: "100%",
+  },
+  visitAmountControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "62%",
+  },
+  visitAmountButtons: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  visitRelationButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "62%",
+  },
+  visitChoiceBtn: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#DDE3EA",
+  },
+  visitChoiceBtnSelected: {
+    backgroundColor: "#082344",
+    borderColor: "#082344",
+  },
+  visitChoiceBtnSoftSelected: {
+    backgroundColor: "#EEF6FF",
+    borderColor: "#9CC7F5",
+  },
+  visitChoiceText: {
+    color: "#3D4856",
+    fontWeight: "900",
+  },
+  visitChoiceTextSelected: {
+    color: "#FFFFFF",
+  },
+  visitChoiceTextSoftSelected: {
+    color: "#0B4D8F",
+  },
+  visitTicketStepper: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#DDE3EA",
+    overflow: "hidden",
+  },
+  visitTicketBtn: {
+    width: 54,
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  visitTicketCount: {
+    flex: 1,
+    textAlign: "center",
+    color: "#0B1F3A",
+    fontWeight: "900",
+  },
+  visitKakaoIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    backgroundColor: "#FEE500",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  visitSwitch: {
+    padding: 3,
+    justifyContent: "center",
+  },
+  visitSwitchThumb: {
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.16,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+
+  // Step 2: 방문 정보 확인
+  stepTwoShell: {
+    width: "100%",
+    maxWidth: 980,
+    alignSelf: "center",
+  },
+  stepTwoHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#EEF2F7",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 3,
+  },
+  stepTwoHeroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepTwoHeroTitle: {
+    color: "#191F28",
+    fontWeight: "900",
+    letterSpacing: -0.35,
+  },
+  stepTwoHeroSub: {
+    color: "#6B7684",
+    fontWeight: "700",
+  },
+  stepTwoCard: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#EEF2F7",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 22,
+    elevation: 4,
+  },
+
+  // Step 1: 이름 확인
+  nameConfirmShell: {
+    width: "100%",
+    maxWidth: 680,
+    alignSelf: "center",
+  },
+  nameStepHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  nameStepBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  nameStepBadgeText: {
+    fontWeight: "900",
+  },
+  nameStepTrack: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  nameStepItem: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  nameStepDot: {
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  nameStepDotText: {
+    fontWeight: "900",
+  },
+  nameStepText: {
+    fontWeight: "800",
+  },
+  nameConfirmCard: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#EEF2F7",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 5,
+  },
+  nameTitleIcon: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  nameTitleIconText: {
+    fontWeight: "900",
+  },
+  nameConfirmTitle: {
+    color: "#191F28",
+    fontWeight: "900",
+    letterSpacing: -0.4,
+  },
+  nameConfirmSub: {
+    color: "#6B7684",
+    fontWeight: "700",
+  },
+  nameCandidateBlock: {
+    paddingTop: 2,
+  },
+  nameCandidateLabel: {
+    color: "#8B95A1",
+    fontWeight: "800",
+  },
+  nameInputCard: {
+    backgroundColor: "#F9FAFB",
+    borderWidth: 2,
+    borderColor: "#E5E8EB",
+  },
+  nameInputLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  nameInputLabel: {
+    color: "#6B7684",
+    fontWeight: "900",
+  },
+  nameInputValid: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  nameInputValidText: {
+    color: "#0CA678",
+    fontWeight: "900",
+  },
+  nameInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  nameInputText: {
+    flex: 1,
+    color: "#191F28",
+    fontWeight: "900",
+    paddingVertical: 0,
+  },
+  namePreviewCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#EEF2F7",
+  },
+  nameAvatar: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  nameAvatarText: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+  },
+  namePreviewTitle: {
+    color: "#191F28",
+    fontWeight: "900",
+    letterSpacing: -0.2,
+  },
+  namePreviewSub: {
+    color: "#8B95A1",
+    fontWeight: "700",
+  },
+
   // 후보 칩
   candRow: { flexDirection: "row", flexWrap: "wrap" },
   candChip: {
@@ -2005,30 +2434,32 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#E8F3FF",
-    borderWidth: 1,
-    borderColor: "#D3E4FF",
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
+    borderColor: "#E5EAF1",
   },
-  amountBarLbl: { fontWeight: "700", color: "#3182F6" },
+  amountBarLbl: { fontWeight: "800", color: "#8B95A1" },
   amountBarVal: { fontWeight: "800", color: "#191F28", letterSpacing: -1 },
   amountBarUnit: { fontWeight: "600", color: "#4E5968" },
-  resetBtn: { backgroundColor: "#FFFFFF" },
+  resetBtn: { backgroundColor: "#EEF2F7" },
   resetBtnText: { color: "#3182F6", fontWeight: "700" },
 
   addChip: {
-    backgroundColor: "#F2F4F6",
+    backgroundColor: "#F6F8FA",
+    borderWidth: 1.5,
+    borderColor: "#E5EAF1",
     alignItems: "center",
     justifyContent: "center",
   },
-  addChipText: { color: "#4E5968", fontWeight: "800" },
+  addChipText: { color: "#4E5968", fontWeight: "900" },
 
   presetBtn: { borderWidth: 2, alignItems: "center", justifyContent: "center" },
-  presetDef: { backgroundColor: "#FFFFFF", borderColor: "#E5E8EB" },
+  presetDef: { backgroundColor: "#FFFFFF", borderColor: "#E5EAF1" },
   presetSel: { backgroundColor: "#191F28", borderColor: "#191F28" },
   presetText: { color: "#4E5968", fontWeight: "800" },
 
   relBtn: { borderWidth: 2, alignItems: "center", justifyContent: "center" },
-  relDef: { backgroundColor: "#FFFFFF", borderColor: "#E5E8EB" },
+  relDef: { backgroundColor: "#FFFFFF", borderColor: "#E5EAF1" },
   relSel: { backgroundColor: "#191F28", borderColor: "#191F28" },
   relText: { color: "#4E5968", fontWeight: "800" },
 
@@ -2036,9 +2467,9 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 16,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#F8FAFC",
     borderWidth: 1.5,
-    borderColor: "#E5E8EB",
+    borderColor: "#E5EAF1",
   },
   ticketBoxTitle: {
     fontWeight: "800",
@@ -2055,7 +2486,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#FFFFFF",
     borderWidth: 1.5,
-    borderColor: "#E5E8EB",
+    borderColor: "#E5EAF1",
     overflow: "hidden",
   },
   ticketStepBtn: {
@@ -2077,7 +2508,7 @@ const s = StyleSheet.create({
   },
   ticketChipDef: {
     backgroundColor: "#FFFFFF",
-    borderColor: "#E5E8EB",
+    borderColor: "#E5EAF1",
   },
   ticketChipSel: {
     backgroundColor: "#191F28",
