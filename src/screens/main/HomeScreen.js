@@ -53,6 +53,10 @@ import {
   getReciprocityNotifications,
   updateReciprocityNotificationStatus,
 } from "../../lib/eventReciprocity";
+import {
+  getActivityNotifications,
+  updateActivityNotificationStatus,
+} from "../../lib/activityNotifications";
 import { getInvitationUrl } from "../../lib/webLinks";
 
 const { width } = Dimensions.get("window");
@@ -514,6 +518,7 @@ export default function HomeScreen({
   const tutorialCheckedRef = useRef(false);
   const welcomeCreditCheckedRef = useRef(null);
   const wasHomeTutorialActiveRef = useRef(false);
+  const eventCreationFlowLockedRef = useRef(false);
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
   const [activeEvents, setActiveEvents] = useState([]);
@@ -544,6 +549,8 @@ export default function HomeScreen({
   const [showTossConfirmModal, setShowTossConfirmModal] = useState(false); // 🔥 토스 스타일 확인 모달
   const [showTossSuccessModal, setShowTossSuccessModal] = useState(false); // 🔥 토스 스타일 성공 모달
   const [showCreateEventModal, setShowCreateEventModal] = useState(false); // 경조사 만들기 모달
+  const [eventCreationFlowLocked, setEventCreationFlowLocked] =
+    useState(false);
   const [showEventCreationWelcomeModal, setShowEventCreationWelcomeModal] =
     useState(false);
   const [eventCreationCreditState, setEventCreationCreditState] = useState({
@@ -649,6 +656,13 @@ export default function HomeScreen({
           setLoading(false);
         });
     }, [userInfo, session, dataLoaded, lastLoadTime]),
+  );
+
+  useFocusEffect(
+    React.useCallback(() => {
+      eventCreationFlowLockedRef.current = false;
+      setEventCreationFlowLocked(false);
+    }, []),
   );
 
   // eventIds ref를 최신 상태로 유지
@@ -1432,6 +1446,8 @@ export default function HomeScreen({
   };
 
   const closeCreditShortageModal = () => {
+    eventCreationFlowLockedRef.current = false;
+    setEventCreationFlowLocked(false);
     setCreditShortageModal((prev) => ({
       ...prev,
       visible: false,
@@ -1448,11 +1464,25 @@ export default function HomeScreen({
   };
 
   const handleEventCreationIntent = async (eventType) => {
-    const latestState = await refreshEventCreationCreditState();
+    if (eventCreationFlowLockedRef.current) return;
+    eventCreationFlowLockedRef.current = true;
+    setEventCreationFlowLocked(true);
+
+    let latestState;
+    try {
+      latestState = await refreshEventCreationCreditState();
+    } catch (error) {
+      eventCreationFlowLockedRef.current = false;
+      setEventCreationFlowLocked(false);
+      throw error;
+    }
+
     const state = latestState || eventCreationCreditState;
     const notice = getCreationCreditNotice(state);
 
+    let shouldUnlockOnDismiss = true;
     const proceedToCreateScreen = () => {
+      shouldUnlockOnDismiss = false;
       handleQuickStart(eventType);
     };
 
@@ -1473,9 +1503,25 @@ export default function HomeScreen({
       `완료 시 ${state?.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 차감됩니다`,
       `${eventType === "funeral" ? "부고장" : "청첩장"} 만들기를 완료하면 ${state?.priceCredits || EVENT_CREATION_CREDIT_COST}크레딧이 사용됩니다.\n계속 진행할까요?`,
       [
-        { text: "취소", style: "cancel" },
+        {
+          text: "취소",
+          style: "cancel",
+          onPress: () => {
+            eventCreationFlowLockedRef.current = false;
+            setEventCreationFlowLocked(false);
+          },
+        },
         { text: "진행하기", onPress: proceedToCreateScreen },
       ],
+      {
+        cancelable: true,
+        onDismiss: () => {
+          if (shouldUnlockOnDismiss && eventCreationFlowLockedRef.current) {
+            eventCreationFlowLockedRef.current = false;
+            setEventCreationFlowLocked(false);
+          }
+        },
+      },
     );
   };
 
@@ -2020,6 +2066,9 @@ export default function HomeScreen({
   const [reciprocityPage, setReciprocityPage] = useState(0);
   const [selectedReciprocityGroup, setSelectedReciprocityGroup] =
     useState(null);
+  const [reciprocitySheetVisible, setReciprocitySheetVisible] =
+    useState(false);
+  const reciprocitySheetFade = useRef(new Animated.Value(0)).current;
   const [showNotificationCenter, setShowNotificationCenter] = useState(false);
   const [recentGuestbookMessages, setRecentGuestbookMessages] = useState([]);
   const [expandedGuestbookEventIds, setExpandedGuestbookEventIds] = useState(
@@ -2028,6 +2077,9 @@ export default function HomeScreen({
   const [guestbookPageByEventIds, setGuestbookPageByEventIds] = useState({});
   const RECIPROCITY_PER_PAGE = 3;
   const EVENT_GUESTBOOK_PER_PAGE = 3;
+  const [activityNotifications, setActivityNotifications] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const activityNotificationSignatureRef = useRef("");
 
   // 줬음 기록된 guest_book id 세트
   const gaveLinkedIds = useMemo(
@@ -2163,6 +2215,29 @@ export default function HomeScreen({
     const brideName = String(event.bride_name || "").trim();
     if (groomName && brideName) return `${groomName} · ${brideName}`;
     return groomName || brideName || "상대";
+  };
+
+  const getReciprocityDisplayName = (item = {}, latestNewEvent = {}) => {
+    const candidates = [
+      item.originalEvents?.[0]?.source_guest_name,
+      item.source_guest_name,
+      item.items?.[0]?.source_guest_name,
+      getNewEventPersonName(latestNewEvent),
+    ];
+
+    return (
+      candidates
+        .map((name) => String(name || "").trim())
+        .find((name) => name.length > 0) || "상대"
+    );
+  };
+
+  const getCurrentReciprocityGuest = (item = {}) => item.source_guest || null;
+
+  const getCurrentReciprocityAmount = (item = {}) => {
+    const currentGuest = getCurrentReciprocityGuest(item);
+    if (!currentGuest) return 0;
+    return Number(currentGuest.amount || 0) || 0;
   };
 
   const openInvitationPreview = async (event) => {
@@ -2468,14 +2543,22 @@ export default function HomeScreen({
       const phoneKey = normalizePhoneDigits(item.source_guest_phone);
       const nameKey = String(item.source_guest_name || "").trim();
       const groupKey = phoneKey || `name:${nameKey || item.id}`;
+      const currentGuest = getCurrentReciprocityGuest(item);
+      const currentAmount = getCurrentReciprocityAmount(item);
+
+      if (!currentGuest || currentAmount <= 0) {
+        return;
+      }
 
       if (!grouped.has(groupKey)) {
         grouped.set(groupKey, {
           ...item,
           id: groupKey,
           groupKey,
-          source_guest_phone: item.source_guest_phone,
-          source_guest_name: item.source_guest_name,
+          source_guest_phone:
+            currentGuest?.guest_phone || item.source_guest_phone,
+          source_guest_name:
+            currentGuest?.guest_name || item.source_guest_name,
           items: [],
           originalEvents: [],
           newEvents: [],
@@ -2489,6 +2572,9 @@ export default function HomeScreen({
 
       const group = grouped.get(groupKey);
       group.items.push(item);
+      if (item.status === "completed" && group.status !== "unread") {
+        group.status = "completed";
+      }
       if (item.status === "unread") {
         group.status = "unread";
       }
@@ -2499,9 +2585,13 @@ export default function HomeScreen({
       ) {
         group.created_at = item.created_at;
         group.source_guest_name =
-          item.source_guest_name || group.source_guest_name;
+          currentGuest?.guest_name ||
+          item.source_guest_name ||
+          group.source_guest_name;
         group.source_guest_phone =
-          item.source_guest_phone || group.source_guest_phone;
+          currentGuest?.guest_phone ||
+          item.source_guest_phone ||
+          group.source_guest_phone;
         group.new_event = item.new_event || group.new_event;
         group.new_event_id = item.new_event_id || group.new_event_id;
       }
@@ -2512,17 +2602,22 @@ export default function HomeScreen({
         item.original_event &&
         !group.originalEventMap.has(originalEventId)
       ) {
-        const amount = Number(item.source_amount || 0);
         group.originalEventMap.set(originalEventId, {
           ...item.original_event,
           notificationId: item.id,
-          source_guest_name: item.source_guest_name,
-          source_guest_phone: item.source_guest_phone,
-          amount,
+          source_guest_id: currentGuest?.id || item.source_guest_id,
+          source_guest_name:
+            currentGuest?.guest_name || item.source_guest_name,
+          source_guest_phone:
+            currentGuest?.guest_phone || item.source_guest_phone,
+          amount: currentAmount,
           created_at: item.created_at,
         });
-        group.source_amount_total += amount;
-        group.source_amount_max = Math.max(group.source_amount_max, amount);
+        group.source_amount_total += currentAmount;
+        group.source_amount_max = Math.max(
+          group.source_amount_max,
+          currentAmount,
+        );
       }
 
       const newEventId = item.new_event_id || item.new_event?.id;
@@ -2538,7 +2633,9 @@ export default function HomeScreen({
     return Array.from(grouped.values())
       .map((group) => {
         const originalEvents = Array.from(group.originalEventMap.values()).sort(
-          (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0),
+          (a, b) =>
+            new Date(b.event_date || b.created_at || 0) -
+            new Date(a.event_date || a.created_at || 0),
         );
         const newEvents = Array.from(group.newEventMap.values()).sort(
           (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0),
@@ -2706,6 +2803,93 @@ export default function HomeScreen({
     }
   };
 
+  const getActivityNotificationSignature = (items = []) =>
+    items
+      .map(
+        (item) =>
+          `${item.id || ""}:${item.status || ""}:${item.created_at || ""}:${item.read_at || ""}`,
+      )
+      .join("|");
+
+  const loadActivityNotifications = async ({ silent = false } = {}) => {
+    if (!currentUserId) return;
+    if (!silent) setActivityLoading(true);
+    try {
+      const res = await getActivityNotifications(currentUserId);
+      if (res?.success) {
+        const nextItems = res.data || [];
+        const nextSignature = getActivityNotificationSignature(nextItems);
+        if (nextSignature !== activityNotificationSignatureRef.current) {
+          activityNotificationSignatureRef.current = nextSignature;
+          setActivityNotifications(nextItems);
+        }
+      }
+    } catch (error) {
+      console.error("loadActivityNotifications error:", error);
+    } finally {
+      if (!silent) setActivityLoading(false);
+    }
+  };
+
+  const markActivityNotification = async (notificationId, status = "read") => {
+    if (!notificationId) return;
+    const previous = activityNotifications;
+    setActivityNotifications((prev) =>
+      status === "dismissed"
+        ? prev.filter((item) => item.id !== notificationId)
+        : prev.map((item) =>
+            item.id === notificationId ? { ...item, status } : item,
+          ),
+    );
+
+    const result = await updateActivityNotificationStatus(
+      notificationId,
+      status,
+      currentUserId,
+    );
+    if (!result?.success) {
+      setActivityNotifications(previous);
+    }
+  };
+
+  const getActivityNotificationIcon = (type) => {
+    switch (type) {
+      case "event_created":
+        return "add-circle-outline";
+      case "event_updated":
+        return "create-outline";
+      case "event_finalized":
+        return "checkmark-circle-outline";
+      case "event_deleted":
+        return "trash-outline";
+      case "credit_purchased":
+        return "diamond-outline";
+      case "cover_purchased":
+        return "albums-outline";
+      case "guestbook_reception_unlocked":
+        return "qr-code-outline";
+      case "guestbook_template_purchased":
+        return "document-text-outline";
+      case "reciprocity_marked_given":
+        return "heart-circle-outline";
+      case "guest_confirmed":
+        return "checkmark-done-outline";
+      case "guest_unconfirmed":
+        return "return-down-back-outline";
+      default:
+        return "notifications-outline";
+    }
+  };
+
+  const getActivityNotificationCategoryText = (type, category) => {
+    if (category === "credit" || type === "credit_purchased") return "크레딧";
+    if (category === "purchase") return "구매";
+    if (category === "event") return "내 행사";
+    if (category === "guestbook") return "하객 접수";
+    if (category === "reciprocity") return "챙길 경조사";
+    return "활동";
+  };
+
   const openReciprocityDetail = async (item) => {
     const rawItems = item?.items?.length ? item.items : [item];
     const first = rawItems[0];
@@ -2714,13 +2898,6 @@ export default function HomeScreen({
       item?.original_event ||
       item?.originalEvents?.[0];
     if (!targetEvent?.id) return;
-
-    if (item.status === "unread") {
-      markReciprocityNotifications(
-        rawItems.map((raw) => raw.id),
-        "read",
-      );
-    }
 
     navigation.navigate("EventDetail", {
       eventId: targetEvent.id,
@@ -2736,21 +2913,56 @@ export default function HomeScreen({
 
   const openReciprocitySheet = (item) => {
     setSelectedReciprocityGroup(item);
-    if (item?.status === "unread") {
-      const rawItems = item?.items?.length ? item.items : [item];
-      markReciprocityNotifications(
-        rawItems.map((raw) => raw.id),
-        "read",
-      );
-    }
+    setReciprocitySheetVisible(true);
+    reciprocitySheetFade.setValue(0);
+    requestAnimationFrame(() => {
+      Animated.timing(reciprocitySheetFade, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
+  const closeReciprocitySheet = () => {
+    Animated.timing(reciprocitySheetFade, {
+      toValue: 0,
+      duration: 160,
+      useNativeDriver: true,
+    }).start(() => {
+      setReciprocitySheetVisible(false);
+      setSelectedReciprocityGroup(null);
+    });
+  };
+
+  const completeReciprocityGroup = async (item) => {
+    if (!item) return;
+    const rawItems = item?.items?.length ? item.items : [item];
+    await markReciprocityNotifications(
+      rawItems.map((raw) => raw.id),
+      "completed",
+    );
+    closeReciprocitySheet();
   };
 
   const openNotificationCenter = () => {
     setShowNotificationCenter(true);
     loadReciprocityNotifications();
+    loadActivityNotifications();
   };
 
   const openNotificationItem = (item) => {
+    if (item?.notificationKind === "activity") {
+      if (item.status === "unread") {
+        markActivityNotification(item.id, "read");
+      }
+      setShowNotificationCenter(false);
+      if (item.event_id) {
+        navigation.navigate("EventDetail", { eventId: item.event_id });
+      }
+      return;
+    }
+
     setShowNotificationCenter(false);
     openReciprocitySheet(item);
   };
@@ -2767,7 +2979,7 @@ export default function HomeScreen({
 
   const actionableReciprocityNotifications = useMemo(
     () =>
-      groupedReciprocityNotifications.filter((item) => item.status !== "read"),
+      groupedReciprocityNotifications.filter((item) => item.status === "unread"),
     [groupedReciprocityNotifications],
   );
   const visibleReciprocityNotifications = useMemo(
@@ -2780,6 +2992,33 @@ export default function HomeScreen({
   const reciprocityUnreadCount = actionableReciprocityNotifications.filter(
     (item) => item.status === "unread",
   ).length;
+  const visibleActivityNotifications = useMemo(
+    () => activityNotifications.filter((item) => item.status !== "dismissed"),
+    [activityNotifications],
+  );
+  const activityUnreadCount = visibleActivityNotifications.filter(
+    (item) => item.status === "unread",
+  ).length;
+  const visibleHomeNotifications = useMemo(() => {
+    const reciprocityItems = visibleReciprocityNotifications.map((item) => ({
+      ...item,
+      notificationKind: "reciprocity",
+      notificationSortAt: item.created_at,
+    }));
+    const activityItems = visibleActivityNotifications.map((item) => ({
+      ...item,
+      notificationKind: "activity",
+      notificationSortAt: item.created_at,
+    }));
+
+    return [...reciprocityItems, ...activityItems].sort(
+      (a, b) =>
+        new Date(b.notificationSortAt || 0) -
+        new Date(a.notificationSortAt || 0),
+    );
+  }, [visibleActivityNotifications, visibleReciprocityNotifications]);
+  const homeNotificationUnreadCount =
+    reciprocityUnreadCount + activityUnreadCount;
   const reciprocityTotalPages = Math.max(
     1,
     Math.ceil(visibleReciprocityNotifications.length / RECIPROCITY_PER_PAGE),
@@ -2832,14 +3071,40 @@ export default function HomeScreen({
     if (!currentUserId) return;
 
     loadReciprocityNotifications({ silent: true });
+    loadActivityNotifications({ silent: true });
     const intervalId = setInterval(() => {
       loadReciprocityNotifications({
         silent: true,
         skipIfScrolling: true,
       });
+      loadActivityNotifications({ silent: true });
     }, 30000);
 
     return () => clearInterval(intervalId);
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const channel = supabase
+      .channel(`activity_notifications_${currentUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_activity_notifications",
+          filter: `user_id=eq.${currentUserId}`,
+        },
+        () => {
+          loadActivityNotifications({ silent: true });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [currentUserId]);
 
   // 품앗이 필터 이전 버튼 핸들러
@@ -2860,6 +3125,7 @@ export default function HomeScreen({
       }
       loadRecentGuestbookMessages();
       loadReciprocityNotifications({ silent: true });
+      loadActivityNotifications({ silent: true });
     }
   }, [user?.id, userInfo?.userId, events.length]);
 
@@ -3092,7 +3358,7 @@ export default function HomeScreen({
           accessibilityLabel="알림"
         >
           <Ionicons name="notifications-outline" size={21} color="#4E5968" />
-          {reciprocityUnreadCount > 0 && (
+          {homeNotificationUnreadCount > 0 && (
             <View style={styles.headerNotificationDot} />
           )}
         </TouchableOpacity>
@@ -3173,8 +3439,12 @@ export default function HomeScreen({
             }}
           >
             <TouchableOpacity
-              style={styles.quickItem}
+              style={[
+                styles.quickItem,
+                eventCreationFlowLocked && styles.quickItemDisabled,
+              ]}
               onPress={() => handleEventCreationIntent("wedding")}
+              disabled={eventCreationFlowLocked}
             >
               <Image
                 source={RECIPROCITY_EVENT_ICONS.wedding}
@@ -3191,8 +3461,10 @@ export default function HomeScreen({
                 style={[
                   styles.quickButton,
                   { backgroundColor: Colors.wedding },
+                  eventCreationFlowLocked && styles.quickButtonDisabled,
                 ]}
                 onPress={() => handleEventCreationIntent("wedding")}
+                disabled={eventCreationFlowLocked}
               >
                 <Text style={styles.quickButtonText}>만들기</Text>
               </TouchableOpacity>
@@ -3202,8 +3474,12 @@ export default function HomeScreen({
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.quickItem}
+              style={[
+                styles.quickItem,
+                eventCreationFlowLocked && styles.quickItemDisabled,
+              ]}
               onPress={() => handleEventCreationIntent("funeral")}
+              disabled={eventCreationFlowLocked}
             >
               <Image
                 source={RECIPROCITY_EVENT_ICONS.funeral}
@@ -3220,8 +3496,10 @@ export default function HomeScreen({
                 style={[
                   styles.quickButton,
                   { backgroundColor: Colors.funeral },
+                  eventCreationFlowLocked && styles.quickButtonDisabled,
                 ]}
                 onPress={() => handleEventCreationIntent("funeral")}
+                disabled={eventCreationFlowLocked}
               >
                 <Text style={styles.quickButtonText}>만들기</Text>
               </TouchableOpacity>
@@ -3748,45 +4026,59 @@ export default function HomeScreen({
                 );
               })}
 
-              {/* 🔥 페이지네이션 컨트롤 */}
               {hostedTotalPages > 1 && (
-                <View style={styles.paginationContainer}>
+                <View style={styles.hostedPaginationContainer}>
                   <TouchableOpacity
                     style={[
-                      styles.paginationButton,
+                      styles.hostedPaginationArrow,
                       safeHostedEventPage === 0 &&
-                        styles.paginationButtonDisabled,
+                        styles.hostedPaginationArrowDisabled,
                     ]}
                     onPress={() => {
                       setHostedEventPage((page) => Math.max(0, page - 1));
                     }}
                     disabled={safeHostedEventPage === 0}
+                    activeOpacity={0.72}
+                    accessibilityLabel="이전 경조사 목록"
                   >
                     <Ionicons
                       name="chevron-back"
-                      size={20}
+                      size={17}
                       color={
                         safeHostedEventPage === 0
-                          ? Colors.gray300
-                          : Colors.primary
+                          ? "#D1D6DC"
+                          : "#4E5968"
                       }
                     />
                   </TouchableOpacity>
 
-                  <View style={styles.paginationInfo}>
-                    <Text style={styles.paginationInfoText}>
-                      {safeHostedEventPage + 1} / {hostedTotalPages}
-                    </Text>
-                    <Text style={styles.paginationInfoSubText}>
-                      총 {totalCount}개
-                    </Text>
+                  <View style={styles.hostedPaginationDots}>
+                    {Array.from({ length: hostedTotalPages }).map(
+                      (_, pageIndex) => (
+                        <TouchableOpacity
+                          key={`hosted-event-page-${pageIndex}`}
+                          style={styles.hostedPaginationDotHitSlop}
+                          onPress={() => setHostedEventPage(pageIndex)}
+                          activeOpacity={0.7}
+                          accessibilityLabel={`${pageIndex + 1}번째 경조사 목록`}
+                        >
+                          <View
+                            style={[
+                              styles.hostedPaginationDot,
+                              pageIndex === safeHostedEventPage &&
+                                styles.hostedPaginationDotActive,
+                            ]}
+                          />
+                        </TouchableOpacity>
+                      ),
+                    )}
                   </View>
 
                   <TouchableOpacity
                     style={[
-                      styles.paginationButton,
+                      styles.hostedPaginationArrow,
                       safeHostedEventPage === hostedTotalPages - 1 &&
-                        styles.paginationButtonDisabled,
+                        styles.hostedPaginationArrowDisabled,
                     ]}
                     onPress={() => {
                       setHostedEventPage((page) =>
@@ -3794,14 +4086,16 @@ export default function HomeScreen({
                       );
                     }}
                     disabled={safeHostedEventPage === hostedTotalPages - 1}
+                    activeOpacity={0.72}
+                    accessibilityLabel="다음 경조사 목록"
                   >
                     <Ionicons
                       name="chevron-forward"
-                      size={20}
+                      size={17}
                       color={
                         safeHostedEventPage === hostedTotalPages - 1
-                          ? Colors.gray300
-                          : Colors.primary
+                          ? "#D1D6DC"
+                          : "#4E5968"
                       }
                     />
                   </TouchableOpacity>
@@ -3845,18 +4139,14 @@ export default function HomeScreen({
         {/* ━━━━━━━━━━━━━━━━ 돌아온 경조사 ━━━━━━━━━━━━━━━━ */}
         <View style={styles.reciprocitySection}>
           <View style={styles.reciprocityHeader}>
-            <View>
-              <Text style={styles.reciprocityTitle}>챙길 경조사</Text>
-              <Text style={styles.reciprocitySubTitle}>
-                내 행사에 와줬던 분의 새 소식
-              </Text>
-            </View>
+            <Text style={styles.reciprocityTitle}>챙길 경조사</Text>
             <TouchableOpacity
-              style={styles.reciprocityUnreadPill}
+              style={styles.reciprocityHeaderAction}
               onPress={() => navigation.navigate("Reciprocity")}
               activeOpacity={0.78}
             >
               <Text style={styles.reciprocityUnreadText}>전체 보기</Text>
+              <Ionicons name="chevron-forward" size={18} color="#6B7684" />
             </TouchableOpacity>
           </View>
 
@@ -3894,16 +4184,23 @@ export default function HomeScreen({
                 const firstOriginalEvent =
                   originalEvents[0] || item.original_event || {};
                 const isUnread = item.status === "unread";
-                const guestPhone = formatPhoneNumber(item.source_guest_phone);
-                const newEventPersonName =
-                  getNewEventPersonName(latestNewEvent);
+                const isCompleted = item.status === "completed";
+                const displayGuestName = getReciprocityDisplayName(
+                  item,
+                  latestNewEvent,
+                );
                 const newEventDate = formatDateWithTime(
                   latestNewEvent.event_date,
-                  latestNewEvent.event_time,
+                  latestNewEvent.event_time || latestNewEvent.ceremony_time,
                 );
-                const newEventCreatedAt = latestNewEvent.created_at
-                  ? formatDate(latestNewEvent.created_at)
-                  : null;
+                const recentAmount =
+                  firstOriginalEvent.amount ||
+                  item.source_amount_max ||
+                  item.source_amount_total ||
+                  0;
+                const eventTypeLabel = getEventTypeText(
+                  latestNewEvent.event_type,
+                );
 
                 return (
                   <TouchableOpacity
@@ -3915,103 +4212,99 @@ export default function HomeScreen({
                     onPress={() => openReciprocitySheet(item)}
                     activeOpacity={0.84}
                   >
-                    <View
-                      style={styles.reciprocityCardGlow}
-                      pointerEvents="none"
-                    />
                     <View style={styles.reciprocityCardTop}>
                       <View style={styles.reciprocityAvatar}>
-                        <Image
-                          source={getReciprocityEventIcon(
-                            latestNewEvent.event_type,
-                          )}
-                          style={styles.reciprocityAvatarImage}
-                          resizeMode="contain"
-                        />
+                        <Text style={styles.reciprocityAvatarText}>
+                          {(displayGuestName || "?").charAt(0)}
+                        </Text>
+                        <View style={styles.reciprocityAvatarBadge}>
+                          <Ionicons name="heart" size={11} color="#FFFFFF" />
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
+                      <View style={styles.reciprocityCardContent}>
                         <Text
                           style={styles.reciprocityCardTitle}
                           numberOfLines={1}
                         >
-                          새로 챙길 일 {visibleReciprocityNotifications.length}
-                          건
+                          {displayGuestName}님이 새 경조사를 만들었어요
                         </Text>
                         <Text
                           style={styles.reciprocityCardSub}
                           numberOfLines={1}
                         >
-                          {newEventPersonName}님 ·{" "}
-                          {getEventTypeText(latestNewEvent.event_type)}
+                          내 행사에{" "}
+                          <Text style={styles.reciprocityAmountText}>
+                            {formatAmount(recentAmount)}
+                          </Text>{" "}
+                          접수한 기록이 있어요
                         </Text>
-                        {!!guestPhone && (
-                          <View style={styles.reciprocityPhoneRow}>
-                            <Ionicons
-                              name="call-outline"
-                              size={12}
-                              color="#8B95A1"
-                            />
-                            <Text
-                              style={styles.reciprocityPhoneText}
-                              numberOfLines={1}
-                            >
-                              {guestPhone}
+                        <Text
+                          style={styles.reciprocityEventDateText}
+                          numberOfLines={1}
+                        >
+                          {newEventDate}
+                        </Text>
+                        <View style={styles.reciprocityChipRow}>
+                          <View style={styles.reciprocityChipPrimary}>
+                            <Text style={styles.reciprocityChipPrimaryText}>
+                              {eventTypeLabel}
                             </Text>
                           </View>
-                        )}
+                          <View
+                            style={[
+                              styles.reciprocityChipMuted,
+                              isCompleted && styles.reciprocityChipDone,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.reciprocityChipMutedText,
+                                isCompleted &&
+                                  styles.reciprocityChipDoneText,
+                              ]}
+                            >
+                              {isCompleted ? "챙김 완료" : "확인 필요"}
+                            </Text>
+                          </View>
+                        </View>
                       </View>
-                      {isUnread && <View style={styles.reciprocityDot} />}
-                    </View>
-
-                    <View style={styles.reciprocityMemoryBox}>
-                      <Text style={styles.reciprocityMemoryLabel}>
-                        새로 만든 경조사
-                      </Text>
-                      <Text
-                        style={styles.reciprocityMemoryText}
-                        numberOfLines={1}
-                      >
-                        {latestNewEvent.event_name || "새 경조사"}
-                      </Text>
-                      <Text
-                        style={styles.reciprocityMemorySubText}
-                        numberOfLines={1}
-                      >
-                        {newEventDate}
-                        {newEventCreatedAt
-                          ? ` · 등록 ${newEventCreatedAt}`
-                          : ""}
-                      </Text>
-                      <Text
-                        style={styles.reciprocityMemorySubText}
-                        numberOfLines={1}
-                      >
-                        내 행사 {originalEventCount}회 접수 · 최근{" "}
-                        {firstOriginalEvent.event_name || "이전 경조사"}{" "}
-                        {formatAmount(
-                          firstOriginalEvent.amount || item.source_amount || 0,
-                        )}
-                      </Text>
-                    </View>
-
-                    <View style={styles.reciprocityActions}>
-                      <Text style={styles.reciprocityHintText}>
-                        일시와 이전 접수 기록을 확인해요
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.reciprocityPrimaryBtn}
-                        onPress={() => openInvitationPreview(latestNewEvent)}
-                        activeOpacity={0.82}
-                      >
-                        <Text style={styles.reciprocityPrimaryText}>
-                          청첩장 보기
-                        </Text>
+                      <View style={styles.reciprocityCardChevron}>
                         <Ionicons
                           name="chevron-forward"
-                          size={14}
-                          color="#FFFFFF"
+                          size={20}
+                          color="#4E5968"
                         />
-                      </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <View style={styles.reciprocitySummaryBar}>
+                      <View style={styles.reciprocitySummaryItem}>
+                        <Ionicons
+                          name="calendar-outline"
+                          size={17}
+                          color="#8B95A1"
+                        />
+                        <Text style={styles.reciprocitySummaryLabel}>
+                          이전에 참석한 행사
+                        </Text>
+                        <Text style={styles.reciprocitySummaryValue}>
+                          {originalEventCount}건
+                        </Text>
+                      </View>
+                      <View style={styles.reciprocitySummaryDivider} />
+                      <View style={styles.reciprocitySummaryItem}>
+                        <Ionicons
+                          name="card-outline"
+                          size={17}
+                          color="#8B95A1"
+                        />
+                        <Text style={styles.reciprocitySummaryLabel}>
+                          최근 접수
+                        </Text>
+                        <Text style={styles.reciprocitySummaryValue}>
+                          {formatAmount(recentAmount)}
+                        </Text>
+                      </View>
                     </View>
                   </TouchableOpacity>
                 );
@@ -4557,8 +4850,10 @@ export default function HomeScreen({
             <View>
               <Text style={styles.notificationTitle}>알림</Text>
               <Text style={styles.notificationSubtitle}>
-                {reciprocityUnreadCount > 0
-                  ? `확인하지 않은 알림 ${reciprocityUnreadCount}개`
+                {reciprocityLoading || activityLoading
+                  ? "알림을 불러오는 중이에요"
+                  : homeNotificationUnreadCount > 0
+                  ? `확인하지 않은 알림 ${homeNotificationUnreadCount}개`
                   : "새로 확인할 알림이 없어요"}
               </Text>
             </View>
@@ -4576,7 +4871,7 @@ export default function HomeScreen({
             contentContainerStyle={styles.notificationListContent}
             showsVerticalScrollIndicator={false}
           >
-            {visibleReciprocityNotifications.length === 0 ? (
+            {visibleHomeNotifications.length === 0 ? (
               <View style={styles.notificationEmpty}>
                 <View style={styles.notificationEmptyIcon}>
                   <Ionicons
@@ -4589,23 +4884,91 @@ export default function HomeScreen({
                   아직 알림이 없어요
                 </Text>
                 <Text style={styles.notificationEmptyText}>
-                  챙겨야 할 경조사가 생기면 여기에서 먼저 알려드릴게요.
+                  경조사 생성, 수정, 결제, 하객 접수 활동을 여기에서
+                  확인할 수 있어요.
                 </Text>
               </View>
             ) : (
-              visibleReciprocityNotifications.map((item) => {
+              visibleHomeNotifications.map((item) => {
+                if (item.notificationKind === "activity") {
+                  const isUnread = item.status === "unread";
+                  return (
+                    <TouchableOpacity
+                      key={`activity-${item.id}`}
+                      style={[
+                        styles.notificationItem,
+                        isUnread && styles.notificationItemUnread,
+                      ]}
+                      onPress={() => openNotificationItem(item)}
+                      activeOpacity={0.82}
+                    >
+                      {isUnread && (
+                        <View style={styles.notificationUnreadBar} />
+                      )}
+                      <View style={styles.notificationIconWrap}>
+                        <Ionicons
+                          name={getActivityNotificationIcon(item.type)}
+                          size={21}
+                          color="#4E5968"
+                        />
+                      </View>
+                      <View style={styles.notificationBody}>
+                        <View style={styles.notificationItemTop}>
+                          <Text
+                            style={[
+                              styles.notificationCategory,
+                              isUnread && styles.notificationCategoryUnread,
+                            ]}
+                          >
+                            {getActivityNotificationCategoryText(
+                              item.type,
+                              item.category,
+                            )}
+                          </Text>
+                          <Text style={styles.notificationTime}>
+                            {formatDate(item.created_at)}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[
+                            styles.notificationItemTitle,
+                            isUnread && styles.notificationItemTitleUnread,
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {item.title}
+                        </Text>
+                        {!!item.body && (
+                          <Text
+                            style={styles.notificationItemText}
+                            numberOfLines={2}
+                          >
+                            {item.body}
+                          </Text>
+                        )}
+                      </View>
+                      {isUnread && (
+                        <View style={styles.notificationUnreadDot} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }
+
                 const originalEvents = item.originalEvents || [];
                 const newEvents = item.newEvents || [];
                 const latestNewEvent = newEvents[0] || item.new_event || {};
                 const firstOriginalEvent =
                   originalEvents[0] || item.original_event || {};
                 const isUnread = item.status === "unread";
-                const newEventPersonName =
-                  getNewEventPersonName(latestNewEvent);
+                const displayGuestName = getReciprocityDisplayName(
+                  item,
+                  latestNewEvent,
+                );
                 const notificationDate = latestNewEvent.event_date
                   ? formatDateWithTime(
                       latestNewEvent.event_date,
-                      latestNewEvent.event_time,
+                      latestNewEvent.event_time ||
+                        latestNewEvent.ceremony_time,
                     )
                   : formatDate(item.created_at);
 
@@ -4650,7 +5013,7 @@ export default function HomeScreen({
                         ]}
                         numberOfLines={2}
                       >
-                        {newEventPersonName}님이 새 경조사를 만들었어요
+                        {displayGuestName}님이 새 경조사를 만들었어요
                       </Text>
                       <Text
                         style={styles.notificationItemText}
@@ -4678,86 +5041,55 @@ export default function HomeScreen({
       </Modal>
       )}
 
-      {!!selectedReciprocityGroup && (
+      {reciprocitySheetVisible && (
       <Modal
-        visible={!!selectedReciprocityGroup}
+        visible={reciprocitySheetVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setSelectedReciprocityGroup(null)}
+        onRequestClose={closeReciprocitySheet}
       >
-        <TouchableWithoutFeedback
-          onPress={() => setSelectedReciprocityGroup(null)}
-        >
-          <View style={styles.reciprocitySheetOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.reciprocitySheet}>
+        <View style={styles.reciprocitySheetOverlay}>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.reciprocitySheetBackdrop,
+              { opacity: reciprocitySheetFade },
+            ]}
+          />
+          <TouchableWithoutFeedback onPress={closeReciprocitySheet}>
+            <View style={styles.reciprocitySheetBackdropTouchable} />
+          </TouchableWithoutFeedback>
+          <View style={styles.reciprocitySheet}>
                 {(() => {
                   const item = selectedReciprocityGroup || {};
                   const originalEvents = item.originalEvents || [];
                   const newEvents = item.newEvents || [];
                   const latestNewEvent = newEvents[0] || item.new_event || {};
                   const guestPhone = formatPhoneNumber(item.source_guest_phone);
-                  const totalAmount =
-                    item.source_amount_total || item.source_amount || 0;
-                  const newEventPersonName =
-                    getNewEventPersonName(latestNewEvent);
+                  const maskedGuestPhone = guestPhone
+                    ? guestPhone.replace(
+                        /(\d{3})-\d{3,4}-(\d{4})/,
+                        "$1-****-$2",
+                      )
+                    : "";
+                  const totalAmount = item.source_amount_total || 0;
+                  const isCompleted = item.status === "completed";
+                  const eventTypeLabel = getEventTypeText(
+                    latestNewEvent.event_type,
+                  );
+                  const latestAmount =
+                    item.source_amount_max ||
+                    originalEvents[0]?.amount ||
+                    totalAmount ||
+                    0;
+                  const displayGuestName = getReciprocityDisplayName(
+                    item,
+                    latestNewEvent,
+                  );
 
                   return (
                     <>
                       <View style={styles.reciprocitySheetHandle} />
-                      <View style={styles.reciprocitySheetHeader}>
-                        <View style={styles.reciprocitySheetAvatar}>
-                          <Text style={styles.reciprocitySheetAvatarText}>
-                            {(newEventPersonName || "?").charAt(0)}
-                          </Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={styles.reciprocitySheetTitle}
-                            numberOfLines={1}
-                          >
-                            {newEventPersonName}님과의 기록
-                          </Text>
-                          {!!guestPhone && (
-                            <Text style={styles.reciprocitySheetPhone}>
-                              {guestPhone}
-                            </Text>
-                          )}
-                        </View>
-                        <TouchableOpacity
-                          style={styles.reciprocitySheetClose}
-                          onPress={() => setSelectedReciprocityGroup(null)}
-                          activeOpacity={0.75}
-                        >
-                          <Ionicons name="close" size={20} color="#6B7684" />
-                        </TouchableOpacity>
-                      </View>
-
-                      <Text style={styles.reciprocitySheetIntro}>
-                        {newEventPersonName}님이 새 경조사를 만들었어요. 이전에
-                        내 행사에 접수된 기록을 확인하고 자연스럽게 챙겨보세요.
-                      </Text>
-
-                      <View style={styles.reciprocitySheetSummary}>
-                        <View style={styles.reciprocitySheetSummaryItem}>
-                          <Text style={styles.reciprocitySheetSummaryLabel}>
-                            함께한 기록
-                          </Text>
-                          <Text style={styles.reciprocitySheetSummaryValue}>
-                            {originalEvents.length}회
-                          </Text>
-                        </View>
-                        <View style={styles.reciprocitySheetSummaryDivider} />
-                        <View style={styles.reciprocitySheetSummaryItem}>
-                          <Text style={styles.reciprocitySheetSummaryLabel}>
-                            오간 마음
-                          </Text>
-                          <Text style={styles.reciprocitySheetSummaryValue}>
-                            {formatAmount(totalAmount)}
-                          </Text>
-                        </View>
-                      </View>
-
                       <ScrollView
                         style={styles.reciprocitySheetScroll}
                         contentContainerStyle={
@@ -4765,21 +5097,73 @@ export default function HomeScreen({
                         }
                         showsVerticalScrollIndicator={false}
                       >
+                      <View style={styles.reciprocitySheetHero}>
+                        <Text style={styles.reciprocitySheetEyebrow}>
+                          챙길 경조사
+                        </Text>
+                        <Text
+                          style={styles.reciprocitySheetHeroTitle}
+                          numberOfLines={1}
+                        >
+                          {displayGuestName}님을 챙겨야 해요
+                        </Text>
+                        <Text
+                          style={styles.reciprocitySheetHeroSub}
+                          numberOfLines={1}
+                        >
+                          내 행사에 접수한 기록과 새 경조사를 함께 확인해요.
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.reciprocitySheetClose}
+                          onPress={closeReciprocitySheet}
+                          activeOpacity={0.75}
+                        >
+                          <Ionicons name="close" size={22} color="#6B7684" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={styles.reciprocitySheetPersonCard}>
+                        <View style={styles.reciprocitySheetAvatar}>
+                          <Text style={styles.reciprocitySheetAvatarText}>
+                            {(displayGuestName || "?").charAt(0)}
+                          </Text>
+                          <View style={styles.reciprocitySheetAvatarBadge}>
+                            <Ionicons name="heart" size={11} color="#FFFFFF" />
+                          </View>
+                        </View>
+                        <View style={styles.reciprocitySheetPersonText}>
+                          <Text
+                            style={styles.reciprocitySheetPersonName}
+                            numberOfLines={1}
+                          >
+                            {displayGuestName}
+                          </Text>
+                          {!!maskedGuestPhone && (
+                            <Text style={styles.reciprocitySheetPhone}>
+                              {maskedGuestPhone}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={styles.reciprocitySheetAmountCard}>
+                          <Text style={styles.reciprocitySheetAmountLabel}>
+                            최근 받은 금액
+                          </Text>
+                          <Text style={styles.reciprocitySheetAmountValue}>
+                            {formatAmount(latestAmount)}
+                          </Text>
+                        </View>
+                      </View>
+
                         <View style={styles.reciprocitySheetBlock}>
                           <Text style={styles.reciprocitySheetBlockTitle}>
-                            챙길 경조사
+                            이 사람이 만든 경조사
                           </Text>
                           <View style={styles.reciprocitySheetNewEvent}>
-                            <View style={styles.reciprocitySheetNewEventIcon}>
-                              <Image
-                                source={getReciprocityEventIcon(
-                                  latestNewEvent.event_type,
-                                )}
-                                style={styles.reciprocitySheetNewEventImage}
-                                resizeMode="contain"
-                              />
-                            </View>
-                            <View style={{ flex: 1 }}>
+                            <View style={styles.reciprocitySheetNewEventBar} />
+                            <View style={styles.reciprocitySheetNewEventBody}>
+                              <Text style={styles.reciprocitySheetEventType}>
+                                {eventTypeLabel}
+                              </Text>
                               <Text
                                 style={styles.reciprocitySheetNewEventTitle}
                                 numberOfLines={1}
@@ -4792,41 +5176,107 @@ export default function HomeScreen({
                               >
                                 {formatDateWithTime(
                                   latestNewEvent.event_date,
-                                  latestNewEvent.event_time,
+                                  latestNewEvent.event_time ||
+                                    latestNewEvent.ceremony_time,
                                 )}
                                 {newEvents.length > 1
                                   ? ` · 외 ${newEvents.length - 1}개`
                                   : ""}
                               </Text>
                             </View>
-                            <TouchableOpacity
-                              style={styles.reciprocityGhostBtn}
-                              onPress={() =>
-                                openInvitationPreview(latestNewEvent)
-                              }
-                              activeOpacity={0.82}
-                            >
-                              <Text style={styles.reciprocityGhostText}>
-                                보기
-                              </Text>
-                            </TouchableOpacity>
+                            <View style={styles.reciprocitySheetNewEventSide}>
+                              <View
+                                style={[
+                                  styles.reciprocitySheetStatusPill,
+                                  isCompleted &&
+                                    styles.reciprocitySheetStatusDone,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.reciprocitySheetStatusText,
+                                    isCompleted &&
+                                      styles.reciprocitySheetStatusDoneText,
+                                  ]}
+                                >
+                                  {isCompleted ? "챙김 완료" : "확인 필요"}
+                                </Text>
+                              </View>
+                              <TouchableOpacity
+                                style={styles.reciprocitySheetInviteButton}
+                                onPress={() =>
+                                  openInvitationPreview(latestNewEvent)
+                                }
+                                activeOpacity={0.82}
+                              >
+                                <Text
+                                  style={styles.reciprocitySheetInviteText}
+                                >
+                                  청첩장 보기
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
                           </View>
                         </View>
 
-                        <View style={styles.reciprocitySheetBlock}>
+                        <View style={styles.reciprocitySheetSummary}>
+                          <View style={styles.reciprocitySheetSummaryItem}>
+                            <Text style={styles.reciprocitySheetSummaryLabel}>
+                              이전에 참석
+                            </Text>
+                            <Text style={styles.reciprocitySheetSummaryValue}>
+                              {originalEvents.length}건
+                            </Text>
+                          </View>
+                          <View style={styles.reciprocitySheetSummaryDivider} />
+                          <View style={styles.reciprocitySheetSummaryItem}>
+                            <Text style={styles.reciprocitySheetSummaryLabel}>
+                              최근 접수
+                            </Text>
+                            <Text
+                              style={[
+                                styles.reciprocitySheetSummaryValue,
+                                styles.reciprocitySheetSummaryValueBlue,
+                              ]}
+                            >
+                              {formatAmount(latestAmount)}
+                            </Text>
+                          </View>
+                          <View style={styles.reciprocitySheetSummaryDivider} />
+                          <View style={styles.reciprocitySheetSummaryItem}>
+                            <Text style={styles.reciprocitySheetSummaryLabel}>
+                              챙김 상태
+                            </Text>
+                            <Text style={styles.reciprocitySheetSummaryValue}>
+                              {isCompleted ? "완료" : "대기"}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.reciprocitySheetHistoryHeader}>
                           <Text style={styles.reciprocitySheetBlockTitle}>
                             함께했던 기록
                           </Text>
+                          <View style={styles.reciprocitySheetCountPill}>
+                            <Text style={styles.reciprocitySheetCountText}>
+                              총 {originalEvents.length}건
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.reciprocitySheetTimeline}>
+                          <View style={styles.reciprocitySheetTimelineLine} />
                           {originalEvents.length === 0 ? (
                             <Text style={styles.reciprocitySheetEmptyText}>
                               연결된 참여 기록이 없어요.
                             </Text>
                           ) : (
-                            originalEvents.map((event) => (
+                            originalEvents.map((event, eventIndex) => (
                               <TouchableOpacity
                                 key={event.id || event.notificationId}
                                 style={styles.reciprocitySheetHistoryRow}
                                 onPress={() => {
+                                  setReciprocitySheetVisible(false);
                                   setSelectedReciprocityGroup(null);
                                   openReciprocityDetail({
                                     ...item,
@@ -4841,48 +5291,90 @@ export default function HomeScreen({
                                 activeOpacity={0.78}
                               >
                                 <View
-                                  style={styles.reciprocitySheetHistoryIcon}
-                                >
-                                  <Ionicons
-                                    name="heart-outline"
-                                    size={17}
-                                    color="#3182F6"
-                                  />
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                  <Text
-                                    style={styles.reciprocitySheetHistoryTitle}
-                                    numberOfLines={1}
-                                  >
-                                    {event.event_name || "이전 경조사"}
-                                  </Text>
-                                  <Text
-                                    style={styles.reciprocitySheetHistorySub}
-                                    numberOfLines={1}
-                                  >
-                                    {event.event_date
-                                      ? `${formatDate(event.event_date)} · `
-                                      : ""}
-                                    {formatAmount(event.amount || 0)}
-                                  </Text>
-                                </View>
-                                <Ionicons
-                                  name="chevron-forward"
-                                  size={16}
-                                  color="#B0B8C1"
+                                  style={[
+                                    styles.reciprocitySheetHistoryDot,
+                                    eventIndex === 0 &&
+                                      styles.reciprocitySheetHistoryDotActive,
+                                  ]}
                                 />
+                                <View style={styles.reciprocitySheetHistoryCard}>
+                                  <View style={{ flex: 1, minWidth: 0 }}>
+                                    <Text
+                                      style={
+                                        styles.reciprocitySheetHistoryTitle
+                                      }
+                                      numberOfLines={1}
+                                    >
+                                      {event.event_name || "이전 경조사"}
+                                    </Text>
+                                    <Text
+                                      style={styles.reciprocitySheetHistorySub}
+                                      numberOfLines={1}
+                                    >
+                                      {event.event_date
+                                        ? `${formatDate(event.event_date)} · `
+                                        : ""}
+                                      축의금
+                                    </Text>
+                                  </View>
+                                  <View style={styles.reciprocitySheetHistoryMeta}>
+                                    <Text
+                                      style={
+                                        styles.reciprocitySheetHistoryAmount
+                                      }
+                                      numberOfLines={1}
+                                    >
+                                      {formatAmount(event.amount || 0)}
+                                    </Text>
+                                    <View
+                                      style={styles.reciprocitySheetHistoryBtn}
+                                    >
+                                      <Text
+                                        style={
+                                          styles.reciprocitySheetHistoryBtnText
+                                        }
+                                      >
+                                        내역 보기
+                                      </Text>
+                                    </View>
+                                  </View>
+                                </View>
                               </TouchableOpacity>
                             ))
                           )}
                         </View>
                       </ScrollView>
+
+                      <View style={styles.reciprocitySheetActions}>
+                        <TouchableOpacity
+                          style={styles.reciprocitySheetLaterButton}
+                          onPress={closeReciprocitySheet}
+                          activeOpacity={0.78}
+                        >
+                          <Text style={styles.reciprocitySheetLaterText}>
+                            나중에 볼게요
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.reciprocitySheetDoneButton,
+                            isCompleted &&
+                              styles.reciprocitySheetDoneButtonCompleted,
+                          ]}
+                          onPress={() => completeReciprocityGroup(item)}
+                          activeOpacity={0.82}
+                          disabled={isCompleted}
+                        >
+                          <Text style={styles.reciprocitySheetDoneText}>
+                            {isCompleted ? "챙김 완료" : "챙겼어요"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     </>
                   );
                 })()}
-              </View>
-            </TouchableWithoutFeedback>
           </View>
-        </TouchableWithoutFeedback>
+          </View>
       </Modal>
       )}
 
@@ -5287,8 +5779,11 @@ export default function HomeScreen({
                     style={[
                       styles.createEventModalOption,
                       styles.createEventModalOptionComingSoon,
+                      eventCreationFlowLocked &&
+                        styles.createEventModalOptionDisabled,
                     ]}
                     activeOpacity={0.7}
+                    disabled={eventCreationFlowLocked}
                     onPress={() => {
                       setShowCreateEventModal(false);
                       handleEventCreationIntent("wedding");
@@ -5333,8 +5828,13 @@ export default function HomeScreen({
                   <View style={styles.createEventModalDivider} />
 
                   <TouchableOpacity
-                    style={styles.createEventModalOption}
+                    style={[
+                      styles.createEventModalOption,
+                      eventCreationFlowLocked &&
+                        styles.createEventModalOptionDisabled,
+                    ]}
                     activeOpacity={0.7}
+                    disabled={eventCreationFlowLocked}
                     onPress={() => {
                       setShowCreateEventModal(false);
                       handleEventCreationIntent("funeral");
@@ -6425,6 +6925,9 @@ const styles = StyleSheet.create({
     position: "relative",
     minHeight: 240,
   },
+  quickItemDisabled: {
+    opacity: 0.72,
+  },
   quickIcon: {
     marginBottom: 12,
     alignItems: "center",
@@ -6453,6 +6956,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     minWidth: 100,
     alignItems: "center",
+  },
+  quickButtonDisabled: {
+    opacity: 0.65,
   },
   quickButtonComingSoon: {
     backgroundColor: "#A7AEB8",
@@ -7314,6 +7820,51 @@ const styles = StyleSheet.create({
     color: Colors.white,
   },
 
+  // 내가 주최한 경조사 페이지네이션
+  hostedPaginationContainer: {
+    height: 38,
+    marginTop: 8,
+    marginBottom: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  hostedPaginationArrow: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hostedPaginationArrowDisabled: {
+    opacity: 0.55,
+  },
+  hostedPaginationDots: {
+    minHeight: 30,
+    paddingHorizontal: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+  },
+  hostedPaginationDotHitSlop: {
+    width: 18,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hostedPaginationDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "#D1D6DC",
+  },
+  hostedPaginationDotActive: {
+    width: 16,
+    backgroundColor: "#191F28",
+  },
+
   // 페이지네이션 스타일
   paginationContainer: {
     flexDirection: "row",
@@ -8059,12 +8610,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14,
+    marginBottom: 10,
   },
   reciprocityTitle: {
-    fontSize: 18,
-    fontWeight: "800",
+    fontSize: 19,
+    lineHeight: 24,
+    fontWeight: "900",
     color: "#191F28",
+    letterSpacing: 0,
   },
   reciprocitySubTitle: {
     marginTop: 4,
@@ -8078,10 +8631,18 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "#EBF3FE",
   },
+  reciprocityHeaderAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingVertical: 5,
+    paddingLeft: 8,
+  },
   reciprocityUnreadText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "800",
-    color: "#3182F6",
+    color: "#4E5968",
+    letterSpacing: 0,
   },
   reciprocityEmptyCard: {
     flexDirection: "row",
@@ -8117,22 +8678,22 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   reciprocityCard: {
-    padding: 16,
+    padding: 0,
     borderRadius: 18,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#EEF1F4",
+    borderColor: "#DDE4EC",
     overflow: "hidden",
     position: "relative",
-    shadowColor: "#174EA6",
-    shadowOffset: { width: 0, height: 8 },
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 2,
+    shadowRadius: 24,
+    elevation: 3,
   },
   reciprocityCardUnread: {
-    borderColor: "#B7D7FF",
-    backgroundColor: "#FBFDFF",
+    borderColor: "#D5E0EF",
+    backgroundColor: "#FFFFFF",
   },
   reciprocityCardGlow: {
     position: "absolute",
@@ -8145,38 +8706,130 @@ const styles = StyleSheet.create({
   },
   reciprocityCardTop: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    alignItems: "flex-start",
+    gap: 24,
+    paddingLeft: 18,
+    paddingRight: 12,
+    paddingTop: 18,
+    paddingBottom: 16,
   },
   reciprocityAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#EEF1F4",
+    backgroundColor: "#F1F6FF",
+    position: "relative",
+    marginTop: 4,
   },
   reciprocityAvatarText: {
     fontSize: 17,
     fontWeight: "900",
-    color: "#3182F6",
+    color: "#2F5C9B",
+    letterSpacing: 0,
+  },
+  reciprocityAvatarBadge: {
+    position: "absolute",
+    right: -7,
+    bottom: -2,
+    width: 24,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#3182F6",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    shadowColor: "#3182F6",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    elevation: 2,
   },
   reciprocityAvatarImage: {
     width: 42,
     height: 42,
   },
+  reciprocityCardContent: {
+    flex: 1,
+    minWidth: 0,
+    paddingLeft: 0,
+  },
   reciprocityCardTitle: {
-    fontSize: 15,
-    fontWeight: "800",
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "900",
     color: "#191F28",
+    letterSpacing: 0,
   },
   reciprocityCardSub: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: "600",
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "700",
     color: "#6B7684",
+    letterSpacing: 0,
+  },
+  reciprocityAmountText: {
+    color: "#3182F6",
+    fontWeight: "900",
+  },
+  reciprocityEventDateText: {
+    marginTop: 13,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "700",
+    color: "#6B7684",
+    letterSpacing: 0,
+  },
+  reciprocityChipRow: {
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  reciprocityChipPrimary: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "#E8F3FF",
+  },
+  reciprocityChipPrimaryText: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "900",
+    color: "#3182F6",
+    letterSpacing: 0,
+  },
+  reciprocityChipMuted: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "#F2F4F6",
+  },
+  reciprocityChipMutedText: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "800",
+    color: "#4E5968",
+    letterSpacing: 0,
+  },
+  reciprocityChipDone: {
+    backgroundColor: "#E7F8EF",
+  },
+  reciprocityChipDoneText: {
+    color: "#009D6A",
+  },
+  reciprocityCardChevron: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#F2F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginLeft: 4,
   },
   reciprocityPhoneRow: {
     marginTop: 5,
@@ -8248,19 +8901,66 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
   },
+  reciprocitySummaryBar: {
+    minHeight: 38,
+    borderTopWidth: 1,
+    borderTopColor: "#E5EAF1",
+    backgroundColor: "#FBFDFF",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  reciprocitySummaryItem: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    gap: 3,
+  },
+  reciprocitySummaryDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: "#DDE4EC",
+  },
+  reciprocitySummaryLabel: {
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: "800",
+    color: "#6B7684",
+    letterSpacing: 0,
+  },
+  reciprocitySummaryValue: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "900",
+    color: "#3182F6",
+    letterSpacing: 0,
+  },
   reciprocitySheetOverlay: {
     flex: 1,
     justifyContent: "flex-end",
+    backgroundColor: "transparent",
+  },
+  reciprocitySheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
     backgroundColor: "rgba(0, 0, 0, 0.32)",
   },
+  reciprocitySheetBackdropTouchable: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
   reciprocitySheet: {
-    maxHeight: "82%",
+    position: "relative",
+    maxHeight: "86%",
     paddingTop: 10,
     paddingHorizontal: 20,
-    paddingBottom: Platform.OS === "ios" ? 34 : 22,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    paddingBottom: Platform.OS === "ios" ? 26 : 18,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
     backgroundColor: "#FFFFFF",
+    zIndex: 2,
   },
   reciprocitySheetHandle: {
     alignSelf: "center",
@@ -8270,134 +8970,282 @@ const styles = StyleSheet.create({
     backgroundColor: "#D1D6DB",
     marginBottom: 16,
   },
-  reciprocitySheetHeader: {
+  reciprocitySheetHero: {
+    position: "relative",
+    paddingRight: 48,
+  },
+  reciprocitySheetEyebrow: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "900",
+    color: "#3182F6",
+  },
+  reciprocitySheetHeroTitle: {
+    marginTop: 7,
+    fontSize: 25,
+    lineHeight: 32,
+    fontWeight: "900",
+    color: "#191F28",
+    letterSpacing: 0,
+  },
+  reciprocitySheetHeroSub: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+    color: "#6B7684",
+  },
+  reciprocitySheetPersonCard: {
+    marginTop: 20,
+    minHeight: 92,
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E5EAF1",
+    backgroundColor: "#F9FBFD",
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
   reciprocitySheetAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#EBF3FE",
+    backgroundColor: "#F1F6FF",
+    position: "relative",
+    flexShrink: 0,
   },
   reciprocitySheetAvatarText: {
-    fontSize: 18,
+    fontSize: 23,
     fontWeight: "900",
-    color: "#3182F6",
+    color: "#2F5C9B",
   },
-  reciprocitySheetTitle: {
-    fontSize: 20,
+  reciprocitySheetAvatarBadge: {
+    position: "absolute",
+    right: -5,
+    bottom: 0,
+    width: 26,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#3182F6",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reciprocitySheetPersonText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  reciprocitySheetPersonName: {
+    fontSize: 17,
+    lineHeight: 23,
     fontWeight: "900",
     color: "#191F28",
   },
   reciprocitySheetPhone: {
-    marginTop: 3,
+    marginTop: 4,
     fontSize: 13,
     fontWeight: "700",
     color: "#8B95A1",
   },
-  reciprocitySheetIntro: {
-    marginTop: 16,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#EEF1F4",
-    fontSize: 13,
-    fontWeight: "700",
-    lineHeight: 20,
-    color: "#4E5968",
+  reciprocitySheetAmountCard: {
+    minWidth: 124,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 17,
+    backgroundColor: "#E8F3FF",
+  },
+  reciprocitySheetAmountLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    color: "#3182F6",
+  },
+  reciprocitySheetAmountValue: {
+    marginTop: 5,
+    fontSize: 20,
+    lineHeight: 25,
+    fontWeight: "900",
+    color: "#3182F6",
   },
   reciprocitySheetClose: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    position: "absolute",
+    top: 5,
+    right: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#F2F4F6",
   },
   reciprocitySheetSummary: {
-    marginTop: 18,
+    marginTop: 14,
+    minHeight: 74,
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
-    borderRadius: 16,
-    backgroundColor: "#F7FAFF",
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: "#FBFDFF",
     borderWidth: 1,
-    borderColor: "#E8F2FF",
+    borderColor: "#E5EAF1",
   },
   reciprocitySheetSummaryItem: {
     flex: 1,
-    alignItems: "center",
+    minWidth: 0,
+    paddingHorizontal: 12,
   },
   reciprocitySheetSummaryDivider: {
     width: 1,
-    height: 34,
-    backgroundColor: "#DCEBFF",
+    height: 42,
+    backgroundColor: "#DDE4EC",
   },
   reciprocitySheetSummaryLabel: {
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
     color: "#8B95A1",
   },
   reciprocitySheetSummaryValue: {
-    marginTop: 5,
+    marginTop: 6,
     fontSize: 17,
+    lineHeight: 22,
     fontWeight: "900",
     color: "#191F28",
   },
+  reciprocitySheetSummaryValueBlue: {
+    color: "#3182F6",
+  },
   reciprocitySheetScroll: {
-    marginTop: 18,
+    marginTop: 0,
+    flexGrow: 0,
+    flexShrink: 1,
   },
   reciprocitySheetScrollContent: {
-    paddingBottom: 8,
-    gap: 18,
+    paddingBottom: 14,
+    gap: 20,
   },
   reciprocitySheetBlock: {
     gap: 10,
   },
   reciprocitySheetBlockTitle: {
-    fontSize: 14,
+    fontSize: 18,
+    lineHeight: 24,
     fontWeight: "900",
     color: "#191F28",
   },
   reciprocitySheetNewEvent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: "#F7FAFF",
-    borderWidth: 1,
-    borderColor: "#E8F2FF",
-  },
-  reciprocitySheetNewEventIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
+    gap: 12,
+    minHeight: 138,
+    padding: 16,
+    borderRadius: 20,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#E8F2FF",
+    borderColor: "#E5EAF1",
   },
-  reciprocitySheetNewEventImage: {
-    width: 38,
-    height: 38,
+  reciprocitySheetNewEventBar: {
+    width: 5,
+    height: 88,
+    borderRadius: 3,
+    backgroundColor: "#3182F6",
+  },
+  reciprocitySheetNewEventBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  reciprocitySheetNewEventSide: {
+    width: 122,
+    alignItems: "stretch",
+    gap: 10,
+  },
+  reciprocitySheetEventType: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "900",
+    color: "#3182F6",
   },
   reciprocitySheetNewEventTitle: {
-    fontSize: 15,
+    marginTop: 7,
+    fontSize: 18,
+    lineHeight: 24,
     fontWeight: "900",
     color: "#191F28",
   },
   reciprocitySheetNewEventSub: {
-    marginTop: 4,
-    fontSize: 12,
+    marginTop: 7,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "700",
-    color: "#8B95A1",
+    color: "#6B7684",
+  },
+  reciprocitySheetStatusPill: {
+    alignSelf: "flex-end",
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: 14,
+    backgroundColor: "#F2F4F6",
+  },
+  reciprocitySheetStatusDone: {
+    backgroundColor: "#E7F8EF",
+  },
+  reciprocitySheetStatusText: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "800",
+    color: "#6B7684",
+  },
+  reciprocitySheetStatusDoneText: {
+    color: "#009D6A",
+  },
+  reciprocitySheetInviteButton: {
+    height: 46,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#3182F6",
+  },
+  reciprocitySheetInviteText: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "900",
+    color: "#FFFFFF",
+  },
+  reciprocitySheetHistoryHeader: {
+    marginTop: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  reciprocitySheetCountPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "#F2F4F6",
+  },
+  reciprocitySheetCountText: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "800",
+    color: "#6B7684",
+  },
+  reciprocitySheetTimeline: {
+    position: "relative",
+    gap: 10,
+    paddingLeft: 28,
+  },
+  reciprocitySheetTimelineLine: {
+    position: "absolute",
+    left: 8,
+    top: 11,
+    bottom: 11,
+    width: 2,
+    borderRadius: 16,
+    backgroundColor: "#DDE4EC",
   },
   reciprocitySheetEmptyText: {
     paddingVertical: 16,
@@ -8406,45 +9254,105 @@ const styles = StyleSheet.create({
     color: "#8B95A1",
   },
   reciprocitySheetHistoryRow: {
+    position: "relative",
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+  },
+  reciprocitySheetHistoryDot: {
+    position: "absolute",
+    left: -28,
+    top: 25,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#B0B8C1",
+    zIndex: 2,
+  },
+  reciprocitySheetHistoryDotActive: {
+    backgroundColor: "#3182F6",
+  },
+  reciprocitySheetHistoryCard: {
+    flex: 1,
+    minHeight: 92,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
     paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#EEF1F4",
-  },
-  reciprocitySheetHistoryIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#EBF3FE",
+    borderColor: "#E5EAF1",
   },
   reciprocitySheetHistoryTitle: {
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: "900",
     color: "#191F28",
   },
   reciprocitySheetHistorySub: {
-    marginTop: 3,
+    marginTop: 5,
     fontSize: 12,
+    lineHeight: 16,
     fontWeight: "700",
     color: "#8B95A1",
   },
-  reciprocityGhostBtn: {
+  reciprocitySheetHistoryMeta: {
+    alignItems: "flex-end",
+    gap: 7,
+  },
+  reciprocitySheetHistoryAmount: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "900",
+    color: "#3182F6",
+  },
+  reciprocitySheetHistoryBtn: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
     backgroundColor: "#F2F4F6",
   },
-  reciprocityGhostText: {
+  reciprocitySheetHistoryBtnText: {
     fontSize: 12,
     fontWeight: "800",
     color: "#6B7684",
+  },
+  reciprocitySheetActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingTop: 12,
+  },
+  reciprocitySheetLaterButton: {
+    width: 132,
+    height: 54,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F2F4F6",
+  },
+  reciprocitySheetLaterText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#6B7684",
+  },
+  reciprocitySheetDoneButton: {
+    flex: 1,
+    height: 54,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#3182F6",
+  },
+  reciprocitySheetDoneButtonCompleted: {
+    backgroundColor: "#3182F6",
+    opacity: 0.72,
+  },
+  reciprocitySheetDoneText: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#FFFFFF",
   },
   reciprocityPager: {
     marginTop: 12,
@@ -9249,6 +10157,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
+  },
+  createEventModalOptionDisabled: {
+    opacity: 0.55,
   },
   createEventModalOptionComingSoon: {
     opacity: 0.78,

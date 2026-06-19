@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
   Modal,
@@ -28,7 +28,7 @@ const EVENT_ICONS = {
 const FILTERS = [
   { key: 'all', label: '전체' },
   { key: 'unread', label: '새 소식' },
-  { key: 'read', label: '챙긴 내역' },
+  { key: 'completed', label: '챙긴 내역' },
 ];
 
 function formatAmount(amount) {
@@ -67,12 +67,22 @@ function getEventIcon(eventType) {
 }
 
 function getStatusLabel(status) {
-  if (status === 'read') return '챙겼어요';
+  if (status === 'completed') return '챙겼어요';
   return '챙겨야 해요';
 }
 
 function getEventTypeLabel(eventType) {
   return eventType === 'funeral' ? '장례식' : '결혼식';
+}
+
+function getCurrentSourceGuest(item = {}) {
+  return item.source_guest || null;
+}
+
+function getCurrentContributionAmount(item = {}) {
+  const currentGuest = getCurrentSourceGuest(item);
+  if (!currentGuest) return 0;
+  return Number(currentGuest.amount || 0) || 0;
 }
 
 function groupNotifications(items = []) {
@@ -82,6 +92,12 @@ function groupNotifications(items = []) {
     const phoneKey = normalizePhoneDigits(item.source_guest_phone);
     const newEventId = item.new_event_id || item.new_event?.id || 'unknown';
     const key = `${newEventId}:${phoneKey || item.source_guest_name || item.id}`;
+    const currentGuest = getCurrentSourceGuest(item);
+    const currentAmount = getCurrentContributionAmount(item);
+
+    if (!currentGuest || currentAmount <= 0) {
+      return;
+    }
 
     if (!grouped.has(key)) {
       grouped.set(key, {
@@ -96,27 +112,29 @@ function groupNotifications(items = []) {
 
     const group = grouped.get(key);
     group.items.push(item);
+    if (item.status === 'completed' && group.status !== 'unread') {
+      group.status = 'completed';
+    }
     if (item.status === 'unread') group.status = 'unread';
 
     const originalEventId = item.original_event_id || item.original_event?.id;
     if (originalEventId && item.original_event && !group.originalEventMap.has(originalEventId)) {
-      const amount = Number(item.source_amount || 0);
       group.originalEventMap.set(originalEventId, {
         ...item.original_event,
         notificationId: item.id,
-        source_guest_id: item.source_guest_id,
-        source_guest_name: item.source_guest_name,
-        source_guest_phone: item.source_guest_phone,
-        amount,
+        source_guest_id: currentGuest?.id || item.source_guest_id,
+        source_guest_name: currentGuest?.guest_name || item.source_guest_name,
+        source_guest_phone: currentGuest?.guest_phone || item.source_guest_phone,
+        amount: currentAmount,
         created_at: item.created_at,
       });
-      group.totalAmount += amount;
+      group.totalAmount += currentAmount;
     }
 
     if (!group.created_at || new Date(item.created_at) > new Date(group.created_at)) {
       group.created_at = item.created_at;
-      group.source_guest_name = item.source_guest_name || group.source_guest_name;
-      group.source_guest_phone = item.source_guest_phone || group.source_guest_phone;
+      group.source_guest_name = currentGuest?.guest_name || item.source_guest_name || group.source_guest_name;
+      group.source_guest_phone = currentGuest?.guest_phone || item.source_guest_phone || group.source_guest_phone;
     }
   });
 
@@ -158,6 +176,11 @@ export default function ReciprocityScreen({ navigation, userInfo, session }) {
           table: 'event_reciprocity_notifications',
           filter: `receiver_user_id=eq.${currentUserId}`,
         }, loadItems)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'guest_book',
+        }, loadItems)
         .subscribe();
 
       return () => supabase.removeChannel(channel);
@@ -168,6 +191,12 @@ export default function ReciprocityScreen({ navigation, userInfo, session }) {
   const filteredGroups = useMemo(() => (
     filter === 'all' ? groups : groups.filter(item => item.status === filter)
   ), [filter, groups]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const nextSelected = groups.find(group => group.groupKey === selected.groupKey);
+    setSelected(nextSelected || null);
+  }, [groups, selected?.groupKey]);
 
   const updateGroupStatus = async (group, status) => {
     const ids = group.items?.map(item => item.id).filter(Boolean) || [];
@@ -338,7 +367,7 @@ export default function ReciprocityScreen({ navigation, userInfo, session }) {
                     <TouchableOpacity
                       style={styles.sheetDoneButton}
                       onPress={() => {
-                        updateGroupStatus(selected, 'read');
+                        updateGroupStatus(selected, 'completed');
                         setSelected(null);
                       }}
                       activeOpacity={0.82}

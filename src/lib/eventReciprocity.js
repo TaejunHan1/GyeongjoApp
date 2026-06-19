@@ -26,6 +26,18 @@ export async function getReciprocityNotifications(userId = null) {
         source_guest_phone,
         source_amount,
         created_at,
+        updated_at,
+        source_guest:source_guest_id (
+          id,
+          event_id,
+          guest_name,
+          guest_phone,
+          amount,
+          input_method,
+          additional_info,
+          created_at,
+          updated_at
+        ),
         original_event:original_event_id (
           id,
           event_name,
@@ -37,7 +49,7 @@ export async function getReciprocityNotifications(userId = null) {
           event_name,
           event_type,
           event_date,
-          event_time,
+          ceremony_time,
           created_at,
           main_person_name,
           groom_name,
@@ -52,7 +64,24 @@ export async function getReciprocityNotifications(userId = null) {
       .limit(300);
 
     if (error) throw error;
-    return { success: true, data: data || [] };
+    const activeData = (data || [])
+      .filter((item) => {
+        const currentAmount = Number(item.source_guest?.amount || 0) || 0;
+        return item.source_guest && currentAmount > 0;
+      })
+      .map((item) => {
+        const currentGuest = item.source_guest;
+        const currentAmount = Number(currentGuest.amount || 0) || 0;
+        return {
+          ...item,
+          source_guest_name: currentGuest.guest_name || item.source_guest_name,
+          source_guest_phone:
+            currentGuest.guest_phone || item.source_guest_phone,
+          source_amount: currentAmount,
+        };
+      });
+
+    return { success: true, data: activeData };
   } catch (error) {
     return { success: false, error: error.message || 'reciprocity_notifications_failed', data: [] };
   }

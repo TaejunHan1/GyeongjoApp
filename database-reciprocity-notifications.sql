@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS event_reciprocity_notifications (
   source_guest_phone  text,
   source_amount       integer DEFAULT 0,
   status              text NOT NULL DEFAULT 'unread'
-                       CHECK (status IN ('unread', 'read', 'dismissed')),
+                       CHECK (status IN ('unread', 'read', 'dismissed', 'completed')),
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now(),
   UNIQUE (receiver_user_id, original_event_id, new_event_id)
@@ -52,7 +52,7 @@ ALTER TABLE event_reciprocity_notifications
 
 ALTER TABLE event_reciprocity_notifications
   ADD CONSTRAINT event_reciprocity_notifications_status_check
-  CHECK (status IN ('unread', 'read', 'dismissed'));
+  CHECK (status IN ('unread', 'read', 'dismissed', 'completed'));
 
 DO $$
 BEGIN
@@ -116,6 +116,7 @@ BEGIN
   FROM guest_book gb
   JOIN events original_event ON original_event.id = gb.event_id
   WHERE normalize_korean_phone(gb.guest_phone) = v_new_owner_phone
+    AND COALESCE(gb.amount, 0) > 0
     AND original_event.user_id IS NOT NULL
     AND original_event.user_id <> v_new_event.user_id
   ORDER BY original_event.user_id, original_event.id, gb.created_at DESC
@@ -177,13 +178,38 @@ END;
 $$;
 
 
-CREATE OR REPLACE FUNCTION event_reciprocity_after_guest_book_phone_change()
+CREATE OR REPLACE FUNCTION event_reciprocity_after_guest_book_change()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
   v_phone text;
   v_user record;
 BEGIN
+  IF TG_OP = 'DELETE' THEN
+    DELETE FROM event_reciprocity_notifications
+     WHERE source_guest_id = OLD.id;
+    RETURN OLD;
+  END IF;
+
+  IF COALESCE(NEW.amount, 0) <= 0 THEN
+    DELETE FROM event_reciprocity_notifications
+     WHERE source_guest_id = NEW.id;
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'UPDATE'
+     AND normalize_korean_phone(OLD.guest_phone) IS DISTINCT FROM normalize_korean_phone(NEW.guest_phone) THEN
+    DELETE FROM event_reciprocity_notifications
+     WHERE source_guest_id = NEW.id;
+  END IF;
+
+  UPDATE event_reciprocity_notifications
+     SET source_guest_name = NEW.guest_name,
+         source_guest_phone = NEW.guest_phone,
+         source_amount = COALESCE(NEW.amount, 0),
+         updated_at = now()
+   WHERE source_guest_id = NEW.id;
+
   v_phone := normalize_korean_phone(NEW.guest_phone);
 
   IF v_phone IS NULL OR length(v_phone) < 10 THEN
@@ -216,9 +242,24 @@ CREATE TRIGGER trg_event_reciprocity_after_user_phone_change
 
 DROP TRIGGER IF EXISTS trg_event_reciprocity_after_guest_book_phone_change ON guest_book;
 CREATE TRIGGER trg_event_reciprocity_after_guest_book_phone_change
-  AFTER INSERT OR UPDATE OF guest_phone ON guest_book
+  AFTER INSERT OR UPDATE OF guest_phone, guest_name, amount ON guest_book
   FOR EACH ROW
-  EXECUTE FUNCTION event_reciprocity_after_guest_book_phone_change();
+  EXECUTE FUNCTION event_reciprocity_after_guest_book_change();
+
+DROP TRIGGER IF EXISTS trg_event_reciprocity_after_guest_book_delete ON guest_book;
+CREATE TRIGGER trg_event_reciprocity_after_guest_book_delete
+  BEFORE DELETE ON guest_book
+  FOR EACH ROW
+  EXECUTE FUNCTION event_reciprocity_after_guest_book_change();
+
+DELETE FROM event_reciprocity_notifications ern
+ WHERE ern.source_guest_id IS NULL
+    OR NOT EXISTS (
+      SELECT 1
+        FROM guest_book gb
+       WHERE gb.id = ern.source_guest_id
+         AND COALESCE(gb.amount, 0) > 0
+    );
 
 
 CREATE OR REPLACE FUNCTION update_reciprocity_notification_status(
@@ -230,7 +271,7 @@ CREATE OR REPLACE FUNCTION update_reciprocity_notification_status(
   error text
 ) LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
-  IF p_status NOT IN ('unread', 'read', 'dismissed') THEN
+  IF p_status NOT IN ('unread', 'read', 'dismissed', 'completed') THEN
     RETURN QUERY SELECT false, 'invalid_status'::text;
     RETURN;
   END IF;
