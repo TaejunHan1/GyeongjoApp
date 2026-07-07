@@ -1,9 +1,15 @@
 // src/screens/main/GuideScreenToss.js - 토스 스타일 가이드 화면
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
+  Animated,
+  Easing,
   View,
   Text,
   TouchableOpacity,
+  TextInput,
+  Modal,
+  PanResponder,
+  Keyboard,
   StyleSheet,
   SafeAreaView,
   ScrollView,
@@ -15,11 +21,15 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
+import LottieView from 'lottie-react-native';
 import { getAiStatus, AI_COST } from '../../lib/aiCredit';
 import GuideThemeMinimal from './guides/themes/GuideThemeMinimal';
+import { KOREA_COST_MAP_AREAS, KOREA_COST_MAP_LABELS } from './costMapPathData';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 const STATUSBAR_HEIGHT = Platform.OS === 'ios' ? 44 : RNStatusBar.currentHeight || 24;
+const ESTIMATE_LOADING_LOTTIE = require('../../../assets/lottie/estimate-loading.json');
 
 // 토스 스타일 컬러
 const TossColors = {
@@ -54,6 +64,1193 @@ const THEMES = [
   { id: 'toss',    label: '기본',   icon: '🎯' },
   { id: 'minimal', label: '미니멀', icon: '○' },
 ];
+
+const GUIDE_MAIN_TABS = [
+  { id: 'guide', label: '가이드', icon: 'book-outline' },
+  { id: 'cost', label: '예식비 진단', icon: 'calculator-outline' },
+];
+
+const WEDDING_COST_REGIONS = [
+  {
+    region: '전국',
+    rental: { p10: 100, p25: 200, median: 350, p75: 600, p90: 850, average: 436, sample: 5566 },
+    meal: { p10: 4.5, p25: 5.0, median: 5.9, p75: 7.5, p90: 9.2, average: 6.6, sample: 5566 },
+    baseMeal: { p10: 660, p25: 846, median: 1140, p75: 1580, p90: 2150, average: 1316, sample: 5566 },
+    contract: { p10: 825, p25: 1109, median: 1550, p75: 2240, p90: 3050, average: 1822, sample: 5566 },
+  },
+  {
+    region: '수도권',
+    rental: { p10: 150, p25: 300, median: 550, p75: 800, p90: 1100, average: 608, sample: 2727 },
+    meal: { p10: 5.4, p25: 6.3, median: 7.5, p75: 8.7, p90: 10.5, average: 7.9, sample: 2727 },
+    baseMeal: { p10: 790, p25: 1100, median: 1500, p75: 1923, p90: 2640, average: 1640, sample: 2727 },
+    contract: { p10: 1145, p25: 1530, median: 2120, p75: 2865, p90: 4069, average: 2374, sample: 2727 },
+  },
+  {
+    region: '비수도권',
+    rental: { p10: 80, p25: 150, median: 260, p75: 370, p90: 470, average: 271, sample: 2839 },
+    meal: { p10: 4.2, p25: 4.5, median: 5.2, p75: 5.8, p90: 6.5, average: 5.3, sample: 2839 },
+    baseMeal: { p10: 585, p25: 750, median: 940, p75: 1180, p90: 1500, average: 1004, sample: 2839 },
+    contract: { p10: 730, p25: 940, median: 1200, p75: 1550, p90: 1930, average: 1292, sample: 2839 },
+  },
+  {
+    region: '서울(강남)',
+    rental: { p10: 220, p25: 500, median: 770, p75: 898, p90: 1200, average: 714, sample: 680 },
+    meal: { p10: 6.8, p25: 7.8, median: 8.8, p75: 9.8, p90: 12.4, average: 9.3, sample: 680 },
+    baseMeal: { p10: 790, p25: 1275, median: 1760, p75: 2565, p90: 3240, average: 1993, sample: 680 },
+    contract: { p10: 1530, p25: 1930, median: 2774, p75: 3520, p90: 5250, average: 2940, sample: 680 },
+  },
+  {
+    region: '서울(강남외)',
+    rental: { p10: 200, p25: 400, median: 610, p75: 800, p90: 1500, average: 705, sample: 1205 },
+    meal: { p10: 5.6, p25: 6.7, median: 7.5, p75: 8.8, p90: 13.0, average: 8.3, sample: 1205 },
+    baseMeal: { p10: 975, p25: 1300, median: 1575, p75: 2000, p90: 2664, average: 1768, sample: 1205 },
+    contract: { p10: 1380, p25: 1885, median: 2290, p75: 2860, p90: 4440, average: 2594, sample: 1205 },
+  },
+  {
+    region: '부산',
+    rental: { p10: 50, p25: 100, median: 170, p75: 290, p90: 350, average: 193, sample: 400 },
+    meal: { p10: 4.2, p25: 4.5, median: 4.9, p75: 5.3, p90: 5.6, average: 5.0, sample: 400 },
+    baseMeal: { p10: 540, p25: 660, median: 780, p75: 840, p90: 980, average: 772, sample: 400 },
+    contract: { p10: 600, p25: 725, median: 915, p75: 1130, p90: 1280, average: 968, sample: 400 },
+  },
+  {
+    region: '대구',
+    rental: { p10: 70, p25: 80, median: 150, p75: 250, p90: 450, average: 212, sample: 384 },
+    meal: { p10: 4.5, p25: 4.9, median: 5.5, p75: 5.8, p90: 6.5, average: 5.6, sample: 384 },
+    baseMeal: { p10: 675, p25: 855, median: 995, p75: 1160, p90: 1600, average: 1059, sample: 384 },
+    contract: { p10: 735, p25: 1000, median: 1120, p75: 1550, p90: 2050, average: 1312, sample: 384 },
+  },
+  {
+    region: '인천',
+    rental: { p10: 100, p25: 190, median: 300, p75: 350, p90: 500, average: 283, sample: 197 },
+    meal: { p10: 4.8, p25: 5.0, median: 5.5, p75: 5.8, p90: 6.0, average: 5.5, sample: 197 },
+    baseMeal: { p10: 675, p25: 870, median: 1000, p75: 1131, p90: 1242, average: 1003, sample: 197 },
+    contract: { p10: 810, p25: 1120, median: 1300, p75: 1500, p90: 1755, average: 1303, sample: 197 },
+  },
+  {
+    region: '경기도',
+    rental: { p10: 100, p25: 200, median: 380, p75: 600, p90: 750, average: 413, sample: 645 },
+    meal: { p10: 5.3, p25: 5.5, median: 6.5, p75: 6.9, p90: 7.8, average: 6.5, sample: 645 },
+    baseMeal: { p10: 600, p25: 975, median: 1140, p75: 1625, p90: 1900, average: 1223, sample: 645 },
+    contract: { p10: 850, p25: 1260, median: 1575, p75: 2170, p90: 2865, average: 1691, sample: 645 },
+  },
+  {
+    region: '광주',
+    rental: { p10: 70, p25: 100, median: 235, p75: 430, p90: 450, average: 246, sample: 240 },
+    meal: { p10: 4.8, p25: 5.5, median: 6.0, p75: 6.6, p90: 6.7, average: 5.9, sample: 240 },
+    baseMeal: { p10: 825, p25: 960, median: 1140, p75: 1340, p90: 1625, average: 1178, sample: 240 },
+    contract: { p10: 885, p25: 1100, median: 1450, p75: 1770, p90: 1968, average: 1426, sample: 240 },
+  },
+  {
+    region: '대전',
+    rental: { p10: 90, p25: 200, median: 297, p75: 300, p90: 350, average: 259, sample: 230 },
+    meal: { p10: 4.6, p25: 4.8, median: 5.5, p75: 6.0, p90: 6.3, average: 5.6, sample: 230 },
+    baseMeal: { p10: 554, p25: 735, median: 945, p75: 1200, p90: 1500, average: 1042, sample: 230 },
+    contract: { p10: 800, p25: 1085, median: 1240, p75: 1497, p90: 2130, average: 1344, sample: 230 },
+  },
+  {
+    region: '울산',
+    rental: { p10: 280, p25: 280, median: 380, p75: 530, p90: 550, average: 406, sample: 159 },
+    meal: { p10: 5.2, p25: 5.4, median: 5.6, p75: 5.8, p90: 6.2, average: 5.6, sample: 159 },
+    baseMeal: { p10: 936, p25: 1020, median: 1120, p75: 1160, p90: 1240, average: 1104, sample: 159 },
+    contract: { p10: 1311, p25: 1350, median: 1610, p75: 1650, p90: 1770, average: 1518, sample: 159 },
+  },
+  {
+    region: '강원도',
+    rental: { p10: 120, p25: 200, median: 350, p75: 400, p90: 430, average: 319, sample: 150 },
+    meal: { p10: 4.0, p25: 4.5, median: 5.2, p75: 5.4, p90: 5.7, average: 5.1, sample: 150 },
+    baseMeal: { p10: 675, p25: 800, median: 1040, p75: 1620, p90: 1710, average: 1165, sample: 150 },
+    contract: { p10: 840, p25: 1000, median: 1470, p75: 1990, p90: 2060, average: 1509, sample: 150 },
+  },
+  {
+    region: '충청도',
+    rental: { p10: 167, p25: 200, median: 350, p75: 500, p90: 600, average: 366, sample: 342 },
+    meal: { p10: 3.9, p25: 5.0, median: 5.7, p75: 6.0, p90: 6.5, average: 5.5, sample: 342 },
+    baseMeal: { p10: 500, p25: 810, median: 1080, p75: 1200, p90: 1380, average: 1003, sample: 342 },
+    contract: { p10: 700, p25: 1036, median: 1430, p75: 1780, p90: 1970, average: 1382, sample: 342 },
+  },
+  {
+    region: '전라도',
+    rental: { p10: 130, p25: 200, median: 280, p75: 400, p90: 500, average: 321, sample: 371 },
+    meal: { p10: 4.3, p25: 4.5, median: 5.0, p75: 5.5, p90: 6.5, average: 5.2, sample: 371 },
+    baseMeal: { p10: 645, p25: 840, median: 1000, p75: 1250, p90: 1325, average: 1029, sample: 371 },
+    contract: { p10: 815, p25: 1040, median: 1300, p75: 1550, p90: 1850, average: 1361, sample: 371 },
+  },
+  {
+    region: '경상도',
+    rental: { p10: 100, p25: 150, median: 290, p75: 370, p90: 400, average: 266, sample: 448 },
+    meal: { p10: 3.8, p25: 4.3, median: 4.5, p75: 4.7, p90: 6.5, average: 4.7, sample: 448 },
+    baseMeal: { p10: 540, p25: 660, median: 782, p75: 920, p90: 1400, average: 841, sample: 448 },
+    contract: { p10: 705, p25: 855, median: 1053, p75: 1298, p90: 1800, average: 1108, sample: 448 },
+  },
+  {
+    region: '제주도',
+    rental: { p10: 0, p25: 150, median: 198, p75: 200, p90: 200, average: 150, sample: 115 },
+    meal: { p10: 3.8, p25: 4.2, median: 4.7, p75: 5.5, p90: 5.9, average: 4.8, sample: 115 },
+    baseMeal: { p10: 840, p25: 940, median: 1160, p75: 1650, p90: 2100, average: 1394, sample: 115 },
+    contract: { p10: 950, p25: 1140, median: 1300, p75: 1850, p90: 2298, average: 1595, sample: 115 },
+  },
+];
+
+const formatManWon = (value, digits = 0) => {
+  if (!Number.isFinite(value)) return '-';
+  return `${value.toLocaleString('ko-KR', {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  })}만원`;
+};
+
+const parseNumberInput = (value) => {
+  const normalized = String(value || '').replace(/,/g, '').trim();
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getCostLevel = (value, dist) => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return { label: '입력 필요', tone: 'muted', description: '견적을 입력하면 비교가 나와요' };
+  }
+  if (value <= dist.p10) return { label: '매우 낮음', tone: 'green', description: '하위 10% 구간이에요' };
+  if (value <= dist.p25) return { label: '낮은 편', tone: 'green', description: '하위 25% 안쪽이에요' };
+  if (value <= dist.median) return { label: '평균 아래', tone: 'blue', description: '중간값보다 낮아요' };
+  if (value <= dist.p75) return { label: '평균권', tone: 'blue', description: '중간~상위 25% 구간이에요' };
+  if (value <= dist.p90) return { label: '높은 편', tone: 'orange', description: '상위 25% 구간이에요' };
+  return { label: '매우 높음', tone: 'red', description: '상위 10%를 넘어요' };
+};
+
+const estimatePercentile = (value, dist) => {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const points = [
+    { value: dist.p10, pct: 10 },
+    { value: dist.p25, pct: 25 },
+    { value: dist.median, pct: 50 },
+    { value: dist.p75, pct: 75 },
+    { value: dist.p90, pct: 90 },
+  ].sort((a, b) => a.value - b.value);
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (value <= first.value) {
+    return Math.max(1, Math.round((value / Math.max(first.value, 1)) * first.pct));
+  }
+  if (value >= last.value) {
+    const overRatio = (value - last.value) / Math.max(last.value, 1);
+    return Math.min(99, Math.round(last.pct + overRatio * 20));
+  }
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1];
+    const next = points[i];
+    if (value <= next.value) {
+      const ratio = (value - prev.value) / Math.max(next.value - prev.value, 1);
+      return Math.round(prev.pct + ratio * (next.pct - prev.pct));
+    }
+  }
+  return 50;
+};
+
+const getPercentileCopy = (percentile) => {
+  if (percentile == null) {
+    return { title: '계산 전', detail: '견적을 입력해 주세요' };
+  }
+  if (percentile >= 50) {
+    const top = Math.max(1, 100 - percentile);
+    return {
+      title: `상위 ${top}% 구간`,
+      detail: `비용이 지역 표본의 약 ${percentile}%보다 높아요`,
+    };
+  }
+  const bottom = Math.max(1, percentile);
+  return {
+    title: `하위 ${bottom}% 구간`,
+    detail: `비용이 지역 표본의 약 ${100 - percentile}%보다 낮아요`,
+  };
+};
+
+function GuideTopTabs({ active, onChange }) {
+  return (
+    <View style={styles.mainTabWrap}>
+      {GUIDE_MAIN_TABS.map((tab) => {
+        const isActive = active === tab.id;
+        return (
+          <TouchableOpacity
+            key={tab.id}
+            style={[styles.mainTabButton, isActive && styles.mainTabButtonActive]}
+            onPress={() => onChange(tab.id)}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name={tab.icon}
+              size={15}
+              color={isActive ? TossColors.text.primary : TossColors.text.secondary}
+            />
+            <Text style={[styles.mainTabText, isActive && styles.mainTabTextActive]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+function CostStepper({
+  label,
+  helper,
+  value,
+  onChangeText,
+  onStep,
+  unit,
+  keyboardType = 'decimal-pad',
+  stepLabel,
+}) {
+  return (
+    <View style={styles.costStepper}>
+      <View style={styles.costStepperHead}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.costStepperLabel}>{label}</Text>
+          {!!helper && <Text style={styles.costStepperHelper}>{helper}</Text>}
+        </View>
+        <Text style={styles.costStepperStep}>{stepLabel}</Text>
+      </View>
+      <View style={styles.costStepperControl}>
+        <TouchableOpacity
+          style={styles.costStepButton}
+          onPress={() => onStep(-1)}
+          activeOpacity={0.82}
+        >
+          <Ionicons name="remove" size={18} color={TossColors.text.primary} />
+        </TouchableOpacity>
+        <View style={styles.costValueWrap}>
+          <TextInput
+            value={value}
+            onChangeText={onChangeText}
+            keyboardType={keyboardType}
+            style={styles.costValueInput}
+            placeholder="0"
+            placeholderTextColor={TossColors.gray[400]}
+            selectTextOnFocus
+          />
+          <Text style={styles.costValueUnit}>{unit}</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.costStepButton}
+          onPress={() => onStep(1)}
+          activeOpacity={0.82}
+        >
+          <Ionicons name="add" size={18} color={TossColors.text.primary} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function KoreaCostRegionMap({ selectedRegion, onSelectRegion }) {
+  const isAreaActive = (areaRegion) => {
+    if (selectedRegion === '전국') return true;
+    if (selectedRegion === '수도권') {
+      return ['서울(강남외)', '경기도', '인천'].includes(areaRegion);
+    }
+    if (selectedRegion === '비수도권') {
+      return !['서울(강남외)', '경기도', '인천'].includes(areaRegion);
+    }
+    if (selectedRegion === '서울(강남)') return areaRegion === '서울(강남외)';
+    return areaRegion === selectedRegion;
+  };
+
+  const isLabelActive = (region) => isAreaActive(region);
+  const cityLabels = KOREA_COST_MAP_LABELS.filter((item) => item.kind === 'city');
+  const mainLabels = KOREA_COST_MAP_LABELS.filter((item) => item.kind !== 'city');
+
+  return (
+    <Svg width="100%" height="100%" viewBox="24 -8 178 286" preserveAspectRatio="xMidYMid meet">
+      {KOREA_COST_MAP_AREAS.filter((area) => isAreaActive(area.region)).map((area) => (
+        <Path
+          key={`halo-${area.name}`}
+          d={area.d}
+          fill="none"
+          stroke="#A9D3FF"
+          strokeWidth={6.4}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          opacity={0.45}
+        />
+      ))}
+
+      {KOREA_COST_MAP_AREAS.map((area) => {
+        const active = isAreaActive(area.region);
+        return (
+          <Path
+            key={area.name}
+            d={area.d}
+            fill={active ? '#339AF0' : '#DCEEFF'}
+            stroke={active ? '#2F8FE0' : '#8F9BA7'}
+            strokeWidth={active ? 1.45 : 0.9}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            onPress={() => onSelectRegion(area.region)}
+          />
+        );
+      })}
+
+      {mainLabels.map((item) => {
+        const active = isLabelActive(item.region);
+        return (
+          <SvgText
+            key={item.region}
+            x={item.x}
+            y={item.y}
+            fill={active ? '#FFFFFF' : '#536170'}
+            fontSize={active ? 9.6 : 8.2}
+            fontWeight="900"
+            textAnchor="middle"
+            alignmentBaseline="middle"
+            onPress={() => onSelectRegion(item.region)}
+          >
+            {item.label}
+          </SvgText>
+        );
+      })}
+
+      {cityLabels.map((item) => {
+        const active = isLabelActive(item.region);
+        const radius = item.region === '서울(강남외)' || item.region === '인천' ? 10.6 : 9.3;
+        const hitRadius = item.region === '서울(강남외)' || item.region === '인천' ? 17 : 15;
+        return (
+          <React.Fragment key={item.region}>
+            <Circle
+              cx={item.x}
+              cy={item.y}
+              r={hitRadius}
+              fill="transparent"
+              onPress={() => onSelectRegion(item.region)}
+            />
+            <Circle
+              cx={item.x}
+              cy={item.y}
+              r={radius}
+              fill={active ? '#0064FF' : '#FFFFFF'}
+              stroke={active ? '#0056D6' : '#9FAAB5'}
+              strokeWidth={1.1}
+              onPress={() => onSelectRegion(item.region)}
+            />
+            <SvgText
+              x={item.x}
+              y={item.y + 0.1}
+              fill={active ? '#FFFFFF' : '#4E5968'}
+              fontSize={5.8}
+              fontWeight="900"
+              textAnchor="middle"
+              alignmentBaseline="middle"
+              onPress={() => onSelectRegion(item.region)}
+            >
+              {item.label}
+            </SvgText>
+          </React.Fragment>
+        );
+      })}
+    </Svg>
+  );
+}
+
+function WeddingCostDiagnosis() {
+  const [selectedRegion, setSelectedRegion] = useState('서울(강남외)');
+  const [rentalCost, setRentalCost] = useState('610');
+  const [mealCost, setMealCost] = useState('8.3');
+  const [guestCount, setGuestCount] = useState('200');
+  const [showResult, setShowResult] = useState(false);
+  const [showEstimateInputSheet, setShowEstimateInputSheet] = useState(false);
+  const [estimateInputStep, setEstimateInputStep] = useState(0);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const sheetTranslateY = useRef(new Animated.Value(560)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const inputSheetTranslateY = useRef(new Animated.Value(620)).current;
+  const inputBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const estimateLoadingTimerRef = useRef(null);
+  const estimateInputStepRef = useRef(0);
+
+  const selectedData = WEDDING_COST_REGIONS.find((item) => item.region === selectedRegion) || WEDDING_COST_REGIONS[0];
+  const rental = parseNumberInput(rentalCost);
+  const meal = parseNumberInput(mealCost);
+  const guests = parseNumberInput(guestCount);
+  const baseMealTotal = meal * guests;
+  const contractTotal = rental + baseMealTotal;
+  const saveByTenGuests = meal * 10;
+  const sampleCount = selectedData.contract.sample;
+
+  const diagnosis = [
+    { key: 'rental', label: '대관비', value: rental, dist: selectedData.rental, digits: 0 },
+    { key: 'meal', label: '1인당 식대', value: meal, dist: selectedData.meal, digits: 1 },
+    { key: 'baseMeal', label: '식대 총액', value: baseMealTotal, dist: selectedData.baseMeal, digits: 0 },
+    { key: 'contract', label: '총 계약금액', value: contractTotal, dist: selectedData.contract, digits: 0 },
+  ].map((item) => ({
+    ...item,
+    level: getCostLevel(item.value, item.dist),
+  }));
+
+  const contractPercentile = estimatePercentile(contractTotal, selectedData.contract);
+  const percentileCopy = getPercentileCopy(contractPercentile);
+  const strongest = [...diagnosis]
+    .filter((item) => Number.isFinite(item.value) && item.value > 0)
+    .sort((a, b) => (b.value / b.dist.median) - (a.value / a.dist.median))[0];
+  const adjustNumber = (setter, current, delta, min, max, digits = 0) => {
+    const currentValue = parseNumberInput(current);
+    const nextValue = Math.max(min, Math.min(max, currentValue + delta));
+    setter(digits > 0 ? nextValue.toFixed(digits) : String(Math.round(nextValue)));
+    setShowResult(false);
+  };
+  const contractDiff = contractTotal - selectedData.contract.median;
+  const contractDiffText =
+    Math.abs(contractDiff) < 1
+      ? '중간값과 거의 같아요'
+      : contractDiff > 0
+        ? `중간값보다 약 ${formatManWon(contractDiff)} 높아요`
+        : `중간값보다 약 ${formatManWon(Math.abs(contractDiff))} 낮아요`;
+  const percentilePosition = Math.max(2, Math.min(98, contractPercentile || 0));
+  const sampleCountText = sampleCount.toLocaleString('ko-KR');
+  const showSeoulInset = selectedRegion === '서울(강남)' || selectedRegion === '서울(강남외)';
+  const estimateStepConfigs = [
+    {
+      title: '대관비가 얼마인가요?',
+      helper: '계약서에 적힌 홀 사용료나 기본 대관 비용을 입력해 주세요.',
+      value: rentalCost,
+      onChangeText: setRentalCost,
+      unit: '만원',
+      placeholder: '예: 610',
+      keyboardType: 'number-pad',
+    },
+    {
+      title: '1인당 식대가 얼마인가요?',
+      helper: '성인 1명 기준 식사 금액을 만원 단위로 입력해 주세요.',
+      value: mealCost,
+      onChangeText: setMealCost,
+      unit: '만원',
+      placeholder: '예: 8.3',
+      keyboardType: 'decimal-pad',
+    },
+    {
+      title: '기본 하객인원이 몇 명인가요?',
+      helper: '식대 계산에 쓰이는 보증 인원이나 기본 하객 인원을 입력해 주세요.',
+      value: guestCount,
+      onChangeText: setGuestCount,
+      unit: '명',
+      placeholder: '예: 200',
+      keyboardType: 'number-pad',
+    },
+  ];
+  const estimateInputConfigIndex = Math.max(0, Math.min(estimateInputStep - 1, 2));
+  const activeEstimateInputConfig = estimateStepConfigs[estimateInputConfigIndex];
+  const estimateSelectableRegions = WEDDING_COST_REGIONS.filter(
+    (item) => !['전국', '수도권', '비수도권'].includes(item.region)
+  );
+  const canProceedEstimate =
+    estimateInputStep === 0 || parseNumberInput(activeEstimateInputConfig.value) > 0;
+  const inputKeyboardLift =
+    showEstimateInputSheet && estimateInputStep >= 1 && estimateInputStep <= 3
+      ? Math.min(keyboardHeight, Math.round(height * 0.46))
+      : 0;
+  const estimateMood =
+    contractPercentile == null
+      ? '계산 전'
+      : contractPercentile >= 75
+        ? '비싼 편'
+        : contractPercentile <= 25
+          ? '저렴한 편'
+          : contractPercentile >= 40 && contractPercentile <= 60
+            ? '중간 정도'
+            : contractPercentile > 60
+              ? '살짝 높은 편'
+              : '살짝 낮은 편';
+
+  useEffect(() => () => {
+    if (estimateLoadingTimerRef.current) {
+      clearTimeout(estimateLoadingTimerRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    estimateInputStepRef.current = estimateInputStep;
+  }, [estimateInputStep]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardHeight(event.endCoordinates?.height || 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  function openEstimateInputSheet() {
+    if (estimateLoadingTimerRef.current) {
+      clearTimeout(estimateLoadingTimerRef.current);
+      estimateLoadingTimerRef.current = null;
+    }
+    setEstimateInputStep(0);
+    inputSheetTranslateY.setValue(620);
+    inputBackdropOpacity.setValue(0);
+    setShowEstimateInputSheet(true);
+    requestAnimationFrame(() => {
+      Animated.parallel([
+        Animated.timing(inputBackdropOpacity, {
+          toValue: 1,
+          duration: 260,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(inputSheetTranslateY, {
+          toValue: 0,
+          duration: 420,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  }
+
+  function closeEstimateInputSheet() {
+    if (estimateLoadingTimerRef.current) {
+      clearTimeout(estimateLoadingTimerRef.current);
+      estimateLoadingTimerRef.current = null;
+    }
+    Keyboard.dismiss();
+    setKeyboardHeight(0);
+    Animated.parallel([
+      Animated.timing(inputBackdropOpacity, {
+        toValue: 0,
+        duration: 190,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(inputSheetTranslateY, {
+        toValue: 620,
+        duration: 250,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => setShowEstimateInputSheet(false));
+  }
+
+  function handleEstimateNext() {
+    if (!canProceedEstimate) return;
+    setShowResult(false);
+    if (estimateInputStep < 3) {
+      setEstimateInputStep((prev) => prev + 1);
+      return;
+    }
+    Keyboard.dismiss();
+    setEstimateInputStep(4);
+    estimateLoadingTimerRef.current = setTimeout(() => {
+      estimateLoadingTimerRef.current = null;
+      setEstimateInputStep(5);
+    }, 6000);
+  }
+
+  function handleEstimateBack() {
+    if (estimateInputStep <= 0 || estimateInputStep === 4) return;
+    Keyboard.dismiss();
+    setKeyboardHeight(0);
+    setEstimateInputStep((prev) => Math.max(0, prev - 1));
+  }
+
+  function openResultSheet() {
+    sheetTranslateY.setValue(560);
+    backdropOpacity.setValue(0);
+    setShowResult(true);
+    requestAnimationFrame(() => {
+      Animated.parallel([
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 260,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(sheetTranslateY, {
+          toValue: 0,
+          duration: 360,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  }
+
+  function closeResultSheet() {
+    Animated.parallel([
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 190,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(sheetTranslateY, {
+        toValue: 560,
+        duration: 240,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => setShowResult(false));
+  }
+
+  const sheetPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        Math.abs(gestureState.dy) > 6 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          sheetTranslateY.setValue(gestureState.dy);
+          backdropOpacity.setValue(Math.max(0.25, 1 - gestureState.dy / 420));
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 90 || gestureState.vy > 0.75) {
+          closeResultSheet();
+          return;
+        }
+        Animated.parallel([
+          Animated.timing(backdropOpacity, {
+            toValue: 1,
+            duration: 180,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(sheetTranslateY, {
+            toValue: 0,
+            duration: 260,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+        ]).start();
+      },
+    })
+  ).current;
+  const inputSheetPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        estimateInputStepRef.current !== 4 &&
+        Math.abs(gestureState.dy) > 6 &&
+        Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          inputSheetTranslateY.setValue(gestureState.dy);
+          inputBackdropOpacity.setValue(Math.max(0.25, 1 - gestureState.dy / 420));
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 90 || gestureState.vy > 0.75) {
+          closeEstimateInputSheet();
+          return;
+        }
+        Animated.parallel([
+          Animated.timing(inputBackdropOpacity, {
+            toValue: 1,
+            duration: 180,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(inputSheetTranslateY, {
+            toValue: 0,
+            duration: 260,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+        ]).start();
+      },
+    })
+  ).current;
+
+  return (
+    <>
+    <ScrollView style={styles.costRoot} contentContainerStyle={styles.costScroll} showsVerticalScrollIndicator={false}>
+      <Text style={styles.costSectionLabel}>지역 선택</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.regionChipRow}>
+        {WEDDING_COST_REGIONS.map((item) => {
+          const active = selectedRegion === item.region;
+          return (
+            <TouchableOpacity
+              key={item.region}
+              style={[styles.regionChip, active && styles.regionChipActive]}
+              onPress={() => {
+                setSelectedRegion(item.region);
+                setShowResult(false);
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.regionChipText, active && styles.regionChipTextActive]}>{item.region}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <View style={styles.regionMapCard}>
+        <View style={styles.regionMapHeader}>
+          <View>
+            <Text style={styles.regionMapTitle}>지역별 가격 비교</Text>
+            <Text style={styles.regionMapSub}>권역과 세부 지역을 눌러 바로 비교해요</Text>
+          </View>
+          <View style={styles.regionMapBadge}>
+            <Text style={styles.regionMapBadgeText}>2026.04</Text>
+          </View>
+        </View>
+
+        <View style={styles.mapPricePanel}>
+          <View style={styles.mapPriceHeader}>
+            <View style={styles.mapPriceMain}>
+              <Text style={styles.mapPriceRegion} numberOfLines={1}>{selectedRegion}</Text>
+              <Text style={styles.mapPriceAmount} numberOfLines={1}>평균 {formatManWon(selectedData.contract.average)}</Text>
+            </View>
+            <Text style={styles.mapPriceSample} numberOfLines={1}>{sampleCountText}건</Text>
+          </View>
+          {showSeoulInset ? (
+            <View style={styles.seoulPriceSelectorRow}>
+              {[
+                { region: '서울(강남외)', label: '강남 외' },
+                { region: '서울(강남)', label: '강남' },
+              ].map((item) => {
+                const active = selectedRegion === item.region;
+                return (
+                  <TouchableOpacity
+                    key={item.region}
+                    style={[styles.seoulPriceSelectorChip, active && styles.seoulPriceSelectorChipActive]}
+                    onPress={() => {
+                      setSelectedRegion(item.region);
+                      setShowResult(false);
+                    }}
+                    activeOpacity={0.84}
+                  >
+                    <Text style={[styles.seoulPriceSelectorText, active && styles.seoulPriceSelectorTextActive]}>
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.mapPriceInfoRow}>
+              <View style={styles.mapPriceInfoChip}>
+                <Text style={styles.mapPriceInfoLabel}>중간값</Text>
+                <Text style={styles.mapPriceInfoValue} numberOfLines={1}>
+                  {formatManWon(selectedData.contract.median)}
+                </Text>
+              </View>
+              <View style={styles.mapPriceInfoChip}>
+                <Text style={styles.mapPriceInfoLabel}>일반 구간</Text>
+                <Text style={styles.mapPriceInfoValue} numberOfLines={1}>
+                  {formatManWon(selectedData.contract.p25)}~{formatManWon(selectedData.contract.p75)}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.koreaMapBox}>
+          <KoreaCostRegionMap
+            selectedRegion={selectedRegion}
+            onSelectRegion={(region) => {
+              setSelectedRegion(region);
+              setShowResult(false);
+            }}
+          />
+        </View>
+
+        <View style={styles.mapStatsGrid}>
+          <View style={styles.mapStatItem}>
+            <Text style={styles.mapStatLabel}>평균 식대</Text>
+            <Text style={styles.mapStatValue}>{formatManWon(selectedData.meal.average, 1)}</Text>
+          </View>
+          <View style={styles.mapStatItem}>
+            <Text style={styles.mapStatLabel}>평균 대관비</Text>
+            <Text style={styles.mapStatValue}>{formatManWon(selectedData.rental.average)}</Text>
+          </View>
+          <View style={styles.mapStatItem}>
+            <Text style={styles.mapStatLabel}>표본</Text>
+            <Text style={styles.mapStatValue}>{sampleCountText}건</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.estimateInputToggle}
+          onPress={openEstimateInputSheet}
+          activeOpacity={0.86}
+        >
+          <View>
+            <Text style={styles.estimateInputToggleTitle}>내 견적 입력하기</Text>
+            <Text style={styles.estimateInputToggleSub}>받은 견적을 넣고 지역 평균과 비교해요</Text>
+          </View>
+          <Ionicons
+            name="create-outline"
+            size={19}
+            color={TossColors.primary}
+          />
+        </TouchableOpacity>
+
+        <View style={styles.priceBandList}>
+          <View style={styles.priceBandRow}>
+            <Text style={styles.priceBandLabel}>낮은 편</Text>
+            <Text style={styles.priceBandValue}>하위 25% {formatManWon(selectedData.contract.p25)}</Text>
+          </View>
+          <View style={styles.priceBandRow}>
+            <Text style={styles.priceBandLabel}>중간값</Text>
+            <Text style={styles.priceBandValue}>{formatManWon(selectedData.contract.median)}</Text>
+          </View>
+          <View style={styles.priceBandRow}>
+            <Text style={styles.priceBandLabel}>높은 편</Text>
+            <Text style={styles.priceBandValue}>상위 25% {formatManWon(selectedData.contract.p75)}</Text>
+          </View>
+          <View style={styles.priceBandRowLast}>
+            <Text style={styles.priceBandLabel}>상위권</Text>
+            <Text style={styles.priceBandValue}>상위 10% {formatManWon(selectedData.contract.p90)}</Text>
+          </View>
+        </View>
+      </View>
+    </ScrollView>
+    <Modal
+      visible={showEstimateInputSheet}
+      transparent
+      animationType="none"
+      onRequestClose={closeEstimateInputSheet}
+    >
+      <View style={styles.sheetOverlay}>
+        <Animated.View style={[styles.sheetBackdrop, { opacity: inputBackdropOpacity }]}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={estimateInputStep === 4 ? undefined : closeEstimateInputSheet}
+          />
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.estimateSheetCard,
+            inputKeyboardLift > 0 && styles.estimateSheetCardKeyboard,
+            {
+              marginBottom: inputKeyboardLift,
+              transform: [{ translateY: inputSheetTranslateY }],
+            },
+          ]}
+        >
+          <View style={styles.sheetDragZone} {...inputSheetPanResponder.panHandlers}>
+            <View style={styles.sheetHandle} />
+          </View>
+
+          {estimateInputStep === 0 && (
+            <>
+              <View style={styles.estimateSheetHeader}>
+                <View style={styles.estimateStepBadge}>
+                  <Text style={styles.estimateStepBadgeText}>1/4</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.sheetClose}
+                  onPress={closeEstimateInputSheet}
+                  activeOpacity={0.82}
+                >
+                  <Ionicons name="close" size={18} color={TossColors.text.secondary} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.estimateQuestionTitle}>어디에서 웨딩하시나요?</Text>
+              <Text style={styles.estimateQuestionHelper}>
+                선택한 지역의 공식 가격정보 표본으로 내 견적을 비교합니다.
+              </Text>
+
+              <View style={styles.estimateRegionGrid}>
+                {estimateSelectableRegions.map((item) => {
+                  const active = selectedRegion === item.region;
+                  return (
+                    <TouchableOpacity
+                      key={item.region}
+                      style={[styles.estimateRegionChip, active && styles.estimateRegionChipActive]}
+                      onPress={() => {
+                        setSelectedRegion(item.region);
+                        setShowResult(false);
+                      }}
+                      activeOpacity={0.86}
+                    >
+                      <Text style={[styles.estimateRegionChipText, active && styles.estimateRegionChipTextActive]}>
+                        {item.region.replace('서울(', '서울 ').replace(')', '')}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={styles.estimateProgressRow}>
+                {[0, 1, 2, 3].map((index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.estimateProgressDot,
+                      index <= estimateInputStep && styles.estimateProgressDotActive,
+                    ]}
+                  />
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={styles.estimateSheetButton}
+                onPress={handleEstimateNext}
+                activeOpacity={0.88}
+              >
+                <Text style={styles.estimateSheetButtonText}>다음</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {estimateInputStep >= 1 && estimateInputStep <= 3 && (
+            <>
+              <View style={styles.estimateSheetHeader}>
+                <View style={styles.estimateHeaderLeft}>
+                  <TouchableOpacity
+                    style={styles.estimateBackButton}
+                    onPress={handleEstimateBack}
+                    activeOpacity={0.82}
+                  >
+                    <Ionicons name="chevron-back" size={18} color={TossColors.text.primary} />
+                  </TouchableOpacity>
+                  <View style={styles.estimateStepBadge}>
+                    <Text style={styles.estimateStepBadgeText}>{estimateInputStep + 1}/4</Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.sheetClose}
+                  onPress={closeEstimateInputSheet}
+                  activeOpacity={0.82}
+                >
+                  <Ionicons name="close" size={18} color={TossColors.text.secondary} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.estimateQuestionTitle}>{activeEstimateInputConfig.title}</Text>
+              <Text style={styles.estimateQuestionHelper}>{activeEstimateInputConfig.helper}</Text>
+
+              <View style={styles.estimateInputBox}>
+                <TextInput
+                  value={activeEstimateInputConfig.value}
+                  onChangeText={(value) => {
+                    activeEstimateInputConfig.onChangeText(value);
+                    setShowResult(false);
+                  }}
+                  keyboardType={activeEstimateInputConfig.keyboardType}
+                  placeholder={activeEstimateInputConfig.placeholder}
+                  placeholderTextColor={TossColors.gray[400]}
+                  style={styles.estimateSheetInput}
+                  selectTextOnFocus
+                  autoFocus
+                  returnKeyType={estimateInputStep === 3 ? 'done' : 'next'}
+                  onSubmitEditing={handleEstimateNext}
+                />
+                <Text style={styles.estimateInputUnit}>{activeEstimateInputConfig.unit}</Text>
+              </View>
+
+              <View style={styles.estimateProgressRow}>
+                {[0, 1, 2, 3].map((index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.estimateProgressDot,
+                      index <= estimateInputStep && styles.estimateProgressDotActive,
+                    ]}
+                  />
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.estimateSheetButton,
+                  !canProceedEstimate && styles.estimateSheetButtonDisabled,
+                ]}
+                onPress={handleEstimateNext}
+                disabled={!canProceedEstimate}
+                activeOpacity={0.88}
+              >
+                <Text style={styles.estimateSheetButtonText}>
+                  {estimateInputStep === 3 ? '견적 보기' : '다음'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {estimateInputStep === 4 && (
+            <View style={styles.estimateLoadingWrap}>
+              <LottieView
+                source={ESTIMATE_LOADING_LOTTIE}
+                autoPlay
+                loop
+                speed={1.5}
+                style={styles.estimateLoadingLottie}
+              />
+              <Text style={styles.estimateLoadingTitle}>견적을 비교하고 있어요</Text>
+              <Text style={styles.estimateLoadingText}>
+                {selectedRegion} 공식 표본 {sampleCountText}건과 입력한 견적을 대조 중입니다
+              </Text>
+            </View>
+          )}
+
+          {estimateInputStep === 5 && (
+            <>
+              <View style={styles.estimateSheetHeader}>
+                <View>
+                  <Text style={styles.sheetEyebrow}>{selectedRegion} · {sampleCountText}건 기준</Text>
+                  <Text style={styles.sheetTitle}>내 견적 결과</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.sheetClose}
+                  onPress={closeEstimateInputSheet}
+                  activeOpacity={0.82}
+                >
+                  <Ionicons name="close" size={18} color={TossColors.text.secondary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.estimateResultHero}>
+                <Text style={styles.estimateResultLabel}>예상 총 계약금액</Text>
+                <Text style={styles.estimateResultAmount}>{formatManWon(contractTotal)}</Text>
+                <View style={styles.estimateResultBadge}>
+                  <Text style={styles.estimateResultBadgeText}>
+                    {estimateMood} · {percentileCopy.title}
+                  </Text>
+                </View>
+                <Text style={styles.estimateResultDetail}>{percentileCopy.detail}</Text>
+              </View>
+
+              <View style={styles.sheetMeterTrack}>
+                <View style={[styles.sheetMeterFill, { width: `${percentilePosition}%` }]} />
+                <View style={[styles.sheetMeterDot, { left: `${percentilePosition}%` }]} />
+              </View>
+              <View style={styles.sheetMeterLabels}>
+                <Text style={styles.sheetMeterLabel}>저렴</Text>
+                <Text style={styles.sheetMeterLabel}>중간</Text>
+                <Text style={styles.sheetMeterLabel}>비쌈</Text>
+              </View>
+
+              <View style={styles.estimateResultRows}>
+                <View style={styles.sheetRow}>
+                  <Text style={styles.sheetRowLabel}>지역 중간값</Text>
+                  <Text style={styles.sheetRowValue}>{formatManWon(selectedData.contract.median)}</Text>
+                </View>
+                <View style={styles.sheetRow}>
+                  <Text style={styles.sheetRowLabel}>중간값 대비</Text>
+                  <Text style={styles.sheetRowValue}>{contractDiffText}</Text>
+                </View>
+                <View style={styles.sheetRow}>
+                  <Text style={styles.sheetRowLabel}>입력 내역</Text>
+                  <Text style={styles.sheetRowValue}>
+                    대관 {formatManWon(rental)} · 식대 {formatManWon(meal, 1)} · {guests}명
+                  </Text>
+                </View>
+                <View style={styles.sheetRowLast}>
+                  <Text style={styles.sheetRowLabel}>먼저 볼 항목</Text>
+                  <Text style={styles.sheetRowValue}>{strongest ? strongest.label : '총 계약금액'}</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.estimateSheetButton}
+                onPress={() => setEstimateInputStep(0)}
+                activeOpacity={0.88}
+              >
+                <Text style={styles.estimateSheetButtonText}>다시 입력하기</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </Animated.View>
+      </View>
+    </Modal>
+    <Modal
+      visible={showResult}
+      transparent
+      animationType="none"
+      onRequestClose={closeResultSheet}
+    >
+      <View style={styles.sheetOverlay}>
+        <Animated.View style={[styles.sheetBackdrop, { opacity: backdropOpacity }]}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={closeResultSheet}
+          />
+        </Animated.View>
+        <Animated.View style={[styles.sheetCard, { transform: [{ translateY: sheetTranslateY }] }]}>
+          <View style={styles.sheetDragZone} {...sheetPanResponder.panHandlers}>
+            <View style={styles.sheetHandle} />
+          </View>
+          <View style={styles.sheetHeader}>
+            <View>
+              <Text style={styles.sheetEyebrow}>{selectedRegion} · {sampleCountText}건 기준</Text>
+              <Text style={styles.sheetTitle}>견적 결과</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.sheetClose}
+              onPress={closeResultSheet}
+              activeOpacity={0.82}
+            >
+              <Ionicons name="close" size={18} color={TossColors.text.secondary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.sheetEvidenceCard}>
+            <View style={styles.sheetEvidenceIcon}>
+              <Ionicons name="server-outline" size={18} color={TossColors.primary} />
+            </View>
+            <View style={styles.sheetEvidenceTextWrap}>
+              <Text style={styles.sheetEvidenceTitle}>공식 가격정보 {sampleCountText}건 기반</Text>
+              <Text style={styles.sheetEvidenceText}>
+                2026년 4월 예식장 품목별 가격정보 중 {selectedRegion} 표본으로 비교했어요
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.sheetSummaryCard}>
+            <View style={styles.sheetSummaryTop}>
+              <View>
+                <Text style={styles.sheetAmountLabel}>예상 총 계약금액</Text>
+                <Text style={styles.sheetAmount}>{formatManWon(contractTotal)}</Text>
+              </View>
+              <View style={styles.sheetPercentBadge}>
+                <Text style={styles.sheetPercentBadgeText}>{percentileCopy.title}</Text>
+              </View>
+            </View>
+            <Text style={styles.sheetAmountSub}>대관비 {formatManWon(rental)} + 식대 {formatManWon(baseMealTotal)}</Text>
+            <View style={styles.sheetMeterTrack}>
+              <View style={[styles.sheetMeterFill, { width: `${percentilePosition}%` }]} />
+              <View style={[styles.sheetMeterDot, { left: `${percentilePosition}%` }]} />
+            </View>
+            <View style={styles.sheetMeterLabels}>
+              <Text style={styles.sheetMeterLabel}>낮음</Text>
+              <Text style={styles.sheetMeterLabel}>중간</Text>
+              <Text style={styles.sheetMeterLabel}>높음</Text>
+            </View>
+            <Text style={styles.sheetPercentDetail}>{percentileCopy.detail}</Text>
+          </View>
+
+          <View style={styles.sheetRows}>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>지역 중간값</Text>
+              <Text style={styles.sheetRowValue}>{formatManWon(selectedData.contract.median)}</Text>
+            </View>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>중간값 대비</Text>
+              <Text style={styles.sheetRowValue}>{contractDiffText}</Text>
+            </View>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>보증 10명 조정</Text>
+              <Text style={styles.sheetRowValue}>약 {formatManWon(saveByTenGuests)} 변동</Text>
+            </View>
+            <View style={styles.sheetRowLast}>
+              <Text style={styles.sheetRowLabel}>먼저 확인할 항목</Text>
+              <Text style={styles.sheetRowValue}>{strongest ? strongest.label : '총 계약금액'}</Text>
+            </View>
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+    </>
+  );
+}
 
 function ThemePicker({ active, onChange }) {
   return (
@@ -182,6 +1379,7 @@ const creditBadgeStyles = StyleSheet.create({
 
 export default function GuideScreenToss({ navigation, userInfo, session, isAuthenticated }) {
   const canUseAccountFeatures = isAuthenticated !== false && !userInfo?.isGuest;
+  const [activeMainTab, setActiveMainTab] = useState('guide');
   const [selectedUserType, setSelectedUserType] = useState(null);
   const [activeTheme, setActiveTheme] = useState('toss'); // 'toss' | 'character' | 'magazine' | 'dashboard'
   const [displayedHostFAQ, setDisplayedHostFAQ] = useState([]);
@@ -282,6 +1480,10 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
       // Android에서만 동작하는 하드웨어 뒤로가기 버튼 처리
       if (Platform.OS === 'android') {
         const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+          if (activeMainTab === 'cost') {
+            setActiveMainTab('guide');
+            return true;
+          }
           // 사용자 타입이 선택된 상태에서 뒤로가기를 누르면
           if (selectedUserType) {
             // 선택 화면으로 돌아가기
@@ -295,7 +1497,7 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
         // cleanup
         return () => backHandler.remove();
       }
-    }, [selectedUserType])
+    }, [activeMainTab, selectedUserType])
   );
 
   // 사용자 타입 선택 데이터 - 토스 스타일로 수정
@@ -558,12 +1760,21 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
     ? selectedUserType === 'host'
       ? '주최자 가이드'
       : '참여자 가이드'
-    : '경조사 가이드';
+    : activeMainTab === 'cost'
+      ? '예식비 진단'
+      : '경조사 가이드';
+
+  const handleMainTabChange = (tab) => {
+    setActiveMainTab(tab);
+    if (tab === 'cost') {
+      setSelectedUserType(null);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      {!selectedUserType && (
+      {(activeMainTab === 'cost' || !selectedUserType) && (
         <View style={styles.header}>
           <Text style={styles.headerTitle}>{headerTitle}</Text>
           <View style={{ flex: 1 }} />
@@ -576,19 +1787,26 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
           )}
         </View>
       )}
-      <GuideThemeMinimal
-        navigation={navigation}
-        userTypes={userTypes}
-        hostCategories={hostGuideCategories}
-        participantCategories={participantGuideCategories}
-        hostTips={hostTips}
-        participantTips={participantTips}
-        aiStatus={aiStatus}
-        AI_COST={AI_COST}
-        selectedUserType={selectedUserType}
-        setSelectedUserType={setSelectedUserType}
-        onCreditPress={canUseAccountFeatures ? () => navigation.navigate('Credit') : undefined}
-      />
+      {(activeMainTab === 'cost' || !selectedUserType) && (
+        <GuideTopTabs active={activeMainTab} onChange={handleMainTabChange} />
+      )}
+      {activeMainTab === 'cost' ? (
+        <WeddingCostDiagnosis />
+      ) : (
+        <GuideThemeMinimal
+          navigation={navigation}
+          userTypes={userTypes}
+          hostCategories={hostGuideCategories}
+          participantCategories={participantGuideCategories}
+          hostTips={hostTips}
+          participantTips={participantTips}
+          aiStatus={aiStatus}
+          AI_COST={AI_COST}
+          selectedUserType={selectedUserType}
+          setSelectedUserType={setSelectedUserType}
+          onCreditPress={canUseAccountFeatures ? () => navigation.navigate('Credit') : undefined}
+        />
+      )}
     </SafeAreaView>
   );
 
@@ -618,6 +1836,1224 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#191F28',
     letterSpacing: -0.5,
+  },
+  mainTabWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 10,
+    padding: 4,
+    backgroundColor: '#F2F4F6',
+    borderRadius: 14,
+  },
+  mainTabButton: {
+    flex: 1,
+    height: 40,
+    borderRadius: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  mainTabButtonActive: {
+    backgroundColor: '#FFFFFF',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+      },
+      android: { elevation: 1 },
+    }),
+  },
+  mainTabText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TossColors.text.secondary,
+    letterSpacing: -0.2,
+  },
+  mainTabTextActive: {
+    color: TossColors.text.primary,
+  },
+  costRoot: {
+    flex: 1,
+    backgroundColor: '#F7F8FA',
+  },
+  costScroll: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 56,
+  },
+  costSectionLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: TossColors.text.secondary,
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  regionChipRow: {
+    gap: 8,
+    paddingRight: 20,
+    paddingBottom: 16,
+  },
+  regionChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  regionChipActive: {
+    backgroundColor: '#191F28',
+    borderColor: '#191F28',
+  },
+  regionChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TossColors.text.secondary,
+    letterSpacing: -0.2,
+  },
+  regionChipTextActive: {
+    color: '#FFFFFF',
+  },
+  costCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 12,
+  },
+  costCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 16,
+  },
+  costCardTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: TossColors.text.primary,
+    letterSpacing: -0.4,
+  },
+  costCardSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: TossColors.text.secondary,
+    marginTop: 4,
+    letterSpacing: -0.2,
+  },
+  costSourceBadge: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: TossColors.primary,
+    backgroundColor: TossColors.primaryLight,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  costStepper: {
+    backgroundColor: '#F7F8FA',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+  },
+  costStepperHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 12,
+  },
+  costStepperLabel: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: TossColors.text.primary,
+    letterSpacing: -0.3,
+  },
+  costStepperHelper: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: TossColors.text.secondary,
+    letterSpacing: -0.1,
+    marginTop: 3,
+  },
+  costStepperStep: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: TossColors.primary,
+    backgroundColor: TossColors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  costStepperControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  costStepButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+  },
+  costValueWrap: {
+    flex: 1,
+    height: 48,
+    borderRadius: 15,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  costValueInput: {
+    minWidth: 34,
+    textAlign: 'right',
+    fontSize: 22,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    paddingVertical: 0,
+    letterSpacing: -0.5,
+  },
+  costValueUnit: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: TossColors.text.secondary,
+    marginLeft: 3,
+    letterSpacing: -0.2,
+  },
+  costCalculateButton: {
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: '#191F28',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  costCalculateButtonText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  inputGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  inputBox: {
+    width: (width - 70) / 2,
+    backgroundColor: '#F7F8FA',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+  inputBoxWide: {
+    width: '100%',
+    backgroundColor: '#F7F8FA',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: TossColors.text.secondary,
+    letterSpacing: -0.1,
+    marginBottom: 5,
+  },
+  costInput: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: TossColors.text.primary,
+    paddingVertical: 0,
+    letterSpacing: -0.5,
+  },
+  resultCard: {
+    backgroundColor: '#191F28',
+    borderRadius: 22,
+    padding: 20,
+    marginBottom: 12,
+  },
+  resultEyebrow: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#8BB8FF',
+    letterSpacing: 0.3,
+  },
+  resultTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 10,
+  },
+  resultTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.7,
+    marginBottom: 8,
+  },
+  resultAmount: {
+    fontSize: 38,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -1.2,
+    marginBottom: 6,
+    fontVariant: ['tabular-nums'],
+  },
+  resultSub: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#D1D6DB',
+    lineHeight: 20,
+    letterSpacing: -0.2,
+  },
+  percentCard: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 16,
+    padding: 15,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  percentLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#8B95A1',
+    letterSpacing: 0.4,
+    marginBottom: 6,
+  },
+  percentTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.7,
+    marginBottom: 4,
+  },
+  percentDetail: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B0B8C1',
+    lineHeight: 18,
+    letterSpacing: -0.2,
+  },
+  resultDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginVertical: 16,
+  },
+  simpleBreakdown: {
+    gap: 10,
+  },
+  simpleBreakdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+  },
+  simpleBreakdownLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8B95A1',
+    letterSpacing: -0.2,
+  },
+  simpleBreakdownValue: {
+    flex: 1,
+    textAlign: 'right',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  diagnosisRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    gap: 14,
+  },
+  diagnosisLeft: {
+    flex: 1,
+  },
+  diagnosisLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B0B8C1',
+    letterSpacing: -0.2,
+    marginBottom: 3,
+  },
+  diagnosisValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  diagnosisRight: {
+    alignItems: 'flex-end',
+    maxWidth: 150,
+  },
+  costTonePill: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    marginBottom: 5,
+  },
+  costToneGreen: {
+    backgroundColor: '#DCFCE7',
+  },
+  costToneBlue: {
+    backgroundColor: '#E6F0FF',
+  },
+  costToneOrange: {
+    backgroundColor: '#FEF3C7',
+  },
+  costToneRed: {
+    backgroundColor: '#FEE2E2',
+  },
+  costToneMuted: {
+    backgroundColor: '#E5E8EB',
+  },
+  costToneText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#191F28',
+    letterSpacing: -0.2,
+  },
+  costToneTextMuted: {
+    color: TossColors.text.secondary,
+  },
+  diagnosisDesc: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8B95A1',
+    textAlign: 'right',
+    lineHeight: 15,
+    letterSpacing: -0.1,
+  },
+  costInsightText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TossColors.text.secondary,
+    lineHeight: 22,
+    letterSpacing: -0.2,
+    marginTop: 10,
+  },
+  focusList: {
+    marginTop: 14,
+  },
+  focusItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F4F6',
+  },
+  focusItemLast: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingTop: 13,
+  },
+  focusIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  focusCopy: {
+    flex: 1,
+  },
+  focusTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -0.3,
+    marginBottom: 3,
+  },
+  focusText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: TossColors.text.secondary,
+    lineHeight: 19,
+    letterSpacing: -0.2,
+  },
+  savingBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    backgroundColor: TossColors.primaryLight,
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 16,
+  },
+  savingText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '800',
+    color: TossColors.primary,
+    lineHeight: 19,
+    letterSpacing: -0.2,
+  },
+  regionMapCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 12,
+    marginHorizontal: -8,
+  },
+  regionMapHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 14,
+  },
+  regionMapTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -0.4,
+  },
+  regionMapSub: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TossColors.text.secondary,
+    marginTop: 4,
+    letterSpacing: -0.2,
+  },
+  regionMapBadge: {
+    backgroundColor: TossColors.primaryLight,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  regionMapBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: TossColors.primary,
+    letterSpacing: -0.1,
+  },
+  koreaMapBox: {
+    width: '100%',
+    height: Math.min(650, Math.max(560, (width - 40) * 1.56)),
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+    marginBottom: 12,
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: '#EEF2F7',
+  },
+  mapPricePanel: {
+    backgroundColor: '#191F28',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    height: 116,
+  },
+  mapPriceHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    height: 42,
+  },
+  mapPriceMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  mapPriceRegion: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#8BB8FF',
+    letterSpacing: -0.1,
+    marginBottom: 4,
+  },
+  mapPriceAmount: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.7,
+  },
+  mapPriceSample: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#B0B8C1',
+    letterSpacing: -0.1,
+    flexShrink: 0,
+  },
+  seoulPriceSelectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    height: 34,
+  },
+  seoulPriceSelectorChip: {
+    flex: 1,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  seoulPriceSelectorChipActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  seoulPriceSelectorText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: 'rgba(255,255,255,0.82)',
+    letterSpacing: -0.2,
+  },
+  seoulPriceSelectorTextActive: {
+    color: TossColors.primary,
+  },
+  mapPriceInfoRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    height: 34,
+  },
+  mapPriceInfoChip: {
+    flex: 1,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  mapPriceInfoLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: 'rgba(255,255,255,0.58)',
+    letterSpacing: -0.1,
+    marginBottom: 1,
+  },
+  mapPriceInfoValue: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  mapStatsGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  mapStatItem: {
+    flex: 1,
+    backgroundColor: '#F7F8FA',
+    borderRadius: 14,
+    padding: 12,
+  },
+  mapStatLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: TossColors.text.secondary,
+    letterSpacing: -0.1,
+    marginBottom: 5,
+  },
+  mapStatValue: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -0.3,
+  },
+  estimateInputToggle: {
+    minHeight: 58,
+    borderRadius: 16,
+    backgroundColor: TossColors.primaryLight,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  estimateInputToggleTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: TossColors.primary,
+    letterSpacing: -0.3,
+    marginBottom: 3,
+  },
+  estimateInputToggleSub: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4F7FD5',
+    letterSpacing: -0.1,
+  },
+  inlineEstimateCard: {
+    backgroundColor: '#F7F8FA',
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 10,
+  },
+  estimateSheetCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingHorizontal: 18,
+    paddingTop: 4,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 20,
+    minHeight: 360,
+    maxHeight: '82%',
+  },
+  estimateSheetCardKeyboard: {
+    minHeight: 330,
+    maxHeight: '64%',
+  },
+  estimateSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 14,
+    marginBottom: 12,
+  },
+  estimateHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  estimateBackButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#F2F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  estimateStepBadge: {
+    height: 30,
+    paddingHorizontal: 11,
+    borderRadius: 999,
+    backgroundColor: TossColors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  estimateStepBadgeText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: TossColors.primary,
+    letterSpacing: -0.2,
+  },
+  estimateQuestionTitle: {
+    fontSize: 21,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -0.6,
+    lineHeight: 27,
+    marginBottom: 7,
+  },
+  estimateQuestionHelper: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TossColors.text.secondary,
+    lineHeight: 18,
+    letterSpacing: -0.2,
+    marginBottom: 16,
+  },
+  estimateRegionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 18,
+  },
+  estimateRegionChip: {
+    minWidth: '30%',
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: '#F7F8FA',
+    borderWidth: 1,
+    borderColor: '#E5E8EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  estimateRegionChipActive: {
+    backgroundColor: '#191F28',
+    borderColor: '#191F28',
+  },
+  estimateRegionChipText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: TossColors.text.secondary,
+    letterSpacing: -0.25,
+  },
+  estimateRegionChipTextActive: {
+    color: '#FFFFFF',
+  },
+  estimateInputBox: {
+    height: 58,
+    borderRadius: 16,
+    backgroundColor: '#F7F8FA',
+    borderWidth: 1,
+    borderColor: '#E9EEF5',
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  estimateSheetInput: {
+    flex: 1,
+    fontSize: 23,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -1,
+    paddingVertical: 0,
+    fontVariant: ['tabular-nums'],
+  },
+  estimateInputUnit: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: TossColors.text.secondary,
+    letterSpacing: -0.3,
+    marginLeft: 8,
+  },
+  estimateProgressRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 16,
+  },
+  estimateProgressDot: {
+    flex: 1,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: TossColors.gray[200],
+  },
+  estimateProgressDotActive: {
+    backgroundColor: TossColors.primary,
+  },
+  estimateSheetButton: {
+    height: 50,
+    borderRadius: 15,
+    backgroundColor: TossColors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  estimateSheetButtonDisabled: {
+    backgroundColor: TossColors.gray[300],
+  },
+  estimateSheetButtonText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  estimateLoadingWrap: {
+    minHeight: 300,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 20,
+  },
+  estimateLoadingLottie: {
+    width: 148,
+    height: 148,
+    marginBottom: 8,
+  },
+  estimateLoadingTitle: {
+    fontSize: 19,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -0.7,
+    marginBottom: 8,
+  },
+  estimateLoadingText: {
+    maxWidth: 280,
+    fontSize: 12,
+    fontWeight: '700',
+    color: TossColors.text.secondary,
+    lineHeight: 20,
+    textAlign: 'center',
+    letterSpacing: -0.2,
+  },
+  estimateResultHero: {
+    backgroundColor: '#F7F8FA',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 14,
+  },
+  estimateResultLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: TossColors.text.secondary,
+    letterSpacing: 0.2,
+    marginBottom: 8,
+  },
+  estimateResultAmount: {
+    fontSize: 29,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -1.1,
+    fontVariant: ['tabular-nums'],
+    marginBottom: 12,
+  },
+  estimateResultBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#191F28',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  estimateResultBadgeText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  estimateResultDetail: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TossColors.text.secondary,
+    lineHeight: 20,
+    letterSpacing: -0.2,
+  },
+  estimateResultRows: {
+    backgroundColor: '#F7F8FA',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  priceBandList: {
+    backgroundColor: '#F7F8FA',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+  },
+  priceBandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E8EB',
+  },
+  priceBandRowLast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  priceBandLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: TossColors.text.secondary,
+    letterSpacing: -0.2,
+  },
+  priceBandValue: {
+    flex: 1,
+    textAlign: 'right',
+    fontSize: 13,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -0.2,
+  },
+  referenceCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+  },
+  referenceTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: TossColors.text.primary,
+    letterSpacing: -0.3,
+    marginBottom: 12,
+  },
+  referenceHighlight: {
+    backgroundColor: '#F7F8FA',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 8,
+  },
+  referenceHighlightLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: TossColors.text.secondary,
+    letterSpacing: 0.3,
+    marginBottom: 5,
+  },
+  referenceHighlightValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: TossColors.text.primary,
+    lineHeight: 19,
+    letterSpacing: -0.2,
+  },
+  referenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F4F6',
+  },
+  referenceLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: TossColors.text.secondary,
+    letterSpacing: -0.2,
+  },
+  referenceValue: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -0.2,
+  },
+  referenceNote: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: TossColors.text.tertiary,
+    lineHeight: 17,
+    letterSpacing: -0.1,
+    marginTop: 12,
+  },
+  sheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(25,31,40,0.42)',
+  },
+  sheetCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingHorizontal: 18,
+    paddingTop: 4,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    maxHeight: '86%',
+  },
+  sheetDragZone: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: '#C9CDD2',
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginBottom: 14,
+  },
+  sheetEyebrow: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: TossColors.primary,
+    letterSpacing: 0.2,
+    marginBottom: 6,
+  },
+  sheetTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -0.7,
+  },
+  sheetClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F2F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetEvidenceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#EEF5FF',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#DCEBFF',
+  },
+  sheetEvidenceIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetEvidenceTextWrap: {
+    flex: 1,
+  },
+  sheetEvidenceTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -0.3,
+    marginBottom: 3,
+  },
+  sheetEvidenceText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TossColors.text.secondary,
+    lineHeight: 17,
+    letterSpacing: -0.2,
+  },
+  sheetSummaryCard: {
+    backgroundColor: '#F7F8FA',
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 10,
+  },
+  sheetSummaryTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 8,
+  },
+  sheetAmountLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: TossColors.text.secondary,
+    letterSpacing: 0.3,
+    marginBottom: 7,
+  },
+  sheetAmount: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -1,
+    fontVariant: ['tabular-nums'],
+  },
+  sheetAmountSub: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TossColors.text.secondary,
+    lineHeight: 19,
+    letterSpacing: -0.2,
+  },
+  sheetPercentBadge: {
+    backgroundColor: '#191F28',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 2,
+  },
+  sheetPercentBadgeText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  sheetMeterTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#E5E8EB',
+    marginTop: 18,
+    marginBottom: 8,
+    overflow: 'visible',
+  },
+  sheetMeterFill: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: TossColors.primary,
+  },
+  sheetMeterDot: {
+    position: 'absolute',
+    top: -5,
+    width: 18,
+    height: 18,
+    marginLeft: -9,
+    borderRadius: 9,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 5,
+    borderColor: TossColors.primary,
+  },
+  sheetMeterLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sheetMeterLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: TossColors.text.tertiary,
+    letterSpacing: -0.1,
+  },
+  sheetPercentTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    letterSpacing: -0.7,
+    marginBottom: 4,
+  },
+  sheetPercentDetail: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TossColors.text.secondary,
+    lineHeight: 19,
+    letterSpacing: -0.2,
+  },
+  sheetRows: {
+    backgroundColor: '#F7F8FA',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+  },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E8EB',
+  },
+  sheetRowLast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+    paddingVertical: 14,
+  },
+  sheetRowLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TossColors.text.secondary,
+    letterSpacing: -0.2,
+  },
+  sheetRowValue: {
+    flex: 1,
+    textAlign: 'right',
+    fontSize: 13,
+    fontWeight: '900',
+    color: TossColors.text.primary,
+    lineHeight: 19,
+    letterSpacing: -0.2,
   },
   headerWithBack: {
     height: 56,

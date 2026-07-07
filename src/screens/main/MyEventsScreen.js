@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
+import LottieView from "lottie-react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   getUserEvents,
@@ -45,6 +46,8 @@ import ReceiptModal from "../../components/ReceiptModal";
 import LottieLoading from "../../components/LottieLoading";
 import { useSimpleAlert } from "../../hooks/useSimpleAlert";
 import { useTutorial } from "../../contexts/TutorialContext";
+
+const ALIMTALK_CREDIT_LOTTIE = require("../../../assets/lottie/alimtalk-credit-coin.json");
 
 const EVENT_CARD_COVERS = [
   {
@@ -1113,10 +1116,14 @@ export default function MyEventsScreen({ navigation, userInfo }) {
                 { backgroundColor: getBalanceColor(alimtalkBalance) + "1A" },
               ]}
             >
-              <Ionicons
-                name="chatbubble-ellipses"
-                size={18}
-                color={getBalanceColor(alimtalkBalance)}
+              <LottieView
+                source={ALIMTALK_CREDIT_LOTTIE}
+                autoPlay
+                loop
+                speed={1}
+                renderMode="SOFTWARE"
+                style={styles.creditLottie}
+                resizeMode="contain"
               />
             </View>
             <View style={{ flex: 1 }}>
@@ -3101,11 +3108,16 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   creditIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  creditLottie: {
+    width: 44,
+    height: 44,
   },
   creditLabel: {
     fontSize: 12,

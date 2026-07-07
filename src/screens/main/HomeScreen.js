@@ -23,6 +23,7 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
+import LottieView from "lottie-react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Colors } from "../../styles/constants";
@@ -61,6 +62,7 @@ import { getInvitationUrl } from "../../lib/webLinks";
 
 const { width } = Dimensions.get("window");
 const isTablet = width >= 768;
+const isCompactPhone = !isTablet && width < 390;
 const HOSTED_PHOTO_WIDTH = isTablet ? 140 : 102;
 const HOSTED_PHOTO_HEIGHT = isTablet ? 148 : 116;
 const RECIPROCITY_EVENT_ICONS = {
@@ -68,6 +70,12 @@ const RECIPROCITY_EVENT_ICONS = {
   funeral: require("../../../assets/icons/reciprocity/funeral.png"),
 };
 const JEONGDAM_LOGO = require("../../../assets/images/jeongdamlogo.png");
+const CREDIT_DIAMOND_LOTTIE = require("../../../assets/lottie/credit-diamond.json");
+const CREDIT_GIFT_LOTTIE = require("../../../assets/lottie/credit-gift.json");
+const NOTIFICATION_RED_DOT_LOTTIE = require("../../../assets/lottie/notification-red-dot.json");
+const NOTIFICATION_LOTTIE_END_FRAME = Math.floor(
+  NOTIFICATION_RED_DOT_LOTTIE.op || 135,
+);
 const HOME_BANNERS = [
   {
     title: "스마트하게\n부조를 기록하세요",
@@ -515,6 +523,7 @@ export default function HomeScreen({
   const quickGridRef = useRef(null);
   const weddingMakeBtnRef = useRef(null);
   const funeralMakeBtnRef = useRef(null);
+  const notificationRedDotRef = useRef(null);
   const tutorialCheckedRef = useRef(false);
   const welcomeCreditCheckedRef = useRef(null);
   const wasHomeTutorialActiveRef = useRef(false);
@@ -3019,6 +3028,21 @@ export default function HomeScreen({
   }, [visibleActivityNotifications, visibleReciprocityNotifications]);
   const homeNotificationUnreadCount =
     reciprocityUnreadCount + activityUnreadCount;
+  const hasUnreadHomeNotification = homeNotificationUnreadCount > 0;
+
+  useEffect(() => {
+    const notificationLottie = notificationRedDotRef.current;
+    if (!notificationLottie) return;
+
+    if (hasUnreadHomeNotification) {
+      requestAnimationFrame(() => {
+        notificationLottie.play(0, NOTIFICATION_LOTTIE_END_FRAME);
+      });
+    } else {
+      notificationLottie.reset();
+    }
+  }, [hasUnreadHomeNotification, homeNotificationUnreadCount]);
+
   const reciprocityTotalPages = Math.max(
     1,
     Math.ceil(visibleReciprocityNotifications.length / RECIPROCITY_PER_PAGE),
@@ -3333,7 +3357,13 @@ export default function HomeScreen({
           </View>
           <View style={styles.headerCreditRow}>
             <View style={styles.headerCreditChip}>
-              <Ionicons name="diamond" size={15} color="#2F80ED" />
+              <LottieView
+                source={CREDIT_DIAMOND_LOTTIE}
+                autoPlay
+                loop
+                style={styles.headerCreditLottie}
+                resizeMode="contain"
+              />
               <Text style={styles.headerCreditText} numberOfLines={1}>
                 {eventCreationCreditState.balance} 크레딧
               </Text>
@@ -3341,7 +3371,13 @@ export default function HomeScreen({
             <View
               style={[styles.headerCreditChip, styles.headerCreditChipWarm]}
             >
-              <Ionicons name="gift" size={15} color="#7C3AED" />
+              <LottieView
+                source={CREDIT_GIFT_LOTTIE}
+                autoPlay
+                loop
+                style={styles.headerCreditLottie}
+                resizeMode="contain"
+              />
               <Text
                 style={[styles.headerCreditText, styles.headerCreditTextWarm]}
                 numberOfLines={1}
@@ -3357,10 +3393,20 @@ export default function HomeScreen({
           activeOpacity={0.78}
           accessibilityLabel="알림"
         >
-          <Ionicons name="notifications-outline" size={21} color="#4E5968" />
-          {homeNotificationUnreadCount > 0 && (
-            <View style={styles.headerNotificationDot} />
-          )}
+          <LottieView
+            key={
+              hasUnreadHomeNotification
+                ? "notification-active"
+                : "notification-idle"
+            }
+            ref={notificationRedDotRef}
+            source={NOTIFICATION_RED_DOT_LOTTIE}
+            loop={hasUnreadHomeNotification}
+            autoPlay={hasUnreadHomeNotification}
+            style={styles.headerNotificationLottie}
+            resizeMode="contain"
+            pointerEvents="none"
+          />
         </TouchableOpacity>
       </View>
 
@@ -6583,6 +6629,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderColor: "#E5E8EC",
   },
+  headerCreditLottie: {
+    width: 20,
+    height: 20,
+  },
   headerCreditText: {
     fontSize: 13,
     fontWeight: "800",
@@ -6595,13 +6645,10 @@ const styles = StyleSheet.create({
   headerNotificationButton: {
     width: 42,
     height: 42,
-    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F7F8FA",
-    borderWidth: 1,
-    borderColor: "#EEF1F4",
     position: "relative",
+    overflow: "visible",
   },
   headerNotificationDot: {
     position: "absolute",
@@ -6613,6 +6660,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#EF4444",
     borderWidth: 1,
     borderColor: "#FFFFFF",
+  },
+  headerNotificationLottie: {
+    position: "absolute",
+    width: 220,
+    height: 165,
+    left: isCompactPhone ? -76 : -89,
+    top: -61,
+    transform: [{ scale: 1.35 }],
   },
   notificationCenter: {
     flex: 1,

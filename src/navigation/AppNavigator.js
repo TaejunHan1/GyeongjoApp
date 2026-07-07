@@ -14,6 +14,7 @@ import ThankYouMessagesScreen from '../screens/main/ThankYouMessagesScreen';
 // import GuideScreen from '../screens/main/GuideScreen'; // 기존 스타일
 import GuideScreen from '../screens/main/GuideScreenToss'; // 토스 스타일
 import BenefitsScreen from '../screens/main/BenefitsScreen'; // 🆕 혜택 화면
+import AdminScreen from '../screens/main/AdminScreen';
 import PaperInvitationFormScreen from '../screens/main/studio/PaperInvitationFormScreen';
 import PaperInvitationLayoutScreen from '../screens/main/studio/PaperInvitationLayoutScreen';
 import SavedInvitationsScreen from '../screens/main/studio/SavedInvitationsScreen';
@@ -52,8 +53,10 @@ import ContributionSettingsScreen from '../screens/main/ContributionSettingsScre
 // 디지털 방명록 화면
 import GuestWritingScreen from '../screens/event/guestbook/GuestWritingScreen';
 import GuestConfirmScreen from '../screens/event/guestbook/GuestConfirmScreen';
+import AdminAppModalHost from '../components/AdminAppModalHost';
 
 import { Colors } from '../styles/constants';
+import { isAdminUser } from '../lib/adminConsole';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -61,6 +64,7 @@ const Tab = createBottomTabNavigator();
 // 하단 탭 네비게이터 - 4개 탭으로 확장
 function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
   const insets = useSafeAreaInsets();
+  const canUseAdmin = isAdminUser(userInfo, session);
   
   return (
     <Tab.Navigator
@@ -79,6 +83,8 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
             iconName = focused ? 'color-palette' : 'color-palette-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
+          } else if (route.name === 'Admin') {
+            iconName = focused ? 'shield-checkmark' : 'shield-checkmark-outline';
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
@@ -105,12 +111,15 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
         options={{ tabBarLabel: '홈' }}
       >
         {(props) => (
-          <HomeScreen 
-            {...props} 
-            userInfo={userInfo}
-            session={session}
-            isAuthenticated={isAuthenticated}
-          />
+          <>
+            <HomeScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+              isAuthenticated={isAuthenticated}
+            />
+            <AdminAppModalHost targetScreen="home" userInfo={userInfo} session={session} />
+          </>
         )}
       </Tab.Screen>
       
@@ -119,12 +128,15 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
         options={{ tabBarLabel: '내 행사' }}
       >
         {(props) => (
-          <MyEventsScreen 
-            {...props} 
-            userInfo={userInfo}
-            session={session}
-            isAuthenticated={isAuthenticated}
-          />
+          <>
+            <MyEventsScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+              isAuthenticated={isAuthenticated}
+            />
+            <AdminAppModalHost targetScreen="my_events" userInfo={userInfo} session={session} />
+          </>
         )}
       </Tab.Screen>
       
@@ -134,12 +146,15 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
         options={{ tabBarLabel: '가이드' }}
       >
         {(props) => (
-          <GuideScreen 
-            {...props} 
-            userInfo={userInfo}
-            session={session}
-            isAuthenticated={isAuthenticated}
-          />
+          <>
+            <GuideScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+              isAuthenticated={isAuthenticated}
+            />
+            <AdminAppModalHost targetScreen="guide" userInfo={userInfo} session={session} />
+          </>
         )}
       </Tab.Screen>
 
@@ -149,12 +164,15 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
         options={{ tabBarLabel: '스튜디오' }}
       >
         {(props) => (
-          <BenefitsScreen 
-            {...props} 
-            userInfo={userInfo}
-            session={session}
-            isAuthenticated={isAuthenticated}
-          />
+          <>
+            <BenefitsScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+              isAuthenticated={isAuthenticated}
+            />
+            <AdminAppModalHost targetScreen="studio" userInfo={userInfo} session={session} />
+          </>
         )}
       </Tab.Screen>
       
@@ -163,15 +181,33 @@ function MainTabNavigator({ userInfo, session, isAuthenticated, onLogout }) {
         options={{ tabBarLabel: '프로필' }}
       >
         {(props) => (
-          <ProfileScreen 
-            {...props} 
-            userInfo={userInfo}
-            session={session}
-            isAuthenticated={isAuthenticated}
-            onLogout={onLogout}
-          />
+          <>
+            <ProfileScreen 
+              {...props} 
+              userInfo={userInfo}
+              session={session}
+              isAuthenticated={isAuthenticated}
+              onLogout={onLogout}
+            />
+            <AdminAppModalHost targetScreen="profile" userInfo={userInfo} session={session} />
+          </>
         )}
       </Tab.Screen>
+
+      {canUseAdmin && (
+        <Tab.Screen 
+          name="Admin" 
+          options={{ tabBarLabel: '관리자' }}
+        >
+          {(props) => (
+            <AdminScreen 
+              {...props}
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Tab.Screen>
+      )}
     </Tab.Navigator>
   );
 }
