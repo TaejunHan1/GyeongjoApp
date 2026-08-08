@@ -43,6 +43,7 @@ const BUBBLE_MAP = {
   participant:  { bg: C.greenSoft,  color: C.green },
   'wedding-prep': { bg: C.pinkSoft, color: C.pink },
   'funeral-prep': { bg: C.purpleSoft, color: C.purple },
+  'contract-questions': { bg: C.orangeSoft, color: C.orange },
   'budget-calc':  { bg: C.orangeSoft, color: C.orange },
   money:          { bg: C.blueSoft, color: C.blue },
   manner:         { bg: C.pinkSoft, color: C.pink },

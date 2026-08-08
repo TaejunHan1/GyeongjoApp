@@ -45,6 +45,7 @@ import EtiquetteGuideScreen from '../screens/main/guides/participant/EtiquetteGu
 // 🆕 주최자용 가이드 관련 화면들
 import WeddingPrepGuideScreen from '../screens/main/guides/host/WeddingPrepGuideScreen';
 import FuneralPrepGuideScreen from '../screens/main/guides/host/FuneralPrepGuideScreen';
+import ContractQuestionCardsScreen from '../screens/main/guides/host/ContractQuestionCardsScreen';
 import FAQScreen from '../screens/main/guides/FAQScreen';
 
 import SettingsScreen from '../screens/main/SettingsScreen';
@@ -553,6 +554,19 @@ export default function AppNavigator({ session, userInfo, isAuthenticated, onLog
           {(props) => (
             <FuneralPrepGuideScreen 
               {...props} 
+              userInfo={userInfo}
+              session={session}
+            />
+          )}
+        </Stack.Screen>
+
+        <Stack.Screen
+          name="ContractQuestionCards"
+          options={{ headerShown: false }}
+        >
+          {(props) => (
+            <ContractQuestionCardsScreen
+              {...props}
               userInfo={userInfo}
               session={session}
             />

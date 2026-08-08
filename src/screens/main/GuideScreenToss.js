@@ -1519,6 +1519,14 @@ export default function GuideScreenToss({ navigation, userInfo, session, isAuthe
   // 주최자용 가이드 - 토스 스타일로 수정
   const hostGuideCategories = [
     {
+      id: 'contract-questions',
+      title: '계약 전 질문 카드',
+      subtitle: '상담 전에 꼭 물어볼 항목',
+      icon: 'chatbubbles-outline',
+      screen: 'ContractQuestionCards',
+      isNew: true,
+    },
+    {
       id: 'wedding-prep',
       title: '결혼식 준비',
       subtitle: '체크리스트와 준비 일정',

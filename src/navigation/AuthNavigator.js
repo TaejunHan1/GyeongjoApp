@@ -13,6 +13,7 @@ import MannerGuideScreen from '../screens/main/guides/participant/MannerGuideScr
 import EtiquetteGuideScreen from '../screens/main/guides/participant/EtiquetteGuideScreen';
 import WeddingPrepGuideScreen from '../screens/main/guides/host/WeddingPrepGuideScreen';
 import FuneralPrepGuideScreen from '../screens/main/guides/host/FuneralPrepGuideScreen';
+import ContractQuestionCardsScreen from '../screens/main/guides/host/ContractQuestionCardsScreen';
 import FAQScreen from '../screens/main/guides/FAQScreen';
 import TermsScreen from '../screens/legal/TermsScreen';
 import PrivacyScreen from '../screens/legal/PrivacyScreen';
@@ -36,6 +37,7 @@ export default function AuthNavigator({ setUserInfo, setIsAuthenticated }) {
         <Stack.Screen name="EtiquetteGuide" component={EtiquetteGuideScreen} />
         <Stack.Screen name="WeddingPrepGuide" component={WeddingPrepGuideScreen} />
         <Stack.Screen name="FuneralPrepGuide" component={FuneralPrepGuideScreen} />
+        <Stack.Screen name="ContractQuestionCards" component={ContractQuestionCardsScreen} />
         <Stack.Screen name="FAQ" component={FAQScreen} />
         <Stack.Screen name="Terms" component={TermsScreen} />
         <Stack.Screen name="Privacy" component={PrivacyScreen} />

@@ -37,6 +37,7 @@ export const BUBBLE_MAP = {
   participant:     { bg: TC.greenSoft,  color: TC.green },
   'wedding-prep':  { bg: TC.pinkSoft,   color: TC.pink },
   'funeral-prep':  { bg: TC.purpleSoft, color: TC.purple },
+  'contract-questions': { bg: TC.orangeSoft, color: TC.orange },
   'budget-calc':   { bg: TC.orangeSoft, color: TC.orange },
   money:           { bg: TC.blueSoft,   color: TC.blue },
   manner:          { bg: TC.pinkSoft,   color: TC.pink },
